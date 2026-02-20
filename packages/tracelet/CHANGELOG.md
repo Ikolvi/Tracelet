@@ -1,3 +1,9 @@
+## 0.1.1
+
+* Fix pubspec description length for pub.dev scoring.
+* Add SPDX `license: Apache-2.0` identifier.
+* Add `example/main.dart` for pub.dev documentation score.
+
 ## 0.1.0
 
 * Initial release.
