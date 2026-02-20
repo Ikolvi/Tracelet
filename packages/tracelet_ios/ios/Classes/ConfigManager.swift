@@ -59,7 +59,7 @@ final class ConfigManager {
     func getDisableElasticity() -> Bool { cache["disableElasticity"] as? Bool ?? false }
     func getElasticityMultiplier() -> Double { cache["elasticityMultiplier"] as? Double ?? 1.0 }
     func getGeofenceProximityRadius() -> Double { cache["geofenceProximityRadius"] as? Double ?? 1000.0 }
-    func getMaxDaysToPersist() -> Int { cache["maxDaysToPersist"] as? Int ?? 1 }
+    func getMaxDaysToPersist() -> Int { cache["maxDaysToPersist"] as? Int ?? -1 }
     func getMaxRecordsToPersist() -> Int { cache["maxRecordsToPersist"] as? Int ?? -1 }
     func getLocationUpdateInterval() -> Int { cache["locationUpdateInterval"] as? Int ?? 1000 }
     func getFastestLocationUpdateInterval() -> Int { cache["fastestLocationUpdateInterval"] as? Int ?? -1 }
@@ -70,6 +70,15 @@ final class ConfigManager {
     func getPausesLocationUpdatesAutomatically() -> Bool { cache["pausesLocationUpdatesAutomatically"] as? Bool ?? false }
     func getDisableLocationAuthorizationAlert() -> Bool { cache["disableLocationAuthorizationAlert"] as? Bool ?? false }
     func getLocationAuthorizationRequest() -> String { cache["locationAuthorizationRequest"] as? String ?? "Always" }
+    func getStopAfterElapsedMinutes() -> Int { cache["stopAfterElapsedMinutes"] as? Int ?? -1 }
+    func getMaxMonitoredGeofences() -> Int { cache["maxMonitoredGeofences"] as? Int ?? -1 }
+    func getEnableTimestampMeta() -> Bool { cache["enableTimestampMeta"] as? Bool ?? false }
+
+    // LocationFilter
+    func getFilterPolicy() -> Int { cache["policy"] as? Int ?? 0 }
+    func getMaxImpliedSpeed() -> Int { cache["maxImpliedSpeed"] as? Int ?? 0 }
+    func getOdometerAccuracyThreshold() -> Int { cache["odometerAccuracyThreshold"] as? Int ?? 0 }
+    func getTrackingAccuracyThreshold() -> Int { cache["trackingAccuracyThreshold"] as? Int ?? 0 }
 
     // AppConfig
     func isDebug() -> Bool { cache["debug"] as? Bool ?? false }
@@ -87,6 +96,10 @@ final class ConfigManager {
     func getStopDetectionDelay() -> Int { cache["stopDetectionDelay"] as? Int ?? 0 }
     func getDisableMotionActivityUpdates() -> Bool { cache["disableMotionActivityUpdates"] as? Bool ?? false }
     func getDisableStopDetection() -> Bool { cache["disableStopDetection"] as? Bool ?? false }
+    func getActivityRecognitionInterval() -> Int { cache["activityRecognitionInterval"] as? Int ?? 10000 }
+    func getMinimumActivityRecognitionConfidence() -> Int { cache["minimumActivityRecognitionConfidence"] as? Int ?? 75 }
+    func getStopOnStationary() -> Bool { cache["stopOnStationary"] as? Bool ?? false }
+    func getTriggerActivities() -> String { cache["triggerActivities"] as? String ?? "" }
 
     // GeofenceConfig
     func getGeofenceInitialTriggerEntry() -> Bool { cache["geofenceInitialTriggerEntry"] as? Bool ?? true }
@@ -103,6 +116,14 @@ final class ConfigManager {
     func getHttpMethod() -> String { cache["method"] as? String ?? "POST" }
     func getHttpTimeout() -> Int { cache["httpTimeout"] as? Int ?? 60000 }
     func getLocationsOrderDirection() -> String { cache["locationsOrderDirection"] as? String ?? "ASC" }
+    func getDisableAutoSyncOnCellular() -> Bool { cache["disableAutoSyncOnCellular"] as? Bool ?? false }
+
+    // PersistenceConfig
+    func getPersistMode() -> Int { cache["persistMode"] as? Int ?? 0 }
+    func getLocationTemplate() -> String? { cache["locationTemplate"] as? String }
+    func getGeofenceTemplate() -> String? { cache["geofenceTemplate"] as? String }
+    func getDisableProviderChangeRecord() -> Bool { cache["disableProviderChangeRecord"] as? Bool ?? false }
+    func getPersistenceExtras() -> [String: Any] { cache["extras"] as? [String: Any] ?? [:] }
 
     // LoggerConfig
     func getLogMaxDays() -> Int { cache["logMaxDays"] as? Int ?? 3 }
@@ -116,7 +137,7 @@ final class ConfigManager {
             "disableElasticity": false,
             "elasticityMultiplier": 1.0,
             "geofenceProximityRadius": 1000.0,
-            "maxDaysToPersist": 1,
+            "maxDaysToPersist": -1,
             "maxRecordsToPersist": -1,
             "locationUpdateInterval": 1000,
             "fastestLocationUpdateInterval": -1,
@@ -140,6 +161,13 @@ final class ConfigManager {
             "stopDetectionDelay": 0,
             "disableMotionActivityUpdates": false,
             "disableStopDetection": false,
+            "activityRecognitionInterval": 10000,
+            "minimumActivityRecognitionConfidence": 75,
+            "stopOnStationary": false,
+            "triggerActivities": "",
+            "stopAfterElapsedMinutes": -1,
+            "maxMonitoredGeofences": -1,
+            "enableTimestampMeta": false,
             "geofenceInitialTriggerEntry": true,
             "geofenceModeKnockOut": false,
             "url": "",
@@ -152,6 +180,11 @@ final class ConfigManager {
             "method": "POST",
             "httpTimeout": 60000,
             "locationsOrderDirection": "ASC",
+            "disableAutoSyncOnCellular": false,
+            "persistMode": 0,
+            "maxDaysToPersist": -1,
+            "maxRecordsToPersist": -1,
+            "disableProviderChangeRecord": false,
             "logMaxDays": 3,
         ]
     }

@@ -10,6 +10,10 @@ import io.flutter.plugin.common.EventChannel
  *
  * Manages 15 EventChannels and their EventSinks. All event dispatch
  * is marshalled to the main thread for Flutter platform channel safety.
+ *
+ * When no Dart UI listener is attached for a given event, the dispatcher
+ * falls back to [headlessFallback] (if set) so that events can be routed
+ * to a background Dart isolate via HeadlessTaskService.
  */
 class EventDispatcher {
 
@@ -18,6 +22,13 @@ class EventDispatcher {
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    /**
+     * Optional headless fallback. When no EventSink exists for a given event,
+     * the dispatcher calls this lambda with (eventName, eventData) so the
+     * event can be forwarded to HeadlessTaskService.
+     */
+    var headlessFallback: ((eventName: String, data: Map<String, Any?>) -> Unit)? = null
 
     // EventChannel instances
     private val channels = mutableMapOf<String, EventChannel>()
@@ -112,11 +123,23 @@ class EventDispatcher {
     // ---------------------------------------------------------------------------
 
     private fun send(eventName: String, data: Any?) {
-        val sink = sinks[eventName] ?: return
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            sink.success(data)
+        val sink = sinks[eventName]
+        if (sink != null) {
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                sink.success(data)
+            } else {
+                mainHandler.post { sink.success(data) }
+            }
         } else {
-            mainHandler.post { sink.success(data) }
+            // No Dart UI listener — route to headless fallback if available.
+            headlessFallback?.let { fallback ->
+                @Suppress("UNCHECKED_CAST")
+                val eventData = when (data) {
+                    is Map<*, *> -> data as Map<String, Any?>
+                    else -> mapOf("value" to data)
+                }
+                fallback(eventName, eventData)
+            }
         }
     }
 }

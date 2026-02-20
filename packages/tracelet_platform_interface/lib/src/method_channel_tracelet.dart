@@ -11,57 +11,57 @@ class MethodChannelTracelet extends TraceletPlatform {
   final MethodChannel _methodChannel =
       const MethodChannel(TraceletPlatform.methodChannelName);
 
+  /// Safely invoke a method that returns a map.
+  ///
+  /// Platform channels on iOS return `Map<Object?, Object?>` at runtime,
+  /// so we cannot rely on `invokeMapMethod<String, Object?>` which does
+  /// a direct cast. Instead, use `invokeMethod` and `Map.from()`.
+  Future<Map<String, Object?>> _invokeMap(
+      String method, [Object? arguments]) async {
+    final result = await _methodChannel.invokeMethod<Object?>(method, arguments);
+    if (result is Map) {
+      return Map<String, Object?>.from(result);
+    }
+    return <String, Object?>{};
+  }
+
   // ---------------------------------------------------------------------------
   // Lifecycle
   // ---------------------------------------------------------------------------
 
   @override
   Future<Map<String, Object?>> ready(Map<String, Object?> config) async {
-    final result =
-        await _methodChannel.invokeMapMethod<String, Object?>('ready', config);
-    return result ?? {};
+    return _invokeMap('ready', config);
   }
 
   @override
   Future<Map<String, Object?>> start() async {
-    final result =
-        await _methodChannel.invokeMapMethod<String, Object?>('start');
-    return result ?? {};
+    return _invokeMap('start');
   }
 
   @override
   Future<Map<String, Object?>> stop() async {
-    final result =
-        await _methodChannel.invokeMapMethod<String, Object?>('stop');
-    return result ?? {};
+    return _invokeMap('stop');
   }
 
   @override
   Future<Map<String, Object?>> startGeofences() async {
-    final result =
-        await _methodChannel.invokeMapMethod<String, Object?>('startGeofences');
-    return result ?? {};
+    return _invokeMap('startGeofences');
   }
 
   @override
   Future<Map<String, Object?>> getState() async {
-    final result =
-        await _methodChannel.invokeMapMethod<String, Object?>('getState');
-    return result ?? {};
+    return _invokeMap('getState');
   }
 
   @override
   Future<Map<String, Object?>> setConfig(Map<String, Object?> config) async {
-    final result = await _methodChannel.invokeMapMethod<String, Object?>(
-        'setConfig', config);
-    return result ?? {};
+    return _invokeMap('setConfig', config);
   }
 
   @override
   Future<Map<String, Object?>> reset([Map<String, Object?>? config]) async {
-    final result = await _methodChannel.invokeMapMethod<String, Object?>(
-        'reset', config);
-    return result ?? {};
+    return _invokeMap('reset', config);
   }
 
   // ---------------------------------------------------------------------------
@@ -71,9 +71,7 @@ class MethodChannelTracelet extends TraceletPlatform {
   @override
   Future<Map<String, Object?>> getCurrentPosition(
       Map<String, Object?> options) async {
-    final result = await _methodChannel.invokeMapMethod<String, Object?>(
-        'getCurrentPosition', options);
-    return result ?? {};
+    return _invokeMap('getCurrentPosition', options);
   }
 
   @override
@@ -105,9 +103,7 @@ class MethodChannelTracelet extends TraceletPlatform {
 
   @override
   Future<Map<String, Object?>> setOdometer(double value) async {
-    final result = await _methodChannel.invokeMapMethod<String, Object?>(
-        'setOdometer', value);
-    return result ?? {};
+    return _invokeMap('setOdometer', value);
   }
 
   // ---------------------------------------------------------------------------
@@ -153,9 +149,10 @@ class MethodChannelTracelet extends TraceletPlatform {
 
   @override
   Future<Map<String, Object?>?> getGeofence(String identifier) async {
-    final result = await _methodChannel.invokeMapMethod<String, Object?>(
-        'getGeofence', identifier);
-    return result;
+    final result =
+        await _methodChannel.invokeMethod<Object?>('getGeofence', identifier);
+    if (result is Map) return Map<String, Object?>.from(result);
+    return null;
   }
 
   @override
@@ -247,23 +244,17 @@ class MethodChannelTracelet extends TraceletPlatform {
 
   @override
   Future<Map<String, Object?>> getProviderState() async {
-    final result =
-        await _methodChannel.invokeMapMethod<String, Object?>('getProviderState');
-    return result ?? {};
+    return _invokeMap('getProviderState');
   }
 
   @override
   Future<Map<String, Object?>> getSensors() async {
-    final result =
-        await _methodChannel.invokeMapMethod<String, Object?>('getSensors');
-    return result ?? {};
+    return _invokeMap('getSensors');
   }
 
   @override
   Future<Map<String, Object?>> getDeviceInfo() async {
-    final result =
-        await _methodChannel.invokeMapMethod<String, Object?>('getDeviceInfo');
-    return result ?? {};
+    return _invokeMap('getDeviceInfo');
   }
 
   @override
@@ -349,16 +340,12 @@ class MethodChannelTracelet extends TraceletPlatform {
 
   @override
   Future<Map<String, Object?>> startSchedule() async {
-    final result =
-        await _methodChannel.invokeMapMethod<String, Object?>('startSchedule');
-    return result ?? {};
+    return _invokeMap('startSchedule');
   }
 
   @override
   Future<Map<String, Object?>> stopSchedule() async {
-    final result =
-        await _methodChannel.invokeMapMethod<String, Object?>('stopSchedule');
-    return result ?? {};
+    return _invokeMap('stopSchedule');
   }
 
   // ---------------------------------------------------------------------------

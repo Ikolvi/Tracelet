@@ -44,7 +44,7 @@ class State {
 
   /// Creates a [State] from a platform map.
   factory State.fromMap(Map<String, Object?> map) {
-    final configMap = map['config'] as Map<String, Object?>?;
+    final configMap = _safeMap(map['config']);
 
     return State(
       enabled: _ensureBool(map['enabled'], fallback: false),
@@ -113,4 +113,11 @@ double _ensureDouble(Object? value, {required double fallback}) {
   if (value is double) return value;
   if (value is int) return value.toDouble();
   return fallback;
+}
+
+Map<String, Object?>? _safeMap(Object? value) {
+  if (value == null) return null;
+  if (value is Map<String, Object?>) return value;
+  if (value is Map) return Map<String, Object?>.from(value);
+  return null;
 }

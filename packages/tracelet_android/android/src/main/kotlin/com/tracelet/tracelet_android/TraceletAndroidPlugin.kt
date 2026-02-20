@@ -113,6 +113,14 @@ class TraceletAndroidPlugin :
         // Headless
         headlessService = HeadlessTaskService(context)
 
+        // Wire headless fallback — when no Dart UI listener exists for an event,
+        // EventDispatcher routes it to HeadlessTaskService.
+        eventDispatcher.headlessFallback = { eventName, eventData ->
+            if (headlessService.isRegistered()) {
+                headlessService.dispatchEvent(eventName, eventData)
+            }
+        }
+
         // Schedule
         scheduleManager = ScheduleManager(context, configManager, stateManager, eventDispatcher)
         scheduleManager.onScheduleStart = { handleScheduleStart() }
@@ -298,6 +306,23 @@ class TraceletAndroidPlugin :
             result.error("NOT_READY", "Call ready() before start()", null)
             return
         }
+
+        // Android 14+ requires runtime location permission BEFORE starting
+        // a foreground service with FOREGROUND_SERVICE_TYPE_LOCATION.
+        val authStatus = permissionManager.getAuthorizationStatus()
+        if (authStatus < 2) { // < WHEN_IN_USE
+            result.error(
+                "PERMISSION_DENIED",
+                "Location permission is required before starting tracking. " +
+                    "Call requestPermission() first.",
+                null
+            )
+            return
+        }
+
+        // If a boot-mode LocationEngine is running from BootReceiver,
+        // shut it down before starting our own engine with full EventChannels.
+        LocationService.stopBootTracking()
 
         stateManager.enabled = true
         stateManager.trackingMode = 0 // Location tracking

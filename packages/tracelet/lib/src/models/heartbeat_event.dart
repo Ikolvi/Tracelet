@@ -2,6 +2,13 @@ import 'package:meta/meta.dart';
 
 import 'location.dart';
 
+Map<String, Object?>? _safeMap(Object? value) {
+  if (value == null) return null;
+  if (value is Map<String, Object?>) return value;
+  if (value is Map) return Map<String, Object?>.from(value);
+  return null;
+}
+
 /// Event fired on each heartbeat interval.
 ///
 /// Contains the latest known location (which may be stale if the device
@@ -18,8 +25,7 @@ class HeartbeatEvent {
 
   /// Creates a [HeartbeatEvent] from a platform map.
   factory HeartbeatEvent.fromMap(Map<String, Object?> map) {
-    final locationMap = map['location'] as Map<String, Object?>? ??
-        const <String, Object?>{};
+    final locationMap = _safeMap(map['location']) ?? const <String, Object?>{};
 
     return HeartbeatEvent(
       location: Location.fromMap(locationMap),

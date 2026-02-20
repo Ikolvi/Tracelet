@@ -38,9 +38,12 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
 
         configureLocationManager()
 
-        if configManager.getUseSignificantChangesOnly() {
-            locationManager.startMonitoringSignificantLocationChanges()
-        } else {
+        // Always register for significant-location changes as a fallback
+        // wake-up mechanism. If iOS terminates the app, significant-location
+        // changes will relaunch it so tracking can resume.
+        locationManager.startMonitoringSignificantLocationChanges()
+
+        if !configManager.getUseSignificantChangesOnly() {
             locationManager.startUpdatingLocation()
         }
     }

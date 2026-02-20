@@ -22,10 +22,17 @@ final class HeadlessRunner {
     }
 
     func dispatchEvent(_ event: [String: Any]) {
+        // Include the dispatch callback ID so the Dart-side dispatcher
+        // can look up the user's headless callback.
+        let defaults = UserDefaults.standard
+        let dispatchId = defaults.integer(forKey: HeadlessRunner.dispatchKey)
+        var enrichedEvent = event
+        enrichedEvent["dispatchId"] = dispatchId
+
         if isReady, let channel = channel {
-            channel.invokeMethod("", arguments: event)
+            channel.invokeMethod("headlessEvent", arguments: enrichedEvent)
         } else {
-            pendingEvents.append(event)
+            pendingEvents.append(enrichedEvent)
             startEngineIfNeeded()
         }
     }
@@ -89,7 +96,7 @@ final class HeadlessRunner {
         isReady = true
         // Flush pending events
         for event in pendingEvents {
-            channel?.invokeMethod("", arguments: event)
+            channel?.invokeMethod("headlessEvent", arguments: event)
         }
         pendingEvents.removeAll()
     }

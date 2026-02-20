@@ -26,20 +26,33 @@ double _ensureDouble(Object? value, {required double fallback}) {
   return fallback;
 }
 
+/// Safely cast a platform value to `Map<String, Object?>?`.
+///
+/// iOS platform channels return `Map<Object?, Object?>` which cannot be
+/// directly cast to `Map<String, Object?>`. This helper handles both types.
+Map<String, Object?>? _safeMap(Object? value) {
+  if (value == null) return null;
+  if (value is Map<String, Object?>) return value;
+  if (value is Map) return Map<String, Object?>.from(value);
+  return null;
+}
+
 /// Top-level compound configuration for Tracelet.
 ///
 /// Organizes settings into logical sub-configs:
-/// - [geo] — Location accuracy, distance filter, intervals
+/// - [geo] — Location accuracy, distance filter, intervals, elasticity, filtering
 /// - [app] — Lifecycle behavior, heartbeat, scheduling
 /// - [http] — Server sync settings
 /// - [logger] — Logging level and retention
 /// - [motion] — Motion detection sensitivity
 /// - [geofence] — Geofence proximity and trigger rules
+/// - [persistence] — Database retention, templates, extras
 ///
 /// ```dart
 /// final config = Config(
 ///   geo: GeoConfig(desiredAccuracy: DesiredAccuracy.high, distanceFilter: 10),
 ///   http: HttpConfig(url: 'https://example.com/locations'),
+///   persistence: PersistenceConfig(maxDaysToPersist: 14),
 /// );
 /// ```
 @immutable
@@ -54,6 +67,7 @@ class Config {
     this.logger = const LoggerConfig(),
     this.motion = const MotionConfig(),
     this.geofence = const GeofenceConfig(),
+    this.persistence = const PersistenceConfig(),
   });
 
   /// Location accuracy and sampling settings.
@@ -74,6 +88,9 @@ class Config {
   /// Geofencing settings.
   final GeofenceConfig geofence;
 
+  /// Data persistence and database settings.
+  final PersistenceConfig persistence;
+
   /// Creates a [Config] from a flat or nested map.
   ///
   /// Supports both formats:
@@ -81,12 +98,13 @@ class Config {
   /// - **Nested**: `{'geo': {...}, 'app': {...}, ...}`
   factory Config.fromMap(Map<String, Object?> map) {
     // Try nested first, fall back to flat
-    final geoMap = map['geo'] as Map<String, Object?>?;
-    final appMap = map['app'] as Map<String, Object?>?;
-    final httpMap = map['http'] as Map<String, Object?>?;
-    final loggerMap = map['logger'] as Map<String, Object?>?;
-    final motionMap = map['motion'] as Map<String, Object?>?;
-    final geofenceMap = map['geofence'] as Map<String, Object?>?;
+    final geoMap = _safeMap(map['geo']);
+    final appMap = _safeMap(map['app']);
+    final httpMap = _safeMap(map['http']);
+    final loggerMap = _safeMap(map['logger']);
+    final motionMap = _safeMap(map['motion']);
+    final geofenceMap = _safeMap(map['geofence']);
+    final persistenceMap = _safeMap(map['persistence']);
 
     return Config(
       geo: geoMap != null ? GeoConfig.fromMap(geoMap) : GeoConfig.fromMap(map),
@@ -102,6 +120,9 @@ class Config {
       geofence: geofenceMap != null
           ? GeofenceConfig.fromMap(geofenceMap)
           : GeofenceConfig.fromMap(map),
+      persistence: persistenceMap != null
+          ? PersistenceConfig.fromMap(persistenceMap)
+          : PersistenceConfig.fromMap(map),
     );
   }
 
@@ -114,13 +135,14 @@ class Config {
       ...logger.toMap(),
       ...motion.toMap(),
       ...geofence.toMap(),
+      ...persistence.toMap(),
     };
   }
 
   @override
   String toString() =>
       'Config(geo: $geo, app: $app, http: $http, logger: $logger, '
-      'motion: $motion, geofence: $geofence)';
+      'motion: $motion, geofence: $geofence, persistence: $persistence)';
 
   @override
   bool operator ==(Object other) =>
@@ -132,10 +154,12 @@ class Config {
           http == other.http &&
           logger == other.logger &&
           motion == other.motion &&
-          geofence == other.geofence;
+          geofence == other.geofence &&
+          persistence == other.persistence;
 
   @override
-  int get hashCode => Object.hash(geo, app, http, logger, motion, geofence);
+  int get hashCode =>
+      Object.hash(geo, app, http, logger, motion, geofence, persistence);
 }
 
 // ---------------------------------------------------------------------------
@@ -145,13 +169,15 @@ class Config {
 /// Location accuracy and sampling settings.
 ///
 /// Controls how the native location provider behaves: accuracy level,
-/// minimum distance between updates, and timing intervals.
+/// minimum distance between updates, timing intervals, elasticity,
+/// platform-specific options, and location filtering.
 ///
 /// ```dart
 /// GeoConfig(
 ///   desiredAccuracy: DesiredAccuracy.high,
 ///   distanceFilter: 10.0,
 ///   locationUpdateInterval: 1000,
+///   filter: LocationFilter(maxImpliedSpeed: 60),
 /// )
 /// ```
 @immutable
@@ -165,6 +191,20 @@ class GeoConfig {
     this.stationaryRadius = 25.0,
     this.locationTimeout = 60,
     this.activityType = LocationActivityType.other,
+    this.disableElasticity = false,
+    this.elasticityMultiplier = 1.0,
+    this.stopAfterElapsedMinutes = -1,
+    this.deferTime = 0,
+    this.allowIdenticalLocations = false,
+    this.geofenceModeHighAccuracy = false,
+    this.maxMonitoredGeofences = -1,
+    this.useSignificantChangesOnly = false,
+    this.showsBackgroundLocationIndicator = false,
+    this.pausesLocationUpdatesAutomatically = false,
+    this.locationAuthorizationRequest = 'Always',
+    this.disableLocationAuthorizationAlert = false,
+    this.enableTimestampMeta = false,
+    this.filter,
   });
 
   /// The accuracy level to request from the platform.
@@ -198,8 +238,75 @@ class GeoConfig {
   /// iOS only — Android ignores this. Defaults to [LocationActivityType.other].
   final LocationActivityType activityType;
 
+  /// Disable speed-based automatic [distanceFilter] scaling.
+  ///
+  /// When `false` (default), the plugin dynamically adjusts the distance
+  /// filter based on current speed — recording more locations at low speed
+  /// and fewer at high speed. Set `true` for a fixed [distanceFilter].
+  final bool disableElasticity;
+
+  /// Scale factor for automatic distance-filter elasticity.
+  ///
+  /// Higher values reduce location recordings at higher speeds. Defaults to `1.0`.
+  /// Only effective when [disableElasticity] is `false`.
+  final double elasticityMultiplier;
+
+  /// Automatically stop tracking after this many minutes of continuous
+  /// operation. Defaults to `-1` (disabled).
+  final int stopAfterElapsedMinutes;
+
+  /// `[Android only]` Maximum wait time (ms) for location updates.
+  /// Defaults to `0`.
+  final int deferTime;
+
+  /// `[Android only]` Allow recording identical consecutive locations.
+  /// Defaults to `false`.
+  final bool allowIdenticalLocations;
+
+  /// `[Android only]` Enable high-accuracy geofence monitoring during
+  /// geofence-only mode ([Tracelet.startGeofences]). Defaults to `false`.
+  final bool geofenceModeHighAccuracy;
+
+  /// Maximum number of geofences to monitor at a time, overriding the
+  /// platform default (iOS: 20, Android: 100). Defaults to `-1` (use
+  /// platform default).
+  final int maxMonitoredGeofences;
+
+  /// `[iOS only]` Use significant-change monitoring instead of standard
+  /// location updates. Locations are recorded only on major changes
+  /// (cell tower / WiFi transition). Saves battery but lower accuracy.
+  /// Defaults to `false`.
+  final bool useSignificantChangesOnly;
+
+  /// `[iOS only]` Show the blue status bar indicator when tracking in the
+  /// background. Defaults to `false`.
+  final bool showsBackgroundLocationIndicator;
+
+  /// `[iOS only]` Allow iOS to automatically pause location updates.
+  /// Defaults to `false`.
+  final bool pausesLocationUpdatesAutomatically;
+
+  /// The location authorization to request: `'Always'` or `'WhenInUse'`.
+  /// Defaults to `'Always'`.
+  final String locationAuthorizationRequest;
+
+  /// Disable the automatic alert shown when the user has disabled required
+  /// location authorization. Defaults to `false`.
+  final bool disableLocationAuthorizationAlert;
+
+  /// Append extra timestamp metadata to each location record.
+  /// Defaults to `false`.
+  final bool enableTimestampMeta;
+
+  /// Location filtering / denoising settings.
+  ///
+  /// Controls Kalman filtering, speed-jump rejection, and accuracy
+  /// thresholds. When `null`, the platform uses default filtering.
+  final LocationFilter? filter;
+
   /// Creates a [GeoConfig] from a map.
   factory GeoConfig.fromMap(Map<String, Object?> map) {
+    final filterMap = _safeMap(map['filter']);
     return GeoConfig(
       desiredAccuracy: DesiredAccuracy.values[
           _ensureInt(map['desiredAccuracy'], fallback: 0)
@@ -216,6 +323,36 @@ class GeoConfig {
       activityType: LocationActivityType.values[
           _ensureInt(map['activityType'], fallback: 0)
               .clamp(0, LocationActivityType.values.length - 1)],
+      disableElasticity:
+          _ensureBool(map['disableElasticity'], fallback: false),
+      elasticityMultiplier:
+          _ensureDouble(map['elasticityMultiplier'], fallback: 1.0),
+      stopAfterElapsedMinutes:
+          _ensureInt(map['stopAfterElapsedMinutes'], fallback: -1),
+      deferTime: _ensureInt(map['deferTime'], fallback: 0),
+      allowIdenticalLocations:
+          _ensureBool(map['allowIdenticalLocations'], fallback: false),
+      geofenceModeHighAccuracy:
+          _ensureBool(map['geofenceModeHighAccuracy'], fallback: false),
+      maxMonitoredGeofences:
+          _ensureInt(map['maxMonitoredGeofences'], fallback: -1),
+      useSignificantChangesOnly:
+          _ensureBool(map['useSignificantChangesOnly'], fallback: false),
+      showsBackgroundLocationIndicator: _ensureBool(
+          map['showsBackgroundLocationIndicator'],
+          fallback: false),
+      pausesLocationUpdatesAutomatically: _ensureBool(
+          map['pausesLocationUpdatesAutomatically'],
+          fallback: false),
+      locationAuthorizationRequest:
+          map['locationAuthorizationRequest'] as String? ?? 'Always',
+      disableLocationAuthorizationAlert: _ensureBool(
+          map['disableLocationAuthorizationAlert'],
+          fallback: false),
+      enableTimestampMeta:
+          _ensureBool(map['enableTimestampMeta'], fallback: false),
+      filter:
+          filterMap != null ? LocationFilter.fromMap(filterMap) : null,
     );
   }
 
@@ -229,6 +366,20 @@ class GeoConfig {
       'stationaryRadius': stationaryRadius,
       'locationTimeout': locationTimeout,
       'activityType': activityType.index,
+      'disableElasticity': disableElasticity,
+      'elasticityMultiplier': elasticityMultiplier,
+      'stopAfterElapsedMinutes': stopAfterElapsedMinutes,
+      'deferTime': deferTime,
+      'allowIdenticalLocations': allowIdenticalLocations,
+      'geofenceModeHighAccuracy': geofenceModeHighAccuracy,
+      'maxMonitoredGeofences': maxMonitoredGeofences,
+      'useSignificantChangesOnly': useSignificantChangesOnly,
+      'showsBackgroundLocationIndicator': showsBackgroundLocationIndicator,
+      'pausesLocationUpdatesAutomatically': pausesLocationUpdatesAutomatically,
+      'locationAuthorizationRequest': locationAuthorizationRequest,
+      'disableLocationAuthorizationAlert': disableLocationAuthorizationAlert,
+      'enableTimestampMeta': enableTimestampMeta,
+      if (filter != null) 'filter': filter!.toMap(),
     };
   }
 
@@ -236,7 +387,9 @@ class GeoConfig {
   String toString() =>
       'GeoConfig(desiredAccuracy: $desiredAccuracy, '
       'distanceFilter: $distanceFilter, '
-      'locationUpdateInterval: $locationUpdateInterval)';
+      'locationUpdateInterval: $locationUpdateInterval, '
+      'disableElasticity: $disableElasticity, '
+      'filter: $filter)';
 
   @override
   bool operator ==(Object other) =>
@@ -250,7 +403,12 @@ class GeoConfig {
               other.fastestLocationUpdateInterval &&
           stationaryRadius == other.stationaryRadius &&
           locationTimeout == other.locationTimeout &&
-          activityType == other.activityType;
+          activityType == other.activityType &&
+          disableElasticity == other.disableElasticity &&
+          elasticityMultiplier == other.elasticityMultiplier &&
+          stopAfterElapsedMinutes == other.stopAfterElapsedMinutes &&
+          enableTimestampMeta == other.enableTimestampMeta &&
+          filter == other.filter;
 
   @override
   int get hashCode => Object.hash(
@@ -261,7 +419,109 @@ class GeoConfig {
         stationaryRadius,
         locationTimeout,
         activityType,
+        disableElasticity,
+        elasticityMultiplier,
+        stopAfterElapsedMinutes,
+        enableTimestampMeta,
+        filter,
       );
+}
+
+// ---------------------------------------------------------------------------
+// LocationFilter
+// ---------------------------------------------------------------------------
+
+/// Location filtering and denoising configuration.
+///
+/// Controls how raw GPS samples are processed before being recorded or
+/// used for odometer calculations. Helps eliminate noise, GPS spikes,
+/// and low-quality readings.
+///
+/// ```dart
+/// LocationFilter(
+///   policy: LocationFilterPolicy.adjust,
+///   maxImpliedSpeed: 60,
+///   odometerAccuracyThreshold: 20,
+///   trackingAccuracyThreshold: 100,
+/// )
+/// ```
+@immutable
+class LocationFilter {
+  /// Creates a new [LocationFilter].
+  const LocationFilter({
+    this.policy = LocationFilterPolicy.adjust,
+    this.maxImpliedSpeed = 0,
+    this.odometerAccuracyThreshold = 0,
+    this.trackingAccuracyThreshold = 0,
+  });
+
+  /// How the filter handles rejected locations.
+  ///
+  /// - [LocationFilterPolicy.adjust]: Smooth/correct rejected locations.
+  /// - [LocationFilterPolicy.ignore]: Silently discard rejected locations.
+  /// - [LocationFilterPolicy.discard]: Discard and fire an error event.
+  ///
+  /// Defaults to [LocationFilterPolicy.adjust].
+  final LocationFilterPolicy policy;
+
+  /// Max implied speed (m/s) between consecutive locations.
+  ///
+  /// Locations that imply traveling faster than this speed are rejected
+  /// as GPS spikes. Defaults to `0` (disabled).
+  final int maxImpliedSpeed;
+
+  /// Minimum accuracy (in meters) a location must have to be counted
+  /// in odometer calculations. Defaults to `0` (accept all).
+  final int odometerAccuracyThreshold;
+
+  /// Minimum accuracy (in meters) a location must have to be recorded.
+  /// Locations with worse accuracy are filtered. Defaults to `0` (accept all).
+  final int trackingAccuracyThreshold;
+
+  /// Creates a [LocationFilter] from a map.
+  factory LocationFilter.fromMap(Map<String, Object?> map) {
+    return LocationFilter(
+      policy: LocationFilterPolicy.values[
+          _ensureInt(map['policy'], fallback: 0)
+              .clamp(0, LocationFilterPolicy.values.length - 1)],
+      maxImpliedSpeed:
+          _ensureInt(map['maxImpliedSpeed'], fallback: 0),
+      odometerAccuracyThreshold:
+          _ensureInt(map['odometerAccuracyThreshold'], fallback: 0),
+      trackingAccuracyThreshold:
+          _ensureInt(map['trackingAccuracyThreshold'], fallback: 0),
+    );
+  }
+
+  /// Serializes to a map.
+  Map<String, Object?> toMap() {
+    return <String, Object?>{
+      'policy': policy.index,
+      'maxImpliedSpeed': maxImpliedSpeed,
+      'odometerAccuracyThreshold': odometerAccuracyThreshold,
+      'trackingAccuracyThreshold': trackingAccuracyThreshold,
+    };
+  }
+
+  @override
+  String toString() =>
+      'LocationFilter(policy: $policy, maxImpliedSpeed: $maxImpliedSpeed, '
+      'odometerAccuracyThreshold: $odometerAccuracyThreshold, '
+      'trackingAccuracyThreshold: $trackingAccuracyThreshold)';
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LocationFilter &&
+          runtimeType == other.runtimeType &&
+          policy == other.policy &&
+          maxImpliedSpeed == other.maxImpliedSpeed &&
+          odometerAccuracyThreshold == other.odometerAccuracyThreshold &&
+          trackingAccuracyThreshold == other.trackingAccuracyThreshold;
+
+  @override
+  int get hashCode => Object.hash(
+      policy, maxImpliedSpeed, odometerAccuracyThreshold, trackingAccuracyThreshold);
 }
 
 // ---------------------------------------------------------------------------
@@ -280,6 +540,9 @@ class AppConfig {
     this.startOnBoot = false,
     this.heartbeatInterval = 60,
     this.schedule = const <String>[],
+    this.scheduleUseAlarmManager = false,
+    this.preventSuspend = false,
+    this.backgroundPermissionRationale,
     this.foregroundService = const ForegroundServiceConfig(),
   });
 
@@ -301,6 +564,26 @@ class AppConfig {
   /// Example: `['1-7 09:00-17:00']` (Mon–Sun, 9am–5pm).
   final List<String> schedule;
 
+  /// `[Android only]` Use `AlarmManager` for precise schedule execution.
+  ///
+  /// By default, schedules use `JobScheduler` / `WorkManager` which may
+  /// defer execution. Set `true` for exact-time scheduling. Defaults to `false`.
+  final bool scheduleUseAlarmManager;
+
+  /// `[iOS only]` Play a silent audio clip to keep the app alive in the
+  /// background, preventing iOS from suspending it.
+  ///
+  /// Uses minimal battery but prevents iOS from reclaiming resources.
+  /// Defaults to `false`.
+  final bool preventSuspend;
+
+  /// `[Android only]` Rationale shown when requesting background location
+  /// permission (Android 11+).
+  ///
+  /// When provided, the plugin will show a dialog explaining why background
+  /// location is needed before the system permission prompt.
+  final PermissionRationale? backgroundPermissionRationale;
+
   /// Android foreground service notification configuration.
   final ForegroundServiceConfig foregroundService;
 
@@ -314,7 +597,8 @@ class AppConfig {
       }
     }
 
-    final fgMap = map['foregroundService'] as Map<String, Object?>?;
+    final fgMap = _safeMap(map['foregroundService']);
+    final rationaleMap = _safeMap(map['backgroundPermissionRationale']);
 
     return AppConfig(
       stopOnTerminate:
@@ -323,6 +607,13 @@ class AppConfig {
       heartbeatInterval:
           _ensureInt(map['heartbeatInterval'], fallback: 60),
       schedule: scheduleList,
+      scheduleUseAlarmManager:
+          _ensureBool(map['scheduleUseAlarmManager'], fallback: false),
+      preventSuspend:
+          _ensureBool(map['preventSuspend'], fallback: false),
+      backgroundPermissionRationale: rationaleMap != null
+          ? PermissionRationale.fromMap(rationaleMap)
+          : null,
       foregroundService: fgMap != null
           ? ForegroundServiceConfig.fromMap(fgMap)
           : const ForegroundServiceConfig(),
@@ -336,6 +627,11 @@ class AppConfig {
       'startOnBoot': startOnBoot,
       'heartbeatInterval': heartbeatInterval,
       'schedule': schedule,
+      'scheduleUseAlarmManager': scheduleUseAlarmManager,
+      'preventSuspend': preventSuspend,
+      if (backgroundPermissionRationale != null)
+        'backgroundPermissionRationale':
+            backgroundPermissionRationale!.toMap(),
       'foregroundService': foregroundService.toMap(),
     };
   }
@@ -354,11 +650,14 @@ class AppConfig {
           stopOnTerminate == other.stopOnTerminate &&
           startOnBoot == other.startOnBoot &&
           heartbeatInterval == other.heartbeatInterval &&
+          scheduleUseAlarmManager == other.scheduleUseAlarmManager &&
+          preventSuspend == other.preventSuspend &&
           foregroundService == other.foregroundService;
 
   @override
   int get hashCode =>
-      Object.hash(stopOnTerminate, startOnBoot, heartbeatInterval, foregroundService);
+      Object.hash(stopOnTerminate, startOnBoot, heartbeatInterval,
+          scheduleUseAlarmManager, preventSuspend, foregroundService);
 }
 
 // ---------------------------------------------------------------------------
@@ -493,6 +792,7 @@ class HttpConfig {
     this.params = const <String, Object?>{},
     this.locationsOrderDirection = LocationOrder.asc,
     this.extras = const <String, Object?>{},
+    this.disableAutoSyncOnCellular = false,
   });
 
   /// The server URL to sync locations to. `null` disables HTTP sync.
@@ -536,6 +836,10 @@ class HttpConfig {
   /// Extra key-value pairs attached to every location record.
   final Map<String, Object?> extras;
 
+  /// If `true`, disable auto-sync when the device is on a cellular connection.
+  /// Sync will only occur on Wi-Fi. Defaults to `false`.
+  final bool disableAutoSyncOnCellular;
+
   /// Creates an [HttpConfig] from a map.
   factory HttpConfig.fromMap(Map<String, Object?> map) {
     return HttpConfig(
@@ -557,6 +861,8 @@ class HttpConfig {
           .values[_ensureInt(map['locationsOrderDirection'], fallback: 0)
               .clamp(0, LocationOrder.values.length - 1)],
       extras: _castObjectMap(map['extras']),
+      disableAutoSyncOnCellular:
+          _ensureBool(map['disableAutoSyncOnCellular'], fallback: false),
     );
   }
 
@@ -575,6 +881,7 @@ class HttpConfig {
       'params': params,
       'locationsOrderDirection': locationsOrderDirection.index,
       'extras': extras,
+      'disableAutoSyncOnCellular': disableAutoSyncOnCellular,
     };
   }
 
@@ -672,6 +979,12 @@ class MotionConfig {
     this.motionTriggerDelay = 0,
     this.disableMotionActivityUpdates = false,
     this.isMoving = false,
+    this.activityRecognitionInterval = 10000,
+    this.minimumActivityRecognitionConfidence = 75,
+    this.disableStopDetection = false,
+    this.stopDetectionDelay = 0,
+    this.stopOnStationary = false,
+    this.triggerActivities = '',
   });
 
   /// Minutes of non-movement before transitioning to stationary state.
@@ -689,6 +1002,34 @@ class MotionConfig {
   /// Initial motion state. If `true`, begin in moving mode. Defaults to `false`.
   final bool isMoving;
 
+  /// Interval (in ms) between activity-recognition sampling.
+  /// Defaults to `10000` (10 s). Smaller values detect motion changes faster
+  /// but use more battery.
+  final int activityRecognitionInterval;
+
+  /// Minimum confidence (0–100) a detected activity must have to trigger
+  /// a motion-change event. Defaults to `75`.
+  final int minimumActivityRecognitionConfidence;
+
+  /// If `true`, disable stop-detection entirely — the plugin will never
+  /// automatically transition to the stationary state. Defaults to `false`.
+  final bool disableStopDetection;
+
+  /// Extra delay (in minutes) after stop-timeout before engaging stop-detection.
+  /// Defaults to `0`.
+  final int stopDetectionDelay;
+
+  /// If `true`, automatically call [Tracelet.stop] when the device becomes
+  /// stationary (instead of just transitioning to stationary state).
+  /// Defaults to `false`.
+  final bool stopOnStationary;
+
+  /// Comma-separated activity names that should trigger motion.
+  ///
+  /// Example: `'on_foot, in_vehicle'`. Empty string (default) means all
+  /// activities trigger motion.
+  final String triggerActivities;
+
   /// Creates a [MotionConfig] from a map.
   factory MotionConfig.fromMap(Map<String, Object?> map) {
     return MotionConfig(
@@ -699,6 +1040,18 @@ class MotionConfig {
           map['disableMotionActivityUpdates'],
           fallback: false),
       isMoving: _ensureBool(map['isMoving'], fallback: false),
+      activityRecognitionInterval:
+          _ensureInt(map['activityRecognitionInterval'], fallback: 10000),
+      minimumActivityRecognitionConfidence:
+          _ensureInt(map['minimumActivityRecognitionConfidence'], fallback: 75),
+      disableStopDetection:
+          _ensureBool(map['disableStopDetection'], fallback: false),
+      stopDetectionDelay:
+          _ensureInt(map['stopDetectionDelay'], fallback: 0),
+      stopOnStationary:
+          _ensureBool(map['stopOnStationary'], fallback: false),
+      triggerActivities:
+          map['triggerActivities'] as String? ?? '',
     );
   }
 
@@ -709,6 +1062,12 @@ class MotionConfig {
       'motionTriggerDelay': motionTriggerDelay,
       'disableMotionActivityUpdates': disableMotionActivityUpdates,
       'isMoving': isMoving,
+      'activityRecognitionInterval': activityRecognitionInterval,
+      'minimumActivityRecognitionConfidence': minimumActivityRecognitionConfidence,
+      'disableStopDetection': disableStopDetection,
+      'stopDetectionDelay': stopDetectionDelay,
+      'stopOnStationary': stopOnStationary,
+      'triggerActivities': triggerActivities,
     };
   }
 
@@ -727,11 +1086,19 @@ class MotionConfig {
           motionTriggerDelay == other.motionTriggerDelay &&
           disableMotionActivityUpdates ==
               other.disableMotionActivityUpdates &&
-          isMoving == other.isMoving;
+          isMoving == other.isMoving &&
+          activityRecognitionInterval == other.activityRecognitionInterval &&
+          minimumActivityRecognitionConfidence ==
+              other.minimumActivityRecognitionConfidence &&
+          disableStopDetection == other.disableStopDetection &&
+          stopOnStationary == other.stopOnStationary;
 
   @override
   int get hashCode => Object.hash(
-      stopTimeout, motionTriggerDelay, disableMotionActivityUpdates, isMoving);
+      stopTimeout, motionTriggerDelay, disableMotionActivityUpdates,
+      isMoving, activityRecognitionInterval,
+      minimumActivityRecognitionConfidence, disableStopDetection,
+      stopOnStationary);
 }
 
 // ---------------------------------------------------------------------------
@@ -802,6 +1169,207 @@ class GeofenceConfig {
   @override
   int get hashCode => Object.hash(
       geofenceProximityRadius, geofenceInitialTriggerEntry, geofenceModeKnockOut);
+}
+
+// ---------------------------------------------------------------------------
+// PersistenceConfig
+// ---------------------------------------------------------------------------
+
+/// Data persistence and database retention settings.
+///
+/// Controls how recorded locations are stored in the local SQLite database,
+/// including retention limits, templates for serialization, and extra data.
+///
+/// ```dart
+/// PersistenceConfig(
+///   persistMode: PersistMode.all,
+///   maxDaysToPersist: 14,
+///   maxRecordsToPersist: 5000,
+/// )
+/// ```
+@immutable
+class PersistenceConfig {
+  /// Creates a new [PersistenceConfig] with optional overrides.
+  const PersistenceConfig({
+    this.persistMode = PersistMode.all,
+    this.maxDaysToPersist = -1,
+    this.maxRecordsToPersist = -1,
+    this.locationTemplate,
+    this.geofenceTemplate,
+    this.disableProviderChangeRecord = false,
+    this.extras = const <String, Object?>{},
+  });
+
+  /// What types of records to persist to the database.
+  ///
+  /// - [PersistMode.all]: persist all location and geofence records.
+  /// - [PersistMode.location]: persist only location records.
+  /// - [PersistMode.geofence]: persist only geofence records.
+  /// - [PersistMode.none]: do not persist any records.
+  ///
+  /// Defaults to [PersistMode.all].
+  final PersistMode persistMode;
+
+  /// Maximum number of days to retain records in the database.
+  ///
+  /// Records older than this are automatically pruned. Defaults to `-1`
+  /// (unlimited).
+  final int maxDaysToPersist;
+
+  /// Maximum number of records to retain in the database.
+  ///
+  /// When this limit is exceeded, the oldest records are pruned.
+  /// Defaults to `-1` (unlimited).
+  final int maxRecordsToPersist;
+
+  /// Custom JSON template for formatting location records.
+  ///
+  /// Use Mustache-style placeholders: `'{"lat":{{latitude}},"lng":{{longitude}}}'`.
+  /// When `null`, the platform default format is used.
+  final String? locationTemplate;
+
+  /// Custom JSON template for formatting geofence records.
+  ///
+  /// When `null`, the platform default format is used.
+  final String? geofenceTemplate;
+
+  /// If `true`, do not insert a record when the location provider changes
+  /// (e.g., GPS → network). Defaults to `false`.
+  final bool disableProviderChangeRecord;
+
+  /// Extra key-value pairs attached to every persisted record.
+  final Map<String, Object?> extras;
+
+  /// Creates a [PersistenceConfig] from a map.
+  factory PersistenceConfig.fromMap(Map<String, Object?> map) {
+    return PersistenceConfig(
+      persistMode: PersistMode.values[
+          _ensureInt(map['persistMode'], fallback: 0)
+              .clamp(0, PersistMode.values.length - 1)],
+      maxDaysToPersist:
+          _ensureInt(map['maxDaysToPersist'], fallback: -1),
+      maxRecordsToPersist:
+          _ensureInt(map['maxRecordsToPersist'], fallback: -1),
+      locationTemplate: map['locationTemplate'] as String?,
+      geofenceTemplate: map['geofenceTemplate'] as String?,
+      disableProviderChangeRecord: _ensureBool(
+          map['disableProviderChangeRecord'],
+          fallback: false),
+      extras: _castObjectMap(map['extras']),
+    );
+  }
+
+  /// Serializes to a map.
+  Map<String, Object?> toMap() {
+    return <String, Object?>{
+      'persistMode': persistMode.index,
+      'maxDaysToPersist': maxDaysToPersist,
+      'maxRecordsToPersist': maxRecordsToPersist,
+      'locationTemplate': locationTemplate,
+      'geofenceTemplate': geofenceTemplate,
+      'disableProviderChangeRecord': disableProviderChangeRecord,
+      'extras': extras,
+    };
+  }
+
+  @override
+  String toString() =>
+      'PersistenceConfig(persistMode: $persistMode, '
+      'maxDaysToPersist: $maxDaysToPersist, '
+      'maxRecordsToPersist: $maxRecordsToPersist)';
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PersistenceConfig &&
+          runtimeType == other.runtimeType &&
+          persistMode == other.persistMode &&
+          maxDaysToPersist == other.maxDaysToPersist &&
+          maxRecordsToPersist == other.maxRecordsToPersist &&
+          locationTemplate == other.locationTemplate &&
+          geofenceTemplate == other.geofenceTemplate &&
+          disableProviderChangeRecord ==
+              other.disableProviderChangeRecord;
+
+  @override
+  int get hashCode => Object.hash(persistMode, maxDaysToPersist,
+      maxRecordsToPersist, locationTemplate, geofenceTemplate,
+      disableProviderChangeRecord);
+}
+
+// ---------------------------------------------------------------------------
+// PermissionRationale
+// ---------------------------------------------------------------------------
+
+/// Rationale dialog configuration for background location permission.
+///
+/// `[Android 11+ only]` Shown before the system permission dialog when
+/// requesting background location access.
+///
+/// ```dart
+/// PermissionRationale(
+///   title: 'Background location needed',
+///   message: 'This app tracks your position in the background to...',
+///   positiveAction: 'Allow',
+///   negativeAction: 'Cancel',
+/// )
+/// ```
+@immutable
+class PermissionRationale {
+  /// Creates a new [PermissionRationale].
+  const PermissionRationale({
+    required this.title,
+    required this.message,
+    this.positiveAction = 'Allow',
+    this.negativeAction = 'Cancel',
+  });
+
+  /// Title of the rationale dialog.
+  final String title;
+
+  /// Body text explaining why background location is needed.
+  final String message;
+
+  /// Label for the positive button. Defaults to `'Allow'`.
+  final String positiveAction;
+
+  /// Label for the negative button. Defaults to `'Cancel'`.
+  final String negativeAction;
+
+  /// Creates a [PermissionRationale] from a map.
+  factory PermissionRationale.fromMap(Map<String, Object?> map) {
+    return PermissionRationale(
+      title: map['title'] as String? ?? '',
+      message: map['message'] as String? ?? '',
+      positiveAction: map['positiveAction'] as String? ?? 'Allow',
+      negativeAction: map['negativeAction'] as String? ?? 'Cancel',
+    );
+  }
+
+  /// Serializes to a map.
+  Map<String, Object?> toMap() {
+    return <String, Object?>{
+      'title': title,
+      'message': message,
+      'positiveAction': positiveAction,
+      'negativeAction': negativeAction,
+    };
+  }
+
+  @override
+  String toString() =>
+      'PermissionRationale(title: $title, message: $message)';
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PermissionRationale &&
+          runtimeType == other.runtimeType &&
+          title == other.title &&
+          message == other.message;
+
+  @override
+  int get hashCode => Object.hash(title, message);
 }
 
 // ---------------------------------------------------------------------------

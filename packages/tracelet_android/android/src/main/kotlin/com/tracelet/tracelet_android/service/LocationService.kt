@@ -6,8 +6,13 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.tracelet.tracelet_android.ConfigManager
+import com.tracelet.tracelet_android.EventDispatcher
+import com.tracelet.tracelet_android.StateManager
+import com.tracelet.tracelet_android.db.TraceletDatabase
+import com.tracelet.tracelet_android.location.LocationEngine
 
 /**
  * Foreground service for persistent background location tracking.
@@ -17,24 +22,49 @@ import com.tracelet.tracelet_android.ConfigManager
  *
  * This service displays a persistent notification and keeps the location
  * engine alive when the app UI is removed from recents.
+ *
+ * After a device reboot (started via [BootReceiver]), the service bootstraps
+ * a native [LocationEngine] to immediately resume tracking without waiting
+ * for a Dart FlutterEngine. Locations are persisted to SQLite and also
+ * forwarded to [HeadlessTaskService] if a headless Dart callback is registered.
  */
 class LocationService : Service() {
 
     companion object {
+        private const val TAG = "LocationService"
         private const val NOTIFICATION_ID = 7701
         const val ACTION_START = "com.tracelet.ACTION_START"
         const val ACTION_STOP = "com.tracelet.ACTION_STOP"
         const val ACTION_UPDATE_NOTIFICATION = "com.tracelet.ACTION_UPDATE_NOTIFICATION"
         const val ACTION_BUTTON = "com.tracelet.ACTION_BUTTON"
         const val EXTRA_BUTTON_ACTION = "button_action"
+        const val EXTRA_BOOT_START = "boot_start"
 
         private var isRunning = false
+
+        // Boot-mode native tracking state — accessible by the plugin.
+        @Volatile
+        var bootLocationEngine: LocationEngine? = null
+            private set
 
         fun isServiceRunning(): Boolean = isRunning
 
         fun start(context: Context) {
             val intent = Intent(context, LocationService::class.java).apply {
                 action = ACTION_START
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        /** Start from BootReceiver with the boot flag for native tracking. */
+        fun startFromBoot(context: Context) {
+            val intent = Intent(context, LocationService::class.java).apply {
+                action = ACTION_START
+                putExtra(EXTRA_BOOT_START, true)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
@@ -56,6 +86,18 @@ class LocationService : Service() {
             }
             context.startService(intent)
         }
+
+        /**
+         * Stops and releases the boot-mode LocationEngine.
+         *
+         * Called by [TraceletAndroidPlugin] when it attaches and takes over
+         * tracking with its own engine + EventChannels.
+         */
+        fun stopBootTracking() {
+            bootLocationEngine?.destroy()
+            bootLocationEngine = null
+            Log.d(TAG, "Boot-mode native tracking stopped — plugin taking over")
+        }
     }
 
     // Populated from ConfigManager at start time
@@ -76,8 +118,15 @@ class LocationService : Service() {
             ACTION_START -> {
                 startForegroundWithNotification()
                 isRunning = true
+
+                // If started after a device reboot, bootstrap native tracking
+                val isBootStart = intent.getBooleanExtra(EXTRA_BOOT_START, false)
+                if (isBootStart) {
+                    startBootTracking()
+                }
             }
             ACTION_STOP -> {
+                stopBootTrackingInternal()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 isRunning = false
@@ -86,7 +135,7 @@ class LocationService : Service() {
                 updateNotificationContent()
             }
             ACTION_BUTTON -> {
-                val action = intent.getStringExtra(EXTRA_BUTTON_ACTION) ?: return START_STICKY
+                val action = intent?.getStringExtra(EXTRA_BUTTON_ACTION) ?: return START_STICKY
                 onNotificationAction?.invoke(action)
             }
         }
@@ -95,18 +144,66 @@ class LocationService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        // If stopOnTerminate is false, keep service running
+        // If stopOnTerminate is false, keep service running and bootstrap
+        // native tracking — the plugin's LocationEngine is about to be
+        // destroyed when the FlutterEngine is torn down.
         if (!configManager.getStopOnTerminate()) {
-            return // Service survives task removal
+            startBootTracking()
+            return // Service survives task removal with native tracking
         }
+        stopBootTrackingInternal()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
         isRunning = false
     }
 
     override fun onDestroy() {
+        stopBootTrackingInternal()
         isRunning = false
         super.onDestroy()
+    }
+
+    // =========================================================================
+    // Boot-mode native tracking
+    // =========================================================================
+
+    /**
+     * Bootstraps a native [LocationEngine] for post-boot tracking.
+     *
+     * Creates minimal versions of the required managers and starts
+     * location tracking. Locations are persisted to SQLite. Events are
+     * routed to [HeadlessTaskService] via [EventDispatcher.headlessFallback]
+     * if a headless Dart callback was previously registered.
+     */
+    private fun startBootTracking() {
+        if (bootLocationEngine != null) return // Already tracking
+
+        Log.d(TAG, "Bootstrapping native location tracking after boot")
+
+        val ctx = applicationContext
+        val config = ConfigManager(ctx)
+        val state = StateManager(ctx)
+        val database = TraceletDatabase.getInstance(ctx)
+        val eventDispatcher = EventDispatcher()
+
+        // Wire headless fallback so events can reach the Dart headless isolate
+        val headlessService = HeadlessTaskService(ctx)
+        if (headlessService.isRegistered()) {
+            eventDispatcher.headlessFallback = { eventName, eventData ->
+                headlessService.dispatchEvent(eventName, eventData)
+            }
+        }
+
+        val engine = LocationEngine(ctx, config, state, eventDispatcher, database)
+        engine.start()
+
+        bootLocationEngine = engine
+        Log.d(TAG, "Boot-mode native tracking started")
+    }
+
+    private fun stopBootTrackingInternal() {
+        bootLocationEngine?.destroy()
+        bootLocationEngine = null
     }
 
     // =========================================================================

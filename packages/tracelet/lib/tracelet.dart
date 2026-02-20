@@ -34,7 +34,9 @@ export 'package:tracelet_platform_interface/tracelet_platform_interface.dart'
         AccuracyAuthorization,
         HttpMethod,
         LocationOrder,
-        LocationActivityType;
+        LocationActivityType,
+        PersistMode,
+        LocationFilterPolicy;
 
 // Models
 export 'src/models/config.dart';

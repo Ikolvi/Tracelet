@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart' show WidgetsFlutterBinding;
 import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 
 import 'models/activity_change_event.dart';
@@ -440,18 +441,38 @@ class Tracelet {
   /// The [callback] must be a top-level or static function.
   /// Internally, the callback is converted to a handle via the
   /// `dart:ui` `PluginUtilities.getCallbackHandle()` mechanism.
+  ///
+  /// Two callback handles are sent to the native side:
+  /// 1. **Registration callback** — the internal [_headlessCallbackDispatcher]
+  ///    entry point that the native FlutterEngine executes to bootstrap the
+  ///    headless Dart isolate.
+  /// 2. **Dispatch callback** — the user-supplied [callback] that receives
+  ///    each [HeadlessEvent].
   static Future<bool> registerHeadlessTask(
     void Function(HeadlessEvent) callback,
   ) {
-    // Convert the callback to a handle that can be sent across isolates.
-    // ignore: depend_on_referenced_packages
-    final handle = ui.PluginUtilities.getCallbackHandle(callback);
-    if (handle == null) {
+    // The internal dispatcher that the native side executes as the Dart
+    // entry point for the headless isolate.
+    final registrationHandle =
+        ui.PluginUtilities.getCallbackHandle(_headlessCallbackDispatcher);
+    if (registrationHandle == null) {
+      throw StateError(
+        'Could not look up _headlessCallbackDispatcher handle.',
+      );
+    }
+
+    // The user's callback that will process each HeadlessEvent.
+    final dispatchHandle = ui.PluginUtilities.getCallbackHandle(callback);
+    if (dispatchHandle == null) {
       throw ArgumentError(
         'registerHeadlessTask callback must be a top-level or static function.',
       );
     }
-    return _platform.registerHeadlessTask(<int>[handle.toRawHandle()]);
+
+    return _platform.registerHeadlessTask(<int>[
+      registrationHandle.toRawHandle(),
+      dispatchHandle.toRawHandle(),
+    ]);
   }
 
   // ---------------------------------------------------------------------------
@@ -643,6 +664,36 @@ class Tracelet {
   }
 
   // ---------------------------------------------------------------------------
+  // Cleanup
+  // ---------------------------------------------------------------------------
+
+  /// Removes all cached event streams, forcing fresh subscriptions on the
+  /// next `onXxx()` call.
+  ///
+  /// Call this when you want to tear down all listeners at once — for
+  /// example, in a widget's `dispose()` method or during test cleanup.
+  ///
+  /// **Note**: This does NOT cancel individual [StreamSubscription]s
+  /// returned by `onXxx()` methods — you are still responsible for calling
+  /// `.cancel()` on each subscription. This only clears the internal
+  /// stream/channel cache so that new subscriptions create fresh platform
+  /// channels.
+  ///
+  /// ```dart
+  /// @override
+  /// void dispose() {
+  ///   _locationSub?.cancel();
+  ///   _motionSub?.cancel();
+  ///   Tracelet.removeListeners();
+  ///   super.dispose();
+  /// }
+  /// ```
+  static void removeListeners() {
+    _eventStreams.clear();
+    _eventChannels.clear();
+  }
+
+  // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
 
@@ -654,4 +705,61 @@ class Tracelet {
     }
     return const <String, Object?>{};
   }
+}
+
+// =============================================================================
+// Headless callback dispatcher — entry point for background Dart isolate
+// =============================================================================
+
+/// Internal entry point executed by the native FlutterEngine when the app UI
+/// is not running (e.g. after device reboot or task removal).
+///
+/// The native side:
+/// 1. Creates a new `FlutterEngine`.
+/// 2. Executes this function as the Dart entry point.
+/// 3. Sends headless events via the `com.tracelet/headless` MethodChannel.
+///
+/// This dispatcher looks up the user's dispatch callback from its persisted
+/// handle and invokes it for every incoming event.
+@pragma('vm:entry-point')
+void _headlessCallbackDispatcher() {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  const channel = MethodChannel('com.tracelet/headless');
+
+  channel.setMethodCallHandler((MethodCall call) async {
+    if (call.method == 'headlessEvent') {
+      final raw = call.arguments;
+      if (raw is! Map) return;
+
+      final args = raw.map<String, Object?>(
+        (Object? k, Object? v) => MapEntry(k.toString(), v),
+      );
+
+      // Retrieve the dispatch callback ID sent alongside the event.
+      final dispatchId = args['dispatchId'] as int?;
+      if (dispatchId == null) return;
+
+      final callbackHandle = ui.CallbackHandle.fromRawHandle(dispatchId);
+      final callback = ui.PluginUtilities.getCallbackFromHandle(callbackHandle);
+      if (callback == null) return;
+
+      // Build the HeadlessEvent from the nested 'event' payload.
+      final eventData = args['event'];
+      final eventMap = eventData is Map
+          ? eventData.map<String, Object?>(
+              (Object? k, Object? v) => MapEntry(k.toString(), v))
+          : const <String, Object?>{};
+
+      final name = args['name'] as String? ?? '';
+
+      final headlessEvent = HeadlessEvent(name: name, event: eventMap);
+
+      // Invoke as void Function(HeadlessEvent).
+      (callback as void Function(HeadlessEvent))(headlessEvent);
+    }
+  });
+
+  // Signal to the native side that the isolate is ready.
+  channel.invokeMethod<void>('initialized', null);
 }

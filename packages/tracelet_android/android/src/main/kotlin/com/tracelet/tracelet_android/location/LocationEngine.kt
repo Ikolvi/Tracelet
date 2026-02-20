@@ -13,6 +13,10 @@ import com.tracelet.tracelet_android.EventDispatcher
 import com.tracelet.tracelet_android.StateManager
 import com.tracelet.tracelet_android.db.TraceletDatabase
 import com.tracelet.tracelet_android.util.BatteryUtils
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -273,9 +277,13 @@ class LocationEngine(
 
     private fun enrichLocation(location: Location, event: String): Map<String, Any?> {
         val battery = BatteryUtils.getBatteryInfo(context)
+        val isoFormatter = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+        val timestamp = isoFormatter.format(Date(location.time))
         return mapOf(
             "uuid" to UUID.randomUUID().toString(),
-            "timestamp" to location.time,
+            "timestamp" to timestamp,
             "isMoving" to state.isMoving,
             "odometer" to state.odometer,
             "event" to event,

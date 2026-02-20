@@ -23,6 +23,14 @@ class ConfigManager(context: Context) {
         const val DEFAULT_FASTEST_LOCATION_UPDATE_INTERVAL = 500L
         const val DEFAULT_STATIONARY_RADIUS = 25.0
         const val DEFAULT_LOCATION_TIMEOUT = 60
+        const val DEFAULT_DISABLE_ELASTICITY = false
+        const val DEFAULT_ELASTICITY_MULTIPLIER = 1.0
+        const val DEFAULT_STOP_AFTER_ELAPSED_MINUTES = -1
+        const val DEFAULT_DEFER_TIME = 0
+        const val DEFAULT_ALLOW_IDENTICAL_LOCATIONS = false
+        const val DEFAULT_GEOFENCE_MODE_HIGH_ACCURACY = false
+        const val DEFAULT_MAX_MONITORED_GEOFENCES = -1
+        const val DEFAULT_ENABLE_TIMESTAMP_META = false
 
         // AppConfig defaults
         const val DEFAULT_STOP_ON_TERMINATE = true
@@ -48,6 +56,12 @@ class ConfigManager(context: Context) {
         const val DEFAULT_MOTION_TRIGGER_DELAY = 0
         const val DEFAULT_DISABLE_MOTION_ACTIVITY_UPDATES = false
         const val DEFAULT_IS_MOVING = false
+        const val DEFAULT_ACTIVITY_RECOGNITION_INTERVAL = 10000
+        const val DEFAULT_MIN_ACTIVITY_RECOGNITION_CONFIDENCE = 75
+        const val DEFAULT_DISABLE_STOP_DETECTION = false
+        const val DEFAULT_STOP_DETECTION_DELAY = 0
+        const val DEFAULT_STOP_ON_STATIONARY = false
+        const val DEFAULT_TRIGGER_ACTIVITIES = ""
 
         // GeofenceConfig defaults
         const val DEFAULT_GEOFENCE_PROXIMITY_RADIUS = 1000
@@ -61,6 +75,24 @@ class ConfigManager(context: Context) {
         const val DEFAULT_NOTIFICATION_TEXT = "Tracking location in background"
         const val DEFAULT_NOTIFICATION_PRIORITY = 0
         const val DEFAULT_NOTIFICATION_ONGOING = true
+
+        // AppConfig extras
+        const val DEFAULT_SCHEDULE_USE_ALARM_MANAGER = false
+
+        // HttpConfig extras
+        const val DEFAULT_DISABLE_AUTO_SYNC_ON_CELLULAR = false
+
+        // PersistenceConfig defaults
+        const val DEFAULT_PERSIST_MODE = 0 // PersistMode.all
+        const val DEFAULT_MAX_DAYS_TO_PERSIST = -1
+        const val DEFAULT_MAX_RECORDS_TO_PERSIST = -1
+        const val DEFAULT_DISABLE_PROVIDER_CHANGE_RECORD = false
+
+        // LocationFilter defaults
+        const val DEFAULT_FILTER_POLICY = 0 // LocationFilterPolicy.adjust
+        const val DEFAULT_MAX_IMPLIED_SPEED = 0
+        const val DEFAULT_ODOMETER_ACCURACY_THRESHOLD = 0
+        const val DEFAULT_TRACKING_ACCURACY_THRESHOLD = 0
     }
 
     private val prefs: SharedPreferences =
@@ -131,6 +163,43 @@ class ConfigManager(context: Context) {
     fun getLocationTimeout(): Int =
         getInt("locationTimeout", DEFAULT_LOCATION_TIMEOUT)
 
+    fun getDisableElasticity(): Boolean =
+        getBool("disableElasticity", DEFAULT_DISABLE_ELASTICITY)
+
+    fun getElasticityMultiplier(): Double =
+        getDouble("elasticityMultiplier", DEFAULT_ELASTICITY_MULTIPLIER)
+
+    fun getStopAfterElapsedMinutes(): Int =
+        getInt("stopAfterElapsedMinutes", DEFAULT_STOP_AFTER_ELAPSED_MINUTES)
+
+    fun getDeferTime(): Int =
+        getInt("deferTime", DEFAULT_DEFER_TIME)
+
+    fun getAllowIdenticalLocations(): Boolean =
+        getBool("allowIdenticalLocations", DEFAULT_ALLOW_IDENTICAL_LOCATIONS)
+
+    fun getGeofenceModeHighAccuracy(): Boolean =
+        getBool("geofenceModeHighAccuracy", DEFAULT_GEOFENCE_MODE_HIGH_ACCURACY)
+
+    fun getMaxMonitoredGeofences(): Int =
+        getInt("maxMonitoredGeofences", DEFAULT_MAX_MONITORED_GEOFENCES)
+
+    fun getEnableTimestampMeta(): Boolean =
+        getBool("enableTimestampMeta", DEFAULT_ENABLE_TIMESTAMP_META)
+
+    // LocationFilter sub-config
+    fun getFilterPolicy(): Int =
+        getInt("policy", DEFAULT_FILTER_POLICY)
+
+    fun getMaxImpliedSpeed(): Int =
+        getInt("maxImpliedSpeed", DEFAULT_MAX_IMPLIED_SPEED)
+
+    fun getOdometerAccuracyThreshold(): Int =
+        getInt("odometerAccuracyThreshold", DEFAULT_ODOMETER_ACCURACY_THRESHOLD)
+
+    fun getTrackingAccuracyThreshold(): Int =
+        getInt("trackingAccuracyThreshold", DEFAULT_TRACKING_ACCURACY_THRESHOLD)
+
     // ---------------------------------------------------------------------------
     // Typed Getters (AppConfig)
     // ---------------------------------------------------------------------------
@@ -143,6 +212,9 @@ class ConfigManager(context: Context) {
 
     fun getHeartbeatInterval(): Int =
         getInt("heartbeatInterval", DEFAULT_HEARTBEAT_INTERVAL)
+
+    fun getScheduleUseAlarmManager(): Boolean =
+        getBool("scheduleUseAlarmManager", DEFAULT_SCHEDULE_USE_ALARM_MANAGER)
 
     fun getSchedule(): List<String> {
         val raw = configCache["schedule"]
@@ -260,6 +332,24 @@ class ConfigManager(context: Context) {
 
     fun getIsMoving(): Boolean = getBool("isMoving", DEFAULT_IS_MOVING)
 
+    fun getActivityRecognitionInterval(): Int =
+        getInt("activityRecognitionInterval", DEFAULT_ACTIVITY_RECOGNITION_INTERVAL)
+
+    fun getMinimumActivityRecognitionConfidence(): Int =
+        getInt("minimumActivityRecognitionConfidence", DEFAULT_MIN_ACTIVITY_RECOGNITION_CONFIDENCE)
+
+    fun getDisableStopDetection(): Boolean =
+        getBool("disableStopDetection", DEFAULT_DISABLE_STOP_DETECTION)
+
+    fun getStopDetectionDelay(): Int =
+        getInt("stopDetectionDelay", DEFAULT_STOP_DETECTION_DELAY)
+
+    fun getStopOnStationary(): Boolean =
+        getBool("stopOnStationary", DEFAULT_STOP_ON_STATIONARY)
+
+    fun getTriggerActivities(): String =
+        getString("triggerActivities", DEFAULT_TRIGGER_ACTIVITIES)
+
     // ---------------------------------------------------------------------------
     // Typed Getters (GeofenceConfig)
     // ---------------------------------------------------------------------------
@@ -272,6 +362,57 @@ class ConfigManager(context: Context) {
 
     fun getGeofenceModeKnockOut(): Boolean =
         getBool("geofenceModeKnockOut", DEFAULT_GEOFENCE_MODE_KNOCK_OUT)
+
+    // ---------------------------------------------------------------------------
+    // Typed Getters (HttpConfig extras)
+    // ---------------------------------------------------------------------------
+
+    fun getDisableAutoSyncOnCellular(): Boolean =
+        getBool("disableAutoSyncOnCellular", DEFAULT_DISABLE_AUTO_SYNC_ON_CELLULAR)
+
+    // ---------------------------------------------------------------------------
+    // Typed Getters (PersistenceConfig)
+    // ---------------------------------------------------------------------------
+
+    fun getPersistMode(): Int =
+        getInt("persistMode", DEFAULT_PERSIST_MODE)
+
+    fun getMaxDaysToPersist(): Int =
+        getInt("maxDaysToPersist", DEFAULT_MAX_DAYS_TO_PERSIST)
+
+    fun getMaxRecordsToPersist(): Int =
+        getInt("maxRecordsToPersist", DEFAULT_MAX_RECORDS_TO_PERSIST)
+
+    fun getLocationTemplate(): String? =
+        configCache["locationTemplate"] as? String
+
+    fun getGeofenceTemplate(): String? =
+        configCache["geofenceTemplate"] as? String
+
+    fun getDisableProviderChangeRecord(): Boolean =
+        getBool("disableProviderChangeRecord", DEFAULT_DISABLE_PROVIDER_CHANGE_RECORD)
+
+    fun getPersistenceExtras(): Map<String, Any?> {
+        val raw = configCache["extras"]
+        if (raw is Map<*, *>) {
+            @Suppress("UNCHECKED_CAST")
+            return raw as Map<String, Any?>
+        }
+        return emptyMap()
+    }
+
+    // ---------------------------------------------------------------------------
+    // Typed Getters (PermissionRationale)
+    // ---------------------------------------------------------------------------
+
+    fun getBackgroundPermissionRationale(): Map<String, String>? {
+        val raw = configCache["backgroundPermissionRationale"]
+        if (raw is Map<*, *>) {
+            @Suppress("UNCHECKED_CAST")
+            return (raw as Map<String, Any?>).mapValues { it.value?.toString() ?: "" }
+        }
+        return null
+    }
 
     // ---------------------------------------------------------------------------
     // Private helpers

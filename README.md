@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/tracelet-logo.jpeg" alt="Tracelet" width="200"/>
+</p>
+
 # Tracelet
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)

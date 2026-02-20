@@ -156,3 +156,30 @@ enum LocationActivityType {
   /// Navigation in an aircraft.
   airborne,
 }
+
+/// Which record types to persist to the local database.
+enum PersistMode {
+  /// Persist all location and geofence records (default).
+  all,
+
+  /// Persist only location records.
+  location,
+
+  /// Persist only geofence records.
+  geofence,
+
+  /// Do not persist any records. Events are still fired.
+  none,
+}
+
+/// How the location filter handles rejected locations.
+enum LocationFilterPolicy {
+  /// Smooth / correct rejected locations before recording them.
+  adjust,
+
+  /// Silently discard rejected locations.
+  ignore,
+
+  /// Discard rejected locations and emit an error event.
+  discard,
+}

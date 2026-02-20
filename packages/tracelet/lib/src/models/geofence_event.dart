@@ -3,6 +3,13 @@ import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 
 import 'location.dart';
 
+Map<String, Object?>? _safeMap(Object? value) {
+  if (value == null) return null;
+  if (value is Map<String, Object?>) return value;
+  if (value is Map) return Map<String, Object?>.from(value);
+  return null;
+}
+
 /// Event fired when a geofence transition occurs.
 ///
 /// Contains the geofence identifier, the transition action (enter/exit/dwell),
@@ -43,8 +50,7 @@ class GeofenceEvent {
       );
     }
 
-    final locationMap = map['location'] as Map<String, Object?>? ??
-        const <String, Object?>{};
+    final locationMap = _safeMap(map['location']) ?? const <String, Object?>{};
     final extrasRaw = map['extras'];
 
     return GeofenceEvent(

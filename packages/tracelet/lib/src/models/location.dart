@@ -57,19 +57,18 @@ class Location {
 
   /// Creates a [Location] from a platform map.
   factory Location.fromMap(Map<String, Object?> map) {
-    final coordsMap = map['coords'] as Map<String, Object?>? ??
-        const <String, Object?>{};
-    final activityMap = map['activity'] as Map<String, Object?>?;
-    final batteryMap = map['battery'] as Map<String, Object?>?;
+    final coordsMap = _safeMap(map['coords']) ?? const <String, Object?>{};
+    final activityMap = _safeMap(map['activity']);
+    final batteryMap = _safeMap(map['battery']);
     final extrasRaw = map['extras'];
 
     return Location(
       coords: Coords.fromMap(
         coordsMap.isEmpty ? map : coordsMap,
       ),
-      timestamp: map['timestamp'] as String? ?? '',
+      timestamp: _ensureString(map['timestamp']),
       isMoving: _ensureBool(map['is_moving'] ?? map['isMoving'], fallback: false),
-      uuid: map['uuid'] as String? ?? '',
+      uuid: _ensureString(map['uuid']),
       odometer: _ensureDouble(map['odometer'], fallback: 0.0),
       activity: activityMap != null
           ? LocationActivity.fromMap(activityMap)
@@ -81,7 +80,7 @@ class Location {
           ? extrasRaw.map<String, Object?>(
               (Object? k, Object? v) => MapEntry(k.toString(), v))
           : const <String, Object?>{},
-      event: map['event'] as String?,
+      event: map['event'] is String ? map['event'] as String : map['event']?.toString(),
     );
   }
 
@@ -364,4 +363,20 @@ double _ensureDouble(Object? value, {required double fallback}) {
   if (value is int) return value.toDouble();
   if (value is String) return double.tryParse(value) ?? fallback;
   return fallback;
+}
+
+Map<String, Object?>? _safeMap(Object? value) {
+  if (value == null) return null;
+  if (value is Map<String, Object?>) return value;
+  if (value is Map) return Map<String, Object?>.from(value);
+  return null;
+}
+
+/// Safely convert any value to a String.
+///
+/// Handles int (epoch millis), double, and other types by calling `.toString()`.
+String _ensureString(Object? value) {
+  if (value == null) return '';
+  if (value is String) return value;
+  return value.toString();
 }

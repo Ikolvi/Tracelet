@@ -96,6 +96,17 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
         // Headless
         instance.headlessRunner = HeadlessRunner()
 
+        // Wire headless fallback — when no Dart UI listener exists for an event,
+        // EventDispatcher routes it to HeadlessRunner.
+        instance.eventDispatcher.headlessFallback = { [weak instance] eventName, eventData in
+            guard let runner = instance?.headlessRunner else { return }
+            let event: [String: Any] = [
+                "name": eventName,
+                "event": eventData,
+            ]
+            runner.dispatchEvent(event)
+        }
+
         // Schedule
         instance.scheduleManager = ScheduleManager(
             configManager: instance.configManager,
@@ -236,7 +247,14 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
         // Logging
         case "getLog":
             let query = call.arguments as? [String: Any]
-            result(logger.getLog(query: query))
+            let logs = logger.getLog(query: query)
+            let lines = logs.map { entry -> String in
+                let ts = entry["timestamp"] as? String ?? ""
+                let level = entry["level"] as? String ?? ""
+                let msg = entry["message"] as? String ?? ""
+                return "[\(ts)] \(level): \(msg)"
+            }
+            result(lines.joined(separator: "\n"))
         case "destroyLog":
             result(logger.destroyLog())
         case "emailLog":

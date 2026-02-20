@@ -63,11 +63,19 @@ class HeadlessTaskService(private val context: Context) {
     /**
      * Dispatch a headless event. If no UI engine is available, creates
      * a new FlutterEngine to handle the event.
+     *
+     * Each event is wrapped to include the dispatch callback ID so the
+     * Dart-side dispatcher ([_headlessCallbackDispatcher]) can look up
+     * the user's callback via [PluginUtilities.getCallbackFromHandle].
      */
     fun dispatchEvent(eventName: String, eventData: Map<String, Any?>) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val dispatchId = prefs.getLong(KEY_DISPATCH_CALLBACK, -1L)
+
         val event = mapOf(
             "name" to eventName,
             "event" to eventData,
+            "dispatchId" to dispatchId,
         )
 
         if (isEngineReady.get() && headlessMethodChannel != null) {

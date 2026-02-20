@@ -14,6 +14,10 @@ topics:
   - background
   - geofencing
 
+screenshots:
+  - description: 'Tracelet logo'
+    path: ../../assets/tracelet-logo.jpeg
+
 environment:
   sdk: ^3.10.3
   flutter: ">=3.22.0"

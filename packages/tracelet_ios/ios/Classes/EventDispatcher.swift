@@ -3,9 +3,18 @@ import Foundation
 
 /// Manages all 15 EventChannels, registering stream handlers and dispatching
 /// events to Dart on the main thread.
+///
+/// When no Dart UI listener is attached for a given event, the dispatcher
+/// falls back to `headlessFallback` (if set) so that events can be routed
+/// to a background Dart isolate via HeadlessRunner.
 final class EventDispatcher: NSObject {
     private var sinks: [String: FlutterEventSink] = [:]
     private var channels: [FlutterEventChannel] = []
+
+    /// Optional headless fallback. When no EventSink exists for a given event,
+    /// the dispatcher calls this closure so the event can be forwarded to
+    /// HeadlessRunner.
+    var headlessFallback: ((_ eventName: String, _ data: [String: Any]) -> Void)?
 
     /// All event channel paths (must match Dart TraceletEvents constants).
     static let channelPaths: [String] = [
@@ -108,7 +117,22 @@ final class EventDispatcher: NSObject {
 
     private func send(_ path: String, data: Any) {
         DispatchQueue.main.async { [weak self] in
-            self?.sinks[path]?(data)
+            if let sink = self?.sinks[path] {
+                sink(data)
+            } else {
+                // No Dart UI listener — route to headless fallback.
+                guard let fallback = self?.headlessFallback else { return }
+                // Extract the short event name from the full path
+                // e.g. "com.tracelet/events/location" → "location"
+                let eventName = path.components(separatedBy: "/").last ?? path
+                let eventData: [String: Any]
+                if let mapData = data as? [String: Any] {
+                    eventData = mapData
+                } else {
+                    eventData = ["value": data]
+                }
+                fallback(eventName, eventData)
+            }
         }
     }
 
