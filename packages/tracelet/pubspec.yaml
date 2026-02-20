@@ -4,7 +4,6 @@ description: >-
   motion-detection intelligence, geofencing, SQLite persistence, HTTP sync,
   and headless Dart execution for iOS & Android.
 version: 0.1.0
-publish_to: none  # Remove when ready to publish
 homepage: https://ikolvi.com
 repository: https://ikolvi.com/tree/main/packages/tracelet
 issue_tracker: https://ikolvi.com/issues
@@ -16,7 +15,7 @@ topics:
 
 screenshots:
   - description: 'Tracelet logo'
-    path: ../../assets/tracelet-logo.jpeg
+    path: doc/tracelet-logo.jpeg
 
 environment:
   sdk: ^3.10.3
@@ -25,8 +24,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  tracelet_platform_interface:
-    path: ../tracelet_platform_interface
+  tracelet_platform_interface: ^0.1.0
   collection: ^1.18.0
   meta: ^1.12.0
 
