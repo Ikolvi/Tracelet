@@ -1,0 +1,94 @@
+name: tracelet
+repository: https://ikolvi.com
+
+packages:
+  - packages/**
+
+ide:
+  intellij: false
+
+command:
+  version:
+    linkToCommits: true
+    workspaceChangelog: true
+  bootstrap:
+    usePubspecOverrides: true
+
+scripts:
+  analyze:
+    description: Run dart analyze across all packages
+    run: dart analyze --fatal-infos .
+    exec:
+      concurrency: 4
+
+  format:
+    description: Check formatting across all packages
+    run: dart format --set-exit-if-changed .
+    exec:
+      concurrency: 4
+
+  format:fix:
+    description: Fix formatting across all packages
+    run: dart format .
+    exec:
+      concurrency: 4
+
+  test:
+    description: Run tests across all packages
+    run: flutter test --coverage
+    packageFilters:
+      dirExists: test
+    exec:
+      concurrency: 1
+      failFast: true
+
+  test:dart:
+    description: Run Dart-only tests (no Flutter)
+    run: dart test
+    packageFilters:
+      dirExists: test
+      noDependsOn: flutter
+    exec:
+      concurrency: 1
+
+  pigeon:
+    description: Generate Pigeon API bindings
+    run: dart run pigeon --input pigeons/tracelet_api.dart
+    packageFilters:
+      scope: tracelet_platform_interface
+
+  clean:
+    description: Clean all packages
+    run: flutter clean
+    exec:
+      concurrency: 4
+
+  pub:get:
+    description: Run pub get across all packages
+    run: flutter pub get
+    exec:
+      concurrency: 4
+
+  build:example:android:
+    description: Build example app for Android
+    run: flutter build apk --debug
+    packageFilters:
+      scope: tracelet
+      dirExists: example
+
+  build:example:ios:
+    description: Build example app for iOS
+    run: flutter build ios --no-codesign --debug
+    packageFilters:
+      scope: tracelet
+      dirExists: example
+
+  coverage:
+    description: Generate coverage report
+    run: |
+      flutter test --coverage
+      genhtml coverage/lcov.info -o coverage/html
+    packageFilters:
+      dirExists: test
+    exec:
+      concurrency: 1

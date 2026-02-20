@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Install Melos
+        run: dart pub global activate melos
+      - name: Bootstrap
+        run: melos bootstrap
+      - name: Check formatting
+        run: melos run format
+      - name: Analyze
+        run: melos run analyze
+
+  test-dart:
+    name: Dart Tests
+    runs-on: ubuntu-latest
+    needs: analyze
+    strategy:
+      matrix:
+        package:
+          - tracelet
+          - tracelet_platform_interface
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Install Melos
+        run: dart pub global activate melos
+      - name: Bootstrap
+        run: melos bootstrap
+      - name: Run tests
+        working-directory: packages/${{ matrix.package }}
+        run: flutter test --coverage
+      - name: Check coverage
+        working-directory: packages/${{ matrix.package }}
+        run: |
+          if [ -f coverage/lcov.info ]; then
+            COVERAGE=$(dart run coverage:format_coverage --lcov --in=coverage --out=- | grep -c "DA:" || true)
+            echo "Coverage lines: $COVERAGE"
+          fi
+
+  build-android:
+    name: Build Android
+    runs-on: ubuntu-latest
+    needs: analyze
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Install Melos
+        run: dart pub global activate melos
+      - name: Bootstrap
+        run: melos bootstrap
+      - name: Build example APK
+        working-directory: packages/tracelet/example
+        run: flutter build apk --debug
+
+  build-ios:
+    name: Build iOS
+    runs-on: macos-latest
+    needs: analyze
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Install Melos
+        run: dart pub global activate melos
+      - name: Bootstrap
+        run: melos bootstrap
+      - name: Build example iOS
+        working-directory: packages/tracelet/example
+        run: flutter build ios --no-codesign --debug

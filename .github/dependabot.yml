@@ -1,0 +1,52 @@
+version: 2
+updates:
+  # Dart/Flutter (pub) dependencies
+  - package-ecosystem: "pub"
+    directory: "/packages/tracelet"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "dart"
+
+  - package-ecosystem: "pub"
+    directory: "/packages/tracelet_platform_interface"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "dart"
+
+  - package-ecosystem: "pub"
+    directory: "/packages/tracelet_android"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "dart"
+
+  - package-ecosystem: "pub"
+    directory: "/packages/tracelet_ios"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "dart"
+
+  # Gradle (Android)
+  - package-ecosystem: "gradle"
+    directory: "/packages/tracelet_android/android"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "android"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "ci"

@@ -1,0 +1,29 @@
+name: tracelet_ios
+description: iOS implementation of the Tracelet background geolocation plugin.
+version: 0.1.0
+publish_to: none  # Remove when ready to publish
+homepage: https://ikolvi.com
+repository: https://ikolvi.com/tree/main/packages/tracelet_ios
+
+environment:
+  sdk: ^3.10.3
+  flutter: '>=3.22.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  tracelet_platform_interface:
+    path: ../tracelet_platform_interface
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  plugin:
+    implements: tracelet
+    platforms:
+      ios:
+        pluginClass: TraceletIosPlugin
+        dartPluginClass: TraceletIos
