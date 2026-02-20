@@ -1,9 +1,10 @@
 name: tracelet
 description: >-
   Production-grade background geolocation for Flutter. Battery-conscious
-  motion-detection intelligence, geofencing, SQLite persistence, HTTP sync,
-  and headless Dart execution for iOS & Android.
+  tracking, geofencing, SQLite persistence, HTTP sync, and headless
+  execution for iOS & Android.
 version: 0.1.0
+license: Apache-2.0
 homepage: https://github.com/Ikolvi/Tracelet
 repository: https://github.com/Ikolvi/Tracelet/tree/main/packages/tracelet
 issue_tracker: https://github.com/Ikolvi/Tracelet/issues
