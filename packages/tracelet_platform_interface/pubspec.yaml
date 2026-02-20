@@ -3,9 +3,9 @@ description: >-
   A common platform interface for the Tracelet background geolocation plugin.
   Used by tracelet_android and tracelet_ios implementations.
 version: 0.1.0
-homepage: https://ikolvi.com
-repository: https://ikolvi.com/tree/main/packages/tracelet_platform_interface
-issue_tracker: https://ikolvi.com/issues
+homepage: https://github.com/Ikolvi/Tracelet
+repository: https://github.com/Ikolvi/Tracelet/tree/main/packages/tracelet_platform_interface
+issue_tracker: https://github.com/Ikolvi/Tracelet/issues
 
 environment:
   sdk: ^3.10.3

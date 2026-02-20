@@ -1,39 +1,17 @@
-<!--
-This README describes the package. If you publish this package to pub.dev,
-this README's contents appear on the landing page for your package.
+# tracelet_platform_interface
 
-For information about how to write a good package README, see the guide for
-[writing package pages](https://dart.dev/tools/pub/writing-package-pages).
+A common platform interface for the [Tracelet](https://pub.dev/packages/tracelet) background geolocation plugin.
 
-For general information about developing packages, see the Dart guide for
-[creating packages](https://dart.dev/guides/libraries/create-packages)
-and the Flutter guide for
-[developing packages and plugins](https://flutter.dev/to/develop-packages).
--->
-
-TODO: Put a short description of the package here that helps potential users
-know whether this package might be useful for them.
-
-## Features
-
-TODO: List what your package can do. Maybe include images, gifs, or videos.
-
-## Getting started
-
-TODO: List prerequisites and provide or point to information on how to
-start using the package.
+This package provides the abstract classes and types that the platform-specific implementations (`tracelet_android`, `tracelet_ios`) implement.
 
 ## Usage
 
-TODO: Include short and useful examples for package users. Add longer examples
-to `/example` folder.
+**You should not depend on this package directly.** Instead, depend on `tracelet` which automatically includes the correct platform implementation.
 
-```dart
-const like = 'sample';
-```
+This package is only relevant if you are writing a custom platform implementation for Tracelet.
 
-## Additional information
+## More Information
 
-TODO: Tell users more about the package: where to find more information, how to
-contribute to the package, how to file issues, what response they can expect
-from the package authors, and more.
+- [Tracelet on pub.dev](https://pub.dev/packages/tracelet)
+- [Repository](https://github.com/Ikolvi/Tracelet)
+- [Issue tracker](https://github.com/Ikolvi/Tracelet/issues)

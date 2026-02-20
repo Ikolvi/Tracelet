@@ -1,8 +1,8 @@
 name: tracelet_ios
 description: iOS implementation of the Tracelet background geolocation plugin.
 version: 0.1.0
-homepage: https://ikolvi.com
-repository: https://ikolvi.com/tree/main/packages/tracelet_ios
+homepage: https://github.com/Ikolvi/Tracelet
+repository: https://github.com/Ikolvi/Tracelet/tree/main/packages/tracelet_ios
 
 environment:
   sdk: ^3.10.3

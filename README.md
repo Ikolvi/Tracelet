@@ -5,7 +5,7 @@
 # Tracelet
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![CI](https://ikolvi.com/actions/workflows/ci.yml/badge.svg)](https://ikolvi.com/actions)
+[![CI](https://github.com/Ikolvi/Tracelet/actions/workflows/ci.yml/badge.svg)](https://github.com/Ikolvi/Tracelet/actions)
 
 > **Production-grade background geolocation for Flutter — fully open-source.**
 

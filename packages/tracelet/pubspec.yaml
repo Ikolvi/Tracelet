@@ -4,9 +4,9 @@ description: >-
   motion-detection intelligence, geofencing, SQLite persistence, HTTP sync,
   and headless Dart execution for iOS & Android.
 version: 0.1.0
-homepage: https://ikolvi.com
-repository: https://ikolvi.com/tree/main/packages/tracelet
-issue_tracker: https://ikolvi.com/issues
+homepage: https://github.com/Ikolvi/Tracelet
+repository: https://github.com/Ikolvi/Tracelet/tree/main/packages/tracelet
+issue_tracker: https://github.com/Ikolvi/Tracelet/issues
 topics:
   - geolocation
   - location
