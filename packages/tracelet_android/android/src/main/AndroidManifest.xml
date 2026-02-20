@@ -22,6 +22,9 @@
     <!-- Network state for connectivity monitoring -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- Internet for HTTP sync -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- POST_NOTIFICATIONS for Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
@@ -41,5 +44,16 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <!-- Geofence transition receiver -->
+        <receiver
+            android:name=".receiver.GeofenceBroadcastReceiver"
+            android:exported="false" />
+
+        <!-- Headless Dart execution service -->
+        <service
+            android:name=".service.HeadlessTaskService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
     </application>
 </manifest>

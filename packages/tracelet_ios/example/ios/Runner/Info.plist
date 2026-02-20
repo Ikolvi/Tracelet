@@ -45,5 +45,22 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Tracelet needs your location to track your route.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Tracelet needs background location to record your route even when the app is closed.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Motion detection allows battery-efficient tracking by pausing GPS when stationary.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+	<key>NSLocationTemporaryUsageDescriptionDictionary</key>
+	<dict>
+		<key>TemporaryFullAccuracy</key>
+		<string>Precise location is needed for accurate route tracking.</string>
+	</dict>
 </dict>
 </plist>

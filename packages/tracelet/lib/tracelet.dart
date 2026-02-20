@@ -19,10 +19,11 @@
 /// ```
 library;
 
-// Re-export platform interface types
+// Re-export only the public types apps need — no platform channel internals.
+// TraceletPlatform, MethodChannelTracelet, and TraceletEvents are intentionally
+// hidden. Apps interact exclusively through the [Tracelet] class.
 export 'package:tracelet_platform_interface/tracelet_platform_interface.dart'
     show
-        TraceletEvents,
         DesiredAccuracy,
         LogLevel,
         ActivityType,
