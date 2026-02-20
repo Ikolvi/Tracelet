@@ -66,8 +66,8 @@ android {
         implementation("androidx.core:core-ktx:1.13.1")
 
         // Lifecycle
-        implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
-        implementation("androidx.lifecycle:lifecycle-service:2.8.6")
+        implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
+        implementation("androidx.lifecycle:lifecycle-service:2.10.0")
 
         // Testing
         testImplementation("org.jetbrains.kotlin:kotlin-test")
