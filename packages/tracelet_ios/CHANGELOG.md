@@ -1,3 +1,7 @@
+## 0.2.2
+
+* Fix duplicate keys in `ConfigManager.defaultConfig()` dictionary literal causing runtime crash.
+
 ## 0.2.1
 
 * Version bump for coordinated release.

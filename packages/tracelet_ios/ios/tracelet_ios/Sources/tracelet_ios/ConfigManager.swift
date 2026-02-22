@@ -137,8 +137,6 @@ final class ConfigManager {
             "disableElasticity": false,
             "elasticityMultiplier": 1.0,
             "geofenceProximityRadius": 1000.0,
-            "maxDaysToPersist": -1,
-            "maxRecordsToPersist": -1,
             "locationUpdateInterval": 1000,
             "fastestLocationUpdateInterval": -1,
             "deferTime": 0,

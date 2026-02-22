@@ -1,3 +1,7 @@
+## 0.2.3
+
+* Bump `tracelet_ios` dependency to ^0.2.2 (fixes iOS `ConfigManager` crash).
+
 ## 0.2.2
 
 * Fix dangling library doc comment lint in `_helpers.dart`.
