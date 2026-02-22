@@ -35,8 +35,8 @@ class GeofenceEvent {
     final actionRaw = map['action'];
     GeofenceAction action = GeofenceAction.enter;
     if (actionRaw is int) {
-      action = GeofenceAction.values[
-          actionRaw.clamp(0, GeofenceAction.values.length - 1)];
+      action = GeofenceAction
+          .values[actionRaw.clamp(0, GeofenceAction.values.length - 1)];
     } else if (actionRaw is String) {
       action = GeofenceAction.values.firstWhere(
         (e) => e.name == actionRaw.toLowerCase(),
@@ -53,7 +53,8 @@ class GeofenceEvent {
       location: Location.fromMap(locationMap),
       extras: extrasRaw is Map
           ? extrasRaw.map<String, Object?>(
-              (Object? k, Object? v) => MapEntry(k.toString(), v))
+              (Object? k, Object? v) => MapEntry(k.toString(), v),
+            )
           : const <String, Object?>{},
     );
   }
@@ -69,8 +70,7 @@ class GeofenceEvent {
   }
 
   @override
-  String toString() =>
-      'GeofenceEvent($identifier, action: $action)';
+  String toString() => 'GeofenceEvent($identifier, action: $action)';
 
   @override
   bool operator ==(Object other) =>

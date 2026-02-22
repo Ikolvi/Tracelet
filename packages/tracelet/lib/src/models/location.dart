@@ -65,11 +65,12 @@ class Location {
     final extrasRaw = map['extras'];
 
     return Location(
-      coords: Coords.fromMap(
-        coordsMap.isEmpty ? map : coordsMap,
-      ),
+      coords: Coords.fromMap(coordsMap.isEmpty ? map : coordsMap),
       timestamp: ensureString(map['timestamp']),
-      isMoving: ensureBool(map['is_moving'] ?? map['isMoving'], fallback: false),
+      isMoving: ensureBool(
+        map['is_moving'] ?? map['isMoving'],
+        fallback: false,
+      ),
       uuid: ensureString(map['uuid']),
       odometer: ensureDouble(map['odometer'], fallback: 0.0),
       activity: activityMap != null
@@ -80,9 +81,12 @@ class Location {
           : const LocationBattery(),
       extras: extrasRaw is Map
           ? extrasRaw.map<String, Object?>(
-              (Object? k, Object? v) => MapEntry(k.toString(), v))
+              (Object? k, Object? v) => MapEntry(k.toString(), v),
+            )
           : const <String, Object?>{},
-      event: map['event'] is String ? map['event'] as String : map['event']?.toString(),
+      event: map['event'] is String
+          ? map['event'] as String
+          : map['event']?.toString(),
     );
   }
 
@@ -178,14 +182,17 @@ class Coords {
       heading: ensureDouble(map['heading'], fallback: 0.0),
       accuracy: ensureDouble(map['accuracy'], fallback: 0.0),
       speedAccuracy: ensureDouble(
-          map['speed_accuracy'] ?? map['speedAccuracy'],
-          fallback: 0.0),
+        map['speed_accuracy'] ?? map['speedAccuracy'],
+        fallback: 0.0,
+      ),
       headingAccuracy: ensureDouble(
-          map['heading_accuracy'] ?? map['headingAccuracy'],
-          fallback: 0.0),
+        map['heading_accuracy'] ?? map['headingAccuracy'],
+        fallback: 0.0,
+      ),
       altitudeAccuracy: ensureDouble(
-          map['altitude_accuracy'] ?? map['altitudeAccuracy'],
-          fallback: 0.0),
+        map['altitude_accuracy'] ?? map['altitudeAccuracy'],
+        fallback: 0.0,
+      ),
       floor: map['floor'] as int?,
     );
   }
@@ -246,7 +253,8 @@ class LocationActivity {
     ActivityType actType = ActivityType.unknown;
     final rawType = map['type'];
     if (rawType is int) {
-      actType = ActivityType.values[rawType.clamp(0, ActivityType.values.length - 1)];
+      actType =
+          ActivityType.values[rawType.clamp(0, ActivityType.values.length - 1)];
     } else if (rawType is String) {
       actType = ActivityType.values.firstWhere(
         (e) => e.name == rawType,
@@ -277,10 +285,7 @@ class LocationActivity {
 
   /// Serializes to a map.
   Map<String, Object?> toMap() {
-    return <String, Object?>{
-      'type': type.name,
-      'confidence': confidence.name,
-    };
+    return <String, Object?>{'type': type.name, 'confidence': confidence.name};
   }
 
   @override
@@ -305,10 +310,7 @@ class LocationActivity {
 @immutable
 class LocationBattery {
   /// Creates a new [LocationBattery].
-  const LocationBattery({
-    this.level = -1.0,
-    this.isCharging = false,
-  });
+  const LocationBattery({this.level = -1.0, this.isCharging = false});
 
   /// Battery level from `0.0` to `1.0`, or `-1.0` if unknown.
   final double level;
@@ -321,17 +323,15 @@ class LocationBattery {
     return LocationBattery(
       level: ensureDouble(map['level'], fallback: -1.0),
       isCharging: ensureBool(
-          map['is_charging'] ?? map['isCharging'],
-          fallback: false),
+        map['is_charging'] ?? map['isCharging'],
+        fallback: false,
+      ),
     );
   }
 
   /// Serializes to a map.
   Map<String, Object?> toMap() {
-    return <String, Object?>{
-      'level': level,
-      'is_charging': isCharging,
-    };
+    return <String, Object?>{'level': level, 'is_charging': isCharging};
   }
 
   @override
@@ -349,4 +349,3 @@ class LocationBattery {
   @override
   int get hashCode => Object.hash(level, isCharging);
 }
-

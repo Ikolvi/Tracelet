@@ -58,18 +58,22 @@ class State {
 
     return State(
       enabled: ensureBool(map['enabled'], fallback: false),
-      trackingMode: TrackingMode.values[
-          ensureInt(map['trackingMode'], fallback: 0)
-              .clamp(0, TrackingMode.values.length - 1)],
-      isMoving:
-          ensureBool(map['isMoving'] ?? map['is_moving'], fallback: false),
-      schedulerEnabled:
-          ensureBool(map['schedulerEnabled'], fallback: false),
+      trackingMode:
+          TrackingMode.values[ensureInt(
+            map['trackingMode'],
+            fallback: 0,
+          ).clamp(0, TrackingMode.values.length - 1)],
+      isMoving: ensureBool(
+        map['isMoving'] ?? map['is_moving'],
+        fallback: false,
+      ),
+      schedulerEnabled: ensureBool(map['schedulerEnabled'], fallback: false),
       odometer: ensureDouble(map['odometer'], fallback: 0.0),
-      didLaunchInBackground:
-          ensureBool(map['didLaunchInBackground'], fallback: false),
-      didDeviceReboot:
-          ensureBool(map['didDeviceReboot'], fallback: false),
+      didLaunchInBackground: ensureBool(
+        map['didLaunchInBackground'],
+        fallback: false,
+      ),
+      didDeviceReboot: ensureBool(map['didDeviceReboot'], fallback: false),
       config: configMap != null ? Config.fromMap(configMap) : null,
     );
   }
@@ -108,6 +112,13 @@ class State {
           config == other.config;
 
   @override
-  int get hashCode => Object.hash(enabled, trackingMode, isMoving,
-      schedulerEnabled, odometer, didLaunchInBackground, didDeviceReboot);
+  int get hashCode => Object.hash(
+    enabled,
+    trackingMode,
+    isMoving,
+    schedulerEnabled,
+    odometer,
+    didLaunchInBackground,
+    didDeviceReboot,
+  );
 }

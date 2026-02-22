@@ -78,7 +78,8 @@ abstract class TraceletPlatform extends PlatformInterface {
 
   /// Get the current position. Returns [Location] map.
   Future<Map<String, Object?>> getCurrentPosition(
-      Map<String, Object?> options) {
+    Map<String, Object?> options,
+  ) {
     throw UnimplementedError('getCurrentPosition() has not been implemented.');
   }
 
@@ -151,8 +152,9 @@ abstract class TraceletPlatform extends PlatformInterface {
   // ---------------------------------------------------------------------------
 
   /// Get stored locations. Returns list of [Location] maps.
-  Future<List<Map<String, Object?>>> getLocations(
-      [Map<String, Object?>? query]) {
+  Future<List<Map<String, Object?>>> getLocations([
+    Map<String, Object?>? query,
+  ]) {
     throw UnimplementedError('getLocations() has not been implemented.');
   }
 
@@ -202,7 +204,8 @@ abstract class TraceletPlatform extends PlatformInterface {
   /// Request temporary full accuracy (iOS 14+). Returns accuracy status.
   Future<int> requestTemporaryFullAccuracy(String purpose) {
     throw UnimplementedError(
-        'requestTemporaryFullAccuracy() has not been implemented.');
+      'requestTemporaryFullAccuracy() has not been implemented.',
+    );
   }
 
   /// Get the current location provider state.
@@ -228,7 +231,8 @@ abstract class TraceletPlatform extends PlatformInterface {
   /// Whether the app is ignoring battery optimizations (Android only).
   Future<bool> isIgnoringBatteryOptimizations() {
     throw UnimplementedError(
-        'isIgnoringBatteryOptimizations() has not been implemented.');
+      'isIgnoringBatteryOptimizations() has not been implemented.',
+    );
   }
 
   /// Request a system settings page (e.g., battery optimization).
@@ -247,14 +251,12 @@ abstract class TraceletPlatform extends PlatformInterface {
 
   /// Start a long-running background task. Returns task ID.
   Future<int> startBackgroundTask() {
-    throw UnimplementedError(
-        'startBackgroundTask() has not been implemented.');
+    throw UnimplementedError('startBackgroundTask() has not been implemented.');
   }
 
   /// Signal completion of a background task by [taskId].
   Future<int> stopBackgroundTask(int taskId) {
-    throw UnimplementedError(
-        'stopBackgroundTask() has not been implemented.');
+    throw UnimplementedError('stopBackgroundTask() has not been implemented.');
   }
 
   // ---------------------------------------------------------------------------
@@ -302,6 +304,7 @@ abstract class TraceletPlatform extends PlatformInterface {
   /// Register a headless task callback for background event dispatch.
   Future<bool> registerHeadlessTask(List<int> callbackIds) {
     throw UnimplementedError(
-        'registerHeadlessTask() has not been implemented.');
+      'registerHeadlessTask() has not been implemented.',
+    );
   }
 }

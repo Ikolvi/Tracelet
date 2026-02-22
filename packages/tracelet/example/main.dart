@@ -13,16 +13,20 @@ Future<void> main() async {
   });
 
   // 2. Initialize the plugin with a configuration.
-  final state = await tl.Tracelet.ready(tl.Config(
-    geo: tl.GeoConfig(
-      desiredAccuracy: tl.DesiredAccuracy.high,
-      distanceFilter: 10,
+  final state = await tl.Tracelet.ready(
+    tl.Config(
+      geo: tl.GeoConfig(
+        desiredAccuracy: tl.DesiredAccuracy.high,
+        distanceFilter: 10,
+      ),
+      logger: tl.LoggerConfig(logLevel: tl.LogLevel.verbose),
     ),
-    logger: tl.LoggerConfig(logLevel: tl.LogLevel.verbose),
-  ));
+  );
 
-  print('Tracelet ready — enabled: ${state.enabled}, '
-      'tracking: ${state.trackingMode}');
+  print(
+    'Tracelet ready — enabled: ${state.enabled}, '
+    'tracking: ${state.trackingMode}',
+  );
 
   // 3. Start tracking.
   await tl.Tracelet.start();

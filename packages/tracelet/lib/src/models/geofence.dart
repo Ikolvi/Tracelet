@@ -78,7 +78,9 @@ class Geofence {
     if (verticesRaw is List) {
       for (final v in verticesRaw) {
         if (v is List) {
-          verticesList.add(v.map((e) => ensureDouble(e, fallback: 0.0)).toList());
+          verticesList.add(
+            v.map((e) => ensureDouble(e, fallback: 0.0)).toList(),
+          );
         }
       }
     }
@@ -88,17 +90,14 @@ class Geofence {
       latitude: ensureDouble(map['latitude'], fallback: 0.0),
       longitude: ensureDouble(map['longitude'], fallback: 0.0),
       radius: ensureDouble(map['radius'], fallback: 0.0),
-      notifyOnEntry:
-          ensureBool(map['notifyOnEntry'], fallback: true),
-      notifyOnExit:
-          ensureBool(map['notifyOnExit'], fallback: true),
-      notifyOnDwell:
-          ensureBool(map['notifyOnDwell'], fallback: false),
-      loiteringDelay:
-          ensureInt(map['loiteringDelay'], fallback: 0),
+      notifyOnEntry: ensureBool(map['notifyOnEntry'], fallback: true),
+      notifyOnExit: ensureBool(map['notifyOnExit'], fallback: true),
+      notifyOnDwell: ensureBool(map['notifyOnDwell'], fallback: false),
+      loiteringDelay: ensureInt(map['loiteringDelay'], fallback: 0),
       extras: extrasRaw is Map
           ? extrasRaw.map<String, Object?>(
-              (Object? k, Object? v) => MapEntry(k.toString(), v))
+              (Object? k, Object? v) => MapEntry(k.toString(), v),
+            )
           : const <String, Object?>{},
       vertices: verticesList,
     );

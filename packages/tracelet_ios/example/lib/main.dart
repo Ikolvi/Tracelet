@@ -74,67 +74,102 @@ class _DashboardPageState extends State<DashboardPage> {
   // ── Event Subscriptions ─────────────────────────────────────────────────
 
   void _subscribeEvents() {
-    _subs.add(tl.Tracelet.onLocation((loc) {
-      setState(() => _lastLocation = loc);
-      _addLog('LOCATION',
+    _subs.add(
+      tl.Tracelet.onLocation((loc) {
+        setState(() => _lastLocation = loc);
+        _addLog(
+          'LOCATION',
           '${loc.coords.latitude.toStringAsFixed(6)}, ${loc.coords.longitude.toStringAsFixed(6)}  '
-          'acc=${loc.coords.accuracy.toStringAsFixed(1)}m  spd=${loc.coords.speed.toStringAsFixed(1)}m/s');
-    }));
+              'acc=${loc.coords.accuracy.toStringAsFixed(1)}m  spd=${loc.coords.speed.toStringAsFixed(1)}m/s',
+        );
+      }),
+    );
 
-    _subs.add(tl.Tracelet.onMotionChange((loc) {
-      setState(() {
-        _isMoving = loc.isMoving;
-        _lastLocation = loc;
-      });
-      _addLog('MOTION', loc.isMoving ? 'MOVING' : 'STATIONARY');
-    }));
+    _subs.add(
+      tl.Tracelet.onMotionChange((loc) {
+        setState(() {
+          _isMoving = loc.isMoving;
+          _lastLocation = loc;
+        });
+        _addLog('MOTION', loc.isMoving ? 'MOVING' : 'STATIONARY');
+      }),
+    );
 
-    _subs.add(tl.Tracelet.onActivityChange((evt) {
-      _addLog('ACTIVITY', '${evt.activity.name} (${evt.confidence.name})');
-    }));
+    _subs.add(
+      tl.Tracelet.onActivityChange((evt) {
+        _addLog('ACTIVITY', '${evt.activity.name} (${evt.confidence.name})');
+      }),
+    );
 
-    _subs.add(tl.Tracelet.onProviderChange((evt) {
-      _addLog('PROVIDER',
-          'enabled=${evt.enabled}  status=${evt.status.name}  accuracy=${evt.accuracyAuthorization.name}');
-    }));
+    _subs.add(
+      tl.Tracelet.onProviderChange((evt) {
+        _addLog(
+          'PROVIDER',
+          'enabled=${evt.enabled}  status=${evt.status.name}  accuracy=${evt.accuracyAuthorization.name}',
+        );
+      }),
+    );
 
-    _subs.add(tl.Tracelet.onGeofence((evt) {
-      _addLog('GEOFENCE', '${evt.action.name} → ${evt.identifier}');
-    }));
+    _subs.add(
+      tl.Tracelet.onGeofence((evt) {
+        _addLog('GEOFENCE', '${evt.action.name} → ${evt.identifier}');
+      }),
+    );
 
-    _subs.add(tl.Tracelet.onGeofencesChange((evt) {
-      _addLog('GEOFENCES_CHANGE', 'on=${evt.on.length}, off=${evt.off.length}');
-    }));
+    _subs.add(
+      tl.Tracelet.onGeofencesChange((evt) {
+        _addLog(
+          'GEOFENCES_CHANGE',
+          'on=${evt.on.length}, off=${evt.off.length}',
+        );
+      }),
+    );
 
-    _subs.add(tl.Tracelet.onHeartbeat((evt) {
-      _addLog('HEARTBEAT',
-          '${evt.location.coords.latitude.toStringAsFixed(4)}, ${evt.location.coords.longitude.toStringAsFixed(4)}');
-    }));
+    _subs.add(
+      tl.Tracelet.onHeartbeat((evt) {
+        _addLog(
+          'HEARTBEAT',
+          '${evt.location.coords.latitude.toStringAsFixed(4)}, ${evt.location.coords.longitude.toStringAsFixed(4)}',
+        );
+      }),
+    );
 
-    _subs.add(tl.Tracelet.onHttp((evt) {
-      _addLog('HTTP', 'status=${evt.status}  success=${evt.success}');
-    }));
+    _subs.add(
+      tl.Tracelet.onHttp((evt) {
+        _addLog('HTTP', 'status=${evt.status}  success=${evt.success}');
+      }),
+    );
 
-    _subs.add(tl.Tracelet.onSchedule((state) {
-      _addLog('SCHEDULE', 'enabled=${state.enabled}');
-    }));
+    _subs.add(
+      tl.Tracelet.onSchedule((state) {
+        _addLog('SCHEDULE', 'enabled=${state.enabled}');
+      }),
+    );
 
-    _subs.add(tl.Tracelet.onPowerSaveChange((on) {
-      _addLog('POWER_SAVE', on ? 'ON' : 'OFF');
-    }));
+    _subs.add(
+      tl.Tracelet.onPowerSaveChange((on) {
+        _addLog('POWER_SAVE', on ? 'ON' : 'OFF');
+      }),
+    );
 
-    _subs.add(tl.Tracelet.onConnectivityChange((evt) {
-      _addLog('CONNECTIVITY', 'connected=${evt.connected}');
-    }));
+    _subs.add(
+      tl.Tracelet.onConnectivityChange((evt) {
+        _addLog('CONNECTIVITY', 'connected=${evt.connected}');
+      }),
+    );
 
-    _subs.add(tl.Tracelet.onEnabledChange((on) {
-      setState(() => _isTracking = on);
-      _addLog('ENABLED', on ? 'ON' : 'OFF');
-    }));
+    _subs.add(
+      tl.Tracelet.onEnabledChange((on) {
+        setState(() => _isTracking = on);
+        _addLog('ENABLED', on ? 'ON' : 'OFF');
+      }),
+    );
 
-    _subs.add(tl.Tracelet.onAuthorization((evt) {
-      _addLog('AUTH', 'success=${evt.success}  response=${evt.response}');
-    }));
+    _subs.add(
+      tl.Tracelet.onAuthorization((evt) {
+        _addLog('AUTH', 'success=${evt.success}  response=${evt.response}');
+      }),
+    );
   }
 
   // ── Lifecycle ───────────────────────────────────────────────────────────
@@ -143,34 +178,36 @@ class _DashboardPageState extends State<DashboardPage> {
     try {
       _subscribeEvents();
 
-      final state = await tl.Tracelet.ready(tl.Config(
-        geo: const tl.GeoConfig(
-          desiredAccuracy: tl.DesiredAccuracy.high,
-          distanceFilter: 10,
-          stationaryRadius: 25,
-          locationTimeout: 60,
-          activityType: tl.LocationActivityType.otherNavigation,
+      final state = await tl.Tracelet.ready(
+        tl.Config(
+          geo: const tl.GeoConfig(
+            desiredAccuracy: tl.DesiredAccuracy.high,
+            distanceFilter: 10,
+            stationaryRadius: 25,
+            locationTimeout: 60,
+            activityType: tl.LocationActivityType.otherNavigation,
+          ),
+          app: const tl.AppConfig(
+            stopOnTerminate: false,
+            heartbeatInterval: 60,
+          ),
+          motion: const tl.MotionConfig(stopTimeout: 5),
+          logger: const tl.LoggerConfig(
+            logLevel: tl.LogLevel.verbose,
+            debug: true,
+          ),
         ),
-        app: const tl.AppConfig(
-          stopOnTerminate: false,
-          heartbeatInterval: 60,
-        ),
-        motion: const tl.MotionConfig(
-          stopTimeout: 5,
-        ),
-        logger: const tl.LoggerConfig(
-          logLevel: tl.LogLevel.verbose,
-          debug: true,
-        ),
-      ));
+      );
 
       setState(() {
         _isReady = true;
         _isTracking = state.enabled;
         _pluginState = state;
       });
-      _addLog('READY',
-          'enabled=${state.enabled}  mode=${state.trackingMode.name}  odometer=${state.odometer.toStringAsFixed(0)}m');
+      _addLog(
+        'READY',
+        'enabled=${state.enabled}  mode=${state.trackingMode.name}  odometer=${state.odometer.toStringAsFixed(0)}m',
+      );
     } catch (e) {
       _addLog('ERROR', 'ready() failed: $e');
     }
@@ -224,9 +261,11 @@ class _DashboardPageState extends State<DashboardPage> {
         timeout: 30,
       );
       setState(() => _lastLocation = loc);
-      _addLog('POSITION',
-          '${loc.coords.latitude.toStringAsFixed(6)}, ${loc.coords.longitude.toStringAsFixed(6)}  '
-          'acc=${loc.coords.accuracy.toStringAsFixed(1)}m');
+      _addLog(
+        'POSITION',
+        '${loc.coords.latitude.toStringAsFixed(6)}, ${loc.coords.longitude.toStringAsFixed(6)}  '
+            'acc=${loc.coords.accuracy.toStringAsFixed(1)}m',
+      );
     } catch (e) {
       _addLog('ERROR', 'getCurrentPosition() failed: $e');
     }
@@ -255,7 +294,10 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _resetOdometer() async {
     try {
       final loc = await tl.Tracelet.setOdometer(0);
-      _addLog('ODOMETER', 'reset at ${loc.coords.latitude.toStringAsFixed(4)}, ${loc.coords.longitude.toStringAsFixed(4)}');
+      _addLog(
+        'ODOMETER',
+        'reset at ${loc.coords.latitude.toStringAsFixed(4)}, ${loc.coords.longitude.toStringAsFixed(4)}',
+      );
     } catch (e) {
       _addLog('ERROR', 'setOdometer() failed: $e');
     }
@@ -271,17 +313,22 @@ class _DashboardPageState extends State<DashboardPage> {
     try {
       final loc = _lastLocation!;
       final id = 'geo_${DateTime.now().millisecondsSinceEpoch}';
-      await tl.Tracelet.addGeofence(tl.Geofence(
-        identifier: id,
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-        radius: 200,
-        notifyOnEntry: true,
-        notifyOnExit: true,
-        notifyOnDwell: true,
-        loiteringDelay: 30000,
-      ));
-      _addLog('GEOFENCE+', '$id  r=200m  at ${loc.coords.latitude.toStringAsFixed(4)}, ${loc.coords.longitude.toStringAsFixed(4)}');
+      await tl.Tracelet.addGeofence(
+        tl.Geofence(
+          identifier: id,
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+          radius: 200,
+          notifyOnEntry: true,
+          notifyOnExit: true,
+          notifyOnDwell: true,
+          loiteringDelay: 30000,
+        ),
+      );
+      _addLog(
+        'GEOFENCE+',
+        '$id  r=200m  at ${loc.coords.latitude.toStringAsFixed(4)}, ${loc.coords.longitude.toStringAsFixed(4)}',
+      );
     } catch (e) {
       _addLog('ERROR', 'addGeofence() failed: $e');
     }
@@ -292,7 +339,10 @@ class _DashboardPageState extends State<DashboardPage> {
       final fences = await tl.Tracelet.getGeofences();
       _addLog('GEOFENCES', '${fences.length} registered');
       for (final f in fences) {
-        _addLog('  FENCE', '${f.identifier}  (${f.latitude.toStringAsFixed(4)}, ${f.longitude.toStringAsFixed(4)})  r=${f.radius}m');
+        _addLog(
+          '  FENCE',
+          '${f.identifier}  (${f.latitude.toStringAsFixed(4)}, ${f.longitude.toStringAsFixed(4)})  r=${f.radius}m',
+        );
       }
     } catch (e) {
       _addLog('ERROR', 'getGeofences() failed: $e');
@@ -324,7 +374,10 @@ class _DashboardPageState extends State<DashboardPage> {
       final locs = await tl.Tracelet.getLocations();
       _addLog('DB', '${locs.length} locations retrieved');
       for (final l in locs.take(5)) {
-        _addLog('  LOC', '${l.coords.latitude.toStringAsFixed(4)}, ${l.coords.longitude.toStringAsFixed(4)} @ ${l.timestamp}');
+        _addLog(
+          '  LOC',
+          '${l.coords.latitude.toStringAsFixed(4)}, ${l.coords.longitude.toStringAsFixed(4)} @ ${l.timestamp}',
+        );
       }
       if (locs.length > 5) {
         _addLog('  ...', '${locs.length - 5} more');
@@ -349,9 +402,11 @@ class _DashboardPageState extends State<DashboardPage> {
     try {
       final state = await tl.Tracelet.getState();
       setState(() => _pluginState = state);
-      _addLog('STATE',
-          'enabled=${state.enabled}  mode=${state.trackingMode.name}  '
-          'odometer=${state.odometer.toStringAsFixed(0)}m  scheduler=${state.schedulerEnabled}');
+      _addLog(
+        'STATE',
+        'enabled=${state.enabled}  mode=${state.trackingMode.name}  '
+            'odometer=${state.odometer.toStringAsFixed(0)}m  scheduler=${state.schedulerEnabled}',
+      );
     } catch (e) {
       _addLog('ERROR', 'getState() failed: $e');
     }
@@ -360,8 +415,10 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _getProviderState() async {
     try {
       final p = await tl.Tracelet.getProviderState();
-      _addLog('PROVIDER',
-          'enabled=${p.enabled}  status=${p.status.name}  accuracy=${p.accuracyAuthorization.name}');
+      _addLog(
+        'PROVIDER',
+        'enabled=${p.enabled}  status=${p.status.name}  accuracy=${p.accuracyAuthorization.name}',
+      );
     } catch (e) {
       _addLog('ERROR', 'getProviderState() failed: $e');
     }
@@ -378,7 +435,9 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<void> _requestTempFullAccuracy() async {
     try {
-      final result = await tl.Tracelet.requestTemporaryFullAccuracy('TemporaryFullAccuracy');
+      final result = await tl.Tracelet.requestTemporaryFullAccuracy(
+        'TemporaryFullAccuracy',
+      );
       _addLog('ACCURACY', 'temporary full accuracy result=$result');
     } catch (e) {
       _addLog('ERROR', 'requestTemporaryFullAccuracy() failed: $e');
@@ -388,7 +447,10 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _getSensors() async {
     try {
       final s = await tl.Tracelet.getSensors();
-      _addLog('SENSORS', 'platform=${s.platform}  accelerometer=${s.accelerometer}  gyroscope=${s.gyroscope}  magnetometer=${s.magnetometer}  significantMotion=${s.significantMotion}');
+      _addLog(
+        'SENSORS',
+        'platform=${s.platform}  accelerometer=${s.accelerometer}  gyroscope=${s.gyroscope}  magnetometer=${s.magnetometer}  significantMotion=${s.significantMotion}',
+      );
     } catch (e) {
       _addLog('ERROR', 'getSensors() failed: $e');
     }
@@ -397,7 +459,10 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _getDeviceInfo() async {
     try {
       final d = await tl.Tracelet.getDeviceInfo();
-      _addLog('DEVICE', 'model=${d.model}  platform=${d.platform}  version=${d.version}  manufacturer=${d.manufacturer}');
+      _addLog(
+        'DEVICE',
+        'model=${d.model}  platform=${d.platform}  version=${d.version}  manufacturer=${d.manufacturer}',
+      );
     } catch (e) {
       _addLog('ERROR', 'getDeviceInfo() failed: $e');
     }
@@ -417,7 +482,10 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _getLog() async {
     try {
       final log = await tl.Tracelet.getLog();
-      _addLog('LOG', '${log.length} chars  (last 200): ${log.substring(log.length > 200 ? log.length - 200 : 0)}');
+      _addLog(
+        'LOG',
+        '${log.length} chars  (last 200): ${log.substring(log.length > 200 ? log.length - 200 : 0)}',
+      );
     } catch (e) {
       _addLog('ERROR', 'getLog() failed: $e');
     }
@@ -497,64 +565,122 @@ class _DashboardPageState extends State<DashboardPage> {
 
                 if (_isReady) ...[
                   // ── Lifecycle ──
-                  _Section(title: 'Lifecycle', color: cs.primary, children: [
-                    _Chip('Start', Icons.play_arrow, _start),
-                    _Chip('Stop', Icons.stop, _stop),
-                    _Chip('Geofences Only', Icons.fence, _startGeofences),
-                    _Chip('Get State', Icons.info_outline, _getState),
-                  ]),
+                  _Section(
+                    title: 'Lifecycle',
+                    color: cs.primary,
+                    children: [
+                      _Chip('Start', Icons.play_arrow, _start),
+                      _Chip('Stop', Icons.stop, _stop),
+                      _Chip('Geofences Only', Icons.fence, _startGeofences),
+                      _Chip('Get State', Icons.info_outline, _getState),
+                    ],
+                  ),
 
                   // ── Permissions ──
-                  _Section(title: 'Permissions', color: cs.tertiary, children: [
-                    _Chip('Request Perm', Icons.shield, _requestPermission),
-                    _Chip('Temp Full Accuracy', Icons.gps_fixed, _requestTempFullAccuracy),
-                    _Chip('Provider State', Icons.settings_input_antenna, _getProviderState),
-                  ]),
+                  _Section(
+                    title: 'Permissions',
+                    color: cs.tertiary,
+                    children: [
+                      _Chip('Request Perm', Icons.shield, _requestPermission),
+                      _Chip(
+                        'Temp Full Accuracy',
+                        Icons.gps_fixed,
+                        _requestTempFullAccuracy,
+                      ),
+                      _Chip(
+                        'Provider State',
+                        Icons.settings_input_antenna,
+                        _getProviderState,
+                      ),
+                    ],
+                  ),
 
                   // ── Location ──
-                  _Section(title: 'Location', color: cs.secondary, children: [
-                    _Chip('Get Position', Icons.my_location, _getCurrentPosition),
-                    _Chip(_isMoving ? 'Pace → Still' : 'Pace → Move', Icons.directions_walk, _changePace),
-                    _Chip('Odometer', Icons.speed, _getOdometer),
-                    _Chip('Reset Odo', Icons.restart_alt, _resetOdometer),
-                  ]),
+                  _Section(
+                    title: 'Location',
+                    color: cs.secondary,
+                    children: [
+                      _Chip(
+                        'Get Position',
+                        Icons.my_location,
+                        _getCurrentPosition,
+                      ),
+                      _Chip(
+                        _isMoving ? 'Pace → Still' : 'Pace → Move',
+                        Icons.directions_walk,
+                        _changePace,
+                      ),
+                      _Chip('Odometer', Icons.speed, _getOdometer),
+                      _Chip('Reset Odo', Icons.restart_alt, _resetOdometer),
+                    ],
+                  ),
 
                   // ── Geofencing ──
-                  _Section(title: 'Geofencing', color: Colors.orange, children: [
-                    _Chip('+ Geofence Here', Icons.add_location_alt, _addGeofenceAtCurrentLocation),
-                    _Chip('List Geofences', Icons.list, _listGeofences),
-                    _Chip('Remove All', Icons.delete_forever, _removeAllGeofences),
-                  ]),
+                  _Section(
+                    title: 'Geofencing',
+                    color: Colors.orange,
+                    children: [
+                      _Chip(
+                        '+ Geofence Here',
+                        Icons.add_location_alt,
+                        _addGeofenceAtCurrentLocation,
+                      ),
+                      _Chip('List Geofences', Icons.list, _listGeofences),
+                      _Chip(
+                        'Remove All',
+                        Icons.delete_forever,
+                        _removeAllGeofences,
+                      ),
+                    ],
+                  ),
 
                   // ── Persistence ──
-                  _Section(title: 'Persistence', color: Colors.teal, children: [
-                    _Chip('Count', Icons.numbers, _getCount),
-                    _Chip('List Locations', Icons.storage, _getLocations),
-                    _Chip('Destroy All', Icons.delete, _destroyLocations),
-                    _Chip('HTTP Sync', Icons.cloud_upload, _httpSync),
-                  ]),
+                  _Section(
+                    title: 'Persistence',
+                    color: Colors.teal,
+                    children: [
+                      _Chip('Count', Icons.numbers, _getCount),
+                      _Chip('List Locations', Icons.storage, _getLocations),
+                      _Chip('Destroy All', Icons.delete, _destroyLocations),
+                      _Chip('HTTP Sync', Icons.cloud_upload, _httpSync),
+                    ],
+                  ),
 
                   // ── Utility ──
-                  _Section(title: 'Utility', color: Colors.purple, children: [
-                    _Chip('Sensors', Icons.sensors, _getSensors),
-                    _Chip('Device Info', Icons.phone_android, _getDeviceInfo),
-                    _Chip('Power Save?', Icons.battery_saver, _isPowerSaveMode),
-                  ]),
+                  _Section(
+                    title: 'Utility',
+                    color: Colors.purple,
+                    children: [
+                      _Chip('Sensors', Icons.sensors, _getSensors),
+                      _Chip('Device Info', Icons.phone_android, _getDeviceInfo),
+                      _Chip(
+                        'Power Save?',
+                        Icons.battery_saver,
+                        _isPowerSaveMode,
+                      ),
+                    ],
+                  ),
 
                   // ── Logging ──
-                  _Section(title: 'Logging', color: Colors.brown, children: [
-                    _Chip('Get Log', Icons.article, _getLog),
-                    _Chip('Destroy Log', Icons.delete_outline, _destroyLog),
-                    _Chip('Email Log', Icons.email, _emailLog),
-                  ]),
+                  _Section(
+                    title: 'Logging',
+                    color: Colors.brown,
+                    children: [
+                      _Chip('Get Log', Icons.article, _getLog),
+                      _Chip('Destroy Log', Icons.delete_outline, _destroyLog),
+                      _Chip('Email Log', Icons.email, _emailLog),
+                    ],
+                  ),
 
                   const Divider(),
 
                   // ── Event Log ──
                   Padding(
                     padding: const EdgeInsets.only(bottom: 4),
-                    child: Text('Event Log (${_log.length})',
-                        style: Theme.of(context).textTheme.titleSmall),
+                    child: Text(
+                      'Event Log (${_log.length})',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
                   ),
                   ..._log.map((entry) => _LogTile(entry: entry)),
                   const SizedBox(height: 80),
@@ -606,7 +732,9 @@ class _StatusCard extends StatelessWidget {
               children: [
                 Icon(
                   isTracking
-                      ? (isMoving ? Icons.directions_run : Icons.accessibility_new)
+                      ? (isMoving
+                            ? Icons.directions_run
+                            : Icons.accessibility_new)
                       : Icons.location_off,
                   size: 32,
                 ),
@@ -615,11 +743,11 @@ class _StatusCard extends StatelessWidget {
                   !isReady
                       ? 'Not Initialized'
                       : isTracking
-                          ? (isMoving ? 'MOVING' : 'STATIONARY')
-                          : 'STOPPED',
+                      ? (isMoving ? 'MOVING' : 'STATIONARY')
+                      : 'STOPPED',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
@@ -628,9 +756,9 @@ class _StatusCard extends StatelessWidget {
               Text(
                 '${location!.coords.latitude.toStringAsFixed(6)}, '
                 '${location!.coords.longitude.toStringAsFixed(6)}',
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      fontFamily: 'monospace',
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.copyWith(fontFamily: 'monospace'),
               ),
               const SizedBox(height: 4),
               Wrap(
@@ -639,7 +767,8 @@ class _StatusCard extends StatelessWidget {
                   Text('Acc: ${location!.coords.accuracy.toStringAsFixed(1)}m'),
                   Text('Spd: ${location!.coords.speed.toStringAsFixed(1)} m/s'),
                   Text('Alt: ${location!.coords.altitude.toStringAsFixed(0)}m'),
-                  if (state != null) Text('Odo: ${state!.odometer.toStringAsFixed(0)}m'),
+                  if (state != null)
+                    Text('Odo: ${state!.odometer.toStringAsFixed(0)}m'),
                 ],
               ),
             ],
@@ -672,11 +801,13 @@ class _Section extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title,
-              style: Theme.of(context)
-                  .textTheme
-                  .labelLarge
-                  ?.copyWith(color: color, fontWeight: FontWeight.bold)),
+          Text(
+            title,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: color,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 4),
           Wrap(
             spacing: 6,
@@ -741,8 +872,14 @@ class _LogTile extends StatelessWidget {
         children: [
           SizedBox(
             width: 52,
-            child: Text(entry.time,
-                style: const TextStyle(fontSize: 11, color: Colors.grey, fontFamily: 'monospace')),
+            child: Text(
+              entry.time,
+              style: const TextStyle(
+                fontSize: 11,
+                color: Colors.grey,
+                fontFamily: 'monospace',
+              ),
+            ),
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
@@ -750,16 +887,21 @@ class _LogTile extends StatelessWidget {
               color: _tagColor(entry.tag).withAlpha(30),
               borderRadius: BorderRadius.circular(3),
             ),
-            child: Text(entry.tag,
-                style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: _tagColor(entry.tag))),
+            child: Text(
+              entry.tag,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: _tagColor(entry.tag),
+              ),
+            ),
           ),
           const SizedBox(width: 4),
           Expanded(
-            child: Text(entry.message,
-                style: const TextStyle(fontSize: 11, fontFamily: 'monospace')),
+            child: Text(
+              entry.message,
+              style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
+            ),
           ),
         ],
       ),

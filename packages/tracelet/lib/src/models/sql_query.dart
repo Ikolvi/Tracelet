@@ -51,13 +51,13 @@ class SQLQuery {
       start: startMs != null
           ? DateTime.fromMillisecondsSinceEpoch(startMs)
           : null,
-      end: endMs != null
-          ? DateTime.fromMillisecondsSinceEpoch(endMs)
-          : null,
+      end: endMs != null ? DateTime.fromMillisecondsSinceEpoch(endMs) : null,
       limit: (map['limit'] as int?) ?? -1,
-      order: LocationOrder.values[
-          ((map['order'] as int?) ?? 0)
-              .clamp(0, LocationOrder.values.length - 1)],
+      order:
+          LocationOrder.values[((map['order'] as int?) ?? 0).clamp(
+            0,
+            LocationOrder.values.length - 1,
+          )],
     );
   }
 

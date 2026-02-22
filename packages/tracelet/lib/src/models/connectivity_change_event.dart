@@ -6,9 +6,7 @@ import '_helpers.dart';
 @immutable
 class ConnectivityChangeEvent {
   /// Creates a new [ConnectivityChangeEvent].
-  const ConnectivityChangeEvent({
-    required this.connected,
-  });
+  const ConnectivityChangeEvent({required this.connected});
 
   /// Whether the device currently has network connectivity.
   final bool connected;
@@ -22,9 +20,7 @@ class ConnectivityChangeEvent {
 
   /// Serializes to a map.
   Map<String, Object?> toMap() {
-    return <String, Object?>{
-      'connected': connected,
-    };
+    return <String, Object?>{'connected': connected};
   }
 
   @override

@@ -10,9 +10,7 @@ import 'location.dart';
 @immutable
 class HeartbeatEvent {
   /// Creates a new [HeartbeatEvent].
-  const HeartbeatEvent({
-    required this.location,
-  });
+  const HeartbeatEvent({required this.location});
 
   /// The latest location at the time of the heartbeat.
   final Location location;
@@ -21,16 +19,12 @@ class HeartbeatEvent {
   factory HeartbeatEvent.fromMap(Map<String, Object?> map) {
     final locationMap = safeMap(map['location']) ?? const <String, Object?>{};
 
-    return HeartbeatEvent(
-      location: Location.fromMap(locationMap),
-    );
+    return HeartbeatEvent(location: Location.fromMap(locationMap));
   }
 
   /// Serializes to a map.
   Map<String, Object?> toMap() {
-    return <String, Object?>{
-      'location': location.toMap(),
-    };
+    return <String, Object?>{'location': location.toMap()};
   }
 
   @override

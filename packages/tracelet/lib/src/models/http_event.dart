@@ -42,8 +42,7 @@ class HttpEvent {
   }
 
   @override
-  String toString() =>
-      'HttpEvent(success: $success, status: $status)';
+  String toString() => 'HttpEvent(success: $success, status: $status)';
 
   @override
   bool operator ==(Object other) =>

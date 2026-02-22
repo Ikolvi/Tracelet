@@ -35,13 +35,10 @@ class Sensors {
   factory Sensors.fromMap(Map<String, Object?> map) {
     return Sensors(
       platform: map['platform'] as String? ?? 'unknown',
-      accelerometer:
-          ensureBool(map['accelerometer'], fallback: false),
+      accelerometer: ensureBool(map['accelerometer'], fallback: false),
       gyroscope: ensureBool(map['gyroscope'], fallback: false),
-      magnetometer:
-          ensureBool(map['magnetometer'], fallback: false),
-      significantMotion:
-          ensureBool(map['significantMotion'], fallback: false),
+      magnetometer: ensureBool(map['magnetometer'], fallback: false),
+      significantMotion: ensureBool(map['significantMotion'], fallback: false),
     );
   }
 

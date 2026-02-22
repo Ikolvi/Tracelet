@@ -7,10 +7,7 @@ import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 @immutable
 class ActivityChangeEvent {
   /// Creates a new [ActivityChangeEvent].
-  const ActivityChangeEvent({
-    required this.activity,
-    required this.confidence,
-  });
+  const ActivityChangeEvent({required this.activity, required this.confidence});
 
   /// The detected activity type.
   final ActivityType activity;
@@ -23,7 +20,8 @@ class ActivityChangeEvent {
     ActivityType act = ActivityType.unknown;
     final rawAct = map['activity'];
     if (rawAct is int) {
-      act = ActivityType.values[rawAct.clamp(0, ActivityType.values.length - 1)];
+      act =
+          ActivityType.values[rawAct.clamp(0, ActivityType.values.length - 1)];
     } else if (rawAct is String) {
       act = ActivityType.values.firstWhere(
         (e) => e.name == rawAct,
@@ -60,8 +58,7 @@ class ActivityChangeEvent {
   }
 
   @override
-  String toString() =>
-      'ActivityChangeEvent($activity, $confidence)';
+  String toString() => 'ActivityChangeEvent($activity, $confidence)';
 
   @override
   bool operator ==(Object other) =>

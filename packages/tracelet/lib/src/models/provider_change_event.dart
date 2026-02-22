@@ -37,14 +37,18 @@ class ProviderChangeEvent {
   factory ProviderChangeEvent.fromMap(Map<String, Object?> map) {
     return ProviderChangeEvent(
       enabled: ensureBool(map['enabled'], fallback: false),
-      status: AuthorizationStatus.values[
-          ensureInt(map['status'], fallback: 0)
-              .clamp(0, AuthorizationStatus.values.length - 1)],
+      status:
+          AuthorizationStatus.values[ensureInt(
+            map['status'],
+            fallback: 0,
+          ).clamp(0, AuthorizationStatus.values.length - 1)],
       gps: ensureBool(map['gps'], fallback: false),
       network: ensureBool(map['network'], fallback: false),
-      accuracyAuthorization: AccuracyAuthorization.values[
-          ensureInt(map['accuracyAuthorization'], fallback: 0)
-              .clamp(0, AccuracyAuthorization.values.length - 1)],
+      accuracyAuthorization:
+          AccuracyAuthorization.values[ensureInt(
+            map['accuracyAuthorization'],
+            fallback: 0,
+          ).clamp(0, AccuracyAuthorization.values.length - 1)],
     );
   }
 

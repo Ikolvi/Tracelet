@@ -47,8 +47,5 @@ class GeofencesChangeEvent {
 
 List<Geofence> _parseGeofenceList(Object? raw) {
   if (raw is! List) return const <Geofence>[];
-  return raw
-      .whereType<Map<String, Object?>>()
-      .map(Geofence.fromMap)
-      .toList();
+  return raw.whereType<Map<String, Object?>>().map(Geofence.fromMap).toList();
 }

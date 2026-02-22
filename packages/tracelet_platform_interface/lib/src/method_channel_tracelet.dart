@@ -8,8 +8,9 @@ import 'tracelet_platform.dart';
 /// tracelet_ios) may override this with Pigeon-backed implementations.
 class MethodChannelTracelet extends TraceletPlatform {
   /// The MethodChannel used for Dart → Native request/response calls.
-  final MethodChannel _methodChannel =
-      const MethodChannel(TraceletPlatform.methodChannelName);
+  final MethodChannel _methodChannel = const MethodChannel(
+    TraceletPlatform.methodChannelName,
+  );
 
   /// Safely invoke a method that returns a map.
   ///
@@ -17,8 +18,13 @@ class MethodChannelTracelet extends TraceletPlatform {
   /// so we cannot rely on `invokeMapMethod<String, Object?>` which does
   /// a direct cast. Instead, use `invokeMethod` and `Map.from()`.
   Future<Map<String, Object?>> _invokeMap(
-      String method, [Object? arguments]) async {
-    final result = await _methodChannel.invokeMethod<Object?>(method, arguments);
+    String method, [
+    Object? arguments,
+  ]) async {
+    final result = await _methodChannel.invokeMethod<Object?>(
+      method,
+      arguments,
+    );
     if (result is Map) {
       return Map<String, Object?>.from(result);
     }
@@ -70,28 +76,35 @@ class MethodChannelTracelet extends TraceletPlatform {
 
   @override
   Future<Map<String, Object?>> getCurrentPosition(
-      Map<String, Object?> options) async {
+    Map<String, Object?> options,
+  ) async {
     return _invokeMap('getCurrentPosition', options);
   }
 
   @override
   Future<int> watchPosition(Map<String, Object?> options) async {
-    final result =
-        await _methodChannel.invokeMethod<int>('watchPosition', options);
+    final result = await _methodChannel.invokeMethod<int>(
+      'watchPosition',
+      options,
+    );
     return result ?? -1;
   }
 
   @override
   Future<bool> stopWatchPosition(int watchId) async {
-    final result =
-        await _methodChannel.invokeMethod<bool>('stopWatchPosition', watchId);
+    final result = await _methodChannel.invokeMethod<bool>(
+      'stopWatchPosition',
+      watchId,
+    );
     return result ?? false;
   }
 
   @override
   Future<bool> changePace(bool isMoving) async {
-    final result =
-        await _methodChannel.invokeMethod<bool>('changePace', isMoving);
+    final result = await _methodChannel.invokeMethod<bool>(
+      'changePace',
+      isMoving,
+    );
     return result ?? false;
   }
 
@@ -112,29 +125,34 @@ class MethodChannelTracelet extends TraceletPlatform {
 
   @override
   Future<bool> addGeofence(Map<String, Object?> geofence) async {
-    final result =
-        await _methodChannel.invokeMethod<bool>('addGeofence', geofence);
+    final result = await _methodChannel.invokeMethod<bool>(
+      'addGeofence',
+      geofence,
+    );
     return result ?? false;
   }
 
   @override
   Future<bool> addGeofences(List<Map<String, Object?>> geofences) async {
-    final result =
-        await _methodChannel.invokeMethod<bool>('addGeofences', geofences);
+    final result = await _methodChannel.invokeMethod<bool>(
+      'addGeofences',
+      geofences,
+    );
     return result ?? false;
   }
 
   @override
   Future<bool> removeGeofence(String identifier) async {
-    final result =
-        await _methodChannel.invokeMethod<bool>('removeGeofence', identifier);
+    final result = await _methodChannel.invokeMethod<bool>(
+      'removeGeofence',
+      identifier,
+    );
     return result ?? false;
   }
 
   @override
   Future<bool> removeGeofences() async {
-    final result =
-        await _methodChannel.invokeMethod<bool>('removeGeofences');
+    final result = await _methodChannel.invokeMethod<bool>('removeGeofences');
     return result ?? false;
   }
 
@@ -149,8 +167,10 @@ class MethodChannelTracelet extends TraceletPlatform {
 
   @override
   Future<Map<String, Object?>?> getGeofence(String identifier) async {
-    final result =
-        await _methodChannel.invokeMethod<Object?>('getGeofence', identifier);
+    final result = await _methodChannel.invokeMethod<Object?>(
+      'getGeofence',
+      identifier,
+    );
     if (result is Map) return Map<String, Object?>.from(result);
     return null;
   }
@@ -158,7 +178,9 @@ class MethodChannelTracelet extends TraceletPlatform {
   @override
   Future<bool> geofenceExists(String identifier) async {
     final result = await _methodChannel.invokeMethod<bool>(
-        'geofenceExists', identifier);
+      'geofenceExists',
+      identifier,
+    );
     return result ?? false;
   }
 
@@ -167,10 +189,13 @@ class MethodChannelTracelet extends TraceletPlatform {
   // ---------------------------------------------------------------------------
 
   @override
-  Future<List<Map<String, Object?>>> getLocations(
-      [Map<String, Object?>? query]) async {
-    final result =
-        await _methodChannel.invokeListMethod<Map>('getLocations', query);
+  Future<List<Map<String, Object?>>> getLocations([
+    Map<String, Object?>? query,
+  ]) async {
+    final result = await _methodChannel.invokeListMethod<Map>(
+      'getLocations',
+      query,
+    );
     return result
             ?.map((e) => Map<String, Object?>.from(e))
             .toList(growable: false) ??
@@ -185,22 +210,25 @@ class MethodChannelTracelet extends TraceletPlatform {
 
   @override
   Future<bool> destroyLocations() async {
-    final result =
-        await _methodChannel.invokeMethod<bool>('destroyLocations');
+    final result = await _methodChannel.invokeMethod<bool>('destroyLocations');
     return result ?? false;
   }
 
   @override
   Future<bool> destroyLocation(String uuid) async {
-    final result =
-        await _methodChannel.invokeMethod<bool>('destroyLocation', uuid);
+    final result = await _methodChannel.invokeMethod<bool>(
+      'destroyLocation',
+      uuid,
+    );
     return result ?? false;
   }
 
   @override
   Future<String> insertLocation(Map<String, Object?> params) async {
-    final result =
-        await _methodChannel.invokeMethod<String>('insertLocation', params);
+    final result = await _methodChannel.invokeMethod<String>(
+      'insertLocation',
+      params,
+    );
     return result ?? '';
   }
 
@@ -223,22 +251,22 @@ class MethodChannelTracelet extends TraceletPlatform {
 
   @override
   Future<bool> isPowerSaveMode() async {
-    final result =
-        await _methodChannel.invokeMethod<bool>('isPowerSaveMode');
+    final result = await _methodChannel.invokeMethod<bool>('isPowerSaveMode');
     return result ?? false;
   }
 
   @override
   Future<int> requestPermission() async {
-    final result =
-        await _methodChannel.invokeMethod<int>('requestPermission');
+    final result = await _methodChannel.invokeMethod<int>('requestPermission');
     return result ?? 0;
   }
 
   @override
   Future<int> requestTemporaryFullAccuracy(String purpose) async {
     final result = await _methodChannel.invokeMethod<int>(
-        'requestTemporaryFullAccuracy', purpose);
+      'requestTemporaryFullAccuracy',
+      purpose,
+    );
     return result ?? 0;
   }
 
@@ -259,29 +287,33 @@ class MethodChannelTracelet extends TraceletPlatform {
 
   @override
   Future<bool> playSound(String name) async {
-    final result =
-        await _methodChannel.invokeMethod<bool>('playSound', name);
+    final result = await _methodChannel.invokeMethod<bool>('playSound', name);
     return result ?? false;
   }
 
   @override
   Future<bool> isIgnoringBatteryOptimizations() async {
-    final result = await _methodChannel
-        .invokeMethod<bool>('isIgnoringBatteryOptimizations');
+    final result = await _methodChannel.invokeMethod<bool>(
+      'isIgnoringBatteryOptimizations',
+    );
     return result ?? false;
   }
 
   @override
   Future<bool> requestSettings(String action) async {
-    final result =
-        await _methodChannel.invokeMethod<bool>('requestSettings', action);
+    final result = await _methodChannel.invokeMethod<bool>(
+      'requestSettings',
+      action,
+    );
     return result ?? false;
   }
 
   @override
   Future<bool> showSettings(String action) async {
-    final result =
-        await _methodChannel.invokeMethod<bool>('showSettings', action);
+    final result = await _methodChannel.invokeMethod<bool>(
+      'showSettings',
+      action,
+    );
     return result ?? false;
   }
 
@@ -291,15 +323,18 @@ class MethodChannelTracelet extends TraceletPlatform {
 
   @override
   Future<int> startBackgroundTask() async {
-    final result =
-        await _methodChannel.invokeMethod<int>('startBackgroundTask');
+    final result = await _methodChannel.invokeMethod<int>(
+      'startBackgroundTask',
+    );
     return result ?? 0;
   }
 
   @override
   Future<int> stopBackgroundTask(int taskId) async {
-    final result =
-        await _methodChannel.invokeMethod<int>('stopBackgroundTask', taskId);
+    final result = await _methodChannel.invokeMethod<int>(
+      'stopBackgroundTask',
+      taskId,
+    );
     return result ?? taskId;
   }
 
@@ -309,8 +344,7 @@ class MethodChannelTracelet extends TraceletPlatform {
 
   @override
   Future<String> getLog([Map<String, Object?>? query]) async {
-    final result =
-        await _methodChannel.invokeMethod<String>('getLog', query);
+    final result = await _methodChannel.invokeMethod<String>('getLog', query);
     return result ?? '';
   }
 
@@ -322,15 +356,16 @@ class MethodChannelTracelet extends TraceletPlatform {
 
   @override
   Future<bool> emailLog(String email) async {
-    final result =
-        await _methodChannel.invokeMethod<bool>('emailLog', email);
+    final result = await _methodChannel.invokeMethod<bool>('emailLog', email);
     return result ?? false;
   }
 
   @override
   Future<bool> log(String level, String message) async {
-    final result =
-        await _methodChannel.invokeMethod<bool>('log', [level, message]);
+    final result = await _methodChannel.invokeMethod<bool>('log', [
+      level,
+      message,
+    ]);
     return result ?? false;
   }
 
@@ -355,7 +390,9 @@ class MethodChannelTracelet extends TraceletPlatform {
   @override
   Future<bool> registerHeadlessTask(List<int> callbackIds) async {
     final result = await _methodChannel.invokeMethod<bool>(
-        'registerHeadlessTask', callbackIds);
+      'registerHeadlessTask',
+      callbackIds,
+    );
     return result ?? false;
   }
 }

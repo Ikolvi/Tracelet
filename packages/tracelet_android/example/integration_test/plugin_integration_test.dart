@@ -14,7 +14,9 @@ import 'package:tracelet_android/tracelet_android.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('TraceletAndroid registers correctly', (WidgetTester tester) async {
+  testWidgets('TraceletAndroid registers correctly', (
+    WidgetTester tester,
+  ) async {
     TraceletAndroid.registerWith();
     // Plugin registration should not throw.
     expect(true, isTrue);

@@ -7,10 +7,7 @@ import 'package:meta/meta.dart';
 @immutable
 class HeadlessEvent {
   /// Creates a new [HeadlessEvent].
-  const HeadlessEvent({
-    required this.name,
-    required this.event,
-  });
+  const HeadlessEvent({required this.name, required this.event});
 
   /// The name of the event (corresponds to the EventChannel suffix).
   ///
@@ -31,21 +28,16 @@ class HeadlessEvent {
     final eventRaw = map['event'];
     final eventMap = eventRaw is Map
         ? eventRaw.map<String, Object?>(
-            (Object? k, Object? v) => MapEntry(k.toString(), v))
+            (Object? k, Object? v) => MapEntry(k.toString(), v),
+          )
         : const <String, Object?>{};
 
-    return HeadlessEvent(
-      name: map['name'] as String? ?? '',
-      event: eventMap,
-    );
+    return HeadlessEvent(name: map['name'] as String? ?? '', event: eventMap);
   }
 
   /// Serializes to a map.
   Map<String, Object?> toMap() {
-    return <String, Object?>{
-      'name': name,
-      'event': event,
-    };
+    return <String, Object?>{'name': name, 'event': event};
   }
 
   @override

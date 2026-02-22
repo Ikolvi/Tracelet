@@ -193,10 +193,9 @@ class Tracelet {
 
     // Listen to the watchPosition event stream for this watcher.
     // Store the subscription so stopWatchPosition can cancel it.
-    final sub = _getEventStream(TraceletEvents.watchPosition)
-        .map(_castToMap)
-        .map(Location.fromMap)
-        .listen(callback);
+    final sub = _getEventStream(
+      TraceletEvents.watchPosition,
+    ).map(_castToMap).map(Location.fromMap).listen(callback);
 
     _watchSubscriptions[watchId] = sub;
     return watchId;
@@ -242,9 +241,7 @@ class Tracelet {
 
   /// Add multiple [Geofence]s at once.
   static Future<bool> addGeofences(List<Geofence> geofences) {
-    return _platform.addGeofences(
-      geofences.map((g) => g.toMap()).toList(),
-    );
+    return _platform.addGeofences(geofences.map((g) => g.toMap()).toList());
   }
 
   /// Remove a geofence by its [identifier].
@@ -463,12 +460,11 @@ class Tracelet {
   ) {
     // The internal dispatcher that the native side executes as the Dart
     // entry point for the headless isolate.
-    final registrationHandle =
-        ui.PluginUtilities.getCallbackHandle(_headlessCallbackDispatcher);
+    final registrationHandle = ui.PluginUtilities.getCallbackHandle(
+      _headlessCallbackDispatcher,
+    );
     if (registrationHandle == null) {
-      throw StateError(
-        'Could not look up _headlessCallbackDispatcher handle.',
-      );
+      throw StateError('Could not look up _headlessCallbackDispatcher handle.');
     }
 
     // The user's callback that will process each HeadlessEvent.
@@ -495,10 +491,11 @@ class Tracelet {
   static StreamSubscription<Location> onLocation(
     void Function(Location) callback,
   ) {
-    return _tracked(_getEventStream(TraceletEvents.location)
-        .map(_castToMap)
-        .map(Location.fromMap)
-        .listen(callback));
+    return _tracked(
+      _getEventStream(
+        TraceletEvents.location,
+      ).map(_castToMap).map(Location.fromMap).listen(callback),
+    );
   }
 
   /// Subscribe to motion change events.
@@ -507,10 +504,11 @@ class Tracelet {
   static StreamSubscription<Location> onMotionChange(
     void Function(Location) callback,
   ) {
-    return _tracked(_getEventStream(TraceletEvents.motionChange)
-        .map(_castToMap)
-        .map(Location.fromMap)
-        .listen(callback));
+    return _tracked(
+      _getEventStream(
+        TraceletEvents.motionChange,
+      ).map(_castToMap).map(Location.fromMap).listen(callback),
+    );
   }
 
   /// Subscribe to activity change events.
@@ -519,10 +517,11 @@ class Tracelet {
   static StreamSubscription<ActivityChangeEvent> onActivityChange(
     void Function(ActivityChangeEvent) callback,
   ) {
-    return _tracked(_getEventStream(TraceletEvents.activityChange)
-        .map(_castToMap)
-        .map(ActivityChangeEvent.fromMap)
-        .listen(callback));
+    return _tracked(
+      _getEventStream(
+        TraceletEvents.activityChange,
+      ).map(_castToMap).map(ActivityChangeEvent.fromMap).listen(callback),
+    );
   }
 
   /// Subscribe to provider change events.
@@ -531,10 +530,11 @@ class Tracelet {
   static StreamSubscription<ProviderChangeEvent> onProviderChange(
     void Function(ProviderChangeEvent) callback,
   ) {
-    return _tracked(_getEventStream(TraceletEvents.providerChange)
-        .map(_castToMap)
-        .map(ProviderChangeEvent.fromMap)
-        .listen(callback));
+    return _tracked(
+      _getEventStream(
+        TraceletEvents.providerChange,
+      ).map(_castToMap).map(ProviderChangeEvent.fromMap).listen(callback),
+    );
   }
 
   /// Subscribe to geofence events.
@@ -543,10 +543,11 @@ class Tracelet {
   static StreamSubscription<GeofenceEvent> onGeofence(
     void Function(GeofenceEvent) callback,
   ) {
-    return _tracked(_getEventStream(TraceletEvents.geofence)
-        .map(_castToMap)
-        .map(GeofenceEvent.fromMap)
-        .listen(callback));
+    return _tracked(
+      _getEventStream(
+        TraceletEvents.geofence,
+      ).map(_castToMap).map(GeofenceEvent.fromMap).listen(callback),
+    );
   }
 
   /// Subscribe to geofences change events.
@@ -555,10 +556,11 @@ class Tracelet {
   static StreamSubscription<GeofencesChangeEvent> onGeofencesChange(
     void Function(GeofencesChangeEvent) callback,
   ) {
-    return _tracked(_getEventStream(TraceletEvents.geofencesChange)
-        .map(_castToMap)
-        .map(GeofencesChangeEvent.fromMap)
-        .listen(callback));
+    return _tracked(
+      _getEventStream(
+        TraceletEvents.geofencesChange,
+      ).map(_castToMap).map(GeofencesChangeEvent.fromMap).listen(callback),
+    );
   }
 
   /// Subscribe to heartbeat events.
@@ -567,10 +569,11 @@ class Tracelet {
   static StreamSubscription<HeartbeatEvent> onHeartbeat(
     void Function(HeartbeatEvent) callback,
   ) {
-    return _tracked(_getEventStream(TraceletEvents.heartbeat)
-        .map(_castToMap)
-        .map(HeartbeatEvent.fromMap)
-        .listen(callback));
+    return _tracked(
+      _getEventStream(
+        TraceletEvents.heartbeat,
+      ).map(_castToMap).map(HeartbeatEvent.fromMap).listen(callback),
+    );
   }
 
   /// Subscribe to HTTP sync events.
@@ -579,22 +582,22 @@ class Tracelet {
   static StreamSubscription<HttpEvent> onHttp(
     void Function(HttpEvent) callback,
   ) {
-    return _tracked(_getEventStream(TraceletEvents.http)
-        .map(_castToMap)
-        .map(HttpEvent.fromMap)
-        .listen(callback));
+    return _tracked(
+      _getEventStream(
+        TraceletEvents.http,
+      ).map(_castToMap).map(HttpEvent.fromMap).listen(callback),
+    );
   }
 
   /// Subscribe to schedule events.
   ///
   /// Fires when the scheduler starts or stops a tracking period.
-  static StreamSubscription<State> onSchedule(
-    void Function(State) callback,
-  ) {
-    return _tracked(_getEventStream(TraceletEvents.schedule)
-        .map(_castToMap)
-        .map(State.fromMap)
-        .listen(callback));
+  static StreamSubscription<State> onSchedule(void Function(State) callback) {
+    return _tracked(
+      _getEventStream(
+        TraceletEvents.schedule,
+      ).map(_castToMap).map(State.fromMap).listen(callback),
+    );
   }
 
   /// Subscribe to power-save mode changes.
@@ -603,17 +606,20 @@ class Tracelet {
   static StreamSubscription<bool> onPowerSaveChange(
     void Function(bool) callback,
   ) {
-    return _tracked(_getEventStream(TraceletEvents.powerSaveChange)
-        .map((event) {
-      if (event is bool) return event;
-      if (event is int) return event != 0;
-      if (event is Map) {
-        final v = event['isPowerSaveMode'] ?? event['enabled'];
-        if (v is bool) return v;
-        if (v is int) return v != 0;
-      }
-      return false;
-    }).listen(callback));
+    return _tracked(
+      _getEventStream(TraceletEvents.powerSaveChange)
+          .map((event) {
+            if (event is bool) return event;
+            if (event is int) return event != 0;
+            if (event is Map) {
+              final v = event['isPowerSaveMode'] ?? event['enabled'];
+              if (v is bool) return v;
+              if (v is int) return v != 0;
+            }
+            return false;
+          })
+          .listen(callback),
+    );
   }
 
   /// Subscribe to connectivity change events.
@@ -622,10 +628,11 @@ class Tracelet {
   static StreamSubscription<ConnectivityChangeEvent> onConnectivityChange(
     void Function(ConnectivityChangeEvent) callback,
   ) {
-    return _tracked(_getEventStream(TraceletEvents.connectivityChange)
-        .map(_castToMap)
-        .map(ConnectivityChangeEvent.fromMap)
-        .listen(callback));
+    return _tracked(
+      _getEventStream(
+        TraceletEvents.connectivityChange,
+      ).map(_castToMap).map(ConnectivityChangeEvent.fromMap).listen(callback),
+    );
   }
 
   /// Subscribe to enabled-change events.
@@ -634,17 +641,20 @@ class Tracelet {
   static StreamSubscription<bool> onEnabledChange(
     void Function(bool) callback,
   ) {
-    return _tracked(_getEventStream(TraceletEvents.enabledChange)
-        .map((event) {
-      if (event is bool) return event;
-      if (event is int) return event != 0;
-      if (event is Map) {
-        final v = event['enabled'];
-        if (v is bool) return v;
-        if (v is int) return v != 0;
-      }
-      return false;
-    }).listen(callback));
+    return _tracked(
+      _getEventStream(TraceletEvents.enabledChange)
+          .map((event) {
+            if (event is bool) return event;
+            if (event is int) return event != 0;
+            if (event is Map) {
+              final v = event['enabled'];
+              if (v is bool) return v;
+              if (v is int) return v != 0;
+            }
+            return false;
+          })
+          .listen(callback),
+    );
   }
 
   /// Subscribe to notification action events (Android only).
@@ -653,12 +663,15 @@ class Tracelet {
   static StreamSubscription<String> onNotificationAction(
     void Function(String) callback,
   ) {
-    return _tracked(_getEventStream(TraceletEvents.notificationAction)
-        .map((event) {
-      if (event is String) return event;
-      if (event is Map) return event['action']?.toString() ?? '';
-      return '';
-    }).listen(callback));
+    return _tracked(
+      _getEventStream(TraceletEvents.notificationAction)
+          .map((event) {
+            if (event is String) return event;
+            if (event is Map) return event['action']?.toString() ?? '';
+            return '';
+          })
+          .listen(callback),
+    );
   }
 
   /// Subscribe to authorization events.
@@ -667,10 +680,11 @@ class Tracelet {
   static StreamSubscription<AuthorizationEvent> onAuthorization(
     void Function(AuthorizationEvent) callback,
   ) {
-    return _tracked(_getEventStream(TraceletEvents.authorization)
-        .map(_castToMap)
-        .map(AuthorizationEvent.fromMap)
-        .listen(callback));
+    return _tracked(
+      _getEventStream(
+        TraceletEvents.authorization,
+      ).map(_castToMap).map(AuthorizationEvent.fromMap).listen(callback),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -767,7 +781,8 @@ void _headlessCallbackDispatcher() {
       final eventData = args['event'];
       final eventMap = eventData is Map
           ? eventData.map<String, Object?>(
-              (Object? k, Object? v) => MapEntry(k.toString(), v))
+              (Object? k, Object? v) => MapEntry(k.toString(), v),
+            )
           : const <String, Object?>{};
 
       final name = args['name'] as String? ?? '';

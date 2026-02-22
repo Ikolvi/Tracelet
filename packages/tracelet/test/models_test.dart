@@ -41,15 +41,16 @@ void main() {
           autoSync: false,
           batchSync: true,
         ),
-        motion: MotionConfig(
-          stopTimeout: 10,
-          isMoving: true,
-        ),
+        motion: MotionConfig(stopTimeout: 10, isMoving: true),
         geofence: GeofenceConfig(
           geofenceInitialTriggerEntry: false,
           geofenceModeKnockOut: true,
         ),
-        logger: LoggerConfig(logLevel: LogLevel.info, logMaxDays: 7, debug: true),
+        logger: LoggerConfig(
+          logLevel: LogLevel.info,
+          logMaxDays: 7,
+          debug: true,
+        ),
       );
 
       final map = config.toMap();
@@ -183,10 +184,7 @@ void main() {
         'timestamp': '2024-01-01T00:00:00Z',
         'is_moving': true,
         'odometer': 1500.0,
-        'coords': {
-          'latitude': 37.7749,
-          'longitude': -122.4194,
-        },
+        'coords': {'latitude': 37.7749, 'longitude': -122.4194},
       });
 
       expect(loc.uuid, 'abc-123');
@@ -214,14 +212,8 @@ void main() {
           'altitude_accuracy': 3.0,
           'floor': 2,
         },
-        'activity': {
-          'type': 'walking',
-          'confidence': 75,
-        },
-        'battery': {
-          'level': 0.85,
-          'is_charging': true,
-        },
+        'activity': {'type': 'walking', 'confidence': 75},
+        'battery': {'level': 0.85, 'is_charging': true},
         'event': 'motionchange',
         'extras': {'foo': 'bar'},
       });
@@ -271,10 +263,7 @@ void main() {
           'headingAccuracy': 2.0,
           'altitudeAccuracy': 3.0,
         },
-        'battery': {
-          'level': 0.5,
-          'isCharging': false,
-        },
+        'battery': {'level': 0.5, 'isCharging': false},
       });
       expect(loc.isMoving, true);
       expect(loc.coords.speedAccuracy, 1.5);
@@ -408,10 +397,7 @@ void main() {
     });
 
     test('isMoving defaults to false', () {
-      final state = State.fromMap(const {
-        'enabled': false,
-        'trackingMode': 0,
-      });
+      final state = State.fromMap(const {'enabled': false, 'trackingMode': 0});
       expect(state.isMoving, false);
     });
 
@@ -555,7 +541,11 @@ void main() {
 
     test('equality', () {
       const a = HttpEvent(success: true, status: 200);
-      const b = HttpEvent(success: true, status: 200, responseText: 'different');
+      const b = HttpEvent(
+        success: true,
+        status: 200,
+        responseText: 'different',
+      );
       expect(a, equals(b));
     });
   });

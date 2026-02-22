@@ -43,8 +43,7 @@ class AuthorizationEvent {
   }
 
   @override
-  String toString() =>
-      'AuthorizationEvent(success: $success, status: $status)';
+  String toString() => 'AuthorizationEvent(success: $success, status: $status)';
 
   @override
   bool operator ==(Object other) =>
