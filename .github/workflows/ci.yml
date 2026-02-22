@@ -75,7 +75,7 @@ jobs:
       - name: Bootstrap
         run: melos bootstrap
       - name: Build example APK
-        working-directory: packages/tracelet/example
+        working-directory: packages/tracelet_android/example
         run: flutter build apk --debug
 
   build-ios:
@@ -92,5 +92,5 @@ jobs:
       - name: Bootstrap
         run: melos bootstrap
       - name: Build example iOS
-        working-directory: packages/tracelet/example
+        working-directory: packages/tracelet_ios/example
         run: flutter build ios --no-codesign --debug
