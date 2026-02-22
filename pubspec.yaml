@@ -1,0 +1,8 @@
+name: tracelet_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.10.3
+
+dev_dependencies:
+  melos: ^6.0.0

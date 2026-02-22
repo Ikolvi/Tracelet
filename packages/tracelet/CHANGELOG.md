@@ -1,3 +1,7 @@
+## 0.2.1
+
+* Add `tracelet_android` and `tracelet_ios` as explicit dependencies to fix default plugin resolution warnings.
+
 ## 0.2.0
 
 * Add `isMoving` field to `State` model.

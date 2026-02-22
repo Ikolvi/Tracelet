@@ -1,3 +1,7 @@
+## 0.2.1
+
+* Bump Pigeon dependency from ^22.7.0 to ^26.1.7.
+
 ## 0.2.0
 
 * Add SPDX `license: Apache-2.0` identifier for pub.dev scoring.

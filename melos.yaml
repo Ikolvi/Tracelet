@@ -1,5 +1,5 @@
 name: tracelet
-repository: https://ikolvi.com
+repository: https://github.com/Ikolvi/Tracelet
 
 packages:
   - packages/**

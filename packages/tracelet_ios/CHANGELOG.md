@@ -1,3 +1,7 @@
+## 0.2.1
+
+* Version bump for coordinated release.
+
 ## 0.2.0
 
 * Add Swift Package Manager support.
