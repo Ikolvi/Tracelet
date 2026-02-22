@@ -7,6 +7,7 @@
 ///
 /// This file is internal to the `tracelet` package — it is NOT exported
 /// from the barrel `tracelet.dart`.
+library;
 
 /// Safely extract a [bool] from a platform value.
 ///

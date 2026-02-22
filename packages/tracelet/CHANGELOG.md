@@ -1,3 +1,7 @@
+## 0.2.2
+
+* Fix dangling library doc comment lint in `_helpers.dart`.
+
 ## 0.2.1
 
 * Add `tracelet_android` and `tracelet_ios` as explicit dependencies to fix default plugin resolution warnings.
