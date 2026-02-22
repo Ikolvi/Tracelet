@@ -18,7 +18,18 @@ final class ConfigManager {
     // MARK: - Persistence
 
     func setConfig(_ config: [String: Any]) -> [String: Any] {
-        cache.merge(config) { _, new in new }
+        // Dart sends a nested structure: {geo: {...}, app: {...}, http: {...}, ...}
+        // Flatten known section sub-maps into the top level first.
+        let sectionKeys: Set<String> = ["geo", "app", "http", "logger", "motion", "geofence", "persistence"]
+        var flat: [String: Any] = [:]
+        for (key, value) in config {
+            if sectionKeys.contains(key), let sub = value as? [String: Any] {
+                flat.merge(sub) { _, new in new }
+            } else {
+                flat[key] = value
+            }
+        }
+        cache.merge(flat) { _, new in new }
         saveToDisk()
         return cache
     }
@@ -30,7 +41,7 @@ final class ConfigManager {
     func reset(_ newConfig: [String: Any]?) {
         cache = defaultConfig()
         if let c = newConfig {
-            cache.merge(c) { _, new in new }
+            let _ = setConfig(c)
         }
         saveToDisk()
     }

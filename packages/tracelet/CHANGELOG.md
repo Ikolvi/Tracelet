@@ -1,3 +1,8 @@
+## 0.2.4
+
+* Bump `tracelet_android` dependency to ^0.2.2 (fixes config not applied to foreground notification).
+* Bump `tracelet_ios` dependency to ^0.2.3 (fixes config values ignored on iOS).
+
 ## 0.2.3
 
 * Bump `tracelet_ios` dependency to ^0.2.2 (fixes iOS `ConfigManager` crash).

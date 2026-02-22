@@ -110,16 +110,42 @@ class ConfigManager(context: Context) {
      */
     fun setConfig(newConfig: Map<String, Any?>): Map<String, Any?> {
         val merged = configCache.toMutableMap()
-        // Flatten foregroundService sub-map
-        val fgService = newConfig["foregroundService"]
+
+        // Dart sends a nested structure: {geo: {...}, app: {...}, http: {...}, ...}
+        // Flatten known section sub-maps into the top level first.
+        val sectionKeys = setOf("geo", "app", "http", "logger", "motion", "geofence", "persistence")
+        val flat = mutableMapOf<String, Any?>()
+        for ((key, value) in newConfig) {
+            if (key in sectionKeys && value is Map<*, *>) {
+                @Suppress("UNCHECKED_CAST")
+                for ((k, v) in value as Map<String, Any?>) {
+                    flat[k] = v
+                }
+            } else {
+                flat[key] = value
+            }
+        }
+
+        // Flatten foregroundService sub-map (nested inside app section) with fg_ prefix
+        val fgService = flat["foregroundService"]
         if (fgService is Map<*, *>) {
             @Suppress("UNCHECKED_CAST")
             for ((k, v) in fgService as Map<String, Any?>) {
                 merged["fg_$k"] = v
             }
         }
-        for ((key, value) in newConfig) {
-            if (key == "foregroundService") continue
+
+        // Flatten filter sub-map (nested inside geo section)
+        val filter = flat["filter"]
+        if (filter is Map<*, *>) {
+            @Suppress("UNCHECKED_CAST")
+            for ((k, v) in filter as Map<String, Any?>) {
+                merged[k] = v
+            }
+        }
+
+        for ((key, value) in flat) {
+            if (key == "foregroundService" || key == "filter") continue
             if (key == "schedule" && value is List<*>) {
                 merged[key] = value.filterIsInstance<String>()
             } else {

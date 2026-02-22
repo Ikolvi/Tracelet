@@ -1,3 +1,7 @@
+## 0.2.3
+
+* Fix `ConfigManager.setConfig()` — flatten nested section sub-maps (`geo`, `app`, `http`, etc.) sent by Dart before processing. Fixes all user config values being silently ignored in favor of defaults.
+
 ## 0.2.2
 
 * Fix duplicate keys in `ConfigManager.defaultConfig()` dictionary literal causing runtime crash.
