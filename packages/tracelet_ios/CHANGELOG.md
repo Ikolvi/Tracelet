@@ -1,3 +1,7 @@
+## 0.2.4
+
+* Fix LICENSE file format for proper SPDX detection on pub.dev.
+
 ## 0.2.3
 
 * Fix `ConfigManager.setConfig()` — flatten nested section sub-maps (`geo`, `app`, `http`, etc.) sent by Dart before processing. Fixes all user config values being silently ignored in favor of defaults.

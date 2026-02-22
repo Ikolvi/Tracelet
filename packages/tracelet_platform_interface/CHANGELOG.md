@@ -1,3 +1,7 @@
+## 0.2.2
+
+* Fix LICENSE file format for proper SPDX detection on pub.dev.
+
 ## 0.2.1
 
 * Bump Pigeon dependency from ^22.7.0 to ^26.1.7.

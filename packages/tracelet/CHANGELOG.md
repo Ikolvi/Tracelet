@@ -1,3 +1,9 @@
+## 0.2.5
+
+* Fix LICENSE file format for proper SPDX detection on pub.dev.
+* Bump `tracelet_android` dependency to ^0.2.3.
+* Bump `tracelet_ios` dependency to ^0.2.4.
+
 ## 0.2.4
 
 * Bump `tracelet_android` dependency to ^0.2.2 (fixes config not applied to foreground notification).

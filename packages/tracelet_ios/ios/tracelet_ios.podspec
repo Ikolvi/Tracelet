@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'tracelet_ios'
-  s.version          = '0.2.3'
+  s.version          = '0.2.4'
   s.summary          = 'iOS implementation of the Tracelet background geolocation plugin.'
   s.description      = <<-DESC
 Production-grade background geolocation for Flutter. Battery-conscious
