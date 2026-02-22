@@ -1,5 +1,7 @@
 import 'package:meta/meta.dart';
 
+import '_helpers.dart';
+
 /// Information about the device's available sensors.
 ///
 /// Reports which motion-related sensors are available on the device.
@@ -34,12 +36,12 @@ class Sensors {
     return Sensors(
       platform: map['platform'] as String? ?? 'unknown',
       accelerometer:
-          _ensureBool(map['accelerometer'], fallback: false),
-      gyroscope: _ensureBool(map['gyroscope'], fallback: false),
+          ensureBool(map['accelerometer'], fallback: false),
+      gyroscope: ensureBool(map['gyroscope'], fallback: false),
       magnetometer:
-          _ensureBool(map['magnetometer'], fallback: false),
+          ensureBool(map['magnetometer'], fallback: false),
       significantMotion:
-          _ensureBool(map['significantMotion'], fallback: false),
+          ensureBool(map['significantMotion'], fallback: false),
     );
   }
 
@@ -68,10 +70,4 @@ class Sensors {
 
   @override
   int get hashCode => platform.hashCode;
-}
-
-bool _ensureBool(Object? value, {required bool fallback}) {
-  if (value is bool) return value;
-  if (value is int) return value != 0;
-  return fallback;
 }

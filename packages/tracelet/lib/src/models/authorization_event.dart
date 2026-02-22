@@ -1,5 +1,7 @@
 import 'package:meta/meta.dart';
 
+import '_helpers.dart';
+
 /// Event fired when the HTTP Authorization token exchange occurs.
 ///
 /// Used for OAuth-style token refresh. The server response is included
@@ -25,8 +27,8 @@ class AuthorizationEvent {
   /// Creates an [AuthorizationEvent] from a platform map.
   factory AuthorizationEvent.fromMap(Map<String, Object?> map) {
     return AuthorizationEvent(
-      success: _ensureBool(map['success'], fallback: false),
-      status: _ensureInt(map['status'], fallback: 0),
+      success: ensureBool(map['success'], fallback: false),
+      status: ensureInt(map['status'], fallback: 0),
       response: map['response'] as String? ?? '',
     );
   }
@@ -54,16 +56,4 @@ class AuthorizationEvent {
 
   @override
   int get hashCode => Object.hash(success, status);
-}
-
-bool _ensureBool(Object? value, {required bool fallback}) {
-  if (value is bool) return value;
-  if (value is int) return value != 0;
-  return fallback;
-}
-
-int _ensureInt(Object? value, {required int fallback}) {
-  if (value is int) return value;
-  if (value is double) return value.toInt();
-  return fallback;
 }

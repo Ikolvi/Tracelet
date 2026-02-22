@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 
+import '_helpers.dart';
 import 'config.dart';
 
 /// The current state of the Tracelet plugin.
@@ -13,6 +14,7 @@ class State {
   const State({
     required this.enabled,
     required this.trackingMode,
+    this.isMoving = false,
     this.schedulerEnabled = false,
     this.odometer = 0.0,
     this.didLaunchInBackground = false,
@@ -25,6 +27,14 @@ class State {
 
   /// The current tracking mode.
   final TrackingMode trackingMode;
+
+  /// Whether the device is currently in a moving state.
+  ///
+  /// This reflects the motion-detection engine's current assessment. When
+  /// `true`, the plugin is recording locations at the configured moving rate.
+  /// When `false`, the plugin is in stationary mode using the geofence-based
+  /// exit trigger.
+  final bool isMoving;
 
   /// Whether the scheduler is active.
   final bool schedulerEnabled;
@@ -44,20 +54,22 @@ class State {
 
   /// Creates a [State] from a platform map.
   factory State.fromMap(Map<String, Object?> map) {
-    final configMap = _safeMap(map['config']);
+    final configMap = safeMap(map['config']);
 
     return State(
-      enabled: _ensureBool(map['enabled'], fallback: false),
+      enabled: ensureBool(map['enabled'], fallback: false),
       trackingMode: TrackingMode.values[
-          _ensureInt(map['trackingMode'], fallback: 0)
+          ensureInt(map['trackingMode'], fallback: 0)
               .clamp(0, TrackingMode.values.length - 1)],
+      isMoving:
+          ensureBool(map['isMoving'] ?? map['is_moving'], fallback: false),
       schedulerEnabled:
-          _ensureBool(map['schedulerEnabled'], fallback: false),
-      odometer: _ensureDouble(map['odometer'], fallback: 0.0),
+          ensureBool(map['schedulerEnabled'], fallback: false),
+      odometer: ensureDouble(map['odometer'], fallback: 0.0),
       didLaunchInBackground:
-          _ensureBool(map['didLaunchInBackground'], fallback: false),
+          ensureBool(map['didLaunchInBackground'], fallback: false),
       didDeviceReboot:
-          _ensureBool(map['didDeviceReboot'], fallback: false),
+          ensureBool(map['didDeviceReboot'], fallback: false),
       config: configMap != null ? Config.fromMap(configMap) : null,
     );
   }
@@ -67,6 +79,7 @@ class State {
     return <String, Object?>{
       'enabled': enabled,
       'trackingMode': trackingMode.index,
+      'isMoving': isMoving,
       'schedulerEnabled': schedulerEnabled,
       'odometer': odometer,
       'didLaunchInBackground': didLaunchInBackground,
@@ -78,7 +91,7 @@ class State {
   @override
   String toString() =>
       'State(enabled: $enabled, trackingMode: $trackingMode, '
-      'odometer: ${odometer.toStringAsFixed(1)}m)';
+      'isMoving: $isMoving, odometer: ${odometer.toStringAsFixed(1)}m)';
 
   @override
   bool operator ==(Object other) =>
@@ -87,37 +100,14 @@ class State {
           runtimeType == other.runtimeType &&
           enabled == other.enabled &&
           trackingMode == other.trackingMode &&
-          schedulerEnabled == other.schedulerEnabled;
+          isMoving == other.isMoving &&
+          schedulerEnabled == other.schedulerEnabled &&
+          odometer == other.odometer &&
+          didLaunchInBackground == other.didLaunchInBackground &&
+          didDeviceReboot == other.didDeviceReboot &&
+          config == other.config;
 
   @override
-  int get hashCode => Object.hash(enabled, trackingMode, schedulerEnabled);
-}
-
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
-
-bool _ensureBool(Object? value, {required bool fallback}) {
-  if (value is bool) return value;
-  if (value is int) return value != 0;
-  return fallback;
-}
-
-int _ensureInt(Object? value, {required int fallback}) {
-  if (value is int) return value;
-  if (value is double) return value.toInt();
-  return fallback;
-}
-
-double _ensureDouble(Object? value, {required double fallback}) {
-  if (value is double) return value;
-  if (value is int) return value.toDouble();
-  return fallback;
-}
-
-Map<String, Object?>? _safeMap(Object? value) {
-  if (value == null) return null;
-  if (value is Map<String, Object?>) return value;
-  if (value is Map) return Map<String, Object?>.from(value);
-  return null;
+  int get hashCode => Object.hash(enabled, trackingMode, isMoving,
+      schedulerEnabled, odometer, didLaunchInBackground, didDeviceReboot);
 }

@@ -18,7 +18,7 @@ void main() {
       expect(config.http.autoSync, true);
       expect(config.http.url, isNull);
       expect(config.http.method, HttpMethod.post);
-      expect(config.logger.logLevel, LogLevel.off);
+      expect(config.logger.logLevel, LogLevel.info);
       expect(config.motion.stopTimeout, 5);
       expect(config.geofence.geofenceInitialTriggerEntry, true);
     });
@@ -86,6 +86,90 @@ void main() {
       final config = Config.fromMap(const {});
       expect(config.geo.distanceFilter, 10.0);
       expect(config.logger.debug, false);
+    });
+
+    test('toMap produces nested map (no flat spread collision)', () {
+      const config = Config(
+        http: HttpConfig(extras: {'apiKey': 'abc'}),
+        persistence: PersistenceConfig(extras: {'device': 'test'}),
+      );
+      final map = config.toMap();
+
+      // Config.toMap() should produce nested keys
+      expect(map.containsKey('http'), true);
+      expect(map.containsKey('persistence'), true);
+
+      // Each sub-config extras should be independent
+      final httpMap = map['http'] as Map<String, Object?>;
+      final persistenceMap = map['persistence'] as Map<String, Object?>;
+      expect(httpMap['extras'], {'apiKey': 'abc'});
+      expect(persistenceMap['extras'], {'device': 'test'});
+    });
+
+    test('round-trip preserves both http and persistence extras', () {
+      const config = Config(
+        http: HttpConfig(extras: {'httpKey': 'httpVal'}),
+        persistence: PersistenceConfig(extras: {'dbKey': 'dbVal'}),
+      );
+      final restored = Config.fromMap(config.toMap());
+      expect(restored.http.extras, {'httpKey': 'httpVal'});
+      expect(restored.persistence.extras, {'dbKey': 'dbVal'});
+    });
+
+    test('fromMap supports both nested and flat formats', () {
+      // Flat format
+      final flat = Config.fromMap(const {
+        'distanceFilter': 42.0,
+        'heartbeatInterval': 90,
+      });
+      expect(flat.geo.distanceFilter, 42.0);
+      expect(flat.app.heartbeatInterval, 90);
+
+      // Nested format
+      final nested = Config.fromMap(const {
+        'geo': {'distanceFilter': 42.0},
+        'app': {'heartbeatInterval': 90},
+      });
+      expect(nested.geo.distanceFilter, 42.0);
+      expect(nested.app.heartbeatInterval, 90);
+    });
+
+    test('HttpConfig equality includes all scalar fields', () {
+      const a = HttpConfig(
+        url: 'https://a.com',
+        method: HttpMethod.post,
+        autoSync: true,
+        maxBatchSize: 100,
+      );
+      const b = HttpConfig(
+        url: 'https://a.com',
+        method: HttpMethod.post,
+        autoSync: true,
+        maxBatchSize: 200,
+      );
+      expect(a, isNot(equals(b)));
+    });
+
+    test('ForegroundServiceConfig equality includes all fields', () {
+      const a = ForegroundServiceConfig(
+        channelId: 'ch1',
+        notificationTitle: 'T',
+        notificationText: 'B',
+        notificationPriority: 0,
+      );
+      const b = ForegroundServiceConfig(
+        channelId: 'ch1',
+        notificationTitle: 'T',
+        notificationText: 'B',
+        notificationPriority: 2,
+      );
+      expect(a, isNot(equals(b)));
+    });
+
+    test('MotionConfig equality includes stopDetectionDelay', () {
+      const a = MotionConfig(stopDetectionDelay: 0);
+      const b = MotionConfig(stopDetectionDelay: 10);
+      expect(a, isNot(equals(b)));
     });
   });
 
@@ -310,6 +394,7 @@ void main() {
       final state = State.fromMap(const {
         'enabled': true,
         'trackingMode': 1,
+        'isMoving': true,
         'schedulerEnabled': true,
         'odometer': 5000.0,
         'didLaunchInBackground': false,
@@ -317,20 +402,69 @@ void main() {
       });
       expect(state.enabled, true);
       expect(state.trackingMode, TrackingMode.geofences);
+      expect(state.isMoving, true);
       expect(state.schedulerEnabled, true);
       expect(state.odometer, 5000.0);
+    });
+
+    test('isMoving defaults to false', () {
+      final state = State.fromMap(const {
+        'enabled': false,
+        'trackingMode': 0,
+      });
+      expect(state.isMoving, false);
+    });
+
+    test('isMoving accepts snake_case key', () {
+      final state = State.fromMap(const {
+        'enabled': true,
+        'trackingMode': 0,
+        'is_moving': true,
+      });
+      expect(state.isMoving, true);
     });
 
     test('toMap round-trip', () {
       final state = State.fromMap(const {
         'enabled': false,
         'trackingMode': 0,
+        'isMoving': true,
         'schedulerEnabled': false,
         'odometer': 0.0,
       });
       final map = state.toMap();
       expect(map['enabled'], false);
       expect(map['trackingMode'], 0);
+      expect(map['isMoving'], true);
+
+      // Round-trip back
+      final restored = State.fromMap(map);
+      expect(restored.isMoving, true);
+      expect(restored.enabled, false);
+    });
+
+    test('fromMap handles missing keys gracefully', () {
+      final state = State.fromMap(const {});
+      expect(state.enabled, false);
+      expect(state.trackingMode, TrackingMode.location);
+      expect(state.isMoving, false);
+      expect(state.odometer, 0.0);
+    });
+
+    test('equality includes all fields', () {
+      const a = State(
+        enabled: true,
+        trackingMode: TrackingMode.location,
+        isMoving: true,
+        odometer: 100.0,
+      );
+      const b = State(
+        enabled: true,
+        trackingMode: TrackingMode.location,
+        isMoving: false,
+        odometer: 100.0,
+      );
+      expect(a, isNot(equals(b)));
     });
   });
 

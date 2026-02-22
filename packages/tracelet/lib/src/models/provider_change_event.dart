@@ -1,6 +1,8 @@
 import 'package:meta/meta.dart';
 import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 
+import '_helpers.dart';
+
 /// Event fired when the location provider state changes.
 ///
 /// Reports whether GPS/network providers are enabled, the authorization
@@ -34,14 +36,14 @@ class ProviderChangeEvent {
   /// Creates a [ProviderChangeEvent] from a platform map.
   factory ProviderChangeEvent.fromMap(Map<String, Object?> map) {
     return ProviderChangeEvent(
-      enabled: _ensureBool(map['enabled'], fallback: false),
+      enabled: ensureBool(map['enabled'], fallback: false),
       status: AuthorizationStatus.values[
-          _ensureInt(map['status'], fallback: 0)
+          ensureInt(map['status'], fallback: 0)
               .clamp(0, AuthorizationStatus.values.length - 1)],
-      gps: _ensureBool(map['gps'], fallback: false),
-      network: _ensureBool(map['network'], fallback: false),
+      gps: ensureBool(map['gps'], fallback: false),
+      network: ensureBool(map['network'], fallback: false),
       accuracyAuthorization: AccuracyAuthorization.values[
-          _ensureInt(map['accuracyAuthorization'], fallback: 0)
+          ensureInt(map['accuracyAuthorization'], fallback: 0)
               .clamp(0, AccuracyAuthorization.values.length - 1)],
     );
   }
@@ -72,20 +74,4 @@ class ProviderChangeEvent {
 
   @override
   int get hashCode => Object.hash(enabled, status);
-}
-
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
-
-bool _ensureBool(Object? value, {required bool fallback}) {
-  if (value is bool) return value;
-  if (value is int) return value != 0;
-  return fallback;
-}
-
-int _ensureInt(Object? value, {required int fallback}) {
-  if (value is int) return value;
-  if (value is double) return value.toInt();
-  return fallback;
 }

@@ -1,13 +1,7 @@
 import 'package:meta/meta.dart';
 
+import '_helpers.dart';
 import 'location.dart';
-
-Map<String, Object?>? _safeMap(Object? value) {
-  if (value == null) return null;
-  if (value is Map<String, Object?>) return value;
-  if (value is Map) return Map<String, Object?>.from(value);
-  return null;
-}
 
 /// Event fired on each heartbeat interval.
 ///
@@ -25,7 +19,7 @@ class HeartbeatEvent {
 
   /// Creates a [HeartbeatEvent] from a platform map.
   factory HeartbeatEvent.fromMap(Map<String, Object?> map) {
-    final locationMap = _safeMap(map['location']) ?? const <String, Object?>{};
+    final locationMap = safeMap(map['location']) ?? const <String, Object?>{};
 
     return HeartbeatEvent(
       location: Location.fromMap(locationMap),

@@ -1,41 +1,7 @@
 import 'package:meta/meta.dart';
 import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 
-/// Helper to safely extract a [bool] from a map value.
-///
-/// Handles int-to-bool coercion (iOS returns 0/1 for bools).
-bool _ensureBool(Object? value, {required bool fallback}) {
-  if (value is bool) return value;
-  if (value is int) return value != 0;
-  return fallback;
-}
-
-/// Helper to safely extract an [int] from a map value.
-int _ensureInt(Object? value, {required int fallback}) {
-  if (value is int) return value;
-  if (value is double) return value.toInt();
-  if (value is String) return int.tryParse(value) ?? fallback;
-  return fallback;
-}
-
-/// Helper to safely extract a [double] from a map value.
-double _ensureDouble(Object? value, {required double fallback}) {
-  if (value is double) return value;
-  if (value is int) return value.toDouble();
-  if (value is String) return double.tryParse(value) ?? fallback;
-  return fallback;
-}
-
-/// Safely cast a platform value to `Map<String, Object?>?`.
-///
-/// iOS platform channels return `Map<Object?, Object?>` which cannot be
-/// directly cast to `Map<String, Object?>`. This helper handles both types.
-Map<String, Object?>? _safeMap(Object? value) {
-  if (value == null) return null;
-  if (value is Map<String, Object?>) return value;
-  if (value is Map) return Map<String, Object?>.from(value);
-  return null;
-}
+import '_helpers.dart';
 
 /// Top-level compound configuration for Tracelet.
 ///
@@ -98,13 +64,13 @@ class Config {
   /// - **Nested**: `{'geo': {...}, 'app': {...}, ...}`
   factory Config.fromMap(Map<String, Object?> map) {
     // Try nested first, fall back to flat
-    final geoMap = _safeMap(map['geo']);
-    final appMap = _safeMap(map['app']);
-    final httpMap = _safeMap(map['http']);
-    final loggerMap = _safeMap(map['logger']);
-    final motionMap = _safeMap(map['motion']);
-    final geofenceMap = _safeMap(map['geofence']);
-    final persistenceMap = _safeMap(map['persistence']);
+    final geoMap = safeMap(map['geo']);
+    final appMap = safeMap(map['app']);
+    final httpMap = safeMap(map['http']);
+    final loggerMap = safeMap(map['logger']);
+    final motionMap = safeMap(map['motion']);
+    final geofenceMap = safeMap(map['geofence']);
+    final persistenceMap = safeMap(map['persistence']);
 
     return Config(
       geo: geoMap != null ? GeoConfig.fromMap(geoMap) : GeoConfig.fromMap(map),
@@ -126,16 +92,16 @@ class Config {
     );
   }
 
-  /// Serializes to a flat map suitable for platform channel transmission.
+  /// Serializes to a nested map suitable for platform channel transmission.
   Map<String, Object?> toMap() {
     return <String, Object?>{
-      ...geo.toMap(),
-      ...app.toMap(),
-      ...http.toMap(),
-      ...logger.toMap(),
-      ...motion.toMap(),
-      ...geofence.toMap(),
-      ...persistence.toMap(),
+      'geo': geo.toMap(),
+      'app': app.toMap(),
+      'http': http.toMap(),
+      'logger': logger.toMap(),
+      'motion': motion.toMap(),
+      'geofence': geofence.toMap(),
+      'persistence': persistence.toMap(),
     };
   }
 
@@ -306,51 +272,51 @@ class GeoConfig {
 
   /// Creates a [GeoConfig] from a map.
   factory GeoConfig.fromMap(Map<String, Object?> map) {
-    final filterMap = _safeMap(map['filter']);
+    final filterMap = safeMap(map['filter']);
     return GeoConfig(
       desiredAccuracy: DesiredAccuracy.values[
-          _ensureInt(map['desiredAccuracy'], fallback: 0)
+          ensureInt(map['desiredAccuracy'], fallback: 0)
               .clamp(0, DesiredAccuracy.values.length - 1)],
       distanceFilter:
-          _ensureDouble(map['distanceFilter'], fallback: 10.0),
+          ensureDouble(map['distanceFilter'], fallback: 10.0),
       locationUpdateInterval:
-          _ensureInt(map['locationUpdateInterval'], fallback: 1000),
+          ensureInt(map['locationUpdateInterval'], fallback: 1000),
       fastestLocationUpdateInterval:
-          _ensureInt(map['fastestLocationUpdateInterval'], fallback: 500),
+          ensureInt(map['fastestLocationUpdateInterval'], fallback: 500),
       stationaryRadius:
-          _ensureDouble(map['stationaryRadius'], fallback: 25.0),
-      locationTimeout: _ensureInt(map['locationTimeout'], fallback: 60),
+          ensureDouble(map['stationaryRadius'], fallback: 25.0),
+      locationTimeout: ensureInt(map['locationTimeout'], fallback: 60),
       activityType: LocationActivityType.values[
-          _ensureInt(map['activityType'], fallback: 0)
+          ensureInt(map['activityType'], fallback: 0)
               .clamp(0, LocationActivityType.values.length - 1)],
       disableElasticity:
-          _ensureBool(map['disableElasticity'], fallback: false),
+          ensureBool(map['disableElasticity'], fallback: false),
       elasticityMultiplier:
-          _ensureDouble(map['elasticityMultiplier'], fallback: 1.0),
+          ensureDouble(map['elasticityMultiplier'], fallback: 1.0),
       stopAfterElapsedMinutes:
-          _ensureInt(map['stopAfterElapsedMinutes'], fallback: -1),
-      deferTime: _ensureInt(map['deferTime'], fallback: 0),
+          ensureInt(map['stopAfterElapsedMinutes'], fallback: -1),
+      deferTime: ensureInt(map['deferTime'], fallback: 0),
       allowIdenticalLocations:
-          _ensureBool(map['allowIdenticalLocations'], fallback: false),
+          ensureBool(map['allowIdenticalLocations'], fallback: false),
       geofenceModeHighAccuracy:
-          _ensureBool(map['geofenceModeHighAccuracy'], fallback: false),
+          ensureBool(map['geofenceModeHighAccuracy'], fallback: false),
       maxMonitoredGeofences:
-          _ensureInt(map['maxMonitoredGeofences'], fallback: -1),
+          ensureInt(map['maxMonitoredGeofences'], fallback: -1),
       useSignificantChangesOnly:
-          _ensureBool(map['useSignificantChangesOnly'], fallback: false),
-      showsBackgroundLocationIndicator: _ensureBool(
+          ensureBool(map['useSignificantChangesOnly'], fallback: false),
+      showsBackgroundLocationIndicator: ensureBool(
           map['showsBackgroundLocationIndicator'],
           fallback: false),
-      pausesLocationUpdatesAutomatically: _ensureBool(
+      pausesLocationUpdatesAutomatically: ensureBool(
           map['pausesLocationUpdatesAutomatically'],
           fallback: false),
       locationAuthorizationRequest:
           map['locationAuthorizationRequest'] as String? ?? 'Always',
-      disableLocationAuthorizationAlert: _ensureBool(
+      disableLocationAuthorizationAlert: ensureBool(
           map['disableLocationAuthorizationAlert'],
           fallback: false),
       enableTimestampMeta:
-          _ensureBool(map['enableTimestampMeta'], fallback: false),
+          ensureBool(map['enableTimestampMeta'], fallback: false),
       filter:
           filterMap != null ? LocationFilter.fromMap(filterMap) : null,
     );
@@ -399,32 +365,36 @@ class GeoConfig {
           desiredAccuracy == other.desiredAccuracy &&
           distanceFilter == other.distanceFilter &&
           locationUpdateInterval == other.locationUpdateInterval &&
-          fastestLocationUpdateInterval ==
-              other.fastestLocationUpdateInterval &&
+          fastestLocationUpdateInterval == other.fastestLocationUpdateInterval &&
           stationaryRadius == other.stationaryRadius &&
           locationTimeout == other.locationTimeout &&
           activityType == other.activityType &&
           disableElasticity == other.disableElasticity &&
           elasticityMultiplier == other.elasticityMultiplier &&
           stopAfterElapsedMinutes == other.stopAfterElapsedMinutes &&
+          deferTime == other.deferTime &&
+          allowIdenticalLocations == other.allowIdenticalLocations &&
+          geofenceModeHighAccuracy == other.geofenceModeHighAccuracy &&
+          maxMonitoredGeofences == other.maxMonitoredGeofences &&
+          useSignificantChangesOnly == other.useSignificantChangesOnly &&
+          showsBackgroundLocationIndicator == other.showsBackgroundLocationIndicator &&
+          pausesLocationUpdatesAutomatically == other.pausesLocationUpdatesAutomatically &&
+          locationAuthorizationRequest == other.locationAuthorizationRequest &&
+          disableLocationAuthorizationAlert == other.disableLocationAuthorizationAlert &&
           enableTimestampMeta == other.enableTimestampMeta &&
           filter == other.filter;
 
   @override
-  int get hashCode => Object.hash(
-        desiredAccuracy,
-        distanceFilter,
-        locationUpdateInterval,
-        fastestLocationUpdateInterval,
-        stationaryRadius,
-        locationTimeout,
-        activityType,
-        disableElasticity,
-        elasticityMultiplier,
-        stopAfterElapsedMinutes,
-        enableTimestampMeta,
-        filter,
-      );
+  int get hashCode => Object.hashAll(<Object?>[
+      desiredAccuracy, distanceFilter, locationUpdateInterval,
+      fastestLocationUpdateInterval, stationaryRadius, locationTimeout,
+      activityType, disableElasticity, elasticityMultiplier,
+      stopAfterElapsedMinutes, deferTime, allowIdenticalLocations,
+      geofenceModeHighAccuracy, maxMonitoredGeofences,
+      useSignificantChangesOnly, showsBackgroundLocationIndicator,
+      pausesLocationUpdatesAutomatically, locationAuthorizationRequest,
+      disableLocationAuthorizationAlert, enableTimestampMeta, filter,
+    ]);
 }
 
 // ---------------------------------------------------------------------------
@@ -482,14 +452,14 @@ class LocationFilter {
   factory LocationFilter.fromMap(Map<String, Object?> map) {
     return LocationFilter(
       policy: LocationFilterPolicy.values[
-          _ensureInt(map['policy'], fallback: 0)
+          ensureInt(map['policy'], fallback: 0)
               .clamp(0, LocationFilterPolicy.values.length - 1)],
       maxImpliedSpeed:
-          _ensureInt(map['maxImpliedSpeed'], fallback: 0),
+          ensureInt(map['maxImpliedSpeed'], fallback: 0),
       odometerAccuracyThreshold:
-          _ensureInt(map['odometerAccuracyThreshold'], fallback: 0),
+          ensureInt(map['odometerAccuracyThreshold'], fallback: 0),
       trackingAccuracyThreshold:
-          _ensureInt(map['trackingAccuracyThreshold'], fallback: 0),
+          ensureInt(map['trackingAccuracyThreshold'], fallback: 0),
     );
   }
 
@@ -597,20 +567,20 @@ class AppConfig {
       }
     }
 
-    final fgMap = _safeMap(map['foregroundService']);
-    final rationaleMap = _safeMap(map['backgroundPermissionRationale']);
+    final fgMap = safeMap(map['foregroundService']);
+    final rationaleMap = safeMap(map['backgroundPermissionRationale']);
 
     return AppConfig(
       stopOnTerminate:
-          _ensureBool(map['stopOnTerminate'], fallback: true),
-      startOnBoot: _ensureBool(map['startOnBoot'], fallback: false),
+          ensureBool(map['stopOnTerminate'], fallback: true),
+      startOnBoot: ensureBool(map['startOnBoot'], fallback: false),
       heartbeatInterval:
-          _ensureInt(map['heartbeatInterval'], fallback: 60),
+          ensureInt(map['heartbeatInterval'], fallback: 60),
       schedule: scheduleList,
       scheduleUseAlarmManager:
-          _ensureBool(map['scheduleUseAlarmManager'], fallback: false),
+          ensureBool(map['scheduleUseAlarmManager'], fallback: false),
       preventSuspend:
-          _ensureBool(map['preventSuspend'], fallback: false),
+          ensureBool(map['preventSuspend'], fallback: false),
       backgroundPermissionRationale: rationaleMap != null
           ? PermissionRationale.fromMap(rationaleMap)
           : null,
@@ -652,12 +622,14 @@ class AppConfig {
           heartbeatInterval == other.heartbeatInterval &&
           scheduleUseAlarmManager == other.scheduleUseAlarmManager &&
           preventSuspend == other.preventSuspend &&
+          backgroundPermissionRationale == other.backgroundPermissionRationale &&
           foregroundService == other.foregroundService;
 
   @override
   int get hashCode =>
       Object.hash(stopOnTerminate, startOnBoot, heartbeatInterval,
-          scheduleUseAlarmManager, preventSuspend, foregroundService);
+          scheduleUseAlarmManager, preventSuspend,
+          backgroundPermissionRationale, foregroundService);
 }
 
 // ---------------------------------------------------------------------------
@@ -731,9 +703,9 @@ class ForegroundServiceConfig {
       notificationSmallIcon: map['notificationSmallIcon'] as String?,
       notificationLargeIcon: map['notificationLargeIcon'] as String?,
       notificationPriority:
-          _ensureInt(map['notificationPriority'], fallback: 0),
+          ensureInt(map['notificationPriority'], fallback: 0),
       notificationOngoing:
-          _ensureBool(map['notificationOngoing'], fallback: true),
+          ensureBool(map['notificationOngoing'], fallback: true),
       actions: actionsList,
     );
   }
@@ -760,12 +732,20 @@ class ForegroundServiceConfig {
       other is ForegroundServiceConfig &&
           runtimeType == other.runtimeType &&
           channelId == other.channelId &&
+          channelName == other.channelName &&
           notificationTitle == other.notificationTitle &&
-          notificationText == other.notificationText;
+          notificationText == other.notificationText &&
+          notificationColor == other.notificationColor &&
+          notificationSmallIcon == other.notificationSmallIcon &&
+          notificationLargeIcon == other.notificationLargeIcon &&
+          notificationPriority == other.notificationPriority &&
+          notificationOngoing == other.notificationOngoing;
 
   @override
-  int get hashCode =>
-      Object.hash(channelId, notificationTitle, notificationText);
+  int get hashCode => Object.hash(
+      channelId, channelName, notificationTitle, notificationText,
+      notificationColor, notificationSmallIcon, notificationLargeIcon,
+      notificationPriority, notificationOngoing);
 }
 
 // ---------------------------------------------------------------------------
@@ -845,24 +825,24 @@ class HttpConfig {
     return HttpConfig(
       url: map['url'] as String?,
       method: HttpMethod
-          .values[_ensureInt(map['method'], fallback: 0)
+          .values[ensureInt(map['method'], fallback: 0)
               .clamp(0, HttpMethod.values.length - 1)],
-      headers: _castStringMap(map['headers']),
+      headers: castStringMap(map['headers']),
       httpRootProperty:
           map['httpRootProperty'] as String? ?? 'location',
-      batchSync: _ensureBool(map['batchSync'], fallback: false),
-      maxBatchSize: _ensureInt(map['maxBatchSize'], fallback: 250),
-      autoSync: _ensureBool(map['autoSync'], fallback: true),
+      batchSync: ensureBool(map['batchSync'], fallback: false),
+      maxBatchSize: ensureInt(map['maxBatchSize'], fallback: 250),
+      autoSync: ensureBool(map['autoSync'], fallback: true),
       autoSyncThreshold:
-          _ensureInt(map['autoSyncThreshold'], fallback: 0),
-      httpTimeout: _ensureInt(map['httpTimeout'], fallback: 60000),
-      params: _castObjectMap(map['params']),
+          ensureInt(map['autoSyncThreshold'], fallback: 0),
+      httpTimeout: ensureInt(map['httpTimeout'], fallback: 60000),
+      params: castObjectMap(map['params']),
       locationsOrderDirection: LocationOrder
-          .values[_ensureInt(map['locationsOrderDirection'], fallback: 0)
+          .values[ensureInt(map['locationsOrderDirection'], fallback: 0)
               .clamp(0, LocationOrder.values.length - 1)],
-      extras: _castObjectMap(map['extras']),
+      extras: castObjectMap(map['extras']),
       disableAutoSyncOnCellular:
-          _ensureBool(map['disableAutoSyncOnCellular'], fallback: false),
+          ensureBool(map['disableAutoSyncOnCellular'], fallback: false),
     );
   }
 
@@ -896,10 +876,20 @@ class HttpConfig {
           runtimeType == other.runtimeType &&
           url == other.url &&
           method == other.method &&
-          autoSync == other.autoSync;
+          httpRootProperty == other.httpRootProperty &&
+          batchSync == other.batchSync &&
+          maxBatchSize == other.maxBatchSize &&
+          autoSync == other.autoSync &&
+          autoSyncThreshold == other.autoSyncThreshold &&
+          httpTimeout == other.httpTimeout &&
+          locationsOrderDirection == other.locationsOrderDirection &&
+          disableAutoSyncOnCellular == other.disableAutoSyncOnCellular;
 
   @override
-  int get hashCode => Object.hash(url, method, autoSync);
+  int get hashCode => Object.hash(
+      url, method, httpRootProperty, batchSync, maxBatchSize,
+      autoSync, autoSyncThreshold, httpTimeout,
+      locationsOrderDirection, disableAutoSyncOnCellular);
 }
 
 // ---------------------------------------------------------------------------
@@ -911,12 +901,12 @@ class HttpConfig {
 class LoggerConfig {
   /// Creates a new [LoggerConfig] with optional overrides.
   const LoggerConfig({
-    this.logLevel = LogLevel.off,
+    this.logLevel = LogLevel.info,
     this.logMaxDays = 3,
     this.debug = false,
   });
 
-  /// The log verbosity level. Defaults to [LogLevel.off].
+  /// The log verbosity level. Defaults to [LogLevel.info].
   final LogLevel logLevel;
 
   /// Maximum number of days to retain log entries. Defaults to `3`.
@@ -929,10 +919,10 @@ class LoggerConfig {
   factory LoggerConfig.fromMap(Map<String, Object?> map) {
     return LoggerConfig(
       logLevel: LogLevel
-          .values[_ensureInt(map['logLevel'], fallback: 0)
+          .values[ensureInt(map['logLevel'], fallback: 0)
               .clamp(0, LogLevel.values.length - 1)],
-      logMaxDays: _ensureInt(map['logMaxDays'], fallback: 3),
-      debug: _ensureBool(map['debug'], fallback: false),
+      logMaxDays: ensureInt(map['logMaxDays'], fallback: 3),
+      debug: ensureBool(map['debug'], fallback: false),
     );
   }
 
@@ -1033,23 +1023,23 @@ class MotionConfig {
   /// Creates a [MotionConfig] from a map.
   factory MotionConfig.fromMap(Map<String, Object?> map) {
     return MotionConfig(
-      stopTimeout: _ensureInt(map['stopTimeout'], fallback: 5),
+      stopTimeout: ensureInt(map['stopTimeout'], fallback: 5),
       motionTriggerDelay:
-          _ensureInt(map['motionTriggerDelay'], fallback: 0),
-      disableMotionActivityUpdates: _ensureBool(
+          ensureInt(map['motionTriggerDelay'], fallback: 0),
+      disableMotionActivityUpdates: ensureBool(
           map['disableMotionActivityUpdates'],
           fallback: false),
-      isMoving: _ensureBool(map['isMoving'], fallback: false),
+      isMoving: ensureBool(map['isMoving'], fallback: false),
       activityRecognitionInterval:
-          _ensureInt(map['activityRecognitionInterval'], fallback: 10000),
+          ensureInt(map['activityRecognitionInterval'], fallback: 10000),
       minimumActivityRecognitionConfidence:
-          _ensureInt(map['minimumActivityRecognitionConfidence'], fallback: 75),
+          ensureInt(map['minimumActivityRecognitionConfidence'], fallback: 75),
       disableStopDetection:
-          _ensureBool(map['disableStopDetection'], fallback: false),
+          ensureBool(map['disableStopDetection'], fallback: false),
       stopDetectionDelay:
-          _ensureInt(map['stopDetectionDelay'], fallback: 0),
+          ensureInt(map['stopDetectionDelay'], fallback: 0),
       stopOnStationary:
-          _ensureBool(map['stopOnStationary'], fallback: false),
+          ensureBool(map['stopOnStationary'], fallback: false),
       triggerActivities:
           map['triggerActivities'] as String? ?? '',
     );
@@ -1091,14 +1081,16 @@ class MotionConfig {
           minimumActivityRecognitionConfidence ==
               other.minimumActivityRecognitionConfidence &&
           disableStopDetection == other.disableStopDetection &&
-          stopOnStationary == other.stopOnStationary;
+          stopDetectionDelay == other.stopDetectionDelay &&
+          stopOnStationary == other.stopOnStationary &&
+          triggerActivities == other.triggerActivities;
 
   @override
   int get hashCode => Object.hash(
       stopTimeout, motionTriggerDelay, disableMotionActivityUpdates,
       isMoving, activityRecognitionInterval,
       minimumActivityRecognitionConfidence, disableStopDetection,
-      stopOnStationary);
+      stopDetectionDelay, stopOnStationary, triggerActivities);
 }
 
 // ---------------------------------------------------------------------------
@@ -1132,12 +1124,12 @@ class GeofenceConfig {
   factory GeofenceConfig.fromMap(Map<String, Object?> map) {
     return GeofenceConfig(
       geofenceProximityRadius:
-          _ensureInt(map['geofenceProximityRadius'], fallback: 1000),
-      geofenceInitialTriggerEntry: _ensureBool(
+          ensureInt(map['geofenceProximityRadius'], fallback: 1000),
+      geofenceInitialTriggerEntry: ensureBool(
           map['geofenceInitialTriggerEntry'],
           fallback: true),
       geofenceModeKnockOut:
-          _ensureBool(map['geofenceModeKnockOut'], fallback: false),
+          ensureBool(map['geofenceModeKnockOut'], fallback: false),
     );
   }
 
@@ -1244,18 +1236,18 @@ class PersistenceConfig {
   factory PersistenceConfig.fromMap(Map<String, Object?> map) {
     return PersistenceConfig(
       persistMode: PersistMode.values[
-          _ensureInt(map['persistMode'], fallback: 0)
+          ensureInt(map['persistMode'], fallback: 0)
               .clamp(0, PersistMode.values.length - 1)],
       maxDaysToPersist:
-          _ensureInt(map['maxDaysToPersist'], fallback: -1),
+          ensureInt(map['maxDaysToPersist'], fallback: -1),
       maxRecordsToPersist:
-          _ensureInt(map['maxRecordsToPersist'], fallback: -1),
+          ensureInt(map['maxRecordsToPersist'], fallback: -1),
       locationTemplate: map['locationTemplate'] as String?,
       geofenceTemplate: map['geofenceTemplate'] as String?,
-      disableProviderChangeRecord: _ensureBool(
+      disableProviderChangeRecord: ensureBool(
           map['disableProviderChangeRecord'],
           fallback: false),
-      extras: _castObjectMap(map['extras']),
+      extras: castObjectMap(map['extras']),
     );
   }
 
@@ -1370,26 +1362,4 @@ class PermissionRationale {
 
   @override
   int get hashCode => Object.hash(title, message);
-}
-
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
-
-Map<String, String> _castStringMap(Object? value) {
-  if (value is Map) {
-    return value.map<String, String>(
-      (Object? k, Object? v) => MapEntry(k.toString(), v.toString()),
-    );
-  }
-  return const <String, String>{};
-}
-
-Map<String, Object?> _castObjectMap(Object? value) {
-  if (value is Map) {
-    return value.map<String, Object?>(
-      (Object? k, Object? v) => MapEntry(k.toString(), v),
-    );
-  }
-  return const <String, Object?>{};
 }

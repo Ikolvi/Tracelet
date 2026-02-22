@@ -1,5 +1,7 @@
 import 'package:meta/meta.dart';
 
+import '_helpers.dart';
+
 /// Event fired when network connectivity changes.
 @immutable
 class ConnectivityChangeEvent {
@@ -14,7 +16,7 @@ class ConnectivityChangeEvent {
   /// Creates a [ConnectivityChangeEvent] from a platform map.
   factory ConnectivityChangeEvent.fromMap(Map<String, Object?> map) {
     return ConnectivityChangeEvent(
-      connected: _ensureBool(map['connected'], fallback: false),
+      connected: ensureBool(map['connected'], fallback: false),
     );
   }
 
@@ -37,10 +39,4 @@ class ConnectivityChangeEvent {
 
   @override
   int get hashCode => connected.hashCode;
-}
-
-bool _ensureBool(Object? value, {required bool fallback}) {
-  if (value is bool) return value;
-  if (value is int) return value != 0;
-  return fallback;
 }

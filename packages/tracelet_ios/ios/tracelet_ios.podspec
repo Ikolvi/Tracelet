@@ -4,18 +4,18 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'tracelet_ios'
-  s.version          = '0.1.0'
+  s.version          = '0.2.0'
   s.summary          = 'iOS implementation of the Tracelet background geolocation plugin.'
   s.description      = <<-DESC
 Production-grade background geolocation for Flutter. Battery-conscious
 motion-detection, geofencing, SQLite persistence, HTTP sync, and headless
 execution for iOS.
                        DESC
-  s.homepage         = 'https://ikolvi.com'
+  s.homepage         = 'https://github.com/Ikolvi/Tracelet'
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'Tracelet Contributors' => 'tracelet@example.com' }
   s.source           = { :path => '.' }
-  s.source_files = 'Classes/**/*'
+  s.source_files = 'tracelet_ios/Sources/tracelet_ios/**/*.swift'
   s.dependency 'Flutter'
   s.platform = :ios, '14.0'
   s.frameworks = 'CoreLocation', 'CoreMotion', 'UIKit', 'BackgroundTasks'
@@ -25,5 +25,5 @@ execution for iOS.
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }
   s.swift_version = '5.0'
 
-  s.resource_bundles = {'tracelet_ios_privacy' => ['Resources/PrivacyInfo.xcprivacy']}
+  s.resource_bundles = {'tracelet_ios_privacy' => ['tracelet_ios/Sources/tracelet_ios/PrivacyInfo.xcprivacy']}
 end

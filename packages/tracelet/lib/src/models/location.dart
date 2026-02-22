@@ -1,6 +1,8 @@
 import 'package:meta/meta.dart';
 import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 
+import '_helpers.dart';
+
 /// A recorded location from the native platform.
 ///
 /// Contains GPS coordinates, motion state, activity recognition data,
@@ -57,19 +59,19 @@ class Location {
 
   /// Creates a [Location] from a platform map.
   factory Location.fromMap(Map<String, Object?> map) {
-    final coordsMap = _safeMap(map['coords']) ?? const <String, Object?>{};
-    final activityMap = _safeMap(map['activity']);
-    final batteryMap = _safeMap(map['battery']);
+    final coordsMap = safeMap(map['coords']) ?? const <String, Object?>{};
+    final activityMap = safeMap(map['activity']);
+    final batteryMap = safeMap(map['battery']);
     final extrasRaw = map['extras'];
 
     return Location(
       coords: Coords.fromMap(
         coordsMap.isEmpty ? map : coordsMap,
       ),
-      timestamp: _ensureString(map['timestamp']),
-      isMoving: _ensureBool(map['is_moving'] ?? map['isMoving'], fallback: false),
-      uuid: _ensureString(map['uuid']),
-      odometer: _ensureDouble(map['odometer'], fallback: 0.0),
+      timestamp: ensureString(map['timestamp']),
+      isMoving: ensureBool(map['is_moving'] ?? map['isMoving'], fallback: false),
+      uuid: ensureString(map['uuid']),
+      odometer: ensureDouble(map['odometer'], fallback: 0.0),
       activity: activityMap != null
           ? LocationActivity.fromMap(activityMap)
           : const LocationActivity(),
@@ -169,19 +171,19 @@ class Coords {
   /// Creates [Coords] from a platform map.
   factory Coords.fromMap(Map<String, Object?> map) {
     return Coords(
-      latitude: _ensureDouble(map['latitude'], fallback: 0.0),
-      longitude: _ensureDouble(map['longitude'], fallback: 0.0),
-      altitude: _ensureDouble(map['altitude'], fallback: 0.0),
-      speed: _ensureDouble(map['speed'], fallback: 0.0),
-      heading: _ensureDouble(map['heading'], fallback: 0.0),
-      accuracy: _ensureDouble(map['accuracy'], fallback: 0.0),
-      speedAccuracy: _ensureDouble(
+      latitude: ensureDouble(map['latitude'], fallback: 0.0),
+      longitude: ensureDouble(map['longitude'], fallback: 0.0),
+      altitude: ensureDouble(map['altitude'], fallback: 0.0),
+      speed: ensureDouble(map['speed'], fallback: 0.0),
+      heading: ensureDouble(map['heading'], fallback: 0.0),
+      accuracy: ensureDouble(map['accuracy'], fallback: 0.0),
+      speedAccuracy: ensureDouble(
           map['speed_accuracy'] ?? map['speedAccuracy'],
           fallback: 0.0),
-      headingAccuracy: _ensureDouble(
+      headingAccuracy: ensureDouble(
           map['heading_accuracy'] ?? map['headingAccuracy'],
           fallback: 0.0),
-      altitudeAccuracy: _ensureDouble(
+      altitudeAccuracy: ensureDouble(
           map['altitude_accuracy'] ?? map['altitudeAccuracy'],
           fallback: 0.0),
       floor: map['floor'] as int?,
@@ -317,8 +319,8 @@ class LocationBattery {
   /// Creates a [LocationBattery] from a platform map.
   factory LocationBattery.fromMap(Map<String, Object?> map) {
     return LocationBattery(
-      level: _ensureDouble(map['level'], fallback: -1.0),
-      isCharging: _ensureBool(
+      level: ensureDouble(map['level'], fallback: -1.0),
+      isCharging: ensureBool(
           map['is_charging'] ?? map['isCharging'],
           fallback: false),
     );
@@ -348,35 +350,3 @@ class LocationBattery {
   int get hashCode => Object.hash(level, isCharging);
 }
 
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
-
-bool _ensureBool(Object? value, {required bool fallback}) {
-  if (value is bool) return value;
-  if (value is int) return value != 0;
-  return fallback;
-}
-
-double _ensureDouble(Object? value, {required double fallback}) {
-  if (value is double) return value;
-  if (value is int) return value.toDouble();
-  if (value is String) return double.tryParse(value) ?? fallback;
-  return fallback;
-}
-
-Map<String, Object?>? _safeMap(Object? value) {
-  if (value == null) return null;
-  if (value is Map<String, Object?>) return value;
-  if (value is Map) return Map<String, Object?>.from(value);
-  return null;
-}
-
-/// Safely convert any value to a String.
-///
-/// Handles int (epoch millis), double, and other types by calling `.toString()`.
-String _ensureString(Object? value) {
-  if (value == null) return '';
-  if (value is String) return value;
-  return value.toString();
-}

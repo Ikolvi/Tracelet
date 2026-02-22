@@ -1,3 +1,7 @@
+## 0.2.0
+
+* Add SPDX `license: Apache-2.0` identifier for pub.dev scoring.
+
 ## 0.1.0
 
 * Initial release.

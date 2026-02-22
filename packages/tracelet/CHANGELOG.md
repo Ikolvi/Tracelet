@@ -1,3 +1,14 @@
+## 0.2.0
+
+* Add `isMoving` field to `State` model.
+* Fix `Config.toMap()` — use nested map structure to prevent extras key collision.
+* Fix `watchPosition` listener leak — subscriptions now tracked and cancelled.
+* Fix `removeListeners()` to cancel all Dart-side stream subscriptions.
+* Change `LogLevel` default from `off` to `info`.
+* Complete `==`/`hashCode` on all sub-config classes.
+* Extract shared deserialization helpers to reduce code duplication.
+* Fix example (`LogConfig` → `LoggerConfig`).
+
 ## 0.1.1
 
 * Fix pubspec description length for pub.dev scoring.

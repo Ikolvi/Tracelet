@@ -18,7 +18,7 @@ Future<void> main() async {
       desiredAccuracy: tl.DesiredAccuracy.high,
       distanceFilter: 10,
     ),
-    logging: tl.LogConfig(logLevel: tl.LogLevel.verbose),
+    logger: tl.LoggerConfig(logLevel: tl.LogLevel.verbose),
   ));
 
   print('Tracelet ready — enabled: ${state.enabled}, '

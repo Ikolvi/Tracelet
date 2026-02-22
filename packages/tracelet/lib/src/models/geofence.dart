@@ -1,5 +1,7 @@
 import 'package:meta/meta.dart';
 
+import '_helpers.dart';
+
 /// A geofence definition.
 ///
 /// Represents a circular geographic region the plugin monitors for
@@ -76,24 +78,24 @@ class Geofence {
     if (verticesRaw is List) {
       for (final v in verticesRaw) {
         if (v is List) {
-          verticesList.add(v.map((e) => _ensureDouble(e, fallback: 0.0)).toList());
+          verticesList.add(v.map((e) => ensureDouble(e, fallback: 0.0)).toList());
         }
       }
     }
 
     return Geofence(
       identifier: map['identifier'] as String? ?? '',
-      latitude: _ensureDouble(map['latitude'], fallback: 0.0),
-      longitude: _ensureDouble(map['longitude'], fallback: 0.0),
-      radius: _ensureDouble(map['radius'], fallback: 0.0),
+      latitude: ensureDouble(map['latitude'], fallback: 0.0),
+      longitude: ensureDouble(map['longitude'], fallback: 0.0),
+      radius: ensureDouble(map['radius'], fallback: 0.0),
       notifyOnEntry:
-          _ensureBool(map['notifyOnEntry'], fallback: true),
+          ensureBool(map['notifyOnEntry'], fallback: true),
       notifyOnExit:
-          _ensureBool(map['notifyOnExit'], fallback: true),
+          ensureBool(map['notifyOnExit'], fallback: true),
       notifyOnDwell:
-          _ensureBool(map['notifyOnDwell'], fallback: false),
+          ensureBool(map['notifyOnDwell'], fallback: false),
       loiteringDelay:
-          _ensureInt(map['loiteringDelay'], fallback: 0),
+          ensureInt(map['loiteringDelay'], fallback: 0),
       extras: extrasRaw is Map
           ? extrasRaw.map<String, Object?>(
               (Object? k, Object? v) => MapEntry(k.toString(), v))
@@ -131,26 +133,4 @@ class Geofence {
 
   @override
   int get hashCode => identifier.hashCode;
-}
-
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
-
-bool _ensureBool(Object? value, {required bool fallback}) {
-  if (value is bool) return value;
-  if (value is int) return value != 0;
-  return fallback;
-}
-
-int _ensureInt(Object? value, {required int fallback}) {
-  if (value is int) return value;
-  if (value is double) return value.toInt();
-  return fallback;
-}
-
-double _ensureDouble(Object? value, {required double fallback}) {
-  if (value is double) return value;
-  if (value is int) return value.toDouble();
-  return fallback;
 }

@@ -58,6 +58,16 @@ class Tracelet {
   static final Map<String, Stream<Object?>> _eventStreams =
       <String, Stream<Object?>>{};
 
+  /// Tracks subscriptions created by [watchPosition] so they can be
+  /// cancelled by [stopWatchPosition].
+  static final Map<int, StreamSubscription<Object?>> _watchSubscriptions =
+      <int, StreamSubscription<Object?>>{};
+
+  /// Tracks all subscriptions created by `onXxx()` event methods so
+  /// [removeListeners] can cancel them.
+  static final List<StreamSubscription<dynamic>> _onSubscriptions =
+      <StreamSubscription<dynamic>>[];
+
   static Stream<Object?> _getEventStream(String name) {
     return _eventStreams.putIfAbsent(name, () {
       final channel = _eventChannels.putIfAbsent(
@@ -181,22 +191,22 @@ class Tracelet {
     };
     final watchId = await _platform.watchPosition(options);
 
-    // Listen to the watchPosition event stream for this watcher
-    final stream = _getEventStream(TraceletEvents.watchPosition);
-    stream.listen((Object? event) {
-      if (event is Map) {
-        final map = event.map<String, Object?>(
-          (Object? k, Object? v) => MapEntry(k.toString(), v),
-        );
-        callback(Location.fromMap(map));
-      }
-    });
+    // Listen to the watchPosition event stream for this watcher.
+    // Store the subscription so stopWatchPosition can cancel it.
+    final sub = _getEventStream(TraceletEvents.watchPosition)
+        .map(_castToMap)
+        .map(Location.fromMap)
+        .listen(callback);
 
+    _watchSubscriptions[watchId] = sub;
     return watchId;
   }
 
   /// Stop a watch started by [watchPosition].
-  static Future<bool> stopWatchPosition(int watchId) {
+  ///
+  /// Cancels both the native watcher and the Dart stream subscription.
+  static Future<bool> stopWatchPosition(int watchId) async {
+    await _watchSubscriptions.remove(watchId)?.cancel();
     return _platform.stopWatchPosition(watchId);
   }
 
@@ -485,10 +495,10 @@ class Tracelet {
   static StreamSubscription<Location> onLocation(
     void Function(Location) callback,
   ) {
-    return _getEventStream(TraceletEvents.location)
+    return _tracked(_getEventStream(TraceletEvents.location)
         .map(_castToMap)
         .map(Location.fromMap)
-        .listen(callback);
+        .listen(callback));
   }
 
   /// Subscribe to motion change events.
@@ -497,10 +507,10 @@ class Tracelet {
   static StreamSubscription<Location> onMotionChange(
     void Function(Location) callback,
   ) {
-    return _getEventStream(TraceletEvents.motionChange)
+    return _tracked(_getEventStream(TraceletEvents.motionChange)
         .map(_castToMap)
         .map(Location.fromMap)
-        .listen(callback);
+        .listen(callback));
   }
 
   /// Subscribe to activity change events.
@@ -509,10 +519,10 @@ class Tracelet {
   static StreamSubscription<ActivityChangeEvent> onActivityChange(
     void Function(ActivityChangeEvent) callback,
   ) {
-    return _getEventStream(TraceletEvents.activityChange)
+    return _tracked(_getEventStream(TraceletEvents.activityChange)
         .map(_castToMap)
         .map(ActivityChangeEvent.fromMap)
-        .listen(callback);
+        .listen(callback));
   }
 
   /// Subscribe to provider change events.
@@ -521,10 +531,10 @@ class Tracelet {
   static StreamSubscription<ProviderChangeEvent> onProviderChange(
     void Function(ProviderChangeEvent) callback,
   ) {
-    return _getEventStream(TraceletEvents.providerChange)
+    return _tracked(_getEventStream(TraceletEvents.providerChange)
         .map(_castToMap)
         .map(ProviderChangeEvent.fromMap)
-        .listen(callback);
+        .listen(callback));
   }
 
   /// Subscribe to geofence events.
@@ -533,10 +543,10 @@ class Tracelet {
   static StreamSubscription<GeofenceEvent> onGeofence(
     void Function(GeofenceEvent) callback,
   ) {
-    return _getEventStream(TraceletEvents.geofence)
+    return _tracked(_getEventStream(TraceletEvents.geofence)
         .map(_castToMap)
         .map(GeofenceEvent.fromMap)
-        .listen(callback);
+        .listen(callback));
   }
 
   /// Subscribe to geofences change events.
@@ -545,10 +555,10 @@ class Tracelet {
   static StreamSubscription<GeofencesChangeEvent> onGeofencesChange(
     void Function(GeofencesChangeEvent) callback,
   ) {
-    return _getEventStream(TraceletEvents.geofencesChange)
+    return _tracked(_getEventStream(TraceletEvents.geofencesChange)
         .map(_castToMap)
         .map(GeofencesChangeEvent.fromMap)
-        .listen(callback);
+        .listen(callback));
   }
 
   /// Subscribe to heartbeat events.
@@ -557,10 +567,10 @@ class Tracelet {
   static StreamSubscription<HeartbeatEvent> onHeartbeat(
     void Function(HeartbeatEvent) callback,
   ) {
-    return _getEventStream(TraceletEvents.heartbeat)
+    return _tracked(_getEventStream(TraceletEvents.heartbeat)
         .map(_castToMap)
         .map(HeartbeatEvent.fromMap)
-        .listen(callback);
+        .listen(callback));
   }
 
   /// Subscribe to HTTP sync events.
@@ -569,10 +579,10 @@ class Tracelet {
   static StreamSubscription<HttpEvent> onHttp(
     void Function(HttpEvent) callback,
   ) {
-    return _getEventStream(TraceletEvents.http)
+    return _tracked(_getEventStream(TraceletEvents.http)
         .map(_castToMap)
         .map(HttpEvent.fromMap)
-        .listen(callback);
+        .listen(callback));
   }
 
   /// Subscribe to schedule events.
@@ -581,10 +591,10 @@ class Tracelet {
   static StreamSubscription<State> onSchedule(
     void Function(State) callback,
   ) {
-    return _getEventStream(TraceletEvents.schedule)
+    return _tracked(_getEventStream(TraceletEvents.schedule)
         .map(_castToMap)
         .map(State.fromMap)
-        .listen(callback);
+        .listen(callback));
   }
 
   /// Subscribe to power-save mode changes.
@@ -593,7 +603,7 @@ class Tracelet {
   static StreamSubscription<bool> onPowerSaveChange(
     void Function(bool) callback,
   ) {
-    return _getEventStream(TraceletEvents.powerSaveChange)
+    return _tracked(_getEventStream(TraceletEvents.powerSaveChange)
         .map((event) {
       if (event is bool) return event;
       if (event is int) return event != 0;
@@ -603,7 +613,7 @@ class Tracelet {
         if (v is int) return v != 0;
       }
       return false;
-    }).listen(callback);
+    }).listen(callback));
   }
 
   /// Subscribe to connectivity change events.
@@ -612,10 +622,10 @@ class Tracelet {
   static StreamSubscription<ConnectivityChangeEvent> onConnectivityChange(
     void Function(ConnectivityChangeEvent) callback,
   ) {
-    return _getEventStream(TraceletEvents.connectivityChange)
+    return _tracked(_getEventStream(TraceletEvents.connectivityChange)
         .map(_castToMap)
         .map(ConnectivityChangeEvent.fromMap)
-        .listen(callback);
+        .listen(callback));
   }
 
   /// Subscribe to enabled-change events.
@@ -624,7 +634,7 @@ class Tracelet {
   static StreamSubscription<bool> onEnabledChange(
     void Function(bool) callback,
   ) {
-    return _getEventStream(TraceletEvents.enabledChange)
+    return _tracked(_getEventStream(TraceletEvents.enabledChange)
         .map((event) {
       if (event is bool) return event;
       if (event is int) return event != 0;
@@ -634,7 +644,7 @@ class Tracelet {
         if (v is int) return v != 0;
       }
       return false;
-    }).listen(callback);
+    }).listen(callback));
   }
 
   /// Subscribe to notification action events (Android only).
@@ -643,12 +653,12 @@ class Tracelet {
   static StreamSubscription<String> onNotificationAction(
     void Function(String) callback,
   ) {
-    return _getEventStream(TraceletEvents.notificationAction)
+    return _tracked(_getEventStream(TraceletEvents.notificationAction)
         .map((event) {
       if (event is String) return event;
       if (event is Map) return event['action']?.toString() ?? '';
       return '';
-    }).listen(callback);
+    }).listen(callback));
   }
 
   /// Subscribe to authorization events.
@@ -657,38 +667,41 @@ class Tracelet {
   static StreamSubscription<AuthorizationEvent> onAuthorization(
     void Function(AuthorizationEvent) callback,
   ) {
-    return _getEventStream(TraceletEvents.authorization)
+    return _tracked(_getEventStream(TraceletEvents.authorization)
         .map(_castToMap)
         .map(AuthorizationEvent.fromMap)
-        .listen(callback);
+        .listen(callback));
   }
 
   // ---------------------------------------------------------------------------
   // Cleanup
   // ---------------------------------------------------------------------------
 
-  /// Removes all cached event streams, forcing fresh subscriptions on the
-  /// next `onXxx()` call.
+  /// Cancels **all** active subscriptions created by `onXxx()` and
+  /// [watchPosition], then clears the internal stream and channel cache.
   ///
   /// Call this when you want to tear down all listeners at once — for
   /// example, in a widget's `dispose()` method or during test cleanup.
   ///
-  /// **Note**: This does NOT cancel individual [StreamSubscription]s
-  /// returned by `onXxx()` methods — you are still responsible for calling
-  /// `.cancel()` on each subscription. This only clears the internal
-  /// stream/channel cache so that new subscriptions create fresh platform
-  /// channels.
+  /// After calling this, new `onXxx()` calls will create fresh platform
+  /// channel subscriptions.
   ///
   /// ```dart
   /// @override
   /// void dispose() {
-  ///   _locationSub?.cancel();
-  ///   _motionSub?.cancel();
   ///   Tracelet.removeListeners();
   ///   super.dispose();
   /// }
   /// ```
   static void removeListeners() {
+    for (final sub in _onSubscriptions) {
+      sub.cancel();
+    }
+    _onSubscriptions.clear();
+    for (final sub in _watchSubscriptions.values) {
+      sub.cancel();
+    }
+    _watchSubscriptions.clear();
     _eventStreams.clear();
     _eventChannels.clear();
   }
@@ -696,6 +709,12 @@ class Tracelet {
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
+
+  /// Wraps a subscription so [removeListeners] can cancel it later.
+  static StreamSubscription<T> _tracked<T>(StreamSubscription<T> sub) {
+    _onSubscriptions.add(sub);
+    return sub;
+  }
 
   static Map<String, Object?> _castToMap(Object? event) {
     if (event is Map) {
