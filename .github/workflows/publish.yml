@@ -22,10 +22,6 @@ on:
         required: false
         type: boolean
         default: false
-      changelog_entry:
-        description: "Changelog entry (required)"
-        required: true
-        type: string
 
 permissions:
   contents: write
@@ -75,7 +71,6 @@ jobs:
           set -euo pipefail
           BUMP="${{ inputs.bump }}"
           PACKAGES="${{ steps.resolve.outputs.packages }}"
-          CHANGELOG_ENTRY="${{ inputs.changelog_entry }}"
 
           bump_version() {
             local current="$1"
@@ -118,16 +113,6 @@ jobs:
               sed -i "s/s\.version *= *'[^']*'/s.version          = '${NEW}'/" "$PODSPEC"
               echo "  ↳ Updated podspec"
             fi
-
-            # Prepend changelog entry
-            {
-              echo "## ${NEW}"
-              echo ""
-              echo "* ${CHANGELOG_ENTRY}"
-              echo ""
-              cat "$CHANGELOG"
-            } > "${CHANGELOG}.tmp"
-            mv "${CHANGELOG}.tmp" "$CHANGELOG"
           done
 
           # Pass 2: Update cross-package dependency constraints
@@ -184,7 +169,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "chore: bump versions (${{ inputs.bump }}) — ${{ inputs.changelog_entry }}"
+          git commit -m "chore: bump versions (${{ inputs.bump }})"
 
       - name: Create tags
         if: ${{ !inputs.dry_run }}
@@ -194,7 +179,7 @@ jobs:
             PKG="${line%%=*}"
             VER="${line#*=}"
             TAG="${PKG}-v${VER}"
-            git tag "$TAG" -m "${{ inputs.changelog_entry }}"
+            git tag "$TAG" -m "Release ${PKG} v${VER}"
             echo "🏷️ Tagged: $TAG"
           done <<< "${{ steps.bump.outputs.new_versions }}"
 
