@@ -1,3 +1,8 @@
+## 0.4.0
+
+* **FEAT**: Add `getMotionPermissionStatus()` and `requestMotionPermission()` to platform interface.
+* **CHORE**: Format all Dart files.
+
 ## 0.3.0
 
 * **FEAT**: Add `getLastKnownLocation()` abstract method to platform interface.

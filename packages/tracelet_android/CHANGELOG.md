@@ -1,3 +1,11 @@
+## 0.4.0
+
+* **FEAT**: `getMotionPermissionStatus()` / `requestMotionPermission()` — ACTIVITY_RECOGNITION permission handling.
+* **FIX**: Auto-pace not triggering — start accelerometer monitoring in `MotionDetector.start()` when stationary.
+* **FIX**: Speed always zero in motionchange events — track `lastEffectiveSpeed` in LocationEngine.
+* **FIX**: Kotlin compilation error from literal `\n` in import line.
+* **CHORE**: Bump `tracelet_platform_interface` to ^0.4.0.
+
 ## 0.3.0
 
 * **FEAT**: One-shot location via `getCurrentPosition()` with `persist`, `samples`, `maximumAge`, and `extras` parameters.

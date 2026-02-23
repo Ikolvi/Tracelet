@@ -464,6 +464,40 @@ class Tracelet {
     return _platform.requestNotificationPermission();
   }
 
+  /// Get the motion / activity recognition permission status.
+  ///
+  /// Returns an `AuthorizationStatus` code:
+  /// - `0` notDetermined — never asked
+  /// - `1` denied — denied but can ask again (Android only)
+  /// - `3` always (granted)
+  /// - `4` deniedForever — permanently denied, must open Settings
+  ///
+  /// On Android < 10 (API < 29), always returns `3` since the
+  /// ACTIVITY_RECOGNITION runtime permission is not needed.
+  /// On iOS, returns the CMMotionActivityManager authorization status.
+  ///
+  /// **When to use:** Call before [start] to check if the device can detect
+  /// motion transitions (walking, driving, stationary). Without this
+  /// permission, automatic motion detection will not work.
+  static Future<int> getMotionPermissionStatus() {
+    return _platform.getMotionPermissionStatus();
+  }
+
+  /// Request motion / activity recognition permission asynchronously.
+  ///
+  /// On Android 10+ (API 29+), triggers the ACTIVITY_RECOGNITION dialog.
+  /// On iOS, triggers the Motion & Fitness permission dialog.
+  /// On Android < 10, returns `3` (granted) immediately.
+  ///
+  /// Returns the actual status after the user responds.
+  ///
+  /// **Important:** Without this permission, the plugin cannot detect
+  /// motion transitions automatically. The device will not fire
+  /// `onMotionChange` events unless [changePace] is called manually.
+  static Future<int> requestMotionPermission() {
+    return _platform.requestMotionPermission();
+  }
+
   /// Request temporary full accuracy (iOS 14+).
   ///
   /// [purpose] must match a key in the app's `Info.plist`

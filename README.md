@@ -1,8 +1,14 @@
 <p align="center">
-  <img src="assets/tracelet-logo.jpeg" alt="Tracelet" width="200"/>
+  <img src="assets/logo_anim.webp" alt="Tracelet" width="100%"/>
 </p>
 
 # Tracelet
+
+<p align="center">
+  <img src="assets/tracelet_android_rec.webp" alt="Tracelet Android" width="300"/>
+  &nbsp;&nbsp;
+  <img src="assets/tracelet_ios_rec.webp" alt="Tracelet iOS" width="300"/>
+</p>
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![CI](https://github.com/Ikolvi/Tracelet/actions/workflows/ci.yml/badge.svg)](https://github.com/Ikolvi/Tracelet/actions)
@@ -128,7 +134,7 @@ if (status == 0 || status == 1) {
 }
 ```
 
-> See the [package README](packages/tracelet/README.md#permissions) for
+> See the [Permissions Guide](help/PERMISSIONS.md) for
 > complete dialog implementations (denied dialog, background rationale dialog,
 > notification rationale dialog, full escalation flow) with copy-paste Flutter code.
 
@@ -176,13 +182,19 @@ await tl.Tracelet.ready(tl.Config(
 await tl.Tracelet.start();
 ```
 
-> See the [package README](packages/tracelet/README.md#background-tracking) for
+> See the [Background Tracking Guide](help/BACKGROUND-TRACKING.md) for
 > runtime switching with `setConfig()`.
 
-## Platform Setup
+## Documentation
 
-- [Android Setup Guide](help/INSTALL-ANDROID.md)
-- [iOS Setup Guide](help/INSTALL-IOS.md)
+| Guide | Description |
+|---|---|
+| [Android Setup](help/INSTALL-ANDROID.md) | Gradle, permissions, and manifest configuration |
+| [iOS Setup](help/INSTALL-IOS.md) | Info.plist, capabilities, and entitlements |
+| [Permissions](help/PERMISSIONS.md) | Permission flow, status codes, Dart dialog examples |
+| [Background Tracking](help/BACKGROUND-TRACKING.md) | Foreground service, silent mode, runtime switching |
+| [API Reference](help/API.md) | All methods, events, and return types |
+| [Configuration](help/CONFIGURATION.md) | All config groups with property tables |
 
 ## Requirements
 
@@ -196,6 +208,20 @@ await tl.Tracelet.start();
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## Support
+
+If you find Tracelet useful, consider buying me a coffee:
+
+<p align="center">
+  <a href="https://buymeacoffee.com/kiranbjm">
+    <img src="assets/buy_me_a_coffee.png" alt="Buy Me a Coffee" width="200"/>
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://buymeacoffee.com/kiranbjm">buymeacoffee.com/kiranbjm</a>
+</p>
 
 ## License
 

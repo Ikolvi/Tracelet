@@ -418,9 +418,7 @@ Future<void> permissionFlowExample() async {
 
   // Permission is now whenInUse (2) or always (3) — safe to start.
   await tl.Tracelet.ready(
-    tl.Config(
-      app: tl.AppConfig(stopOnTerminate: false, startOnBoot: true),
-    ),
+    tl.Config(app: tl.AppConfig(stopOnTerminate: false, startOnBoot: true)),
   );
   await tl.Tracelet.start();
 }
@@ -478,10 +476,7 @@ Future<void> fullFeaturedExample() async {
         maxRecordsToPersist: 5000,
         disableProviderChangeRecord: false,
       ),
-      logger: tl.LoggerConfig(
-        logLevel: tl.LogLevel.verbose,
-        debug: true,
-      ),
+      logger: tl.LoggerConfig(logLevel: tl.LogLevel.verbose, debug: true),
     ),
   );
 

@@ -1,5 +1,6 @@
 package com.tracelet.tracelet_android
 
+import android.Manifest
 import android.app.Activity
 import android.content.ComponentName
 import android.content.Context
@@ -8,6 +9,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import androidx.core.content.ContextCompat
 import com.tracelet.tracelet_android.db.TraceletDatabase
 import com.tracelet.tracelet_android.geofence.GeofenceManager
 import com.tracelet.tracelet_android.http.HttpSyncManager
@@ -255,6 +257,10 @@ class TraceletAndroidPlugin :
                 permissionManager.getNotificationPermissionStatus(activity)
             )
             "requestNotificationPermission" -> handleRequestNotificationPermission(result)
+            "getMotionPermissionStatus" -> result.success(
+                permissionManager.getMotionPermissionStatus(activity)
+            )
+            "requestMotionPermission" -> handleRequestMotionPermission(result)
             "requestTemporaryFullAccuracy" -> {
                 // Android doesn't have temporary full accuracy (iOS-only concept)
                 result.success(permissionManager.getAuthorizationStatus(activity))
@@ -376,8 +382,21 @@ class TraceletAndroidPlugin :
         // Start location engine
         locationEngine.start()
 
-        // Start motion detector
-        motionDetector.start()
+        // Request activity recognition permission (API 29+) and start motion detector
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val hasMotion = ContextCompat.checkSelfPermission(
+                context, Manifest.permission.ACTIVITY_RECOGNITION
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!hasMotion) {
+                // Request permission — motion detector will be started
+                // after permission is granted in onRequestPermissionsResult.
+                permissionManager.requestActivityRecognition(activity)
+            } else {
+                motionDetector.start()
+            }
+        } else {
+            motionDetector.start()
+        }
 
         // Start heartbeat
         startHeartbeat()
@@ -491,6 +510,35 @@ class TraceletAndroidPlugin :
     }
 
     /**
+     * Asynchronous motion/activity recognition permission request (API 29+).
+     *
+     * Triggers the OS ACTIVITY_RECOGNITION dialog and waits for the user's response.
+     * On API < 29, returns immediately with status 3 (granted — no runtime permission needed).
+     */
+    private fun handleRequestMotionPermission(result: Result) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            result.success(PermissionManager.STATUS_ALWAYS)
+            return
+        }
+
+        val act = activity
+        if (act == null || pendingPermissionResult != null) {
+            result.success(permissionManager.getMotionPermissionStatus(activity))
+            return
+        }
+
+        val status = permissionManager.getMotionPermissionStatus(act)
+        if (status == PermissionManager.STATUS_ALWAYS ||
+            status == PermissionManager.STATUS_DENIED_FOREVER) {
+            result.success(status)
+            return
+        }
+
+        pendingPermissionResult = result
+        permissionManager.requestActivityRecognition(act)
+    }
+
+    /**
      * Called by the Flutter engine after the OS permission dialog closes.
      * Resolves the pending Dart `Future<int>` with the actual result.
      */
@@ -516,6 +564,14 @@ class TraceletAndroidPlugin :
             pending.success(
                 permissionManager.getNotificationPermissionStatus(act)
             )
+        } else if (requestCode == PermissionManager.REQUEST_CODE_ACTIVITY_RECOGNITION) {
+            // Activity recognition permission result
+            val motionStatus = permissionManager.getMotionPermissionStatus(act)
+            // If granted and tracking is active, start the motion detector now
+            if (motionStatus == PermissionManager.STATUS_ALWAYS && stateManager.enabled) {
+                motionDetector.start()
+            }
+            pending.success(motionStatus)
         } else if (act != null) {
             pending.success(permissionManager.getStatusAfterRequest(act))
         } else {
@@ -806,15 +862,11 @@ class TraceletAndroidPlugin :
             soundManager.playMotionChange(false)
         }
 
-        // Dispatch motionChange event with last known location
+        // Dispatch motionChange event with full location data
         val locationMap = locationEngine.getLastLocation()?.let { loc ->
-            mapOf(
-                "isMoving" to isMoving,
-                "coords" to mapOf(
-                    "latitude" to loc.latitude,
-                    "longitude" to loc.longitude,
-                ),
-            )
+            val map = locationEngine.enrichLocation(loc, "motionchange", locationEngine.lastEffectiveSpeed).toMutableMap()
+            map["isMoving"] = isMoving
+            map
         } ?: mapOf("isMoving" to isMoving)
 
         eventDispatcher.sendMotionChange(locationMap)

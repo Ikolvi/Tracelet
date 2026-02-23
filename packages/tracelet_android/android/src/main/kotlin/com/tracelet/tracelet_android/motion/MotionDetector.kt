@@ -69,6 +69,15 @@ class MotionDetector(
     fun start() {
         if (config.isMotionActivityUpdatesDisabled()) return
         registerActivityTransitions()
+
+        // If starting in stationary state, also start accelerometer monitoring.
+        // The Activity Transition API can take minutes to fire its first event
+        // (and may never fire on budget devices). The accelerometer provides a
+        // fast, reliable fallback to detect the initial stationary→moving
+        // transition.
+        if (!state.isMoving) {
+            startAccelerometerMonitoring()
+        }
     }
 
     /** Stop all motion detection. */

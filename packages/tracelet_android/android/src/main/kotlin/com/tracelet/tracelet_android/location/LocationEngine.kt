@@ -47,6 +47,12 @@ class LocationEngine(
     private var currentActivityType: String = "unknown"
     private var currentActivityConfidence: Int = -1
 
+    /** Last computed effective speed (m/s) from tracking location updates.
+     *  Used by the plugin for motionchange events since the cached Location.speed
+     *  may be stale or 0. */
+    var lastEffectiveSpeed: Double = 0.0
+        private set
+
     /** Optional callback invoked on every accepted location (for geofenceModeHighAccuracy). */
     var onLocationUpdate: ((Double, Double) -> Unit)? = null
 
@@ -69,7 +75,7 @@ class LocationEngine(
         trackingCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 for (location in result.locations) {
-                    onLocationReceived(location, "motionchange")
+                    onLocationReceived(location, "location")
                 }
             }
 
@@ -328,7 +334,7 @@ class LocationEngine(
             stop()
         }
         // Dispatch motionChange event
-        val locationMap = lastLocation?.let { enrichLocation(it, "motionchange") }
+        val locationMap = lastLocation?.let { enrichLocation(it, "motionchange", lastEffectiveSpeed) }
             ?: mapOf("isMoving" to isMoving)
         events.sendMotionChange(locationMap)
         return true
@@ -469,6 +475,7 @@ class LocationEngine(
             state.addOdometer(distance)
         }
         lastLocation = location
+        lastEffectiveSpeed = effectiveSpeed
         state.lastLocationTime = location.time
 
         val enriched = enrichLocation(location, event, effectiveSpeed)
@@ -492,7 +499,7 @@ class LocationEngine(
      *                   if available, otherwise distance/time from consecutive
      *                   locations. Pass `null` to fall back to platform speed.
      */
-    private fun enrichLocation(location: Location, event: String, speed: Double? = null): Map<String, Any?> {
+    fun enrichLocation(location: Location, event: String, speed: Double? = null): Map<String, Any?> {
         val battery = BatteryUtils.getBatteryInfo(context)
         val isoFormatter = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")

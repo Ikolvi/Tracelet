@@ -264,8 +264,9 @@ class MethodChannelTracelet extends TraceletPlatform {
 
   @override
   Future<int> getPermissionStatus() async {
-    final result =
-        await _methodChannel.invokeMethod<int>('getPermissionStatus');
+    final result = await _methodChannel.invokeMethod<int>(
+      'getPermissionStatus',
+    );
     return result ?? 0;
   }
 
@@ -289,6 +290,22 @@ class MethodChannelTracelet extends TraceletPlatform {
       'requestNotificationPermission',
     );
     return result ?? 3; // Default: granted (pre-13 / iOS)
+  }
+
+  @override
+  Future<int> getMotionPermissionStatus() async {
+    final result = await _methodChannel.invokeMethod<int>(
+      'getMotionPermissionStatus',
+    );
+    return result ?? 3; // Default: granted (pre-Q Android / unavailable)
+  }
+
+  @override
+  Future<int> requestMotionPermission() async {
+    final result = await _methodChannel.invokeMethod<int>(
+      'requestMotionPermission',
+    );
+    return result ?? 3; // Default: granted (pre-Q Android / unavailable)
   }
 
   @override

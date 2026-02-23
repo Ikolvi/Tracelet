@@ -1,3 +1,11 @@
+## 0.4.0
+
+* **FEAT**: `getMotionPermissionStatus()` / `requestMotionPermission()` — CMMotionActivityManager authorization check.
+* **FIX**: Speed always zero in motionchange events — track `lastEffectiveSpeed` in LocationEngine.
+* **FIX**: "Upgrade to Always" dialog not appearing — fix `handleStart` isMoving initialization.
+* **FIX**: MotionDetector motion state bugs — proper accelerometer + activity recognition lifecycle.
+* **CHORE**: Bump `tracelet_platform_interface` to ^0.4.0.
+
 ## 0.3.0
 
 * **FEAT**: One-shot location via `getCurrentPosition()` with `persist`, `samples`, `maximumAge`, and `extras` parameters.

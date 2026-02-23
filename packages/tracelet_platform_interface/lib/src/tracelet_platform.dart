@@ -234,9 +234,7 @@ abstract class TraceletPlatform extends PlatformInterface {
   /// - `3` always — background granted
   /// - `4` deniedForever — permanently denied, must open Settings
   Future<int> getPermissionStatus() {
-    throw UnimplementedError(
-      'getPermissionStatus() has not been implemented.',
-    );
+    throw UnimplementedError('getPermissionStatus() has not been implemented.');
   }
 
   /// Request location permission asynchronously.
@@ -274,6 +272,34 @@ abstract class TraceletPlatform extends PlatformInterface {
   Future<int> requestNotificationPermission() {
     throw UnimplementedError(
       'requestNotificationPermission() has not been implemented.',
+    );
+  }
+
+  /// Get the motion / activity recognition permission status.
+  ///
+  /// Returns:
+  /// - `0` notDetermined — never asked
+  /// - `1` denied — denied but can ask again (Android only)
+  /// - `3` always (granted)
+  /// - `4` deniedForever — permanently denied
+  ///
+  /// On Android < 10 (API < 29), always returns `3` since no runtime
+  /// permission is needed. On iOS, returns the CMMotionActivityManager
+  /// authorization status.
+  Future<int> getMotionPermissionStatus() {
+    throw UnimplementedError(
+      'getMotionPermissionStatus() has not been implemented.',
+    );
+  }
+
+  /// Request motion / activity recognition permission asynchronously.
+  ///
+  /// On Android 10+ (API 29+), triggers the ACTIVITY_RECOGNITION dialog.
+  /// On iOS, triggers the Motion & Fitness permission dialog.
+  /// On Android < 10, returns `3` (granted) immediately.
+  Future<int> requestMotionPermission() {
+    throw UnimplementedError(
+      'requestMotionPermission() has not been implemented.',
     );
   }
 

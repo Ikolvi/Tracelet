@@ -70,6 +70,51 @@ final class MotionDetector {
         stopTimer = nil
     }
 
+    // MARK: - Motion permission
+
+    /// Returns the current motion authorization status without triggering any dialog.
+    ///
+    /// Status codes match the Dart `AuthorizationStatus` enum:
+    /// - `0` notDetermined — never asked
+    /// - `3` always (authorized)
+    /// - `4` deniedForever — permanently denied / restricted
+    func getMotionAuthorizationStatus() -> Int {
+        guard CMMotionActivityManager.isActivityAvailable() else {
+            return 3 // Not available — treat as "no permission needed"
+        }
+        let status = CMMotionActivityManager.authorizationStatus()
+        switch status {
+        case .notDetermined: return 0
+        case .restricted:    return 4
+        case .denied:        return 4
+        case .authorized:    return 3
+        @unknown default:    return 0
+        }
+    }
+
+    /// Triggers the OS Motion & Fitness permission dialog (if notDetermined)
+    /// and returns the actual status after the user responds.
+    ///
+    /// On iOS, the dialog is triggered by actually querying motion activity data.
+    /// If already determined, returns immediately.
+    func requestMotionPermission(callback: @escaping (Int) -> Void) {
+        let current = getMotionAuthorizationStatus()
+        guard current == 0 else {
+            // Already determined — no dialog will appear
+            callback(current)
+            return
+        }
+
+        // Query a tiny time range to trigger the OS dialog
+        let now = Date()
+        let past = now.addingTimeInterval(-1)
+        activityManager.queryActivityStarting(from: past, to: now, to: .main) { [weak self] _, _ in
+            // After the user responds, check the new status
+            let newStatus = self?.getMotionAuthorizationStatus() ?? 3
+            callback(newStatus)
+        }
+    }
+
     // MARK: - Sensors info
 
     func getSensors() -> [String: Any] {
@@ -140,8 +185,6 @@ final class MotionDetector {
     }
 
     private func handleMovingDetected() {
-        guard !configManager.getDisableStopDetection() else { return }
-
         // Cancel any pending stop timer
         stopTimer?.invalidate()
         stopTimer = nil

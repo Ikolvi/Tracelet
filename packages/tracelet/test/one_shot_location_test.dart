@@ -31,10 +31,7 @@ class MockTraceletPlatform extends TraceletPlatform {
   ) async {
     calls.add((method: 'getCurrentPosition', args: options));
     if (failCurrentPosition) {
-      throw PlatformException(
-        code: 'LOCATION_UNAVAILABLE',
-        message: 'Failed',
-      );
+      throw PlatformException(code: 'LOCATION_UNAVAILABLE', message: 'Failed');
     }
     return Map<String, Object?>.from(currentPositionResult);
   }
@@ -269,9 +266,7 @@ void main() {
         'coords': {'latitude': 0.0, 'longitude': 0.0},
       };
 
-      await Tracelet.getLastKnownLocation(
-        extras: {'source': 'cache'},
-      );
+      await Tracelet.getLastKnownLocation(extras: {'source': 'cache'});
 
       final args = mock.calls.first.args as Map<String, Object?>;
       expect(args['extras'], {'source': 'cache'});
@@ -352,11 +347,13 @@ void main() {
     test('getCurrentPosition without starting tracking', () async {
       // Enterprise pattern: ready → getCurrentPosition → done
       // No start() call, no foreground service
-      await Tracelet.ready(const Config(
-        app: AppConfig(
-          foregroundService: ForegroundServiceConfig(enabled: false),
+      await Tracelet.ready(
+        const Config(
+          app: AppConfig(
+            foregroundService: ForegroundServiceConfig(enabled: false),
+          ),
         ),
-      ));
+      );
 
       final location = await Tracelet.getCurrentPosition(
         desiredAccuracy: DesiredAccuracy.high,

@@ -238,6 +238,12 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
             result(3) // iOS: not needed for foreground location — always "granted"
         case "requestNotificationPermission":
             result(3) // iOS: not needed for foreground location — always "granted"
+        case "getMotionPermissionStatus":
+            result(motionDetector.getMotionAuthorizationStatus())
+        case "requestMotionPermission":
+            motionDetector.requestMotionPermission { status in
+                result(status)
+            }
         case "requestTemporaryFullAccuracy":
             let purposeKey = call.arguments as? String ?? "default"
             result(permissionManager.requestTemporaryFullAccuracy(purposeKey: purposeKey))
@@ -334,6 +340,7 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
 
         stateManager.enabled = true
         stateManager.trackingMode = 0
+        stateManager.isMoving = false
 
         locationEngine.start()
         motionDetector.start()
@@ -536,13 +543,10 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
 
         let locationMap: [String: Any]
         if let last = locationEngine.getLastLocation() {
-            locationMap = [
-                "isMoving": isMoving,
-                "coords": [
-                    "latitude": last.coordinate.latitude,
-                    "longitude": last.coordinate.longitude,
-                ],
-            ]
+            var map = locationEngine.buildLocationMap(last, speed: locationEngine.lastEffectiveSpeed)
+            map["isMoving"] = isMoving
+            map["event"] = "motionchange"
+            locationMap = map
         } else {
             locationMap = ["isMoving": isMoving]
         }

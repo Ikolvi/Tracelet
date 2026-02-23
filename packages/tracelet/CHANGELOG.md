@@ -1,3 +1,12 @@
+## 0.4.0
+
+* **FEAT**: `getMotionPermissionStatus()` and `requestMotionPermission()` APIs for activity recognition permission.
+* **FIX**: Speed always zero in motionchange events — track `lastEffectiveSpeed` across location updates.
+* **DOCS**: Split README into focused help guides (Permissions, Background Tracking, API, Configuration).
+* **DOCS**: Add side-by-side Android/iOS demo recordings.
+* **CHORE**: Bump all platform dependencies to ^0.4.0.
+* **CHORE**: Format all Dart files.
+
 ## 0.3.0
 
 * **FEAT**: One-shot location — `getCurrentPosition()` now supports `persist`, `samples`, `maximumAge`, and `extras` parameters for enterprise single-time location requests.

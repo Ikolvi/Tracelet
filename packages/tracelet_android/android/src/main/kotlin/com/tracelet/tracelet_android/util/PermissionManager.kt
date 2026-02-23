@@ -48,6 +48,7 @@ class PermissionManager(private val context: Context) {
         // both states show shouldShowRequestPermissionRationale == false.
         private const val KEY_LAST_RESULT_WAS_GRANT = "permission_last_result_was_grant"
         private const val KEY_NOTIFICATION_EVER_REQUESTED = "notification_ever_requested"
+        private const val KEY_MOTION_EVER_REQUESTED = "motion_ever_requested"
     }
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -145,12 +146,50 @@ class PermissionManager(private val context: Context) {
             ) == PackageManager.PERMISSION_GRANTED
         ) return true
 
+        markMotionRequested()
         ActivityCompat.requestPermissions(
             activity,
             arrayOf(Manifest.permission.ACTIVITY_RECOGNITION),
             REQUEST_CODE_ACTIVITY_RECOGNITION
         )
         return false
+    }
+
+    // ── Motion / Activity Recognition permission (Android 10+ / API 29+) ──
+
+    /**
+     * Returns the motion (ACTIVITY_RECOGNITION) permission status.
+     *
+     * Returns:
+     * - `0` (notDetermined) — never asked
+     * - `1` (denied) — denied but can ask again
+     * - `3` (granted) — permission granted
+     * - `4` (deniedForever) — permanently denied
+     *
+     * On API < 29, activity recognition is always allowed → returns 3.
+     */
+    fun getMotionPermissionStatus(activity: Activity? = null): Int {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return STATUS_ALWAYS // Pre-10: no runtime permission needed
+        }
+
+        val granted = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACTIVITY_RECOGNITION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (granted) return STATUS_ALWAYS // 3
+
+        if (activity != null) {
+            val canShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
+                activity, Manifest.permission.ACTIVITY_RECOGNITION
+            )
+            return when {
+                canShowRationale -> STATUS_DENIED       // 1 — denied, can ask again
+                hasEverRequestedMotion() -> STATUS_DENIED_FOREVER // 4
+                else -> STATUS_NOT_DETERMINED            // 0 — never asked
+            }
+        }
+        return if (hasEverRequestedMotion()) STATUS_DENIED else STATUS_NOT_DETERMINED
     }
 
     // ── Post-request status (called from onRequestPermissionsResult) ─────
@@ -313,5 +352,13 @@ class PermissionManager(private val context: Context) {
 
     private fun hasEverRequestedNotification(): Boolean {
         return prefs.getBoolean(KEY_NOTIFICATION_EVER_REQUESTED, false)
+    }
+
+    private fun markMotionRequested() {
+        prefs.edit().putBoolean(KEY_MOTION_EVER_REQUESTED, true).apply()
+    }
+
+    private fun hasEverRequestedMotion(): Boolean {
+        return prefs.getBoolean(KEY_MOTION_EVER_REQUESTED, false)
     }
 }

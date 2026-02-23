@@ -17,6 +17,11 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
     private var nextWatchId = 0
     private var isTracking = false
 
+    /// Last computed effective speed (m/s) from tracking location updates.
+    /// Used by the plugin to provide speed in motionchange events, since the
+    /// cached CLLocation.speed may be stale, 0, or -1.
+    private(set) var lastEffectiveSpeed: Double = 0.0
+
     /// Optional callback invoked on every accepted location (for geofenceModeHighAccuracy).
     var onLocationUpdate: ((Double, Double) -> Void)?
 
@@ -212,6 +217,17 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
         } else {
             stop()
         }
+        // Dispatch motionChange event (consistent with Android)
+        let locationMap: [String: Any]
+        if let loc = lastLocation {
+            var map = buildLocationMap(loc, speed: lastEffectiveSpeed)
+            map["isMoving"] = isMoving
+            map["event"] = "motionchange"
+            locationMap = map
+        } else {
+            locationMap = ["isMoving": isMoving]
+        }
+        eventDispatcher.sendMotionChange(locationMap)
         return true
     }
 
@@ -355,6 +371,7 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
 
         // Resolve effective speed: platform speed if available, otherwise computed
         let effectiveSpeed = (location.speed > 0) ? location.speed : computedSpeed
+        lastEffectiveSpeed = effectiveSpeed
 
         lastLocation = location
         stateManager.lastLocationTime = Date().timeIntervalSince1970 * 1000
@@ -373,7 +390,7 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
         }
 
         // Persist and dispatch (respecting persistMode)
-        persistLocationIfAllowed(locationMap, event: "motionchange")
+        persistLocationIfAllowed(locationMap, event: "location")
         eventDispatcher.sendLocation(locationMap)
 
         // Notify geofenceModeHighAccuracy listener (if active)
@@ -524,7 +541,7 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
     ///   - speed: Pre-computed effective speed (m/s). Uses platform speed if
     ///            available, otherwise distance/time from consecutive locations.
     ///            Pass `nil` to fall back to platform speed.
-    private func buildLocationMap(_ location: CLLocation, speed: Double? = nil) -> [String: Any] {
+    func buildLocationMap(_ location: CLLocation, speed: Double? = nil) -> [String: Any] {
         // Use provided effective speed, or fall back to platform speed.
         let effectiveSpeed = speed ?? max(location.speed, -1)
 

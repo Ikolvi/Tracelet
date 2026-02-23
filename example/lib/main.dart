@@ -235,16 +235,14 @@ class _DashboardPageState extends State<DashboardPage> {
           // Foreground granted → offer background upgrade via Dart dialog
           final shouldUpgrade = await _showBackgroundRationaleDialog();
           if (shouldUpgrade) {
-            final bgResult = await tl.Tracelet.requestPermission();
-            _addLog('PERMISSION', 'background upgrade=$bgResult');
+            await _upgradeToAlways();
           }
         }
       } else if (permStatus == 2 && mounted) {
         // whenInUse → offer background upgrade
         final shouldUpgrade = await _showBackgroundRationaleDialog();
         if (shouldUpgrade) {
-          final bgResult = await tl.Tracelet.requestPermission();
-          _addLog('PERMISSION', 'background upgrade=$bgResult');
+          await _upgradeToAlways();
         }
       } else if (permStatus == 4) {
         if (mounted) _showPermissionDeniedDialog();
@@ -452,9 +450,20 @@ class _DashboardPageState extends State<DashboardPage> {
           _addLog(
             'WARN',
             'Notification permission not granted — '
-            'starting anyway (notification may be hidden)',
+                'starting anyway (notification may be hidden)',
           );
         }
+      }
+
+      // Request motion / activity recognition permission so the plugin can
+      // automatically detect when the device starts or stops moving.
+      final hasMotion = await _ensureMotionPermission();
+      if (!hasMotion) {
+        _addLog(
+          'WARN',
+          'Motion permission not granted — '
+              'automatic motion detection may not work',
+        );
       }
 
       await tl.Tracelet.setConfig(
@@ -474,10 +483,7 @@ class _DashboardPageState extends State<DashboardPage> {
         _isTracking = state.enabled;
         _pluginState = state;
       });
-      _addLog(
-        'START',
-        'Background + notification  enabled=${state.enabled}',
-      );
+      _addLog('START', 'Background + notification  enabled=${state.enabled}');
     } catch (e) {
       _addLog('ERROR', 'startWithNotification() failed: $e');
     }
@@ -759,6 +765,29 @@ class _DashboardPageState extends State<DashboardPage> {
   // permission rationale dialogs. Clients can style, translate, animate
   // or replace these with their own widgets.
 
+  /// Attempts to upgrade from whenInUse → always.
+  ///
+  /// On Android, `requestPermission()` will show the system dialog.
+  /// On iOS 13+, `requestAlwaysAuthorization()` often does nothing
+  /// visible — the system may grant "provisional Always" silently or
+  /// simply not show a prompt. When the result is still `whenInUse`,
+  /// this method falls back to opening App Settings so the user can
+  /// toggle "Always" manually.
+  Future<void> _upgradeToAlways() async {
+    final bgResult = await tl.Tracelet.requestPermission();
+    _addLog('PERMISSION', 'background upgrade=$bgResult');
+
+    // On iOS, if the result is still whenInUse the OS didn't show a dialog.
+    // Open Settings so the user can toggle to "Always" manually.
+    if (!_isAndroid && bgResult == 2 && mounted) {
+      _addLog(
+        'PERMISSION',
+        'iOS did not show Always prompt — opening Settings',
+      );
+      await tl.Tracelet.openAppSettings();
+    }
+  }
+
   /// Shown when permission is permanently denied (deniedForever).
   ///
   /// Explains the situation and offers to open the device Settings app
@@ -801,24 +830,21 @@ class _DashboardPageState extends State<DashboardPage> {
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        icon: const Icon(
-          Icons.share_location,
-          color: Colors.indigo,
-          size: 48,
-        ),
+        icon: const Icon(Icons.share_location, color: Colors.indigo, size: 48),
         title: const Text('Background Location Access'),
         content: Text(
           _isAndroid
               ? 'Tracelet needs "Allow all the time" permission to '
-                'continue recording your location when the app is in '
-                'the background or the device is locked.\n\n'
-                'On the next screen, select '
-                '"Allow all the time" to enable background tracking.'
+                    'continue recording your location when the app is in '
+                    'the background or the device is locked.\n\n'
+                    'On the next screen, select '
+                    '"Allow all the time" to enable background tracking.'
               : 'Tracelet needs "Always" location access to '
-                'continue recording your location when the app is '
-                'not in the foreground.\n\n'
-                'Tap "Upgrade to Always" and then allow in the '
-                'system prompt.',
+                    'continue recording your location when the app is '
+                    'not in the foreground.\n\n'
+                    'You may see a system prompt, or you\'ll be taken '
+                    'to Settings where you can change Location to '
+                    '"Always".',
         ),
         actions: [
           TextButton(
@@ -898,11 +924,7 @@ class _DashboardPageState extends State<DashboardPage> {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        icon: const Icon(
-          Icons.notifications_off,
-          color: Colors.red,
-          size: 48,
-        ),
+        icon: const Icon(Icons.notifications_off, color: Colors.red, size: 48),
         title: const Text('Notifications Blocked'),
         content: const Text(
           'Notification permission has been permanently denied.\n\n'
@@ -989,6 +1011,136 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  // ── Motion / Activity Recognition Permission ──
+
+  /// Shows a rationale dialog explaining why motion permission is needed.
+  Future<bool> _showMotionRationaleDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(
+          Icons.directions_walk,
+          color: Colors.deepOrange,
+          size: 48,
+        ),
+        title: const Text('Enable Motion Detection'),
+        content: Text(
+          _isAndroid
+              ? 'Tracelet uses activity recognition to automatically detect '
+                    'when you start or stop moving.\n\n'
+                    'Without this permission, the plugin cannot detect motion '
+                    'transitions — you would need to manually call changePace().\n\n'
+                    'Allow activity recognition for automatic motion detection.'
+              : 'Tracelet uses Motion & Fitness data to automatically detect '
+                    'when you start or stop moving.\n\n'
+                    'Without this permission, automatic motion detection will not '
+                    'work — you would need to manually call changePace().\n\n'
+                    'Allow Motion & Fitness access for the best experience.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Skip'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.directions_walk),
+            label: const Text('Allow Motion'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
+  /// Shown when motion permission is permanently denied.
+  void _showMotionDeniedDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.do_not_disturb, color: Colors.red, size: 48),
+        title: const Text('Motion Detection Blocked'),
+        content: Text(
+          _isAndroid
+              ? 'Activity recognition permission has been permanently denied.\n\n'
+                    'Without this, the plugin cannot automatically detect motion '
+                    'transitions.\n\n'
+                    'To fix this, open Settings and enable "Physical activity" '
+                    'permission for this app.'
+              : 'Motion & Fitness permission has been denied.\n\n'
+                    'Without this, the plugin cannot automatically detect motion '
+                    'transitions.\n\n'
+                    'To fix this, open Settings > Privacy > Motion & Fitness '
+                    'and enable access for this app.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Not Now'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
+              tl.Tracelet.openAppSettings();
+            },
+            icon: const Icon(Icons.settings),
+            label: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Ensures motion / activity recognition permission is granted.
+  ///
+  /// Returns `true` if granted, `false` if denied.
+  Future<bool> _ensureMotionPermission() async {
+    final status = await tl.Tracelet.getMotionPermissionStatus();
+    _addLog('MOTION', 'current motion permission status=$status');
+
+    if (status == 3) return true; // Already granted
+
+    if (status == 4) {
+      // Permanently denied — show denied dialog
+      if (mounted) _showMotionDeniedDialog();
+      return false;
+    }
+
+    // Show rationale dialog first
+    if (!mounted) return false;
+    final shouldRequest = await _showMotionRationaleDialog();
+    if (!shouldRequest) {
+      _addLog('MOTION', 'user skipped motion permission');
+      return false;
+    }
+
+    final result = await tl.Tracelet.requestMotionPermission();
+    _addLog('MOTION', 'motion permission result=$result');
+
+    if (result == 4 && mounted) {
+      _showMotionDeniedDialog();
+      return false;
+    }
+    return result == 3;
+  }
+
+  /// Check and log motion permission status.
+  Future<void> _checkMotionStatus() async {
+    try {
+      final status = await tl.Tracelet.getMotionPermissionStatus();
+      final label = switch (status) {
+        0 => 'notDetermined',
+        1 => 'denied',
+        3 => 'granted',
+        4 => 'deniedForever',
+        _ => 'unknown($status)',
+      };
+      _addLog('MOTION', '$label ($status)');
+    } catch (e) {
+      _addLog('ERROR', 'getMotionPermissionStatus() failed: $e');
+    }
+  }
+
   Future<void> _getSensors() async {
     try {
       final s = await tl.Tracelet.getSensors();
@@ -1058,9 +1210,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _startWithAutoStop() async {
     try {
       await tl.Tracelet.setConfig(
-        const tl.Config(
-          geo: tl.GeoConfig(stopAfterElapsedMinutes: 2),
-        ),
+        const tl.Config(geo: tl.GeoConfig(stopAfterElapsedMinutes: 2)),
       );
       final state = await tl.Tracelet.start();
       setState(() {
@@ -1077,9 +1227,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _startGeofencesHighAccuracy() async {
     try {
       await tl.Tracelet.setConfig(
-        const tl.Config(
-          geo: tl.GeoConfig(geofenceModeHighAccuracy: true),
-        ),
+        const tl.Config(geo: tl.GeoConfig(geofenceModeHighAccuracy: true)),
       );
       final state = await tl.Tracelet.startGeofences();
       setState(() {
@@ -1265,15 +1413,16 @@ class _DashboardPageState extends State<DashboardPage> {
                           _checkNotificationStatus,
                         ),
                       _Chip(
+                        'Motion Status',
+                        Icons.directions_walk,
+                        _checkMotionStatus,
+                      ),
+                      _Chip(
                         'Provider State',
                         Icons.settings_input_antenna,
                         _getProviderState,
                       ),
-                      _Chip(
-                        'App Settings',
-                        Icons.settings,
-                        _openAppSettings,
-                      ),
+                      _Chip('App Settings', Icons.settings, _openAppSettings),
                       _Chip(
                         'Location Settings',
                         Icons.location_on,
@@ -1330,11 +1479,7 @@ class _DashboardPageState extends State<DashboardPage> {
                         Icons.gps_fixed,
                         _singleFetchBestOfThree,
                       ),
-                      _Chip(
-                        'Last Known',
-                        Icons.history,
-                        _getLastKnownLocation,
-                      ),
+                      _Chip('Last Known', Icons.history, _getLastKnownLocation),
                     ],
                   ),
 
@@ -1348,11 +1493,7 @@ class _DashboardPageState extends State<DashboardPage> {
                         Icons.straighten,
                         _toggleElasticity,
                       ),
-                      _Chip(
-                        'Auto-Stop 2min',
-                        Icons.timer,
-                        _startWithAutoStop,
-                      ),
+                      _Chip('Auto-Stop 2min', Icons.timer, _startWithAutoStop),
                       _Chip(
                         'Strict Filter',
                         Icons.filter_alt,
@@ -1408,11 +1549,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     color: Colors.purple,
                     children: [
                       _Chip('Sensors', Icons.sensors, _getSensors),
-                      _Chip(
-                        'Device Info',
-                        Icons.phone_android,
-                        _getDeviceInfo,
-                      ),
+                      _Chip('Device Info', Icons.phone_android, _getDeviceInfo),
                       _Chip(
                         'Power Save?',
                         Icons.battery_saver,

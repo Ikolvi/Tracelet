@@ -412,9 +412,7 @@ class _DashboardPageState extends State<DashboardPage> {
           app: const tl.AppConfig(
             stopOnTerminate: true,
             // Disable the foreground service — no notification shown.
-            foregroundService: tl.ForegroundServiceConfig(
-              enabled: false,
-            ),
+            foregroundService: tl.ForegroundServiceConfig(enabled: false),
           ),
           logger: const tl.LoggerConfig(
             logLevel: tl.LogLevel.verbose,
@@ -787,11 +785,7 @@ class _DashboardPageState extends State<DashboardPage> {
                         Icons.gps_fixed,
                         _singleFetchBestOfThree,
                       ),
-                      _Chip(
-                        'Last Known',
-                        Icons.history,
-                        _getLastKnownLocation,
-                      ),
+                      _Chip('Last Known', Icons.history, _getLastKnownLocation),
                       _Chip(
                         'Init No FG',
                         Icons.notifications_off,
