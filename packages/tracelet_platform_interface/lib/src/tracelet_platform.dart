@@ -225,9 +225,56 @@ abstract class TraceletPlatform extends PlatformInterface {
     throw UnimplementedError('isPowerSaveMode() has not been implemented.');
   }
 
-  /// Request location permission. Returns status code.
+  /// Get current permission status without triggering any dialog.
+  ///
+  /// Returns a status code matching [AuthorizationStatus]:
+  /// - `0` notDetermined — never asked
+  /// - `1` denied — denied but can ask again (Android only)
+  /// - `2` whenInUse — foreground granted
+  /// - `3` always — background granted
+  /// - `4` deniedForever — permanently denied, must open Settings
+  Future<int> getPermissionStatus() {
+    throw UnimplementedError(
+      'getPermissionStatus() has not been implemented.',
+    );
+  }
+
+  /// Request location permission asynchronously.
+  ///
+  /// Triggers the OS permission dialog and returns the **actual** result
+  /// after the user responds. Does **not** show any custom native dialog.
+  ///
+  /// Escalation: notDetermined → foreground, whenInUse → background.
+  /// Terminal states (denied/always) return immediately.
   Future<int> requestPermission() {
     throw UnimplementedError('requestPermission() has not been implemented.');
+  }
+
+  /// Get the notification permission status (Android 13+ / API 33+ only).
+  ///
+  /// Returns:
+  /// - `0` notDetermined — never asked
+  /// - `1` denied — denied but can ask again
+  /// - `3` always (granted)
+  /// - `4` deniedForever — permanently denied
+  ///
+  /// On Android < 13 and on iOS, always returns `3` (granted).
+  Future<int> getNotificationPermissionStatus() {
+    throw UnimplementedError(
+      'getNotificationPermissionStatus() has not been implemented.',
+    );
+  }
+
+  /// Request notification permission asynchronously (Android 13+ / API 33+).
+  ///
+  /// Triggers the OS POST_NOTIFICATIONS dialog and returns the actual result
+  /// after the user responds.
+  ///
+  /// On Android < 13 and on iOS, returns `3` (granted) immediately.
+  Future<int> requestNotificationPermission() {
+    throw UnimplementedError(
+      'requestNotificationPermission() has not been implemented.',
+    );
   }
 
   /// Request temporary full accuracy (iOS 14+). Returns accuracy status.

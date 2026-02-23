@@ -1,4 +1,5 @@
 import Foundation
+import Network
 
 /// HTTP sync manager using URLSession.
 ///
@@ -13,6 +14,7 @@ final class HttpSyncManager {
     private var retryCount = 0
     private let maxRetries = 10
     private var isSyncing = false
+    private let pathMonitor = NWPathMonitor()
 
     init(configManager: ConfigManager,
          eventDispatcher: EventDispatcher,
@@ -27,11 +29,13 @@ final class HttpSyncManager {
     }
 
     func start() {
-        // Auto-sync is driven by onLocationInserted calls
+        // Start network path monitor for cellular detection
+        pathMonitor.start(queue: DispatchQueue.global(qos: .utility))
     }
 
     func stop() {
         session.invalidateAndCancel()
+        pathMonitor.cancel()
     }
 
     // MARK: - Trigger sync
@@ -39,6 +43,9 @@ final class HttpSyncManager {
     func onLocationInserted() {
         guard configManager.getAutoSync() else { return }
         guard !configManager.getUrl().isEmpty else { return }
+
+        // Skip auto-sync on cellular if configured
+        if configManager.getDisableAutoSyncOnCellular() && isCellular() { return }
 
         let threshold = configManager.getAutoSyncThreshold()
         if threshold > 0 {
@@ -235,5 +242,11 @@ final class HttpSyncManager {
     private func isTransientError(_ statusCode: Int) -> Bool {
         return statusCode == 0 || statusCode == 408 || statusCode == 429 ||
                (statusCode >= 500 && statusCode < 600)
+    }
+
+    /// Returns true if the current network path is cellular only.
+    private func isCellular() -> Bool {
+        let path = pathMonitor.currentPath
+        return path.usesInterfaceType(.cellular) && !path.usesInterfaceType(.wifi)
     }
 }

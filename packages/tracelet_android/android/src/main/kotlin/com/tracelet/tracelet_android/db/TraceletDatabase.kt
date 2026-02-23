@@ -151,7 +151,7 @@ class TraceletDatabase private constructor(context: Context) :
     // Location CRUD
     // =========================================================================
 
-    /** Inserts a location and returns its UUID. */
+    /** Inserts a location and returns its UUID. Respects persistMode and retention limits. */
     fun insertLocation(location: Map<String, Any?>): String {
         val uuid = location["uuid"] as? String ?: UUID.randomUUID().toString()
         val values = ContentValues().apply {
@@ -246,6 +246,30 @@ class TraceletDatabase private constructor(context: Context) :
     /** Deletes a location by UUID. */
     fun deleteLocation(uuid: String): Boolean {
         return writableDatabase.delete(TABLE_LOCATIONS, "$COL_UUID = ?", arrayOf(uuid)) > 0
+    }
+
+    /** Prune locations older than [maxDays]. */
+    fun pruneOldLocations(maxDays: Int) {
+        if (maxDays <= 0) return
+        writeExecutor.execute {
+            val cutoff = System.currentTimeMillis() - (maxDays * 24L * 60 * 60 * 1000)
+            writableDatabase.delete(TABLE_LOCATIONS, "$COL_CREATED_AT < ?", arrayOf(cutoff.toString()))
+        }
+    }
+
+    /** Enforce max record count by deleting oldest records. */
+    fun enforceMaxRecords(maxRecords: Int) {
+        if (maxRecords <= 0) return
+        writeExecutor.execute {
+            val count = getLocationCount()
+            if (count > maxRecords) {
+                val excess = count - maxRecords
+                writableDatabase.execSQL(
+                    "DELETE FROM $TABLE_LOCATIONS WHERE $COL_UUID IN " +
+                    "(SELECT $COL_UUID FROM $TABLE_LOCATIONS ORDER BY $COL_CREATED_AT ASC LIMIT $excess)"
+                )
+            }
+        }
     }
 
     // =========================================================================

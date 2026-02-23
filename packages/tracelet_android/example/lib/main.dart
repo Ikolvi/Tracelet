@@ -111,7 +111,8 @@ class _DashboardPageState extends State<DashboardPage> {
         _addLog(
           'LOCATION',
           '${loc.coords.latitude.toStringAsFixed(6)}, ${loc.coords.longitude.toStringAsFixed(6)}  '
-              'acc=${loc.coords.accuracy.toStringAsFixed(1)}m  spd=${loc.coords.speed.toStringAsFixed(1)}m/s',
+              'acc=${loc.coords.accuracy.toStringAsFixed(1)}m  spd=${loc.coords.speed.toStringAsFixed(1)}m/s  '
+              'odo=${loc.odometer.toStringAsFixed(0)}m',
         );
       }),
     );
@@ -956,8 +957,7 @@ class _StatusCard extends StatelessWidget {
                   Text('Acc: ${location!.coords.accuracy.toStringAsFixed(1)}m'),
                   Text('Spd: ${location!.coords.speed.toStringAsFixed(1)} m/s'),
                   Text('Alt: ${location!.coords.altitude.toStringAsFixed(0)}m'),
-                  if (state != null)
-                    Text('Odo: ${state!.odometer.toStringAsFixed(0)}m'),
+                  Text('Odo: ${location!.odometer.toStringAsFixed(0)}m'),
                 ],
               ),
             ],

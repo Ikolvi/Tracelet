@@ -80,6 +80,9 @@ class HttpSyncManager(
         if (!config.getAutoSync()) return
         val url = config.getHttpUrl() ?: return
 
+        // Skip auto-sync on cellular if configured
+        if (config.getDisableAutoSyncOnCellular() && isCellular()) return
+
         val threshold = config.getAutoSyncThreshold()
         if (threshold > 0) {
             val count = db.getLocationCount()
@@ -279,5 +282,15 @@ class HttpSyncManager(
             }
         }
         connectivityCallback = null
+    }
+
+    /** Returns true if current network transport is cellular. */
+    private fun isCellular(): Boolean {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return false
+        val network = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(network) ?: return false
+        return caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) &&
+               !caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
     }
 }

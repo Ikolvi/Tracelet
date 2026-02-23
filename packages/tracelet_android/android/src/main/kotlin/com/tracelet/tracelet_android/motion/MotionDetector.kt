@@ -55,6 +55,9 @@ class MotionDetector(
     // Callback to notify LocationEngine to start/stop
     var onMotionStateChanged: ((isMoving: Boolean) -> Unit)? = null
 
+    // Callback to request full tracking stop (stopOnStationary mode)
+    var onStopRequested: (() -> Unit)? = null
+
     // Current detected activity
     private var currentActivity: String = "unknown"
     private var currentConfidence: Int = -1
@@ -190,16 +193,32 @@ class MotionDetector(
         currentActivity = activityType
         currentConfidence = 100 // Transition API doesn't provide confidence
 
+        // Filter by minimumActivityRecognitionConfidence
+        val minConfidence = config.getMinimumActivityRecognitionConfidence()
+        if (currentConfidence < minConfidence) return
+
+        // Filter by triggerActivities — only respond to listed activity types
+        val triggerActivities = config.getTriggerActivities()
+        if (triggerActivities.isNotEmpty()) {
+            val allowed = triggerActivities.split(",").map { it.trim().lowercase() }
+            if (activityType.lowercase() !in allowed && activityType != "still") return
+        }
+
         // Fire activity change event
         events.sendActivityChange(mapOf(
             "activity" to activityType,
             "confidence" to currentConfidence,
         ))
 
+        // Check disableStopDetection before handling stop logic
+        val disableStopDetection = config.getDisableStopDetection()
+
         when {
             // Device became STILL → start stop-timeout countdown
             event.activityType == DetectedActivity.STILL && isEntering -> {
-                startStopTimeoutCountdown()
+                if (!disableStopDetection) {
+                    startStopTimeoutCountdown()
+                }
             }
             // Device exited STILL (started moving)
             event.activityType == DetectedActivity.STILL && !isEntering -> {
@@ -225,12 +244,14 @@ class MotionDetector(
     private fun startStopTimeoutCountdown() {
         cancelStopTimeout()
         val timeoutMs = config.getStopTimeout() * 60 * 1000L
-        if (timeoutMs <= 0) return
+        val stopDetectionDelayMs = config.getStopDetectionDelay() * 1000L
+        val totalDelayMs = timeoutMs + stopDetectionDelayMs
+        if (totalDelayMs <= 0) return
 
         stopTimeoutRunnable = Runnable {
             declareStationary()
         }
-        mainHandler.postDelayed(stopTimeoutRunnable!!, timeoutMs)
+        mainHandler.postDelayed(stopTimeoutRunnable!!, totalDelayMs)
     }
 
     private fun cancelStopTimeout() {
@@ -242,6 +263,12 @@ class MotionDetector(
         if (!state.isMoving) return // Already stationary
         state.isMoving = false
         onMotionStateChanged?.invoke(false)
+
+        // stopOnStationary: if true, caller should fully stop tracking
+        if (config.getStopOnStationary()) {
+            onStopRequested?.invoke()
+        }
+
         startAccelerometerMonitoring()
     }
 

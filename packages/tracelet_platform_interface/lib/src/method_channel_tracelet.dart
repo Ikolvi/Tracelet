@@ -263,9 +263,32 @@ class MethodChannelTracelet extends TraceletPlatform {
   }
 
   @override
+  Future<int> getPermissionStatus() async {
+    final result =
+        await _methodChannel.invokeMethod<int>('getPermissionStatus');
+    return result ?? 0;
+  }
+
+  @override
   Future<int> requestPermission() async {
     final result = await _methodChannel.invokeMethod<int>('requestPermission');
     return result ?? 0;
+  }
+
+  @override
+  Future<int> getNotificationPermissionStatus() async {
+    final result = await _methodChannel.invokeMethod<int>(
+      'getNotificationPermissionStatus',
+    );
+    return result ?? 3; // Default: granted (pre-13 / iOS)
+  }
+
+  @override
+  Future<int> requestNotificationPermission() async {
+    final result = await _methodChannel.invokeMethod<int>(
+      'requestNotificationPermission',
+    );
+    return result ?? 3; // Default: granted (pre-13 / iOS)
   }
 
   @override

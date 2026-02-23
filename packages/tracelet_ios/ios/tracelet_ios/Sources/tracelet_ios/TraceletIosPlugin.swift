@@ -32,8 +32,10 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
     private var logger: TraceletLogger!
     private var soundManager: SoundManager!
     private var permissionManager: PermissionManager!
+    private var preventSuspendManager: PreventSuspendManager!
 
     private var heartbeatTimer: Timer?
+    private var stopAfterElapsedTimer: Timer?
     private var isReady = false
 
     // MARK: - FlutterPlugin registration
@@ -77,6 +79,17 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
         )
         instance.motionDetector.onMotionStateChanged = { [weak instance] isMoving in
             instance?.handleMotionStateChange(isMoving)
+        }
+        instance.motionDetector.onStopRequested = { [weak instance] in
+            guard let instance = instance else { return }
+            // stopOnStationary: fully stop tracking
+            instance.stateManager.enabled = false
+            instance.stateManager.isMoving = false
+            instance.locationEngine.stop()
+            instance.motionDetector.stop()
+            instance.stopHeartbeat()
+            instance.eventDispatcher.sendEnabledChange(false)
+            instance.logger.info("stopOnStationary — tracking stopped by motion detector")
         }
 
         // Geofencing
@@ -122,6 +135,9 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
 
         // Sound
         instance.soundManager = SoundManager(configManager: instance.configManager)
+
+        // Prevent Suspend
+        instance.preventSuspendManager = PreventSuspendManager(configManager: instance.configManager)
 
         // Permissions
         instance.permissionManager = PermissionManager()
@@ -214,8 +230,14 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
         // Utility
         case "isPowerSaveMode":
             result(permissionManager.isPowerSaveMode())
+        case "getPermissionStatus":
+            result(permissionManager.getAuthorizationStatus())
         case "requestPermission":
-            result(permissionManager.requestPermission())
+            permissionManager.requestPermission(result: result)
+        case "getNotificationPermissionStatus":
+            result(3) // iOS: not needed for foreground location — always "granted"
+        case "requestNotificationPermission":
+            result(3) // iOS: not needed for foreground location — always "granted"
         case "requestTemporaryFullAccuracy":
             let purposeKey = call.arguments as? String ?? "default"
             result(permissionManager.requestTemporaryFullAccuracy(purposeKey: purposeKey))
@@ -316,6 +338,8 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
         locationEngine.start()
         motionDetector.start()
         startHeartbeat()
+        startStopAfterElapsedTimer()
+        preventSuspendManager.start()
 
         eventDispatcher.sendEnabledChange(true)
         logger.info("start() — tracking started")
@@ -327,8 +351,11 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
         stateManager.isMoving = false
 
         locationEngine.stop()
+        locationEngine.onLocationUpdate = nil // clear high-accuracy geofence listener
         motionDetector.stop()
         stopHeartbeat()
+        cancelStopAfterElapsedTimer()
+        preventSuspendManager.stop()
 
         eventDispatcher.sendEnabledChange(false)
         logger.info("stop() — tracking stopped")
@@ -346,8 +373,18 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
 
         geofenceManager.reRegisterAll()
 
+        // geofenceModeHighAccuracy: also start GPS tracking and compute
+        // transitions in-app for more precise enter/exit detection.
+        if configManager.getGeofenceModeHighAccuracy() {
+            geofenceManager.clearHighAccuracyState()
+            locationEngine.onLocationUpdate = { [weak self] lat, lng in
+                self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng)
+            }
+            locationEngine.start()
+        }
+
         eventDispatcher.sendEnabledChange(true)
-        logger.info("startGeofences() — geofence-only mode")
+        logger.info("startGeofences() — geofence-only mode (highAccuracy=\(configManager.getGeofenceModeHighAccuracy()))")
         result(stateManager.toMap(configManager.getConfig()))
     }
 
@@ -553,6 +590,33 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
     private func stopHeartbeat() {
         heartbeatTimer?.invalidate()
         heartbeatTimer = nil
+    }
+
+    // MARK: - stopAfterElapsedMinutes
+
+    private func startStopAfterElapsedTimer() {
+        cancelStopAfterElapsedTimer()
+        let minutes = configManager.getStopAfterElapsedMinutes()
+        guard minutes > 0 else { return }
+
+        stopAfterElapsedTimer = Timer.scheduledTimer(
+            withTimeInterval: TimeInterval(minutes * 60),
+            repeats: false
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            self.logger.info("stopAfterElapsedMinutes (\(minutes) min) — auto-stopping")
+            self.stateManager.enabled = false
+            self.stateManager.isMoving = false
+            self.locationEngine.stop()
+            self.motionDetector.stop()
+            self.stopHeartbeat()
+            self.eventDispatcher.sendEnabledChange(false)
+        }
+    }
+
+    private func cancelStopAfterElapsedTimer() {
+        stopAfterElapsedTimer?.invalidate()
+        stopAfterElapsedTimer = nil
     }
 }
 

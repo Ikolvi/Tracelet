@@ -402,11 +402,66 @@ class Tracelet {
   /// Whether the device is currently in power-save (battery saver) mode.
   static Future<bool> get isPowerSaveMode => _platform.isPowerSaveMode();
 
-  /// Request location permission from the user.
+  /// Get the current permission status without triggering any dialog.
   ///
-  /// Returns the resulting [AuthorizationStatus] as an int.
+  /// Returns the [AuthorizationStatus] index:
+  /// - `0` notDetermined — never asked
+  /// - `1` denied — denied but can ask again (Android only)
+  /// - `2` whenInUse — foreground granted
+  /// - `3` always — background granted
+  /// - `4` deniedForever — permanently denied, open Settings to change
+  ///
+  /// Use this to decide what UI to show before calling [requestPermission].
+  static Future<int> getPermissionStatus() {
+    return _platform.getPermissionStatus();
+  }
+
+  /// Request location permission asynchronously.
+  ///
+  /// Triggers the native OS permission dialog (no custom native dialogs) and
+  /// returns the **actual** [AuthorizationStatus] after the user responds.
+  ///
+  /// Escalation logic:
+  /// - `notDetermined` → requests foreground (When In Use) permission
+  /// - `whenInUse` → requests background (Always) permission
+  /// - `denied` / `deniedForever` / `always` → returns immediately
+  ///
+  /// For denied/deniedForever cases, show your own Dart dialog and use
+  /// [openAppSettings] to let the user fix permissions manually.
   static Future<int> requestPermission() {
     return _platform.requestPermission();
+  }
+
+  /// Get the notification permission status (Android 13+ / API 33+ only).
+  ///
+  /// Returns a status code:
+  /// - `0` notDetermined — never asked
+  /// - `1` denied — denied but can ask again
+  /// - `3` always (granted)
+  /// - `4` deniedForever — permanently denied, must open Settings
+  ///
+  /// On Android < 13 and on iOS, always returns `3` (granted) since no
+  /// runtime notification permission is needed.
+  ///
+  /// On Android 13+, the POST_NOTIFICATIONS permission is required for
+  /// the foreground service notification to be visible. Without it, the
+  /// service still runs but the notification is hidden.
+  static Future<int> getNotificationPermissionStatus() {
+    return _platform.getNotificationPermissionStatus();
+  }
+
+  /// Request notification permission asynchronously (Android 13+ / API 33+).
+  ///
+  /// Triggers the OS POST_NOTIFICATIONS dialog and returns the **actual**
+  /// status after the user responds.
+  ///
+  /// On Android < 13 and on iOS, returns `3` (granted) immediately.
+  ///
+  /// **Important:** On Android 13+, call this before starting a foreground
+  /// service with a notification. Without this permission, the notification
+  /// will not be visible (though the service still runs).
+  static Future<int> requestNotificationPermission() {
+    return _platform.requestNotificationPermission();
   }
 
   /// Request temporary full accuracy (iOS 14+).
@@ -453,6 +508,26 @@ class Tracelet {
   /// Show a system settings page (e.g. location settings).
   static Future<bool> showSettings(String action) {
     return _platform.showSettings(action);
+  }
+
+  /// Open the app's system settings page.
+  ///
+  /// Useful when permission is permanently denied ([AuthorizationStatus.deniedForever])
+  /// and the user must enable it manually.
+  static Future<bool> openAppSettings() {
+    return _platform.showSettings('app');
+  }
+
+  /// Open the device's location settings page.
+  static Future<bool> openLocationSettings() {
+    return _platform.showSettings('location');
+  }
+
+  /// Open battery optimization settings (Android only).
+  ///
+  /// Prompts the user to exempt the app from battery restrictions.
+  static Future<bool> openBatterySettings() {
+    return _platform.requestSettings('ignoreOptimizations');
   }
 
   // ---------------------------------------------------------------------------

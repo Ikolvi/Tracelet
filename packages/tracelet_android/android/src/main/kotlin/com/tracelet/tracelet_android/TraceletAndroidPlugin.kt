@@ -26,6 +26,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
+import io.flutter.plugin.common.PluginRegistry
 
 /**
  * TraceletAndroidPlugin — Full Android implementation of the Tracelet plugin.
@@ -46,7 +47,8 @@ import io.flutter.plugin.common.MethodChannel.Result
 class TraceletAndroidPlugin :
     FlutterPlugin,
     MethodCallHandler,
-    ActivityAware {
+    ActivityAware,
+    PluginRegistry.RequestPermissionsResultListener {
 
     private lateinit var channel: MethodChannel
     private lateinit var context: Context
@@ -67,9 +69,12 @@ class TraceletAndroidPlugin :
     private lateinit var permissionManager: PermissionManager
 
     private var activity: Activity? = null
+    private var activityBinding: ActivityPluginBinding? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var heartbeatRunnable: Runnable? = null
+    private var stopAfterElapsedRunnable: Runnable? = null
     private var isReady = false
+    private var pendingPermissionResult: Result? = null
 
     // =========================================================================
     // FlutterPlugin lifecycle
@@ -101,6 +106,21 @@ class TraceletAndroidPlugin :
         motionDetector = MotionDetector(context, configManager, stateManager, eventDispatcher)
         motionDetector.onMotionStateChanged = { isMoving ->
             handleMotionStateChange(isMoving)
+        }
+        motionDetector.onStopRequested = {
+            // stopOnStationary: fully stop tracking
+            mainHandler.post {
+                stateManager.enabled = false
+                stateManager.isMoving = false
+                locationEngine.stop()
+                motionDetector.stop()
+                stopHeartbeat()
+                if (configManager.isForegroundServiceEnabled()) {
+                    LocationService.stop(context)
+                }
+                eventDispatcher.sendEnabledChange(false)
+                logger.info("stopOnStationary — tracking stopped by motion detector")
+            }
         }
 
         // Geofencing
@@ -145,17 +165,25 @@ class TraceletAndroidPlugin :
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         activity = binding.activity
+        activityBinding = binding
+        binding.addRequestPermissionsResultListener(this)
     }
 
     override fun onDetachedFromActivityForConfigChanges() {
+        activityBinding?.removeRequestPermissionsResultListener(this)
+        activityBinding = null
         activity = null
     }
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
         activity = binding.activity
+        activityBinding = binding
+        binding.addRequestPermissionsResultListener(this)
     }
 
     override fun onDetachedFromActivity() {
+        activityBinding?.removeRequestPermissionsResultListener(this)
+        activityBinding = null
         activity = null
     }
 
@@ -219,10 +247,17 @@ class TraceletAndroidPlugin :
 
             // Utility
             "isPowerSaveMode" -> result.success(permissionManager.isPowerSaveMode())
-            "requestPermission" -> result.success(permissionManager.requestPermission(activity))
+            "getPermissionStatus" -> result.success(
+                permissionManager.getAuthorizationStatus(activity)
+            )
+            "requestPermission" -> handleRequestPermission(result)
+            "getNotificationPermissionStatus" -> result.success(
+                permissionManager.getNotificationPermissionStatus(activity)
+            )
+            "requestNotificationPermission" -> handleRequestNotificationPermission(result)
             "requestTemporaryFullAccuracy" -> {
                 // Android doesn't have temporary full accuracy (iOS-only concept)
-                result.success(permissionManager.getAuthorizationStatus())
+                result.success(permissionManager.getAuthorizationStatus(activity))
             }
             "getProviderState" -> result.success(locationEngine.buildProviderState())
             "getSensors" -> result.success(motionDetector.getSensors())
@@ -310,8 +345,9 @@ class TraceletAndroidPlugin :
 
         // Android 14+ requires runtime location permission BEFORE starting
         // a foreground service with FOREGROUND_SERVICE_TYPE_LOCATION.
-        val authStatus = permissionManager.getAuthorizationStatus()
-        if (authStatus < 2) { // < WHEN_IN_USE
+        val authStatus = permissionManager.getAuthorizationStatus(activity)
+        if (authStatus != PermissionManager.STATUS_WHEN_IN_USE &&
+            authStatus != PermissionManager.STATUS_ALWAYS) {
             result.error(
                 "PERMISSION_DENIED",
                 "Location permission is required before starting tracking. " +
@@ -346,6 +382,9 @@ class TraceletAndroidPlugin :
         // Start heartbeat
         startHeartbeat()
 
+        // Schedule auto-stop if stopAfterElapsedMinutes is configured
+        startStopAfterElapsedTimer()
+
         // Fire enabledChange
         eventDispatcher.sendEnabledChange(true)
 
@@ -359,8 +398,10 @@ class TraceletAndroidPlugin :
 
         // Stop all subsystems
         locationEngine.stop()
+        locationEngine.onLocationUpdate = null // clear high-accuracy geofence listener
         motionDetector.stop()
         stopHeartbeat()
+        cancelStopAfterElapsedTimer()
 
         // Stop foreground service if it was running
         if (configManager.isForegroundServiceEnabled()) {
@@ -374,6 +415,119 @@ class TraceletAndroidPlugin :
         result.success(stateManager.toMap(configManager.getConfig()))
     }
 
+    // =========================================================================
+    // Permission handlers
+    // =========================================================================
+
+    /**
+     * Asynchronous permission request.
+     *
+     * Triggers the OS permission dialog and waits for the user's response.
+     * The result is sent back to Dart only AFTER the dialog closes.
+     */
+    private fun handleRequestPermission(result: Result) {
+        val act = activity
+        if (act == null || pendingPermissionResult != null) {
+            // No activity or a request is already in progress — return current status
+            result.success(permissionManager.getAuthorizationStatus(activity))
+            return
+        }
+
+        val status = permissionManager.getAuthorizationStatus(act)
+
+        when (status) {
+            PermissionManager.STATUS_NOT_DETERMINED,
+            PermissionManager.STATUS_DENIED -> {
+                // Request foreground permission
+                pendingPermissionResult = result
+                permissionManager.requestForegroundPermission(act)
+            }
+            PermissionManager.STATUS_WHEN_IN_USE -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    // Upgrade to background permission
+                    pendingPermissionResult = result
+                    permissionManager.requestBackgroundPermission(act)
+                } else {
+                    // Pre-Q: foreground = always
+                    result.success(PermissionManager.STATUS_ALWAYS)
+                }
+            }
+            else -> {
+                // ALWAYS or DENIED_FOREVER — no dialog will show
+                result.success(status)
+            }
+        }
+    }
+
+    /**
+     * Asynchronous notification permission request (Android 13+ / API 33+).
+     *
+     * Triggers the OS POST_NOTIFICATIONS dialog and waits for the user's response.
+     * On API < 33, returns immediately with status 3 (granted — no runtime permission needed).
+     */
+    private fun handleRequestNotificationPermission(result: Result) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            // Pre-13: notifications always allowed
+            result.success(PermissionManager.STATUS_ALWAYS)
+            return
+        }
+
+        val act = activity
+        if (act == null || pendingPermissionResult != null) {
+            result.success(permissionManager.getNotificationPermissionStatus(activity))
+            return
+        }
+
+        val status = permissionManager.getNotificationPermissionStatus(act)
+        if (status == PermissionManager.STATUS_ALWAYS ||
+            status == PermissionManager.STATUS_DENIED_FOREVER) {
+            // Already granted or permanently denied — no dialog will show
+            result.success(status)
+            return
+        }
+
+        pendingPermissionResult = result
+        permissionManager.requestNotificationPermission(act)
+    }
+
+    /**
+     * Called by the Flutter engine after the OS permission dialog closes.
+     * Resolves the pending Dart `Future<int>` with the actual result.
+     */
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ): Boolean {
+        if (requestCode != PermissionManager.REQUEST_CODE_LOCATION &&
+            requestCode != PermissionManager.REQUEST_CODE_BACKGROUND_LOCATION &&
+            requestCode != PermissionManager.REQUEST_CODE_ACTIVITY_RECOGNITION &&
+            requestCode != PermissionManager.REQUEST_CODE_NOTIFICATION
+        ) {
+            return false // Not ours
+        }
+
+        val pending = pendingPermissionResult ?: return false
+        pendingPermissionResult = null
+
+        val act = activity
+        if (requestCode == PermissionManager.REQUEST_CODE_NOTIFICATION) {
+            // For notification permission, return the notification status
+            pending.success(
+                permissionManager.getNotificationPermissionStatus(act)
+            )
+        } else if (act != null) {
+            pending.success(permissionManager.getStatusAfterRequest(act))
+        } else {
+            pending.success(permissionManager.getAuthorizationStatus(null))
+        }
+        return true
+    }
+
+    // =========================================================================
+    // Geofence handlers
+    // =========================================================================
+
     private fun handleStartGeofences(result: Result) {
         if (!isReady) {
             result.error("NOT_READY", "Call ready() before startGeofences()", null)
@@ -386,6 +540,16 @@ class TraceletAndroidPlugin :
         // Re-register all geofences
         geofenceManager.reRegisterAll()
 
+        // geofenceModeHighAccuracy: also start GPS tracking and compute
+        // transitions in-app for more precise enter/exit detection.
+        if (configManager.getGeofenceModeHighAccuracy()) {
+            geofenceManager.clearHighAccuracyState()
+            locationEngine.onLocationUpdate = { lat, lng ->
+                geofenceManager.evaluateHighAccuracyProximity(lat, lng)
+            }
+            locationEngine.start()
+        }
+
         // Start foreground service if enabled (needed for background geofencing)
         if (configManager.isForegroundServiceEnabled()) {
             LocationService.start(context)
@@ -393,7 +557,7 @@ class TraceletAndroidPlugin :
 
         eventDispatcher.sendEnabledChange(true)
 
-        logger.info("startGeofences() — geofence-only mode")
+        logger.info("startGeofences() — geofence-only mode (highAccuracy=${configManager.getGeofenceModeHighAccuracy()})")
         result.success(stateManager.toMap(configManager.getConfig()))
     }
 
@@ -707,6 +871,35 @@ class TraceletAndroidPlugin :
     private fun stopHeartbeat() {
         heartbeatRunnable?.let { mainHandler.removeCallbacks(it) }
         heartbeatRunnable = null
+    }
+
+    // =========================================================================
+    // stopAfterElapsedMinutes
+    // =========================================================================
+
+    private fun startStopAfterElapsedTimer() {
+        cancelStopAfterElapsedTimer()
+        val minutes = configManager.getStopAfterElapsedMinutes()
+        if (minutes <= 0) return
+
+        stopAfterElapsedRunnable = Runnable {
+            logger.info("stopAfterElapsedMinutes ($minutes min) — auto-stopping")
+            stateManager.enabled = false
+            stateManager.isMoving = false
+            locationEngine.stop()
+            motionDetector.stop()
+            stopHeartbeat()
+            if (configManager.isForegroundServiceEnabled()) {
+                LocationService.stop(context)
+            }
+            eventDispatcher.sendEnabledChange(false)
+        }
+        mainHandler.postDelayed(stopAfterElapsedRunnable!!, minutes * 60 * 1000L)
+    }
+
+    private fun cancelStopAfterElapsedTimer() {
+        stopAfterElapsedRunnable?.let { mainHandler.removeCallbacks(it) }
+        stopAfterElapsedRunnable = null
     }
 
     // =========================================================================

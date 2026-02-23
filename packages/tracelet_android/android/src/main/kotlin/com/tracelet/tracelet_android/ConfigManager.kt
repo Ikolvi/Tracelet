@@ -432,19 +432,6 @@ class ConfigManager(context: Context) {
     }
 
     // ---------------------------------------------------------------------------
-    // Typed Getters (PermissionRationale)
-    // ---------------------------------------------------------------------------
-
-    fun getBackgroundPermissionRationale(): Map<String, String>? {
-        val raw = configCache["backgroundPermissionRationale"]
-        if (raw is Map<*, *>) {
-            @Suppress("UNCHECKED_CAST")
-            return (raw as Map<String, Any?>).mapValues { it.value?.toString() ?: "" }
-        }
-        return null
-    }
-
-    // ---------------------------------------------------------------------------
     // Private helpers
     // ---------------------------------------------------------------------------
 

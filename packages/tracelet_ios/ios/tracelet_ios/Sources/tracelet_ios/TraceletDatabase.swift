@@ -242,6 +242,28 @@ final class TraceletDatabase {
         return success
     }
 
+    /// Prune locations older than maxDays.
+    func pruneOldLocations(maxDays: Int) {
+        guard maxDays > 0 else { return }
+        queue.sync {
+            let sql = "DELETE FROM locations WHERE created_at < datetime('now', '-\(maxDays) days')"
+            exec(sql)
+        }
+    }
+
+    /// Enforce max record count by deleting oldest records.
+    func enforceMaxRecords(maxRecords: Int) {
+        guard maxRecords > 0 else { return }
+        let count = getLocationCount()
+        if count > maxRecords {
+            let excess = count - maxRecords
+            queue.sync {
+                let sql = "DELETE FROM locations WHERE uuid IN (SELECT uuid FROM locations ORDER BY created_at ASC LIMIT \(excess))"
+                exec(sql)
+            }
+        }
+    }
+
     // MARK: - Geofence CRUD
 
     func insertGeofence(_ data: [String: Any]) -> Bool {

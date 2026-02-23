@@ -3,6 +3,7 @@ repository: https://github.com/Ikolvi/Tracelet
 
 packages:
   - packages/**
+  - example
 
 ide:
   intellij: false
@@ -73,15 +74,15 @@ scripts:
     description: Build example app for Android
     run: flutter build apk --debug
     packageFilters:
-      scope: tracelet
-      dirExists: example
+      scope: tracelet_example
+      dirExists: lib
 
   build:example:ios:
     description: Build example app for iOS
     run: flutter build ios --no-codesign --debug
     packageFilters:
-      scope: tracelet
-      dirExists: example
+      scope: tracelet_example
+      dirExists: lib
 
   coverage:
     description: Generate coverage report

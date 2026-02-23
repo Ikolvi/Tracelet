@@ -13,6 +13,7 @@ import com.tracelet.tracelet_android.EventDispatcher
 import com.tracelet.tracelet_android.StateManager
 import com.tracelet.tracelet_android.db.TraceletDatabase
 import com.tracelet.tracelet_android.util.BatteryUtils
+import android.os.SystemClock
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -45,6 +46,9 @@ class LocationEngine(
     private var lastLocation: Location? = null
     private var currentActivityType: String = "unknown"
     private var currentActivityConfidence: Int = -1
+
+    /** Optional callback invoked on every accepted location (for geofenceModeHighAccuracy). */
+    var onLocationUpdate: ((Double, Double) -> Unit)? = null
 
     // watchPosition watchers: watchId -> LocationCallback
     private val watchers = ConcurrentHashMap<Int, LocationCallback>()
@@ -389,32 +393,116 @@ class LocationEngine(
         // Calculate distance from last location for odometer
         val distance = lastLocation?.distanceTo(location)?.toDouble() ?: 0.0
 
-        // Check distance filter
-        val minDistance = config.getDistanceFilter()
-        if (lastLocation != null && distance < minDistance) {
+        // --- Compute speed from distance/time as fallback ---
+        // GPS-reported speed can be 0 when walking slowly, during cold starts,
+        // or when the provider doesn't calculate speed. We compute it ourselves
+        // from consecutive location pairs so that speed is always available.
+        val timeDelta = if (lastLocation != null) {
+            (location.time - lastLocation!!.time).toDouble() / 1000.0 // seconds
+        } else {
+            0.0
+        }
+        val computedSpeed = if (distance > 0 && timeDelta > 0) distance / timeDelta else 0.0
+
+        // Use platform speed if available, otherwise use computed speed
+        val effectiveSpeed = if (location.hasSpeed() && location.speed > 0) {
+            location.speed.toDouble()
+        } else {
+            computedSpeed
+        }
+
+        // --- Elasticity: dynamically scale distanceFilter based on speed ---
+        val baseDistance = config.getDistanceFilter()
+        val effectiveDistance = if (!config.getDisableElasticity() && effectiveSpeed > 0) {
+            val multiplier = config.getElasticityMultiplier().coerceAtLeast(0.1)
+            // Scale: faster speed → larger distance filter
+            val speedFactor = (effectiveSpeed / 10.0).coerceIn(1.0, 10.0)
+            baseDistance * speedFactor * multiplier
+        } else {
+            baseDistance
+        }
+
+        // Check distance filter (using elasticity-adjusted value)
+        if (lastLocation != null && distance < effectiveDistance) {
             return // Below distance filter threshold
         }
 
-        state.addOdometer(distance)
+        // --- Location Filtering / Denoising ---
+        val trackingAccuracyThreshold = config.getTrackingAccuracyThreshold()
+        if (trackingAccuracyThreshold > 0 && location.accuracy > trackingAccuracyThreshold) {
+            // Location accuracy too poor
+            val policy = config.getFilterPolicy() // 0=adjust, 1=ignore, 2=discard
+            when (policy) {
+                2 -> { // discard: drop + emit error event
+                    events.sendLocation(mapOf("error" to "ACCURACY_FILTER", "message" to "Location accuracy ${location.accuracy}m exceeds threshold ${trackingAccuracyThreshold}m"))
+                    return
+                }
+                1 -> return // ignore: drop silently
+                else -> { /* adjust: fall through — use last-known-good if available */
+                    if (lastLocation != null) return // skip this inaccurate point
+                }
+            }
+        }
+
+        val maxImpliedSpeed = config.getMaxImpliedSpeed()
+        if (maxImpliedSpeed > 0 && lastLocation != null) {
+            if (timeDelta > 0) {
+                val impliedSpeed = distance / timeDelta // m/s
+                if (impliedSpeed > maxImpliedSpeed) {
+                    val policy = config.getFilterPolicy()
+                    when (policy) {
+                        2 -> {
+                            events.sendLocation(mapOf("error" to "SPEED_FILTER", "message" to "Implied speed ${impliedSpeed}m/s exceeds max ${maxImpliedSpeed}m/s"))
+                            return
+                        }
+                        1 -> return
+                        else -> return // adjust: reject impossible speed
+                    }
+                }
+            }
+        }
+
+        // Odometer accuracy check: only add to odometer if accurate enough
+        val odometerAccuracyThreshold = config.getOdometerAccuracyThreshold()
+        val addToOdometer = odometerAccuracyThreshold <= 0 || location.accuracy <= odometerAccuracyThreshold
+        if (addToOdometer) {
+            state.addOdometer(distance)
+        }
         lastLocation = location
         state.lastLocationTime = location.time
 
-        val enriched = enrichLocation(location, event)
+        val enriched = enrichLocation(location, event, effectiveSpeed)
 
-        // Persist to database
-        db.insertLocationAsync(enriched)
+        // Persist to database (respecting persistMode)
+        persistLocationIfAllowed(enriched, event)
 
         // Dispatch to Dart
         events.sendLocation(enriched)
+
+        // Notify geofenceModeHighAccuracy listener (if active)
+        onLocationUpdate?.invoke(location.latitude, location.longitude)
     }
 
-    private fun enrichLocation(location: Location, event: String): Map<String, Any?> {
+    /**
+     * Enriches a raw [Location] into a full map ready for Dart/DB.
+     *
+     * @param location   The raw platform location.
+     * @param event      The event name (e.g. "motionchange").
+     * @param speed      Pre-computed effective speed (m/s). Uses platform speed
+     *                   if available, otherwise distance/time from consecutive
+     *                   locations. Pass `null` to fall back to platform speed.
+     */
+    private fun enrichLocation(location: Location, event: String, speed: Double? = null): Map<String, Any?> {
         val battery = BatteryUtils.getBatteryInfo(context)
         val isoFormatter = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")
         }
         val timestamp = isoFormatter.format(Date(location.time))
-        return mapOf(
+
+        // Use provided effective speed, or fall back to platform speed.
+        val effectiveSpeed = speed ?: location.speed.toDouble()
+
+        val result = mutableMapOf<String, Any?>(
             "uuid" to UUID.randomUUID().toString(),
             "timestamp" to timestamp,
             "isMoving" to state.isMoving,
@@ -424,7 +512,7 @@ class LocationEngine(
                 "latitude" to location.latitude,
                 "longitude" to location.longitude,
                 "altitude" to location.altitude,
-                "speed" to location.speed.toDouble(),
+                "speed" to effectiveSpeed,
                 "heading" to location.bearing.toDouble(),
                 "accuracy" to location.accuracy.toDouble(),
                 "speedAccuracy" to if (location.hasSpeedAccuracy()) location.speedAccuracyMetersPerSecond.toDouble() else -1.0,
@@ -440,7 +528,7 @@ class LocationEngine(
             "latitude" to location.latitude,
             "longitude" to location.longitude,
             "altitude" to location.altitude,
-            "speed" to location.speed.toDouble(),
+            "speed" to effectiveSpeed,
             "heading" to location.bearing.toDouble(),
             "accuracy" to location.accuracy.toDouble(),
             "batteryLevel" to (battery["level"] as? Double ?: -1.0),
@@ -448,6 +536,17 @@ class LocationEngine(
             "activityType" to currentActivityType,
             "activityConfidence" to currentActivityConfidence,
         )
+
+        // enableTimestampMeta: attach additional timing metadata
+        if (config.getEnableTimestampMeta()) {
+            result["timestampMeta"] = mapOf(
+                "time" to location.time,
+                "systemTime" to System.currentTimeMillis(),
+                "systemClockElapsedRealtime" to SystemClock.elapsedRealtime(),
+            )
+        }
+
+        return result
     }
 
     /**
@@ -561,5 +660,28 @@ class LocationEngine(
                 ContextCompat.checkSelfPermission(
                     context, Manifest.permission.ACCESS_COARSE_LOCATION
                 ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /**
+     * Persists a location to the database only if allowed by persistMode.
+     * Also runs retention pruning (maxDaysToPersist / maxRecordsToPersist).
+     *
+     * persistMode: 0 = all, 1 = location only, 2 = geofence only, 3 = none
+     */
+    private fun persistLocationIfAllowed(location: Map<String, Any?>, event: String) {
+        val persistMode = config.getPersistMode()
+        // Mode 3 = none, Mode 2 = geofence only → skip location inserts
+        if (persistMode == 3 || persistMode == 2) return
+        // Mode 1 = location only → fine for location events
+        // Skip provider change records if disabled
+        if (event == "providerchange" && config.getDisableProviderChangeRecord()) return
+
+        db.insertLocationAsync(location)
+
+        // Enforce retention limits
+        val maxDays = config.getMaxDaysToPersist()
+        if (maxDays > 0) db.pruneOldLocations(maxDays)
+        val maxRecords = config.getMaxRecordsToPersist()
+        if (maxRecords > 0) db.enforceMaxRecords(maxRecords)
     }
 }

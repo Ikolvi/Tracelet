@@ -15,7 +15,7 @@
 
 ---
 
-## 1. Elasticity (Distance-Filter Scaling) 🟡
+## 1. Elasticity (Distance-Filter Scaling) ✅
 
 **What**: Dynamically adjust `distanceFilter` based on current speed — more recordings at low speed, fewer at high speed.
 
@@ -29,7 +29,7 @@
 
 ---
 
-## 2. Location Filtering / Denoising 🟡
+## 2. Location Filtering / Denoising ✅
 
 **What**: Reject GPS spikes, enforce accuracy thresholds, filter impossible speed jumps.
 
@@ -46,7 +46,7 @@
 
 ---
 
-## 3. Persistence Config (DB Retention, Templates) 🟡
+## 3. Persistence Config (DB Retention, Templates) ✅
 
 **What**: Control which records are persisted, for how long, max record count, and custom JSON templates.
 
@@ -65,7 +65,7 @@
 
 ---
 
-## 4. Activity Recognition Tuning 🟡
+## 4. Activity Recognition Tuning ✅
 
 **What**: Fine-tune motion detection: recognition interval, confidence threshold, stop detection, trigger activities.
 
@@ -87,7 +87,7 @@
 
 ---
 
-## 5. `stopAfterElapsedMinutes` 🟡
+## 5. `stopAfterElapsedMinutes` ✅
 
 **What**: Automatically stop tracking after N minutes of operation.
 
@@ -100,7 +100,7 @@
 
 ---
 
-## 6. iOS `preventSuspend` (Silent Audio Keep-Alive) 🟡
+## 6. iOS `preventSuspend` (Silent Audio Keep-Alive) ✅
 
 **What**: Play an inaudible audio clip in a loop to prevent iOS from suspending the app in the background.
 
@@ -113,7 +113,7 @@
 
 ---
 
-## 7. `scheduleUseAlarmManager` 🟡
+## 7. `scheduleUseAlarmManager` ✅
 
 **What**: Use `AlarmManager` for precise schedule timing instead of `JobScheduler` / `WorkManager`.
 
@@ -126,7 +126,7 @@
 
 ---
 
-## 8. `disableAutoSyncOnCellular` 🟡
+## 8. `disableAutoSyncOnCellular` ✅
 
 **What**: Only auto-sync over Wi-Fi, skip when on cellular.
 
@@ -140,7 +140,7 @@
 
 ---
 
-## 9. `backgroundPermissionRationale` 🟡
+## 9. `backgroundPermissionRationale` ✅
 
 **What**: Show a rationale dialog before requesting background location on Android 11+.
 
@@ -153,7 +153,7 @@
 
 **Effort**: ~2–3 hours. Low risk.
 
-## 11. `enableTimestampMeta` 🟡
+## 11. `enableTimestampMeta` ✅
 
 **What**: Attach extra timestamp metadata to each location record (e.g., `timestampMeta.time`, `timestampMeta.systemTime`).
 
@@ -166,7 +166,7 @@
 
 ---
 
-## 12. Geofence Mode High Accuracy 🟡
+## 12. Geofence Mode High Accuracy ✅
 
 **What**: During geofence-only mode (`startGeofences()`), use standard GPS tracking for precise in/out detection instead of relying solely on platform geofence APIs.
 

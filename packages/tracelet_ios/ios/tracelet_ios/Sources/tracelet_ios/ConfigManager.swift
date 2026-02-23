@@ -116,6 +116,7 @@ final class ConfigManager {
     // GeofenceConfig
     func getGeofenceInitialTriggerEntry() -> Bool { cache["geofenceInitialTriggerEntry"] as? Bool ?? true }
     func getGeofenceModeKnockOut() -> Bool { cache["geofenceModeKnockOut"] as? Bool ?? false }
+    func getGeofenceModeHighAccuracy() -> Bool { cache["geofenceModeHighAccuracy"] as? Bool ?? false }
 
     // HttpConfig
     func getUrl() -> String { cache["url"] as? String ?? "" }
@@ -180,6 +181,7 @@ final class ConfigManager {
             "enableTimestampMeta": false,
             "geofenceInitialTriggerEntry": true,
             "geofenceModeKnockOut": false,
+            "geofenceModeHighAccuracy": false,
             "url": "",
             "autoSync": true,
             "autoSyncThreshold": 0,

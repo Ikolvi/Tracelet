@@ -1,0 +1,27 @@
+name: tracelet_example
+description: "Unified example demonstrating Tracelet on Android & iOS."
+publish_to: 'none'
+
+environment:
+  sdk: ^3.10.3
+
+dependencies:
+  flutter:
+    sdk: flutter
+  tracelet:
+    path: ../packages/tracelet
+  tracelet_android:
+    path: ../packages/tracelet_android
+  tracelet_ios:
+    path: ../packages/tracelet_ios
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  integration_test:
+    sdk: flutter
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

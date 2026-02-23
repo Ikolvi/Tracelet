@@ -171,14 +171,21 @@ class ScheduleManager(
             context, requestCode, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMs, pi)
-            } else {
-                alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAtMs, pi)
+
+        if (config.getScheduleUseAlarmManager()) {
+            // Exact alarm — requires SCHEDULE_EXACT_ALARM on Android 12+
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMs, pi)
+                } else {
+                    alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAtMs, pi)
+                }
+            } catch (e: SecurityException) {
+                // Fallback to inexact if exact alarm permission denied
+                alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtMs, pi)
             }
-        } catch (e: SecurityException) {
-            // Fallback for devices restricting exact alarms
+        } else {
+            // Inexact alarm — battery-friendly, no SCHEDULE_EXACT_ALARM needed
             alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtMs, pi)
         }
     }

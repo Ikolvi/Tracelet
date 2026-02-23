@@ -15,6 +15,9 @@ final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     /// Maximum number of monitored regions (iOS limit).
     private static let maxRegions = 20
 
+    /// High-accuracy mode: track which geofences the device is currently inside.
+    private var insideGeofenceIds = Set<String>()
+
     init(configManager: ConfigManager,
          eventDispatcher: EventDispatcher,
          database: TraceletDatabase) {
@@ -82,10 +85,85 @@ final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         }
     }
 
+    // MARK: - High-accuracy proximity evaluation
+
+    /// Called from LocationEngine on every location update when geofenceModeHighAccuracy is enabled.
+    /// Computes distance-from-center for each stored geofence and fires ENTER/EXIT transitions in-app.
+    func evaluateHighAccuracyProximity(latitude: Double, longitude: Double) {
+        let geofences = database.getGeofences()
+        let currentLocation = CLLocation(latitude: latitude, longitude: longitude)
+        var on: [[String: Any]] = []
+        var off: [[String: Any]] = []
+
+        for gf in geofences {
+            guard let identifier = gf["identifier"] as? String,
+                  let gfLat = gf["latitude"] as? Double,
+                  let gfLng = gf["longitude"] as? Double else { continue }
+            let gfRadius = gf["radius"] as? Double ?? 100.0
+
+            let gfLocation = CLLocation(latitude: gfLat, longitude: gfLng)
+            let distance = currentLocation.distance(from: gfLocation)
+
+            let wasInside = insideGeofenceIds.contains(identifier)
+            let isInside = distance <= gfRadius
+
+            if isInside && !wasInside {
+                // ENTER transition
+                insideGeofenceIds.insert(identifier)
+                let eventData: [String: Any] = [
+                    "identifier": identifier,
+                    "action": "ENTER",
+                    "location": [
+                        "coords": [
+                            "latitude": latitude,
+                            "longitude": longitude,
+                        ],
+                    ],
+                    "extras": gf["extras"] ?? [:] as [String: Any],
+                ]
+                eventDispatcher.sendGeofence(eventData)
+                on.append(gf)
+                NSLog("[Tracelet] High-accuracy ENTER: \(identifier) (distance=\(distance)m, radius=\(gfRadius)m)")
+            } else if !isInside && wasInside {
+                // EXIT transition
+                insideGeofenceIds.remove(identifier)
+                let eventData: [String: Any] = [
+                    "identifier": identifier,
+                    "action": "EXIT",
+                    "location": [
+                        "coords": [
+                            "latitude": latitude,
+                            "longitude": longitude,
+                        ],
+                    ],
+                    "extras": gf["extras"] ?? [:] as [String: Any],
+                ]
+                eventDispatcher.sendGeofence(eventData)
+                off.append(gf)
+
+                // KnockOut mode: remove geofence after EXIT
+                if configManager.getGeofenceModeKnockOut() {
+                    let _ = removeGeofence(identifier)
+                }
+                NSLog("[Tracelet] High-accuracy EXIT: \(identifier) (distance=\(distance)m, radius=\(gfRadius)m)")
+            }
+        }
+
+        if !on.isEmpty || !off.isEmpty {
+            eventDispatcher.sendGeofencesChange(["on": on, "off": off])
+        }
+    }
+
+    /// Clear high-accuracy tracking state.
+    func clearHighAccuracyState() {
+        insideGeofenceIds.removeAll()
+    }
+
     func destroy() {
         for region in locationManager.monitoredRegions {
             locationManager.stopMonitoring(for: region)
         }
+        insideGeofenceIds.removeAll()
     }
 
     // MARK: - System registration

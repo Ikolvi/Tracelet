@@ -17,6 +17,9 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
     private var nextWatchId = 0
     private var isTracking = false
 
+    /// Optional callback invoked on every accepted location (for geofenceModeHighAccuracy).
+    var onLocationUpdate: ((Double, Double) -> Void)?
+
     init(configManager: ConfigManager,
          stateManager: StateManager,
          eventDispatcher: EventDispatcher,
@@ -218,9 +221,12 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
         return stateManager.odometer
     }
 
-    func setOdometer(_ value: Double) -> Double {
+    func setOdometer(_ value: Double) -> [String: Any] {
         stateManager.odometer = value
-        return value
+        if let loc = lastLocation {
+            return buildLocationMap(loc)
+        }
+        return ["odometer": value]
     }
 
     func getLastLocation() -> CLLocation? {
@@ -268,24 +274,92 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
         // Feed multi-sample collection if active
         let consumedBySampler = feedSample(location)
 
-        // Distance filter check
+        // --- Compute speed from distance/time as fallback ---
+        // CLLocation.speed can be -1 (invalid) or 0 when walking slowly,
+        // during cold GPS starts, or with low-accuracy modes. We compute
+        // speed ourselves from consecutive location pairs.
+        var computedSpeed: Double = 0.0
+
+        // --- Elasticity: dynamically scale distanceFilter based on speed ---
+        let baseDistance = configManager.getDistanceFilter()
+
+        // Distance filter check (using elasticity-adjusted value)
         if let last = lastLocation {
             let distance = location.distance(from: last)
-            let minDistance = configManager.getDistanceFilter()
-            if minDistance > 0 && distance < minDistance && !configManager.getAllowIdenticalLocations() {
+            let timeDelta = location.timestamp.timeIntervalSince(last.timestamp) // seconds
+            computedSpeed = (distance > 0 && timeDelta > 0) ? distance / timeDelta : 0.0
+
+            // Use platform speed if available, otherwise use computed speed
+            let effectiveSpeed = (location.speed > 0) ? location.speed : computedSpeed
+
+            let effectiveDistance: Double
+            if !configManager.getDisableElasticity() && effectiveSpeed > 0 {
+                let multiplier = max(configManager.getElasticityMultiplier(), 0.1)
+                // Scale: faster speed → larger distance filter
+                let speedFactor = min(max(effectiveSpeed / 10.0, 1.0), 10.0)
+                effectiveDistance = baseDistance * speedFactor * multiplier
+            } else {
+                effectiveDistance = baseDistance
+            }
+
+            if effectiveDistance > 0 && distance < effectiveDistance && !configManager.getAllowIdenticalLocations() {
                 // Fire one-shots regardless of distance
                 fireOneShots(location)
                 return
             }
 
-            // Update odometer
-            stateManager.odometer += distance
+            // --- Location Filtering / Denoising ---
+            let trackingAccuracyThreshold = configManager.getTrackingAccuracyThreshold()
+            if trackingAccuracyThreshold > 0 && location.horizontalAccuracy > Double(trackingAccuracyThreshold) {
+                let policy = configManager.getFilterPolicy() // 0=adjust, 1=ignore, 2=discard
+                switch policy {
+                case 2: // discard: drop + emit error event
+                    eventDispatcher.sendLocation(["error": "ACCURACY_FILTER", "message": "Location accuracy \(location.horizontalAccuracy)m exceeds threshold \(trackingAccuracyThreshold)m"])
+                    fireOneShots(location)
+                    return
+                case 1: // ignore: drop silently
+                    fireOneShots(location)
+                    return
+                default: // adjust: skip inaccurate point
+                    fireOneShots(location)
+                    return
+                }
+            }
+
+            let maxImpliedSpeed = configManager.getMaxImpliedSpeed()
+            if maxImpliedSpeed > 0 {
+                if timeDelta > 0 {
+                    let impliedSpeed = distance / timeDelta // m/s
+                    if impliedSpeed > Double(maxImpliedSpeed) {
+                        let policy = configManager.getFilterPolicy()
+                        switch policy {
+                        case 2:
+                            eventDispatcher.sendLocation(["error": "SPEED_FILTER", "message": "Implied speed \(impliedSpeed)m/s exceeds max \(maxImpliedSpeed)m/s"])
+                            fireOneShots(location)
+                            return
+                        default: // ignore or adjust: reject impossible speed
+                            fireOneShots(location)
+                            return
+                        }
+                    }
+                }
+            }
+
+            // Odometer accuracy check
+            let odometerAccuracyThreshold = configManager.getOdometerAccuracyThreshold()
+            let addToOdometer = odometerAccuracyThreshold <= 0 || location.horizontalAccuracy <= Double(odometerAccuracyThreshold)
+            if addToOdometer {
+                stateManager.odometer += distance
+            }
         }
+
+        // Resolve effective speed: platform speed if available, otherwise computed
+        let effectiveSpeed = (location.speed > 0) ? location.speed : computedSpeed
 
         lastLocation = location
         stateManager.lastLocationTime = Date().timeIntervalSince1970 * 1000
 
-        let locationMap = buildLocationMap(location)
+        let locationMap = buildLocationMap(location, speed: effectiveSpeed)
 
         // Fire one-shot callbacks
         fireOneShots(location)
@@ -298,9 +372,12 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
             eventDispatcher.sendWatchPosition(locationMap)
         }
 
-        // Persist and dispatch
-        let _ = database.insertLocation(locationMap)
+        // Persist and dispatch (respecting persistMode)
+        persistLocationIfAllowed(locationMap, event: "motionchange")
         eventDispatcher.sendLocation(locationMap)
+
+        // Notify geofenceModeHighAccuracy listener (if active)
+        onLocationUpdate?(location.coordinate.latitude, location.coordinate.longitude)
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
@@ -440,12 +517,22 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
         oneShots.removeAll()
     }
 
-    private func buildLocationMap(_ location: CLLocation) -> [String: Any] {
+    /// Builds an enriched location map ready for Dart/DB.
+    ///
+    /// - Parameters:
+    ///   - location: The raw CLLocation.
+    ///   - speed: Pre-computed effective speed (m/s). Uses platform speed if
+    ///            available, otherwise distance/time from consecutive locations.
+    ///            Pass `nil` to fall back to platform speed.
+    private func buildLocationMap(_ location: CLLocation, speed: Double? = nil) -> [String: Any] {
+        // Use provided effective speed, or fall back to platform speed.
+        let effectiveSpeed = speed ?? max(location.speed, -1)
+
         var coords: [String: Any] = [
             "latitude": location.coordinate.latitude,
             "longitude": location.coordinate.longitude,
             "altitude": location.altitude,
-            "speed": max(location.speed, -1),
+            "speed": effectiveSpeed,
             "heading": max(location.course, -1),
             "accuracy": location.horizontalAccuracy,
             "altitude_accuracy": location.verticalAccuracy,
@@ -462,7 +549,7 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
 
         let battery = BatteryUtils.getBatteryInfo()
 
-        return [
+        var result: [String: Any] = [
             "uuid": UUID().uuidString,
             "timestamp": iso8601String(from: location.timestamp),
             "coords": coords,
@@ -476,11 +563,42 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
             "event": "",
             "extras": [:] as [String: Any],
         ]
+
+        // enableTimestampMeta: attach additional timing metadata
+        if configManager.getEnableTimestampMeta() {
+            result["timestampMeta"] = [
+                "time": location.timestamp.timeIntervalSince1970 * 1000, // ms since epoch
+                "systemTime": Date().timeIntervalSince1970 * 1000,
+                "systemClockElapsedRealtime": ProcessInfo.processInfo.systemUptime * 1000,
+            ]
+        }
+
+        return result
     }
 
     private func iso8601String(from date: Date) -> String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.string(from: date)
+    }
+
+    /// Persists a location to the database only if allowed by persistMode.
+    /// Also runs retention pruning (maxDaysToPersist / maxRecordsToPersist).
+    ///
+    /// persistMode: 0 = all, 1 = location only, 2 = geofence only, 3 = none
+    private func persistLocationIfAllowed(_ location: [String: Any], event: String) {
+        let persistMode = configManager.getPersistMode()
+        // Mode 3 = none, Mode 2 = geofence only → skip location inserts
+        if persistMode == 3 || persistMode == 2 { return }
+        // Skip provider change records if disabled
+        if event == "providerchange" && configManager.getDisableProviderChangeRecord() { return }
+
+        let _ = database.insertLocation(location)
+
+        // Enforce retention limits
+        let maxDays = configManager.getMaxDaysToPersist()
+        if maxDays > 0 { database.pruneOldLocations(maxDays: maxDays) }
+        let maxRecords = configManager.getMaxRecordsToPersist()
+        if maxRecords > 0 { database.enforceMaxRecords(maxRecords: maxRecords) }
     }
 }

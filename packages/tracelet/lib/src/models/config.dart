@@ -560,7 +560,6 @@ class AppConfig {
     this.schedule = const <String>[],
     this.scheduleUseAlarmManager = false,
     this.preventSuspend = false,
-    this.backgroundPermissionRationale,
     this.foregroundService = const ForegroundServiceConfig(),
   });
 
@@ -595,13 +594,6 @@ class AppConfig {
   /// Defaults to `false`.
   final bool preventSuspend;
 
-  /// `[Android only]` Rationale shown when requesting background location
-  /// permission (Android 11+).
-  ///
-  /// When provided, the plugin will show a dialog explaining why background
-  /// location is needed before the system permission prompt.
-  final PermissionRationale? backgroundPermissionRationale;
-
   /// Android foreground service notification configuration.
   final ForegroundServiceConfig foregroundService;
 
@@ -616,7 +608,6 @@ class AppConfig {
     }
 
     final fgMap = safeMap(map['foregroundService']);
-    final rationaleMap = safeMap(map['backgroundPermissionRationale']);
 
     return AppConfig(
       stopOnTerminate: ensureBool(map['stopOnTerminate'], fallback: true),
@@ -628,9 +619,6 @@ class AppConfig {
         fallback: false,
       ),
       preventSuspend: ensureBool(map['preventSuspend'], fallback: false),
-      backgroundPermissionRationale: rationaleMap != null
-          ? PermissionRationale.fromMap(rationaleMap)
-          : null,
       foregroundService: fgMap != null
           ? ForegroundServiceConfig.fromMap(fgMap)
           : const ForegroundServiceConfig(),
@@ -646,8 +634,6 @@ class AppConfig {
       'schedule': schedule,
       'scheduleUseAlarmManager': scheduleUseAlarmManager,
       'preventSuspend': preventSuspend,
-      if (backgroundPermissionRationale != null)
-        'backgroundPermissionRationale': backgroundPermissionRationale!.toMap(),
       'foregroundService': foregroundService.toMap(),
     };
   }
@@ -668,8 +654,6 @@ class AppConfig {
           heartbeatInterval == other.heartbeatInterval &&
           scheduleUseAlarmManager == other.scheduleUseAlarmManager &&
           preventSuspend == other.preventSuspend &&
-          backgroundPermissionRationale ==
-              other.backgroundPermissionRationale &&
           foregroundService == other.foregroundService;
 
   @override
@@ -679,7 +663,6 @@ class AppConfig {
     heartbeatInterval,
     scheduleUseAlarmManager,
     preventSuspend,
-    backgroundPermissionRationale,
     foregroundService,
   );
 }

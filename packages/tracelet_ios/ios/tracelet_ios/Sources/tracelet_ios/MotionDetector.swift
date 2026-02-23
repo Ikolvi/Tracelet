@@ -21,6 +21,9 @@ final class MotionDetector {
     /// Called when motion state changes (isMoving).
     var onMotionStateChanged: ((Bool) -> Void)?
 
+    /// Called when stopOnStationary fires — requests full tracking stop.
+    var onStopRequested: (() -> Void)?
+
     init(configManager: ConfigManager,
          stateManager: StateManager,
          eventDispatcher: EventDispatcher) {
@@ -90,6 +93,17 @@ final class MotionDetector {
         currentActivity = type
         currentConfidence = confidence
 
+        // Filter by minimumActivityRecognitionConfidence
+        let minConfidence = configManager.getMinimumActivityRecognitionConfidence()
+        if confidence < minConfidence { return }
+
+        // Filter by triggerActivities — only respond to listed activity types
+        let triggerActivities = configManager.getTriggerActivities()
+        if !triggerActivities.isEmpty {
+            let allowed = triggerActivities.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+            if !allowed.contains(type.lowercased()) && type != "still" { return }
+        }
+
         // Dispatch activityChange event
         let activityData: [String: Any] = [
             "activity": type,
@@ -148,16 +162,18 @@ final class MotionDetector {
         guard stateManager.isMoving else { return }
         guard !configManager.getDisableStopDetection() else { return }
 
-        // Start stop-timeout countdown
+        // Start stop-timeout countdown (with optional stopDetectionDelay)
         let stopTimeout = configManager.getStopTimeout()
-        guard stopTimeout > 0 else {
+        let stopDetectionDelay = configManager.getStopDetectionDelay()
+        let totalDelay = TimeInterval(stopTimeout * 60 + stopDetectionDelay)
+        guard totalDelay > 0 else {
             triggerMotionChange(isMoving: false)
             return
         }
 
         if stopTimer == nil {
             stopTimer = Timer.scheduledTimer(
-                withTimeInterval: TimeInterval(stopTimeout * 60),
+                withTimeInterval: totalDelay,
                 repeats: false
             ) { [weak self] _ in
                 self?.triggerMotionChange(isMoving: false)
@@ -169,5 +185,10 @@ final class MotionDetector {
         guard stateManager.isMoving != isMoving else { return }
         stateManager.isMoving = isMoving
         onMotionStateChanged?(isMoving)
+
+        // stopOnStationary: if true, request full tracking stop
+        if !isMoving && configManager.getStopOnStationary() {
+            onStopRequested?()
+        }
     }
 }

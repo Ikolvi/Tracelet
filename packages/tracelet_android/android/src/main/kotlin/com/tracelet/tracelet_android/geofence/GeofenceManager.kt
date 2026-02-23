@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.location.Location as AndroidLocation
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.Geofence
@@ -44,6 +45,9 @@ class GeofenceManager(
 
     /** Registered (active on the platform) geofence identifiers. */
     private val activeGeofenceIds = mutableSetOf<String>()
+
+    /** High-accuracy mode: track which geofences the device is currently inside. */
+    private val insideGeofenceIds = mutableSetOf<String>()
 
     // =========================================================================
     // Public API
@@ -159,9 +163,85 @@ class GeofenceManager(
         }
     }
 
+    /**
+     * High-accuracy geofence evaluation — called from LocationEngine on every location update
+     * when geofenceModeHighAccuracy is enabled. Computes distance-from-center for each
+     * stored geofence and fires ENTER/EXIT transitions in-app.
+     */
+    fun evaluateHighAccuracyProximity(latitude: Double, longitude: Double) {
+        val geofences = db.getGeofences()
+        val on = mutableListOf<Map<String, Any?>>()
+        val off = mutableListOf<Map<String, Any?>>()
+
+        for (gf in geofences) {
+            val identifier = gf["identifier"] as? String ?: continue
+            val gfLat = (gf["latitude"] as? Number)?.toDouble() ?: continue
+            val gfLng = (gf["longitude"] as? Number)?.toDouble() ?: continue
+            val gfRadius = (gf["radius"] as? Number)?.toFloat() ?: 200f
+
+            val results = FloatArray(1)
+            AndroidLocation.distanceBetween(latitude, longitude, gfLat, gfLng, results)
+            val distance = results[0]
+
+            val wasInside = insideGeofenceIds.contains(identifier)
+            val isInside = distance <= gfRadius
+
+            if (isInside && !wasInside) {
+                // ENTER transition
+                insideGeofenceIds.add(identifier)
+                val eventData = mapOf(
+                    "identifier" to identifier,
+                    "action" to "ENTER",
+                    "location" to mapOf(
+                        "coords" to mapOf(
+                            "latitude" to latitude,
+                            "longitude" to longitude,
+                        )
+                    ),
+                    "extras" to gf["extras"],
+                )
+                events.sendGeofence(eventData)
+                on.add(gf)
+                Log.d(TAG, "High-accuracy ENTER: $identifier (distance=${distance}m, radius=${gfRadius}m)")
+            } else if (!isInside && wasInside) {
+                // EXIT transition
+                insideGeofenceIds.remove(identifier)
+                val eventData = mapOf(
+                    "identifier" to identifier,
+                    "action" to "EXIT",
+                    "location" to mapOf(
+                        "coords" to mapOf(
+                            "latitude" to latitude,
+                            "longitude" to longitude,
+                        )
+                    ),
+                    "extras" to gf["extras"],
+                )
+                events.sendGeofence(eventData)
+                off.add(gf)
+
+                // KnockOut mode: remove geofence after EXIT
+                if (config.getGeofenceModeKnockOut()) {
+                    removeGeofence(identifier)
+                }
+                Log.d(TAG, "High-accuracy EXIT: $identifier (distance=${distance}m, radius=${gfRadius}m)")
+            }
+        }
+
+        if (on.isNotEmpty() || off.isNotEmpty()) {
+            events.sendGeofencesChange(mapOf("on" to on, "off" to off))
+        }
+    }
+
+    /** Clear high-accuracy tracking state. */
+    fun clearHighAccuracyState() {
+        insideGeofenceIds.clear()
+    }
+
     /** Destroy and clean up. */
     fun destroy() {
         unregisterAllGeofences()
+        insideGeofenceIds.clear()
     }
 
     // =========================================================================
