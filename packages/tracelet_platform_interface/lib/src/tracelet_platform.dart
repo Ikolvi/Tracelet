@@ -77,10 +77,39 @@ abstract class TraceletPlatform extends PlatformInterface {
   // ---------------------------------------------------------------------------
 
   /// Get the current position. Returns [Location] map.
+  ///
+  /// Supported [options] keys:
+  /// - `desiredAccuracy` (`int`): Accuracy level index. Defaults to config value.
+  /// - `timeout` (`int`): Timeout in seconds. Defaults to `30`.
+  /// - `maximumAge` (`int`): Maximum age in ms of a cached location that is
+  ///   acceptable to return. Defaults to `0` (always fetch fresh).
+  /// - `persist` (`bool`): Whether to persist the location to the database.
+  ///   Defaults to `true`.
+  /// - `samples` (`int`): Number of location samples to collect and return
+  ///   the best one (highest accuracy). Defaults to `1`.
+  /// - `extras` (`Map<String, Object?>`): Extra data to attach to the location.
   Future<Map<String, Object?>> getCurrentPosition(
     Map<String, Object?> options,
   ) {
     throw UnimplementedError('getCurrentPosition() has not been implemented.');
+  }
+
+  /// Get the last known location without requesting a new fix.
+  ///
+  /// Returns the last cached location from the platform's location provider,
+  /// or `null` (empty map) if no cached location is available. This is a
+  /// battery-free operation — it never activates GPS/network providers.
+  ///
+  /// Supported [options] keys:
+  /// - `persist` (`bool`): Whether to persist the location to the database.
+  ///   Defaults to `false`.
+  /// - `extras` (`Map<String, Object?>`): Extra data to attach to the location.
+  Future<Map<String, Object?>> getLastKnownLocation([
+    Map<String, Object?>? options,
+  ]) {
+    throw UnimplementedError(
+      'getLastKnownLocation() has not been implemented.',
+    );
   }
 
   /// Start watching position at an interval. Returns a watch ID.

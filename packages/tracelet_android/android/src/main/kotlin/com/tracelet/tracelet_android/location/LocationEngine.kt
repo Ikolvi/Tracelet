@@ -94,7 +94,16 @@ class LocationEngine(
     }
 
     /**
-     * One-shot current position with high accuracy.
+     * One-shot current position with configurable accuracy and sampling.
+     *
+     * Supported [options]:
+     * - `desiredAccuracy` (Int): Accuracy level override.
+     * - `timeout` (Long): Timeout in seconds (default 30).
+     * - `maximumAge` (Long): Max age in ms of acceptable cached location.
+     * - `persist` (Boolean): Whether to persist to DB (default true).
+     * - `samples` (Int): Number of samples to collect; returns best accuracy (default 1).
+     * - `extras` (Map): Extra data to attach to the location.
+     *
      * [callback] receives the enriched location map or null.
      */
     fun getCurrentPosition(options: Map<String, Any?>, callback: (Map<String, Any?>?) -> Unit) {
@@ -103,16 +112,46 @@ class LocationEngine(
             return
         }
 
-        val timeout = (options["timeout"] as? Number)?.toLong() ?: 30000L
+        val timeout = (options["timeout"] as? Number)?.toLong() ?: 30L
         val desiredAccuracy = (options["desiredAccuracy"] as? Number)?.toInt()
             ?: config.getDesiredAccuracy()
+        val maximumAge = (options["maximumAge"] as? Number)?.toLong() ?: 0L
+        val persist = options["persist"] as? Boolean ?: true
+        val samples = (options["samples"] as? Number)?.toInt()?.coerceAtLeast(1) ?: 1
+        @Suppress("UNCHECKED_CAST")
+        val extras = options["extras"] as? Map<String, Any?> ?: emptyMap()
         val priority = accuracyToPriority(desiredAccuracy)
 
+        // Check if a cached location satisfies maximumAge
+        if (maximumAge > 0) {
+            val cached = lastLocation
+            if (cached != null) {
+                val age = System.currentTimeMillis() - cached.time
+                if (age <= maximumAge) {
+                    val enriched = enrichLocation(cached, "getCurrentPosition").toMutableMap()
+                    if (extras.isNotEmpty()) enriched["extras"] = extras
+                    if (persist) db.insertLocationAsync(enriched)
+                    callback(enriched)
+                    return
+                }
+            }
+        }
+
+        // Multi-sample collection
+        if (samples > 1) {
+            collectSamples(priority, samples, timeout, persist, extras, callback)
+            return
+        }
+
+        // Single sample
         try {
             fusedClient.getCurrentLocation(priority, null)
                 .addOnSuccessListener { location ->
                     if (location != null) {
-                        callback(enrichLocation(location, "getCurrentPosition"))
+                        val enriched = enrichLocation(location, "getCurrentPosition").toMutableMap()
+                        if (extras.isNotEmpty()) enriched["extras"] = extras
+                        if (persist) db.insertLocationAsync(enriched)
+                        callback(enriched)
                     } else {
                         callback(null)
                     }
@@ -122,6 +161,100 @@ class LocationEngine(
                 }
         } catch (e: SecurityException) {
             callback(null)
+        }
+    }
+
+    /**
+     * Returns the last known location from the fused provider cache.
+     *
+     * This never activates any location provider — it is a zero-battery-cost
+     * operation. Returns null if no cached location is available.
+     *
+     * Supported [options]:
+     * - `persist` (Boolean): Whether to persist to DB (default false).
+     * - `extras` (Map): Extra data to attach to the location.
+     */
+    fun getLastKnownLocation(options: Map<String, Any?>, callback: (Map<String, Any?>?) -> Unit) {
+        if (!hasPermission()) {
+            callback(null)
+            return
+        }
+
+        val persist = options["persist"] as? Boolean ?: false
+        @Suppress("UNCHECKED_CAST")
+        val extras = options["extras"] as? Map<String, Any?> ?: emptyMap()
+
+        // 1. Check our own in-memory cache first (most reliable).
+        val cached = lastLocation
+        if (cached != null) {
+            val enriched = enrichLocation(cached, "getLastKnownLocation").toMutableMap()
+            if (extras.isNotEmpty()) enriched["extras"] = extras
+            if (persist) db.insertLocationAsync(enriched)
+            callback(enriched)
+            return
+        }
+
+        // 2. Try FusedLocationProviderClient cache.
+        try {
+            fusedClient.lastLocation
+                .addOnSuccessListener { location ->
+                    if (location != null) {
+                        lastLocation = location
+                        val enriched = enrichLocation(location, "getLastKnownLocation").toMutableMap()
+                        if (extras.isNotEmpty()) enriched["extras"] = extras
+                        if (persist) db.insertLocationAsync(enriched)
+                        callback(enriched)
+                    } else {
+                        // 3. Fallback to system LocationManager — works even when
+                        //    FusedLocationProviderClient has no cache.
+                        val fallback = getSystemLastKnownLocation()
+                        if (fallback != null) {
+                            lastLocation = fallback
+                            val enriched = enrichLocation(fallback, "getLastKnownLocation").toMutableMap()
+                            if (extras.isNotEmpty()) enriched["extras"] = extras
+                            if (persist) db.insertLocationAsync(enriched)
+                            callback(enriched)
+                        } else {
+                            callback(null)
+                        }
+                    }
+                }
+                .addOnFailureListener {
+                    // Fallback to system LocationManager on failure too.
+                    val fallback = getSystemLastKnownLocation()
+                    if (fallback != null) {
+                        lastLocation = fallback
+                        val enriched = enrichLocation(fallback, "getLastKnownLocation").toMutableMap()
+                        if (extras.isNotEmpty()) enriched["extras"] = extras
+                        if (persist) db.insertLocationAsync(enriched)
+                        callback(enriched)
+                    } else {
+                        callback(null)
+                    }
+                }
+        } catch (e: SecurityException) {
+            callback(null)
+        }
+    }
+
+    /**
+     * Fallback: queries the Android [LocationManager] for cached GPS /
+     * network locations. Returns the most recent one, or null.
+     */
+    private fun getSystemLastKnownLocation(): Location? {
+        val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            ?: return null
+        return try {
+            val gps = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+            val network = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+            when {
+                gps != null && network != null ->
+                    if (gps.time >= network.time) gps else network
+                gps != null -> gps
+                else -> network
+            }
+        } catch (_: SecurityException) {
+            null
         }
     }
 
@@ -315,6 +448,92 @@ class LocationEngine(
             "activityType" to currentActivityType,
             "activityConfidence" to currentActivityConfidence,
         )
+    }
+
+    /**
+     * Collects [count] location samples using repeated [getCurrentLocation] calls
+     * and returns the one with the best (lowest) horizontal accuracy.
+     *
+     * Uses the one-shot [getCurrentLocation] API which works reliably on all
+     * devices, even without a foreground service. This avoids the issue where
+     * [requestLocationUpdates] is throttled or blocked by aggressive battery
+     * optimization on budget Android devices.
+     */
+    private fun collectSamples(
+        priority: Int,
+        count: Int,
+        timeoutSeconds: Long,
+        persist: Boolean,
+        extras: Map<String, Any?>,
+        callback: (Map<String, Any?>?) -> Unit,
+    ) {
+        val collected = mutableListOf<Location>()
+        val handler = android.os.Handler(Looper.getMainLooper())
+        var finished = false
+
+        // Timeout guard — deliver whatever we have when time runs out.
+        handler.postDelayed({
+            if (!finished) {
+                finished = true
+                if (collected.isNotEmpty()) {
+                    deliver(collected, persist, extras, callback)
+                } else {
+                    callback(null)
+                }
+            }
+        }, timeoutSeconds * 1000L)
+
+        // Fire sequential getCurrentLocation calls on the main thread.
+        fun fetchNext() {
+            if (finished) return
+            try {
+                fusedClient.getCurrentLocation(priority, null)
+                    .addOnSuccessListener { location ->
+                        if (finished) return@addOnSuccessListener
+                        if (location != null) {
+                            collected.add(location)
+                        }
+                        if (collected.size >= count) {
+                            finished = true
+                            deliver(collected, persist, extras, callback)
+                        } else {
+                            // Small delay between samples to let GPS settle
+                            handler.postDelayed({ fetchNext() }, 800L)
+                        }
+                    }
+                    .addOnFailureListener {
+                        if (finished) return@addOnFailureListener
+                        // Continue trying even if one sample fails
+                        handler.postDelayed({ fetchNext() }, 800L)
+                    }
+            } catch (_: SecurityException) {
+                if (!finished) {
+                    finished = true
+                    callback(null)
+                }
+            }
+        }
+
+        fetchNext()
+    }
+
+    /**
+     * Picks the best-accuracy location from [samples] and delivers it.
+     */
+    private fun deliver(
+        samples: List<Location>,
+        persist: Boolean,
+        extras: Map<String, Any?>,
+        callback: (Map<String, Any?>?) -> Unit,
+    ) {
+        val best = samples.minByOrNull { it.accuracy } ?: run {
+            callback(null)
+            return
+        }
+        val enriched = enrichLocation(best, "getCurrentPosition").toMutableMap()
+        if (extras.isNotEmpty()) enriched["extras"] = extras
+        if (persist) db.insertLocationAsync(enriched)
+        callback(enriched)
     }
 
     private fun buildLocationRequest(): LocationRequest {

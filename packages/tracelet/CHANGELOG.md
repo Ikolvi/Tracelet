@@ -1,3 +1,10 @@
+## 0.3.0
+
+* **FEAT**: One-shot location — `getCurrentPosition()` now supports `persist`, `samples`, `maximumAge`, and `extras` parameters for enterprise single-time location requests.
+* **FEAT**: `getLastKnownLocation()` — returns the last cached location without triggering the GPS, or `null` if unavailable.
+* **FEAT**: `ForegroundServiceConfig.enabled` — disable foreground service/notification for lightweight one-shot requests.
+* **BREAKING**: Bump all platform dependencies to ^0.3.0.
+
 ## 0.2.5
 
 * Fix LICENSE file format for proper SPDX detection on pub.dev.

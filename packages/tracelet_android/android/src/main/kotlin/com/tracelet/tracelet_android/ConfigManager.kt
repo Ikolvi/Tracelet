@@ -69,6 +69,7 @@ class ConfigManager(context: Context) {
         const val DEFAULT_GEOFENCE_MODE_KNOCK_OUT = false
 
         // ForegroundServiceConfig defaults
+        const val DEFAULT_FG_ENABLED = true
         const val DEFAULT_CHANNEL_ID = "tracelet_channel"
         const val DEFAULT_CHANNEL_NAME = "Tracelet"
         const val DEFAULT_NOTIFICATION_TITLE = "Tracelet"
@@ -249,6 +250,9 @@ class ConfigManager(context: Context) {
     }
 
     // ForegroundService config
+    fun isForegroundServiceEnabled(): Boolean =
+        getBool("fg_enabled", DEFAULT_FG_ENABLED)
+
     fun getFgChannelId(): String =
         getString("fg_channelId", DEFAULT_CHANNEL_ID)
 

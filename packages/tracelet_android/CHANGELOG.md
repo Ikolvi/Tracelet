@@ -1,3 +1,11 @@
+## 0.3.0
+
+* **FEAT**: One-shot location via `getCurrentPosition()` with `persist`, `samples`, `maximumAge`, and `extras` parameters.
+* **FEAT**: `getLastKnownLocation()` with 3-tier fallback — in-memory cache → FusedLocationProviderClient → system LocationManager (GPS/Network).
+* **FEAT**: `ForegroundServiceConfig.enabled` — conditionally start/stop foreground service based on config.
+* **FIX**: Replace `requestLocationUpdates` with sequential `getCurrentLocation()` calls in `collectSamples()` to avoid silent throttling on budget devices without foreground service.
+* **BREAKING**: Requires `tracelet_platform_interface: ^0.3.0`.
+
 ## 0.2.3
 
 * Fix LICENSE file format for proper SPDX detection on pub.dev.

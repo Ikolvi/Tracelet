@@ -271,6 +271,114 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  // ── One-Shot Location ───────────────────────────────────────────────────
+
+  /// Fetch a single high-accuracy location using multi-sample collection.
+  /// Collects 3 GPS samples and returns the one with best accuracy.
+  /// `persist: false` means the result is NOT stored in the local database.
+  Future<void> _singleFetchBestOfThree() async {
+    try {
+      // Ensure location permission is granted before requesting.
+      final authStatus = await tl.Tracelet.requestPermission();
+      if (authStatus < 2) {
+        _addLog(
+          'WARN',
+          'Location permission denied (status=$authStatus). Cannot fetch location.',
+        );
+        return;
+      }
+      _addLog('ONE-SHOT', 'Requesting best-of-3 samples...');
+      final loc = await tl.Tracelet.getCurrentPosition(
+        desiredAccuracy: tl.DesiredAccuracy.high,
+        timeout: 30,
+        samples: 3,
+        persist: false,
+      );
+      setState(() => _lastLocation = loc);
+      _addLog(
+        'ONE-SHOT',
+        '${loc.coords.latitude.toStringAsFixed(6)}, ${loc.coords.longitude.toStringAsFixed(6)}  '
+            'acc=${loc.coords.accuracy.toStringAsFixed(1)}m  (best of 3)',
+      );
+    } catch (e) {
+      _addLog('ERROR', 'singleFetchBestOfThree() failed: $e');
+    }
+  }
+
+  /// Retrieve the last known location from the OS cache.
+  /// No GPS hardware is activated — returns instantly.
+  /// Returns null if no cached location is available.
+  Future<void> _getLastKnownLocation() async {
+    try {
+      final loc = await tl.Tracelet.getLastKnownLocation();
+      if (loc == null) {
+        _addLog('LAST_KNOWN', 'No cached location available');
+        return;
+      }
+      setState(() => _lastLocation = loc);
+      _addLog(
+        'LAST_KNOWN',
+        '${loc.coords.latitude.toStringAsFixed(6)}, ${loc.coords.longitude.toStringAsFixed(6)}  '
+            'acc=${loc.coords.accuracy.toStringAsFixed(1)}m',
+      );
+    } catch (e) {
+      _addLog('ERROR', 'getLastKnownLocation() failed: $e');
+    }
+  }
+
+  /// Re-initialize plugin with foreground service DISABLED.
+  /// On iOS this has no practical effect (no foreground service concept),
+  /// but demonstrates the cross-platform API.
+  Future<void> _initNoForeground() async {
+    try {
+      for (final s in _subs) {
+        s.cancel();
+      }
+      _subs.clear();
+      _subscribeEvents();
+
+      // Request location permission up front so one-shot calls work.
+      final authStatus = await tl.Tracelet.requestPermission();
+      if (authStatus < 2) {
+        _addLog(
+          'WARN',
+          'Location permission denied (status=$authStatus). One-shot calls will fail.',
+        );
+      }
+
+      final state = await tl.Tracelet.ready(
+        tl.Config(
+          geo: const tl.GeoConfig(
+            desiredAccuracy: tl.DesiredAccuracy.high,
+            distanceFilter: 10,
+          ),
+          app: const tl.AppConfig(
+            stopOnTerminate: true,
+            foregroundService: tl.ForegroundServiceConfig(
+              enabled: false,
+            ),
+          ),
+          logger: const tl.LoggerConfig(
+            logLevel: tl.LogLevel.verbose,
+            debug: true,
+          ),
+        ),
+      );
+
+      setState(() {
+        _isReady = true;
+        _isTracking = state.enabled;
+        _pluginState = state;
+      });
+      _addLog(
+        'READY',
+        'Initialized with foregroundService.enabled=false  enabled=${state.enabled}',
+      );
+    } catch (e) {
+      _addLog('ERROR', 'initNoForeground() failed: $e');
+    }
+  }
+
   Future<void> _changePace() async {
     try {
       final newPace = !_isMoving;
@@ -612,6 +720,29 @@ class _DashboardPageState extends State<DashboardPage> {
                       ),
                       _Chip('Odometer', Icons.speed, _getOdometer),
                       _Chip('Reset Odo', Icons.restart_alt, _resetOdometer),
+                    ],
+                  ),
+
+                  // ── One-Shot Location ──
+                  _Section(
+                    title: 'One-Shot Location',
+                    color: Colors.deepPurple,
+                    children: [
+                      _Chip(
+                        'Best of 3',
+                        Icons.gps_fixed,
+                        _singleFetchBestOfThree,
+                      ),
+                      _Chip(
+                        'Last Known',
+                        Icons.history,
+                        _getLastKnownLocation,
+                      ),
+                      _Chip(
+                        'Init No FG',
+                        Icons.notifications_off,
+                        _initNoForeground,
+                      ),
                     ],
                   ),
 

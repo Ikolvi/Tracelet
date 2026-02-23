@@ -66,6 +66,7 @@ final class ConfigManager {
     // GeoConfig
     func getDesiredAccuracy() -> Int { cache["desiredAccuracy"] as? Int ?? -1 }
     func getDistanceFilter() -> Double { cache["distanceFilter"] as? Double ?? 10.0 }
+    func getLocationTimeout() -> Int { cache["locationTimeout"] as? Int ?? 60 }
     func getStationaryRadius() -> Double { cache["stationaryRadius"] as? Double ?? 25.0 }
     func getDisableElasticity() -> Bool { cache["disableElasticity"] as? Bool ?? false }
     func getElasticityMultiplier() -> Double { cache["elasticityMultiplier"] as? Double ?? 1.0 }

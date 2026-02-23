@@ -82,6 +82,13 @@ class MethodChannelTracelet extends TraceletPlatform {
   }
 
   @override
+  Future<Map<String, Object?>> getLastKnownLocation([
+    Map<String, Object?>? options,
+  ]) async {
+    return _invokeMap('getLastKnownLocation', options);
+  }
+
+  @override
   Future<int> watchPosition(Map<String, Object?> options) async {
     final result = await _methodChannel.invokeMethod<int>(
       'watchPosition',

@@ -12,7 +12,7 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
     private let database: TraceletDatabase
 
     private var lastLocation: CLLocation?
-    private var oneShots: [(([String: Any]?) -> Void)] = []
+    private var oneShots: [((CLLocation?) -> Void)] = []
     private var watchCallbacks: [Int: Bool] = [:]
     private var nextWatchId = 0
     private var isTracking = false
@@ -92,9 +92,91 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
 
     // MARK: - One-shot position
 
+    /// Fetches the current position with configurable options.
+    ///
+    /// Supported keys in `options`:
+    /// - `desiredAccuracy` (Int): Accuracy level override.
+    /// - `timeout` (Int): Timeout in seconds (default 30).
+    /// - `maximumAge` (Int): Max age in ms of a cached location.
+    /// - `persist` (Bool): Whether to persist to DB (default true).
+    /// - `samples` (Int): Number of samples; best accuracy is returned (default 1).
+    /// - `extras` ([String: Any]): Extra data to attach.
     func getCurrentPosition(options: [String: Any], callback: @escaping ([String: Any]?) -> Void) {
-        oneShots.append(callback)
+        // Guard: require at least WhenInUse authorization before attempting.
+        let authStatus: CLAuthorizationStatus
+        if #available(iOS 14.0, *) {
+            authStatus = locationManager.authorizationStatus
+        } else {
+            authStatus = CLLocationManager.authorizationStatus()
+        }
+        guard authStatus == .authorizedWhenInUse || authStatus == .authorizedAlways else {
+            NSLog("[Tracelet] getCurrentPosition called without location authorization (status=\(authStatus.rawValue)). Call requestPermission() first.")
+            callback(nil)
+            return
+        }
+
+        let persist = options["persist"] as? Bool ?? true
+        let maximumAge = (options["maximumAge"] as? NSNumber)?.int64Value ?? 0
+        let samples = max((options["samples"] as? NSNumber)?.intValue ?? 1, 1)
+        let extras = options["extras"] as? [String: Any] ?? [:]
+
+        // Check if a cached location satisfies maximumAge
+        if maximumAge > 0, let cached = lastLocation {
+            let ageMs = Int64(Date().timeIntervalSince(cached.timestamp) * 1000)
+            if ageMs <= maximumAge {
+                var locationMap = buildLocationMap(cached)
+                if !extras.isEmpty { locationMap["extras"] = extras }
+                if persist { let _ = database.insertLocation(locationMap) }
+                callback(locationMap)
+                return
+            }
+        }
+
+        if samples > 1 {
+            collectSamples(count: samples, persist: persist, extras: extras, callback: callback)
+            return
+        }
+
+        oneShots.append { [weak self] location in
+            guard let self = self, let location = location else {
+                callback(nil)
+                return
+            }
+            var locationMap = self.buildLocationMap(location)
+            if !extras.isEmpty { locationMap["extras"] = extras }
+            if persist { let _ = self.database.insertLocation(locationMap) }
+            callback(locationMap)
+        }
+
+        // Ensure the location manager is configured for one-shot delivery.
+        // requestLocation() requires desiredAccuracy to be set and
+        // will silently fail if the manager isn't properly configured.
+        locationManager.desiredAccuracy = kCLLocationAccuracyBest
         locationManager.requestLocation()
+    }
+
+    /// Returns the last known location without activating any provider.
+    ///
+    /// This is a zero-battery-cost operation. Returns nil if no cached
+    /// location is available.
+    ///
+    /// Supported keys in `options`:
+    /// - `persist` (Bool): Whether to persist to DB (default false).
+    /// - `extras` ([String: Any]): Extra data to attach.
+    func getLastKnownLocation(options: [String: Any], callback: ([String: Any]?) -> Void) {
+        let persist = options["persist"] as? Bool ?? false
+        let extras = options["extras"] as? [String: Any] ?? [:]
+
+        guard let location = lastLocation ?? locationManager.location else {
+            callback(nil)
+            return
+        }
+
+        var locationMap = buildLocationMap(location)
+        if !extras.isEmpty { locationMap["extras"] = extras }
+        locationMap["event"] = "getLastKnownLocation"
+        if persist { let _ = database.insertLocation(locationMap) }
+        callback(locationMap)
     }
 
     // MARK: - Watch position
@@ -183,6 +265,9 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
 
+        // Feed multi-sample collection if active
+        let consumedBySampler = feedSample(location)
+
         // Distance filter check
         if let last = lastLocation {
             let distance = location.distance(from: last)
@@ -205,6 +290,9 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
         // Fire one-shot callbacks
         fireOneShots(location)
 
+        // If consumed exclusively by sampler, don't dispatch as tracking event
+        if consumedBySampler && !isTracking { return }
+
         // Fire watch position events
         if !watchCallbacks.isEmpty {
             eventDispatcher.sendWatchPosition(locationMap)
@@ -217,11 +305,28 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         NSLog("[Tracelet] Location error: \(error.localizedDescription)")
+
         // Fail all one-shots
         for callback in oneShots {
             callback(nil)
         }
         oneShots.removeAll()
+
+        // Fail active sample collection — don't let it hang until timeout.
+        if let state = sampleState, !state.finished {
+            state.finished = true
+            sampleState = nil
+            if !isTracking {
+                locationManager.stopUpdatingLocation()
+            }
+            locationManager.distanceFilter = configManager.getDistanceFilter()
+
+            if !state.collected.isEmpty {
+                deliverBest(samples: state.collected, persist: state.persist, extras: state.extras, callback: state.callback)
+            } else {
+                state.callback(nil)
+            }
+        }
     }
 
     func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
@@ -229,13 +334,108 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
         eventDispatcher.sendProviderChange(providerState)
     }
 
+    // MARK: - Multi-sample collection
+
+    private var sampleState: SampleState?
+
+    /// Internal state for multi-sample collection.
+    private class SampleState {
+        let targetCount: Int
+        let persist: Bool
+        let extras: [String: Any]
+        let callback: ([String: Any]?) -> Void
+        var collected: [CLLocation] = []
+        var finished = false
+
+        init(count: Int, persist: Bool, extras: [String: Any], callback: @escaping ([String: Any]?) -> Void) {
+            self.targetCount = count
+            self.persist = persist
+            self.extras = extras
+            self.callback = callback
+        }
+    }
+
+    /// Collects `count` location samples using continuous updates and returns the
+    /// most accurate one. Automatically stops after collecting enough samples
+    /// or after the configured timeout, whichever comes first.
+    private func collectSamples(count: Int, persist: Bool, extras: [String: Any], callback: @escaping ([String: Any]?) -> Void) {
+        let state = SampleState(count: count, persist: persist, extras: extras, callback: callback)
+        sampleState = state
+
+        // Ensure CLLocationManager is fully configured before requesting updates.
+        // Without this, updates may silently not fire if start() was never called.
+        locationManager.allowsBackgroundLocationUpdates = true
+        locationManager.showsBackgroundLocationIndicator = configManager.getShowsBackgroundLocationIndicator()
+        locationManager.pausesLocationUpdatesAutomatically = false
+        locationManager.activityType = .otherNavigation
+
+        // Temporarily disable distance filter so we receive updates even when
+        // the device is stationary — essential for multi-sample collection.
+        locationManager.distanceFilter = kCLDistanceFilterNone
+        locationManager.desiredAccuracy = kCLLocationAccuracyBest
+        locationManager.startUpdatingLocation()
+
+        // Timeout guard — deliver whatever we have (or nil) if time runs out.
+        let timeoutSec = configManager.getLocationTimeout()
+        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(timeoutSec)) { [weak self] in
+            guard let self = self, let state = self.sampleState, !state.finished else { return }
+            state.finished = true
+            self.sampleState = nil
+
+            if !self.isTracking {
+                self.locationManager.stopUpdatingLocation()
+            }
+            // Restore configured distance filter.
+            self.locationManager.distanceFilter = self.configManager.getDistanceFilter()
+
+            if !state.collected.isEmpty {
+                self.deliverBest(samples: state.collected, persist: state.persist, extras: state.extras, callback: state.callback)
+            } else {
+                state.callback(nil)
+            }
+        }
+    }
+
+    /// Called from `didUpdateLocations` to feed samples into an active collection.
+    /// Returns `true` if the location was consumed by sample collection.
+    private func feedSample(_ location: CLLocation) -> Bool {
+        guard let state = sampleState, !state.finished else { return false }
+
+        state.collected.append(location)
+        if state.collected.count >= state.targetCount {
+            state.finished = true
+            sampleState = nil
+
+            // Stop updates if we started them only for sampling and tracking isn't active
+            if !isTracking {
+                locationManager.stopUpdatingLocation()
+            }
+            // Restore configured distance filter.
+            locationManager.distanceFilter = configManager.getDistanceFilter()
+
+            deliverBest(samples: state.collected, persist: state.persist, extras: state.extras, callback: state.callback)
+        }
+        return true
+    }
+
+    /// Picks the best-accuracy location from samples and delivers it.
+    private func deliverBest(samples: [CLLocation], persist: Bool, extras: [String: Any], callback: ([String: Any]?) -> Void) {
+        guard let best = samples.min(by: { $0.horizontalAccuracy < $1.horizontalAccuracy }) else {
+            callback(nil)
+            return
+        }
+        var locationMap = buildLocationMap(best)
+        if !extras.isEmpty { locationMap["extras"] = extras }
+        if persist { let _ = database.insertLocation(locationMap) }
+        callback(locationMap)
+    }
+
     // MARK: - Helpers
 
     private func fireOneShots(_ location: CLLocation) {
         guard !oneShots.isEmpty else { return }
-        let map = buildLocationMap(location)
         for callback in oneShots {
-            callback(map)
+            callback(location)
         }
         oneShots.removeAll()
     }

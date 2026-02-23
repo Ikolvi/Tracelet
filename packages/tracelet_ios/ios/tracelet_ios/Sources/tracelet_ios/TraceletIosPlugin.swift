@@ -152,6 +152,8 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
         // Location
         case "getCurrentPosition":
             handleGetCurrentPosition(call, result: result)
+        case "getLastKnownLocation":
+            handleGetLastKnownLocation(call, result: result)
         case "watchPosition":
             handleWatchPosition(call, result: result)
         case "stopWatchPosition":
@@ -385,6 +387,18 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
                 result(location)
             } else {
                 result(FlutterError(code: "LOCATION_UNAVAILABLE", message: "Could not get current position", details: nil))
+            }
+        }
+    }
+
+    private func handleGetLastKnownLocation(_ call: FlutterMethodCall, result: FlutterResult) {
+        let options = call.arguments as? [String: Any] ?? [:]
+        locationEngine.getLastKnownLocation(options: options) { location in
+            if let location = location {
+                result(location)
+            } else {
+                // Return empty dict — nil means "no cached location"
+                result([String: Any]())
             }
         }
     }

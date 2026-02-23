@@ -167,6 +167,35 @@ void main() {
       expect(a, isNot(equals(b)));
     });
 
+    test('ForegroundServiceConfig.enabled defaults to true', () {
+      const config = ForegroundServiceConfig();
+      expect(config.enabled, true);
+    });
+
+    test('ForegroundServiceConfig.enabled can be disabled', () {
+      const config = ForegroundServiceConfig(enabled: false);
+      expect(config.enabled, false);
+    });
+
+    test('ForegroundServiceConfig.enabled round-trip serialization', () {
+      const config = ForegroundServiceConfig(enabled: false);
+      final map = config.toMap();
+      expect(map['enabled'], false);
+      final restored = ForegroundServiceConfig.fromMap(map);
+      expect(restored.enabled, false);
+    });
+
+    test('ForegroundServiceConfig.enabled affects equality', () {
+      const a = ForegroundServiceConfig(enabled: true);
+      const b = ForegroundServiceConfig(enabled: false);
+      expect(a, isNot(equals(b)));
+    });
+
+    test('ForegroundServiceConfig.enabled from map defaults to true', () {
+      final config = ForegroundServiceConfig.fromMap(const {});
+      expect(config.enabled, true);
+    });
+
     test('MotionConfig equality includes stopDetectionDelay', () {
       const a = MotionConfig(stopDetectionDelay: 0);
       const b = MotionConfig(stopDetectionDelay: 10);

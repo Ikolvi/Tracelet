@@ -1,3 +1,13 @@
+## 0.3.0
+
+* **FEAT**: One-shot location via `getCurrentPosition()` with `persist`, `samples`, `maximumAge`, and `extras` parameters.
+* **FEAT**: Multi-sample collection with `distanceFilter = kCLDistanceFilterNone` and `DispatchQueue` timeout guard.
+* **FEAT**: `getLastKnownLocation()` — prefers own cached location, falls back to `CLLocationManager.location`.
+* **FEAT**: `ForegroundServiceConfig.enabled` support.
+* **FIX**: Add `CLAuthorizationStatus` guard in `getCurrentPosition()` — returns nil if not authorized instead of hanging.
+* **FIX**: Single-sample path now sets `desiredAccuracy = kCLLocationAccuracyBest` before `requestLocation()`.
+* **BREAKING**: Requires `tracelet_platform_interface: ^0.3.0`.
+
 ## 0.2.4
 
 * Fix LICENSE file format for proper SPDX detection on pub.dev.

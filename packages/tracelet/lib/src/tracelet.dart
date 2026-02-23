@@ -150,27 +150,104 @@ class Tracelet {
 
   /// Get the current position as a one-shot request.
   ///
-  /// Accepts optional [options] for `desiredAccuracy`, `timeout`, etc.
+  /// This is the primary method for obtaining a single location fix without
+  /// starting continuous tracking. It activates the location provider
+  /// momentarily, obtains a fix, and returns the result.
   ///
+  /// **Parameters:**
+  ///
+  /// - [desiredAccuracy]: The accuracy level for this request. Overrides the
+  ///   configured accuracy. Defaults to the value in [GeoConfig].
+  /// - [timeout]: Maximum time (in seconds) to wait for a location fix.
+  ///   Defaults to `30` seconds.
+  /// - [maximumAge]: Maximum age (in milliseconds) of a cached location that
+  ///   is acceptable to return. If a cached location exists within this age,
+  ///   it is returned immediately without activating the provider.
+  ///   Defaults to `0` (always fetch a fresh fix).
+  /// - [persist]: Whether to persist the obtained location to the local
+  ///   SQLite database. Set to `false` for ephemeral reads (e.g., showing
+  ///   current position on a map). Defaults to `true`.
+  /// - [samples]: Number of location samples to collect. The sample with the
+  ///   best accuracy (lowest `horizontalAccuracy` value) is returned. Useful
+  ///   for obtaining a high-quality fix at the cost of slightly more time
+  ///   and battery. Defaults to `1`.
+  /// - [extras]: Extra key-value pairs to attach to the returned location.
+  ///
+  /// **Example — simple one-shot:**
   /// ```dart
-  /// final loc = await Tracelet.getCurrentPosition(
+  /// final location = await Tracelet.getCurrentPosition();
+  /// print('${location.coords.latitude}, ${location.coords.longitude}');
+  /// ```
+  ///
+  /// **Example — high-quality fix without persistence:**
+  /// ```dart
+  /// final location = await Tracelet.getCurrentPosition(
   ///   desiredAccuracy: DesiredAccuracy.high,
-  ///   timeout: 30,
+  ///   samples: 3,
+  ///   persist: false,
+  ///   timeout: 15,
   /// );
   /// ```
   static Future<Location> getCurrentPosition({
     DesiredAccuracy? desiredAccuracy,
     int? timeout,
     int? maximumAge,
+    bool? persist,
+    int? samples,
     Map<String, Object?>? extras,
   }) async {
     final options = <String, Object?>{
       if (desiredAccuracy != null) 'desiredAccuracy': desiredAccuracy.index,
       if (timeout != null) 'timeout': timeout,
       if (maximumAge != null) 'maximumAge': maximumAge,
+      if (persist != null) 'persist': persist,
+      if (samples != null) 'samples': samples,
       if (extras != null) 'extras': extras,
     };
     final result = await _platform.getCurrentPosition(options);
+    return Location.fromMap(result);
+  }
+
+  /// Get the last known location without requesting a new fix.
+  ///
+  /// Returns the most recently cached location from the platform's location
+  /// provider. **This method never activates GPS or network providers** — it
+  /// is a zero-battery-cost operation.
+  ///
+  /// Returns `null` if no cached location is available (e.g., the device has
+  /// never obtained a location fix, or the cache has been cleared).
+  ///
+  /// **Parameters:**
+  ///
+  /// - [persist]: Whether to persist the returned location to the local
+  ///   SQLite database. Defaults to `false`.
+  /// - [extras]: Extra key-value pairs to attach to the returned location.
+  ///
+  /// **Use cases:**
+  /// - Showing a quick "last seen" position on a map before a fresh fix
+  ///   arrives.
+  /// - Checking approximate location without incurring any battery cost.
+  /// - Pre-filling a location field in a form.
+  ///
+  /// **Example:**
+  /// ```dart
+  /// final location = await Tracelet.getLastKnownLocation();
+  /// if (location != null) {
+  ///   print('Last known: ${location.coords.latitude}');
+  /// } else {
+  ///   print('No cached location available.');
+  /// }
+  /// ```
+  static Future<Location?> getLastKnownLocation({
+    bool persist = false,
+    Map<String, Object?>? extras,
+  }) async {
+    final options = <String, Object?>{
+      'persist': persist,
+      if (extras != null) 'extras': extras,
+    };
+    final result = await _platform.getLastKnownLocation(options);
+    if (result.isEmpty) return null;
     return Location.fromMap(result);
   }
 

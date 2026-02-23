@@ -689,10 +689,20 @@ class AppConfig {
 // ---------------------------------------------------------------------------
 
 /// Configuration for the Android foreground service notification.
+///
+/// The foreground service is required on Android for reliable background
+/// location access. Set [enabled] to `false` to disable it for scenarios
+/// where only one-shot location requests are needed and continuous
+/// background tracking is not required.
+///
+/// **Warning:** Disabling the foreground service means the OS may
+/// kill the app at any time when it is in the background. Only disable
+/// this when you do not need persistent background tracking.
 @immutable
 class ForegroundServiceConfig {
   /// Creates a new [ForegroundServiceConfig].
   const ForegroundServiceConfig({
+    this.enabled = true,
     this.channelId = 'tracelet_channel',
     this.channelName = 'Tracelet',
     this.notificationTitle = 'Tracelet',
@@ -704,6 +714,20 @@ class ForegroundServiceConfig {
     this.notificationOngoing = true,
     this.actions = const <String>[],
   });
+
+  /// Whether the Android foreground service is enabled.
+  ///
+  /// When `true` (default), a persistent notification is shown and the
+  /// service keeps running reliably in the background.
+  ///
+  /// When `false`, no foreground service or notification is created.
+  /// This is useful for apps that only need one-shot location requests
+  /// via [Tracelet.getCurrentPosition] or [Tracelet.getLastKnownLocation]
+  /// and do not need continuous background tracking.
+  ///
+  /// **Note:** On Android 8+ (API 26+), background location access
+  /// without a foreground service is severely restricted.
+  final bool enabled;
 
   /// The Android notification channel ID.
   final String channelId;
@@ -745,6 +769,7 @@ class ForegroundServiceConfig {
       }
     }
     return ForegroundServiceConfig(
+      enabled: ensureBool(map['enabled'], fallback: true),
       channelId: map['channelId'] as String? ?? 'tracelet_channel',
       channelName: map['channelName'] as String? ?? 'Tracelet',
       notificationTitle: map['notificationTitle'] as String? ?? 'Tracelet',
@@ -766,6 +791,7 @@ class ForegroundServiceConfig {
   /// Serializes to a map.
   Map<String, Object?> toMap() {
     return <String, Object?>{
+      'enabled': enabled,
       'channelId': channelId,
       'channelName': channelName,
       'notificationTitle': notificationTitle,
@@ -784,6 +810,7 @@ class ForegroundServiceConfig {
       identical(this, other) ||
       other is ForegroundServiceConfig &&
           runtimeType == other.runtimeType &&
+          enabled == other.enabled &&
           channelId == other.channelId &&
           channelName == other.channelName &&
           notificationTitle == other.notificationTitle &&
@@ -796,6 +823,7 @@ class ForegroundServiceConfig {
 
   @override
   int get hashCode => Object.hash(
+    enabled,
     channelId,
     channelName,
     notificationTitle,

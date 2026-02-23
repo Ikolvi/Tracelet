@@ -1,3 +1,9 @@
+## 0.3.0
+
+* **FEAT**: Add `getLastKnownLocation()` abstract method to platform interface.
+* **FEAT**: Add `ForegroundServiceConfig.enabled` field to `AppConfig` for toggling foreground service.
+* **FEAT**: Enhance `getCurrentPosition()` with `persist`, `samples`, `maximumAge`, and `extras` parameters for enterprise one-shot location requests.
+
 ## 0.2.2
 
 * Fix LICENSE file format for proper SPDX detection on pub.dev.

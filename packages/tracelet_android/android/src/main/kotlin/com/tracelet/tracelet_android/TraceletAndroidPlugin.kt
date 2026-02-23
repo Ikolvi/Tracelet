@@ -176,6 +176,7 @@ class TraceletAndroidPlugin :
 
             // Location
             "getCurrentPosition" -> handleGetCurrentPosition(call, result)
+            "getLastKnownLocation" -> handleGetLastKnownLocation(call, result)
             "watchPosition" -> handleWatchPosition(call, result)
             "stopWatchPosition" -> handleStopWatchPosition(call, result)
             "changePace" -> handleChangePace(call, result)
@@ -328,8 +329,13 @@ class TraceletAndroidPlugin :
         stateManager.trackingMode = 0 // Location tracking
         stateManager.isMoving = configManager.getIsMoving()
 
-        // Start foreground service
-        LocationService.start(context)
+        // Start foreground service only if enabled in config.
+        // When disabled, one-shot location via getCurrentPosition() and
+        // getLastKnownLocation() still work, but continuous background
+        // tracking may be killed by the OS.
+        if (configManager.isForegroundServiceEnabled()) {
+            LocationService.start(context)
+        }
 
         // Start location engine
         locationEngine.start()
@@ -356,8 +362,10 @@ class TraceletAndroidPlugin :
         motionDetector.stop()
         stopHeartbeat()
 
-        // Stop foreground service
-        LocationService.stop(context)
+        // Stop foreground service if it was running
+        if (configManager.isForegroundServiceEnabled()) {
+            LocationService.stop(context)
+        }
 
         // Fire enabledChange
         eventDispatcher.sendEnabledChange(false)
@@ -378,8 +386,10 @@ class TraceletAndroidPlugin :
         // Re-register all geofences
         geofenceManager.reRegisterAll()
 
-        // Start foreground service (needed for background geofencing)
-        LocationService.start(context)
+        // Start foreground service if enabled (needed for background geofencing)
+        if (configManager.isForegroundServiceEnabled()) {
+            LocationService.start(context)
+        }
 
         eventDispatcher.sendEnabledChange(true)
 
@@ -442,6 +452,20 @@ class TraceletAndroidPlugin :
                 result.success(location)
             } else {
                 result.error("LOCATION_UNAVAILABLE", "Could not get current position", null)
+            }
+        }
+    }
+
+    private fun handleGetLastKnownLocation(call: MethodCall, result: Result) {
+        @Suppress("UNCHECKED_CAST")
+        val options = call.arguments as? Map<String, Any?> ?: emptyMap()
+
+        locationEngine.getLastKnownLocation(options) { location ->
+            if (location != null) {
+                result.success(location)
+            } else {
+                // Return empty map instead of error — null means "no cached location"
+                result.success(emptyMap<String, Any?>())
             }
         }
     }
@@ -638,7 +662,9 @@ class TraceletAndroidPlugin :
 
     private fun handleScheduleStart() {
         stateManager.enabled = true
-        LocationService.start(context)
+        if (configManager.isForegroundServiceEnabled()) {
+            LocationService.start(context)
+        }
         locationEngine.start()
         motionDetector.start()
         startHeartbeat()
@@ -650,7 +676,9 @@ class TraceletAndroidPlugin :
         locationEngine.stop()
         motionDetector.stop()
         stopHeartbeat()
-        LocationService.stop(context)
+        if (configManager.isForegroundServiceEnabled()) {
+            LocationService.stop(context)
+        }
         eventDispatcher.sendEnabledChange(false)
     }
 
