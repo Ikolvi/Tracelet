@@ -89,6 +89,7 @@ await tl.Tracelet.start();
 | [Background Tracking](https://github.com/Ikolvi/Tracelet/blob/main/help/BACKGROUND-TRACKING.md) | Foreground service, silent mode, runtime switching |
 | [API Reference](https://github.com/Ikolvi/Tracelet/blob/main/help/API.md) | All methods, events, and return types |
 | [Configuration](https://github.com/Ikolvi/Tracelet/blob/main/help/CONFIGURATION.md) | All config groups with property tables |
+| [Web Support](https://github.com/Ikolvi/Tracelet/blob/main/help/WEB-SUPPORT.md) | Web platform capabilities, limitations, and browser APIs |
 
 ## Architecture
 
@@ -100,6 +101,7 @@ This is the **app-facing package** in a federated plugin:
 | `tracelet_platform_interface` | Abstract platform interface |
 | `tracelet_android` | Kotlin Android implementation |
 | `tracelet_ios` | Swift iOS implementation |
+| `tracelet_web` | Web implementation (experimental) |
 
 ## Support
 

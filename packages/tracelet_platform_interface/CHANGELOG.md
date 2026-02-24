@@ -1,3 +1,12 @@
+## 0.5.1
+
+* **DOCS**: Update README with links to all federated packages.
+
+## 0.5.0
+
+* **FEAT**: Web platform support.
+* **CHORE**: Bump version to 0.5.0.
+
 ## 0.4.0
 
 * **FEAT**: Add `getMotionPermissionStatus()` and `requestMotionPermission()` to platform interface.

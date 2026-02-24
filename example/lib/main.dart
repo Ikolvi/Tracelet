@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:io' show Platform;
-
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' as tl;
 
@@ -22,7 +22,10 @@ void main() {
   // Register headless task BEFORE runApp — stores the callback handle
   // so the native side can invoke it even when the UI is dead.
   // This is a no-op on iOS but harmless to call.
-  tl.Tracelet.registerHeadlessTask(headlessTask);
+  // On web, headless isolates are not supported — skip registration.
+  if (!kIsWeb) {
+    tl.Tracelet.registerHeadlessTask(headlessTask);
+  }
 
   runApp(const TraceletApp());
 }
@@ -73,7 +76,8 @@ class _DashboardPageState extends State<DashboardPage> {
   // Subscriptions
   final List<StreamSubscription<Object?>> _subs = [];
 
-  bool get _isAndroid => Platform.isAndroid;
+  bool get _isAndroid => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  bool get _isWeb => kIsWeb;
 
   @override
   void dispose() {
@@ -1339,7 +1343,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Tracelet ${_isAndroid ? "Android" : "iOS"}'),
+        title: Text('Tracelet ${_isWeb ? "Web" : _isAndroid ? "Android" : "iOS"}'),
         centerTitle: true,
         actions: [
           IconButton(

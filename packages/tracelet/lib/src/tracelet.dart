@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart' show WidgetsFlutterBinding;
 import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
@@ -644,6 +645,9 @@ class Tracelet {
   static Future<bool> registerHeadlessTask(
     void Function(HeadlessEvent) callback,
   ) {
+    // Headless isolates are not supported on web — bail out early.
+    if (kIsWeb) return Future<bool>.value(false);
+
     // The internal dispatcher that the native side executes as the Dart
     // entry point for the headless isolate.
     final registrationHandle = ui.PluginUtilities.getCallbackHandle(

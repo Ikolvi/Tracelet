@@ -1,15 +1,32 @@
 # tracelet_ios
 
-A new Flutter plugin project.
+iOS implementation of the [Tracelet](https://pub.dev/packages/tracelet) background geolocation plugin.
 
-## Getting Started
+This package uses Swift and native Apple frameworks (CoreLocation, CoreMotion, BackgroundTasks, SQLite3) to provide production-grade background location tracking.
 
-This project is a starting point for a Flutter
-[plug-in package](https://flutter.dev/to/develop-plugins),
-a specialized package that includes platform-specific implementation code for
-Android and/or iOS.
+## Usage
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+**You should not depend on this package directly.** Instead, depend on [`tracelet`](https://pub.dev/packages/tracelet) which automatically includes this package on iOS builds.
+
+```yaml
+dependencies:
+  tracelet: ^0.5.0
+```
+
+For iOS-specific setup (Info.plist, capabilities, entitlements), see the [iOS Setup Guide](https://github.com/Ikolvi/Tracelet/blob/main/help/INSTALL-IOS.md).
+
+## Related Packages
+
+| Package | Description |
+|---|---|
+| [`tracelet`](https://pub.dev/packages/tracelet) | App-facing Dart API — the only package you depend on |
+| [`tracelet_platform_interface`](https://pub.dev/packages/tracelet_platform_interface) | Abstract platform interface |
+| [`tracelet_android`](https://pub.dev/packages/tracelet_android) | Android implementation |
+| [`tracelet_web`](https://pub.dev/packages/tracelet_web) | Web implementation |
+
+## More Information
+
+- [GitHub Repository](https://github.com/Ikolvi/Tracelet)
+- [Documentation](https://github.com/Ikolvi/Tracelet/tree/main/help)
+- [Issue Tracker](https://github.com/Ikolvi/Tracelet/issues)
 

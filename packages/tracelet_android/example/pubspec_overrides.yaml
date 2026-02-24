@@ -1,4 +1,4 @@
-# melos_managed_dependency_overrides: tracelet,tracelet_android,tracelet_ios,tracelet_platform_interface
+# melos_managed_dependency_overrides: tracelet,tracelet_android,tracelet_ios,tracelet_platform_interface,tracelet_web
 dependency_overrides:
   tracelet:
     path: ../../tracelet
@@ -8,3 +8,5 @@ dependency_overrides:
     path: ../../tracelet_ios
   tracelet_platform_interface:
     path: ../../tracelet_platform_interface
+  tracelet_web:
+    path: ../../tracelet_web

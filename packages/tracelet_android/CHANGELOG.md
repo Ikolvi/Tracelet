@@ -1,3 +1,12 @@
+## 0.5.1
+
+* **DOCS**: Rewrite README with proper description, setup guide link, and related packages table.
+
+## 0.5.0
+
+* **CHORE**: Bump `tracelet_platform_interface` to ^0.5.0.
+* **CHORE**: Bump version to 0.5.0.
+
 ## 0.4.0
 
 * **FEAT**: `getMotionPermissionStatus()` / `requestMotionPermission()` — ACTIVITY_RECOGNITION permission handling.

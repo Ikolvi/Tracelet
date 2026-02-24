@@ -1,3 +1,15 @@
+## 0.5.1
+
+* **DOCS**: Update README with web platform in architecture and documentation tables.
+
+## 0.5.0
+
+* **FEAT**: Add web platform support via `tracelet_web` package.
+* **FEAT**: Guard `registerHeadlessTask()` for web compatibility (`kIsWeb` early return).
+* **DOCS**: Add Web Support guide (`help/WEB-SUPPORT.md`) with full API compatibility matrix.
+* **DOCS**: Update README with web platform in architecture table and documentation links.
+* **CHORE**: Bump all platform dependencies to ^0.5.0.
+
 ## 0.4.0
 
 * **FEAT**: `getMotionPermissionStatus()` and `requestMotionPermission()` APIs for activity recognition permission.

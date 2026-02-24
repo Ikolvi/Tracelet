@@ -84,6 +84,13 @@ scripts:
       scope: tracelet_example
       dirExists: lib
 
+  build:example:web:
+    description: Build example app for Web
+    run: flutter build web
+    packageFilters:
+      scope: tracelet_example
+      dirExists: lib
+
   coverage:
     description: Generate coverage report
     run: |

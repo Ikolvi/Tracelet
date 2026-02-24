@@ -49,6 +49,7 @@ Tracelet uses a **federated plugin architecture** with 4 packages:
 | [`tracelet_platform_interface`](packages/tracelet_platform_interface/) | Abstract platform interface + Pigeon definitions |
 | [`tracelet_android`](packages/tracelet_android/) | Kotlin Android implementation |
 | [`tracelet_ios`](packages/tracelet_ios/) | Swift iOS implementation |
+| [`tracelet_web`](packages/tracelet_web/) | Web implementation (experimental) |
 
 ## Quick Start
 
@@ -195,6 +196,7 @@ await tl.Tracelet.start();
 | [Background Tracking](help/BACKGROUND-TRACKING.md) | Foreground service, silent mode, runtime switching |
 | [API Reference](help/API.md) | All methods, events, and return types |
 | [Configuration](help/CONFIGURATION.md) | All config groups with property tables |
+| [Web Support](help/WEB-SUPPORT.md) | Web platform capabilities, limitations, and browser APIs |
 
 ## Requirements
 
@@ -202,6 +204,7 @@ await tl.Tracelet.start();
 |---|---|
 | Android | API 26 (Android 8.0 Oreo) |
 | iOS | 14.0 |
+| Web | Modern browsers (Chrome, Firefox, Safari, Edge) |
 | Flutter | 3.22+ |
 | Dart | 3.4+ |
 
