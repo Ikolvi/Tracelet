@@ -1,3 +1,8 @@
+## 0.5.5
+
+* **FIX**: iOS `onSchedule` event now sends full state map instead of partial data.
+* **CHORE**: Bump all platform dependencies to ^0.5.5.
+
 ## 0.5.4
 
 * **FIX**: Heartbeat events no longer return zero coordinates on Android and iOS.

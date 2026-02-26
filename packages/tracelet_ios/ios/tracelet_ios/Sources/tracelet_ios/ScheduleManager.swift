@@ -34,10 +34,10 @@ final class ScheduleManager {
         // Check if currently within schedule
         if isWithinSchedule() {
             onScheduleStart?()
-            eventDispatcher.sendSchedule(["state": "on", "enabled": true])
+            eventDispatcher.sendSchedule(stateManager.toMap(configManager.getConfig()))
         } else {
             onScheduleStop?()
-            eventDispatcher.sendSchedule(["state": "off", "enabled": false])
+            eventDispatcher.sendSchedule(stateManager.toMap(configManager.getConfig()))
         }
 
         scheduleNextTasks()
@@ -49,7 +49,7 @@ final class ScheduleManager {
             BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: ScheduleManager.startTaskId)
             BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: ScheduleManager.stopTaskId)
         }
-        eventDispatcher.sendSchedule(["state": "off", "enabled": false])
+        eventDispatcher.sendSchedule(stateManager.toMap(configManager.getConfig()))
     }
 
     /// Register BGTask identifiers. Must be called in application:didFinishLaunching.

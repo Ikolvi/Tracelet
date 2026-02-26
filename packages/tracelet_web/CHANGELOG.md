@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.5
+
+* **CHORE**: Bump `tracelet_platform_interface` to ^0.5.5.
+
 ## 0.5.4
 
 * **CHORE**: Bump `tracelet_platform_interface` to ^0.5.4.

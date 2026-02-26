@@ -1,3 +1,7 @@
+## 0.5.5
+
+* **CHORE**: Bump `tracelet_platform_interface` to ^0.5.5.
+
 ## 0.5.4
 
 * **FIX**: Heartbeat event now wraps location data in `{"location": ...}` to match `HeartbeatEvent.fromMap()` — fixes heartbeat always returning zero coordinates.

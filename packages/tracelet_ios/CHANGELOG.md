@@ -1,3 +1,7 @@
+## 0.5.5
+
+* **FIX**: `onSchedule` event now sends full state map (via `stateManager.toMap()`) instead of partial `["state": "on", "enabled": true]` — fixes `State.fromMap()` crash on schedule events.
+
 ## 0.5.4
 
 * **FIX**: Heartbeat event now wraps location data in `{"location": ...}` to match `HeartbeatEvent.fromMap()` — fixes heartbeat always returning zero coordinates.

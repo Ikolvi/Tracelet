@@ -60,7 +60,7 @@ jobs:
         run: |
           INPUT="${{ inputs.packages }}"
           if [ "$INPUT" = "all" ]; then
-            echo "packages=tracelet_platform_interface,tracelet_android,tracelet_ios,tracelet" >> "$GITHUB_OUTPUT"
+            echo "packages=tracelet_platform_interface,tracelet_android,tracelet_ios,tracelet_web,tracelet" >> "$GITHUB_OUTPUT"
           else
             echo "packages=$INPUT" >> "$GITHUB_OUTPUT"
           fi
@@ -198,7 +198,7 @@ jobs:
         if: ${{ !inputs.dry_run }}
         run: |
           # Publish order: platform_interface → android → ios → tracelet
-          ORDERED="tracelet_platform_interface tracelet_android tracelet_ios tracelet"
+          ORDERED="tracelet_platform_interface tracelet_android tracelet_ios tracelet_web tracelet"
           IFS=',' read -ra REQUESTED <<< "${{ steps.resolve.outputs.packages }}"
 
           for pkg in $ORDERED; do

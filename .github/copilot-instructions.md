@@ -5,7 +5,7 @@
 - **Type**: Federated Flutter plugin (5 packages) for production-grade background geolocation
 - **License**: Apache 2.0 — all code must be original, no proprietary SDK wrappers
 - **Languages**: Dart, Kotlin (Android), Swift (iOS)
-- **Current Version**: 0.5.4
+- **Current Version**: 0.5.5
 
 ## Monorepo Structure
 ```
