@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.4
+
+* **CHORE**: Bump `tracelet_platform_interface` to ^0.5.4.
+
+## 0.5.3
+
+* **CHORE**: Bump `tracelet_platform_interface` to ^0.5.3.
+
 ## 0.5.2
 
 * **FIX**: Replace deprecated `registrar.messenger` with `registrar` directly in event channel registration.

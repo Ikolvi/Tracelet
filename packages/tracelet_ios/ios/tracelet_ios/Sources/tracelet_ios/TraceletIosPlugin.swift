@@ -585,8 +585,17 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
         ) { [weak self] _ in
             guard let self = self, self.stateManager.enabled else { return }
             self.locationEngine.getCurrentPosition(options: [:]) { location in
-                let data = location ?? [:]
-                self.eventDispatcher.sendHeartbeat(data)
+                // Use fresh fix; fall back to last known location enriched as a map
+                let locationData: [String: Any]
+                if let loc = location {
+                    locationData = loc
+                } else if let lastLoc = self.locationEngine.getLastLocation() {
+                    locationData = self.locationEngine.buildLocationMap(lastLoc)
+                } else {
+                    locationData = [:]
+                }
+                // Wrap in {"location": ...} to match HeartbeatEvent.fromMap
+                self.eventDispatcher.sendHeartbeat(["location": locationData])
             }
         }
     }

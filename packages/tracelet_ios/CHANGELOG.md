@@ -1,3 +1,12 @@
+## 0.5.4
+
+* **FIX**: Heartbeat event now wraps location data in `{"location": ...}` to match `HeartbeatEvent.fromMap()` — fixes heartbeat always returning zero coordinates.
+* **FIX**: Heartbeat falls back to last known location (via `buildLocationMap()`) when `getCurrentPosition` returns null.
+
+## 0.5.3
+
+* **CHORE**: Bump `tracelet_platform_interface` to ^0.5.3.
+
 ## 0.5.2
 
 * **FEAT**: Accelerometer-only motion detection mode — when `disableMotionActivityUpdates` is `true`, uses `CMMotionManager` raw accelerometer for permission-free stationary↔moving detection (no `NSMotionUsageDescription` required).

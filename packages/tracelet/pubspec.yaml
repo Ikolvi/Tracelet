@@ -3,7 +3,7 @@ description: >-
   Production-grade background geolocation for Flutter. Battery-conscious
   tracking, geofencing, SQLite persistence, HTTP sync, and headless
   execution for iOS & Android.
-version: 0.5.2
+version: 0.5.4
 license: Apache-2.0
 homepage: https://github.com/Ikolvi/Tracelet
 repository: https://github.com/Ikolvi/Tracelet/tree/main/packages/tracelet
@@ -25,10 +25,10 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  tracelet_platform_interface: ^0.5.0
-  tracelet_android: ^0.5.0
-  tracelet_ios: ^0.5.0
-  tracelet_web: ^0.5.0
+  tracelet_platform_interface: ^0.5.4
+  tracelet_android: ^0.5.4
+  tracelet_ios: ^0.5.4
+  tracelet_web: ^0.5.4
   collection: ^1.18.0
   meta: ^1.12.0
 

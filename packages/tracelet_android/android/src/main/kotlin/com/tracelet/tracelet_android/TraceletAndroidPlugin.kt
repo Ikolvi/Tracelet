@@ -911,8 +911,14 @@ class TraceletAndroidPlugin :
             override fun run() {
                 if (!stateManager.enabled) return
                 locationEngine.getCurrentPosition(emptyMap()) { location ->
-                    val heartbeatData = location ?: emptyMap()
-                    eventDispatcher.sendHeartbeat(heartbeatData)
+                    // Use fresh fix, fall back to last known location, or empty map
+                    val locationData = location
+                        ?: locationEngine.getLastLocation()?.let {
+                            locationEngine.enrichLocation(it, "heartbeat")
+                        }
+                        ?: emptyMap()
+                    // Wrap in {"location": ...} to match HeartbeatEvent.fromMap
+                    eventDispatcher.sendHeartbeat(mapOf("location" to locationData))
                 }
                 mainHandler.postDelayed(this, intervalSeconds * 1000L)
             }

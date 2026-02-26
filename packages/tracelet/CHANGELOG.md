@@ -1,3 +1,11 @@
+## 0.5.4
+
+* **FIX**: Heartbeat events no longer return zero coordinates on Android and iOS.
+
+## 0.5.3
+
+* **CHORE**: Bump all platform dependencies to ^0.5.3.
+
 ## 0.5.2
 
 * **FEAT**: `disableMotionActivityUpdates` now falls back to permission-free accelerometer-only motion detection instead of disabling all motion detection entirely.

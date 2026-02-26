@@ -1,3 +1,11 @@
+## 0.5.4
+
+* **CHORE**: Bump version to 0.5.4.
+
+## 0.5.3
+
+* **CHORE**: Bump version to 0.5.3.
+
 ## 0.5.2
 
 * **CHORE**: Bump version to 0.5.2.
