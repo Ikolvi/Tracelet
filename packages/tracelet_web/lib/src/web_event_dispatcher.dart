@@ -160,23 +160,18 @@ class WebEventDispatcher {
   }
 
   // ---------------------------------------------------------------------------
-  // Logging (internal — appended to in-memory log)
+  // Logging
   // ---------------------------------------------------------------------------
 
-  final List<String> _logs = <String>[];
-
+  /// Logs a message at the given level.
+  ///
+  /// This is a lightweight pass-through for sub-engines that don't have direct
+  /// access to `WebStorageEngine`. Actual log persistence is handled by the
+  /// storage engine via `TraceletWebPlugin.log()`.
   void log(String level, String message) {
-    final ts = DateTime.now().toIso8601String();
-    _logs.add('[$ts] [$level] $message');
-    // Trim to last 10 000 entries.
-    if (_logs.length > 10000) {
-      _logs.removeRange(0, _logs.length - 10000);
-    }
+    // No-op here — sub-engines use this for convenience logging.
+    // Persistent logging goes through WebStorageEngine.
   }
-
-  String getLog() => _logs.join('\n');
-
-  void clearLog() => _logs.clear();
 
   // ---------------------------------------------------------------------------
   // Dispose

@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'dart:math' as math;
+
+import 'web_utils.dart';
 
 /// In-memory + localStorage persistence engine for Tracelet web.
 ///
@@ -103,7 +104,7 @@ class WebStorageEngine {
   }
 
   Future<String> insertLocation(Map<String, Object?> params) async {
-    final uuid = params['uuid'] as String? ?? _generateUuid();
+    final uuid = params['uuid'] as String? ?? generateUuid();
     final record = Map<String, Object?>.from(params);
     record['uuid'] = uuid;
     if (!record.containsKey('timestamp')) {
@@ -155,24 +156,4 @@ class WebStorageEngine {
     _logs.clear();
     return true;
   }
-
-  // ---------------------------------------------------------------------------
-  // UUID
-  // ---------------------------------------------------------------------------
-
-  static String _generateUuid() {
-    final rng = math.Random();
-    return '${_hex(rng, 8)}-${_hex(rng, 4)}-4${_hex(rng, 3)}-${_hexV(rng)}${_hex(rng, 3)}-${_hex(rng, 12)}';
-  }
-
-  static String _hex(math.Random rng, int count) {
-    final sb = StringBuffer();
-    for (var i = 0; i < count; i++) {
-      sb.write(rng.nextInt(16).toRadixString(16));
-    }
-    return sb.toString();
-  }
-
-  static String _hexV(math.Random rng) =>
-      (8 + rng.nextInt(4)).toRadixString(16);
 }

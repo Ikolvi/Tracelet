@@ -104,6 +104,8 @@ class TraceletAndroidPlugin :
         // Location
         locationEngine = LocationEngine(context, configManager, stateManager, eventDispatcher, database)
 
+        // Trip detection is now handled in shared Dart code (tracelet_platform_interface).
+
         // Motion
         motionDetector = MotionDetector(context, configManager, stateManager, eventDispatcher)
         motionDetector.onMotionStateChanged = { isMoving ->
@@ -709,6 +711,7 @@ class TraceletAndroidPlugin :
     private fun handleChangePace(call: MethodCall, result: Result) {
         val isMoving = call.arguments as? Boolean ?: false
         result.success(locationEngine.changePace(isMoving))
+        // Trip detection is now handled in shared Dart code.
     }
 
     // =========================================================================
@@ -870,6 +873,7 @@ class TraceletAndroidPlugin :
         } ?: mapOf("isMoving" to isMoving)
 
         eventDispatcher.sendMotionChange(locationMap)
+        // Trip detection is now handled in shared Dart code.
     }
 
     // =========================================================================

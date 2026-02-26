@@ -5,7 +5,6 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.location.Location as AndroidLocation
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.Geofence
@@ -60,7 +59,11 @@ class GeofenceManager(
         // Persist to database
         if (!db.insertGeofence(geofenceMap)) return false
 
-        // Register with platform
+        // Polygon geofences are evaluated in Dart — no system registration needed
+        val vertices = geofenceMap["vertices"]
+        if (vertices is List<*> && vertices.size >= 3) return true
+
+        // Register circular geofence with platform
         return registerGeofence(geofenceMap)
     }
 
@@ -104,6 +107,9 @@ class GeofenceManager(
         if (!hasPermission()) return
         val geofences = db.getGeofences()
         for (gf in geofences) {
+            // Polygon geofences are evaluated in Dart — skip system registration
+            val vertices = gf["vertices"]
+            if (vertices is List<*> && vertices.size >= 3) continue
             registerGeofence(gf)
         }
     }
@@ -111,6 +117,9 @@ class GeofenceManager(
     /**
      * Called when a geofence event is received from GeofenceBroadcastReceiver.
      * Dispatches events to Dart via EventDispatcher.
+     *
+     * When geofenceModeHighAccuracy is active, OS-level events are suppressed
+     * to avoid duplicates — transitions are handled by [evaluateHighAccuracyProximity].
      */
     fun handleGeofenceEvent(
         transitionType: Int,
@@ -118,6 +127,9 @@ class GeofenceManager(
         latitude: Double,
         longitude: Double,
     ) {
+        // Skip OS-level events when high-accuracy mode handles transitions
+        if (config.getGeofenceModeHighAccuracy()) return
+
         val action = when (transitionType) {
             Geofence.GEOFENCE_TRANSITION_ENTER -> "ENTER"
             Geofence.GEOFENCE_TRANSITION_EXIT -> "EXIT"
@@ -164,73 +176,15 @@ class GeofenceManager(
     }
 
     /**
-     * High-accuracy geofence evaluation — called from LocationEngine on every location update
-     * when geofenceModeHighAccuracy is enabled. Computes distance-from-center for each
-     * stored geofence and fires ENTER/EXIT transitions in-app.
+     * High-accuracy geofence evaluation is now handled by shared Dart code
+     * (GeofenceEvaluator in tracelet_platform_interface). This method is kept
+     * as a no-op stub for call-site compatibility.
      */
     fun evaluateHighAccuracyProximity(latitude: Double, longitude: Double) {
-        val geofences = db.getGeofences()
-        val on = mutableListOf<Map<String, Any?>>()
-        val off = mutableListOf<Map<String, Any?>>()
-
-        for (gf in geofences) {
-            val identifier = gf["identifier"] as? String ?: continue
-            val gfLat = (gf["latitude"] as? Number)?.toDouble() ?: continue
-            val gfLng = (gf["longitude"] as? Number)?.toDouble() ?: continue
-            val gfRadius = (gf["radius"] as? Number)?.toFloat() ?: 200f
-
-            val results = FloatArray(1)
-            AndroidLocation.distanceBetween(latitude, longitude, gfLat, gfLng, results)
-            val distance = results[0]
-
-            val wasInside = insideGeofenceIds.contains(identifier)
-            val isInside = distance <= gfRadius
-
-            if (isInside && !wasInside) {
-                // ENTER transition
-                insideGeofenceIds.add(identifier)
-                val eventData = mapOf(
-                    "identifier" to identifier,
-                    "action" to "ENTER",
-                    "location" to mapOf(
-                        "coords" to mapOf(
-                            "latitude" to latitude,
-                            "longitude" to longitude,
-                        )
-                    ),
-                    "extras" to gf["extras"],
-                )
-                events.sendGeofence(eventData)
-                on.add(gf)
-                Log.d(TAG, "High-accuracy ENTER: $identifier (distance=${distance}m, radius=${gfRadius}m)")
-            } else if (!isInside && wasInside) {
-                // EXIT transition
-                insideGeofenceIds.remove(identifier)
-                val eventData = mapOf(
-                    "identifier" to identifier,
-                    "action" to "EXIT",
-                    "location" to mapOf(
-                        "coords" to mapOf(
-                            "latitude" to latitude,
-                            "longitude" to longitude,
-                        )
-                    ),
-                    "extras" to gf["extras"],
-                )
-                events.sendGeofence(eventData)
-                off.add(gf)
-
-                // KnockOut mode: remove geofence after EXIT
-                if (config.getGeofenceModeKnockOut()) {
-                    removeGeofence(identifier)
-                }
-                Log.d(TAG, "High-accuracy EXIT: $identifier (distance=${distance}m, radius=${gfRadius}m)")
-            }
-        }
-
-        if (on.isNotEmpty() || off.isNotEmpty()) {
-            events.sendGeofencesChange(mapOf("on" to on, "off" to off))
-        }
+        // Proximity evaluation moved to shared Dart GeofenceEvaluator.
+        // This method is intentionally empty — Dart handles all ENTER/EXIT
+        // transitions via GeofenceEvaluator.evaluateProximity() in the
+        // onLocation stream pipeline.
     }
 
     /** Clear high-accuracy tracking state. */
@@ -255,6 +209,9 @@ class GeofenceManager(
         val latitude = (geofenceMap["latitude"] as? Number)?.toDouble() ?: return false
         val longitude = (geofenceMap["longitude"] as? Number)?.toDouble() ?: return false
         val radius = (geofenceMap["radius"] as? Number)?.toFloat() ?: 200f
+
+        // Guard against invalid radius (e.g. polygon geofences with radius=0)
+        if (radius <= 0f) return false
         val notifyOnEntry = geofenceMap["notifyOnEntry"] != false
         val notifyOnExit = geofenceMap["notifyOnExit"] != false
         val notifyOnDwell = geofenceMap["notifyOnDwell"] == true

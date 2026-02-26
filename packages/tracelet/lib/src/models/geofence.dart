@@ -64,9 +64,26 @@ class Geofence {
   /// Arbitrary extra data to attach to this geofence.
   final Map<String, Object?> extras;
 
-  /// Polygon vertices for future polygon geofence support.
+  /// Polygon vertices for polygon geofence support.
   ///
-  /// Each vertex is `[latitude, longitude]`. Empty for circular geofences.
+  /// Each vertex is `[latitude, longitude]`. When non-empty (≥ 3 vertices),
+  /// the geofence is treated as a polygon and the [radius] is ignored.
+  /// Uses ray-casting point-in-polygon algorithm for containment checks.
+  ///
+  /// ```dart
+  /// final polygon = Geofence(
+  ///   identifier: 'campus',
+  ///   latitude: 37.422,   // centroid (used for proximity sorting)
+  ///   longitude: -122.084,
+  ///   radius: 0,           // ignored for polygon geofences
+  ///   vertices: [
+  ///     [37.423, -122.086],
+  ///     [37.424, -122.082],
+  ///     [37.421, -122.081],
+  ///     [37.420, -122.085],
+  ///   ],
+  /// );
+  /// ```
   final List<List<double>> vertices;
 
   /// Creates a [Geofence] from a platform map.

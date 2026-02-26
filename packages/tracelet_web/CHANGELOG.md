@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.1
+
+* **FIX**: Remove duplicate distance filter from `WebLocationEngine` — all location filtering now handled by shared Dart `LocationProcessor` via `tracelet.dart` pipeline, matching Android/iOS behavior.
+* **REFACTOR**: Replace duplicate `_haversine()` in `WebLocationEngine` with shared `GeoUtils.haversine()`.
+* **REFACTOR**: Deduplicate UUID generators into shared `web_utils.dart` (`generateUuid()`).
+* **REFACTOR**: Remove dead internal logging from `WebEventDispatcher` (`_logs`, `getLog()`, `clearLog()`).
+* **CHORE**: Bump `tracelet_platform_interface` to ^0.6.1.
+
+## 0.6.0
+
+* **CHORE**: Bump `tracelet_platform_interface` to ^0.6.0. Inherits shared Dart algorithm improvements.
+
 ## 0.5.5
 
 * **CHORE**: Bump `tracelet_platform_interface` to ^0.5.5.

@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:js_interop';
-import 'dart:math' as math;
 
+import 'package:tracelet_platform_interface/tracelet_platform_interface.dart'
+    show GeoUtils;
 import 'package:web/web.dart' as web;
 
 import 'web_event_dispatcher.dart';
 import 'web_geofence_engine.dart';
+import 'web_utils.dart';
 
 /// Wraps the browser Geolocation API for Tracelet.
 ///
@@ -294,7 +296,6 @@ class WebLocationEngine {
   void _onBrowserPosition(web.GeolocationPosition pos) {
     final locationMap = _positionToMap(pos);
 
-    // Distance filter check.
     final prevLat = _lastLocation?['coords'] is Map
         ? (_lastLocation!['coords'] as Map)['latitude'] as double?
         : null;
@@ -308,7 +309,7 @@ class WebLocationEngine {
 
     double distance = 0;
     if (prevLat != null && prevLon != null) {
-      distance = _haversine(prevLat, prevLon, curLat, curLon);
+      distance = GeoUtils.haversine(prevLat, prevLon, curLat, curLon);
     }
 
     // Update odometer.
@@ -316,17 +317,6 @@ class WebLocationEngine {
       _odometer += distance;
     }
     locationMap['odometer'] = _odometer;
-
-    // Distance filter: skip if below threshold (unless first fix).
-    if (prevLat != null && distance < _distanceFilter) {
-      // Still dispatch to watchPosition listeners (they want all fixes).
-      for (final entry in _activeWatches.entries) {
-        if (entry.value) {
-          _events.emitWatchPosition(locationMap);
-        }
-      }
-      return;
-    }
 
     _updateLastLocation(locationMap);
 
@@ -349,12 +339,14 @@ class WebLocationEngine {
       });
     }
 
-    // Emit location event.
+    // Emit location event — no distance filtering here; the shared Dart
+    // LocationProcessor in tracelet.dart handles distance, elasticity,
+    // accuracy and speed filtering for all platforms.
     if (_isTracking) {
       _events.emitLocation(locationMap);
     }
 
-    // Emit to watchPosition listeners.
+    // Emit to watchPosition listeners (unfiltered).
     if (_activeWatches.isNotEmpty) {
       _events.emitWatchPosition(locationMap);
     }
@@ -420,7 +412,7 @@ class WebLocationEngine {
       },
       'timestamp': timestamp,
       'isMoving': _isMoving,
-      'uuid': _generateUuid(),
+      'uuid': generateUuid(),
       'odometer': _odometer,
       'activity': <String, Object?>{'type': 'unknown', 'confidence': 'medium'},
       'battery': <String, Object?>{'level': -1.0, 'isCharging': false},
@@ -445,48 +437,13 @@ class WebLocationEngine {
       },
       'timestamp': DateTime.now().toIso8601String(),
       'isMoving': false,
-      'uuid': _generateUuid(),
+      'uuid': generateUuid(),
       'odometer': _odometer,
       'activity': <String, Object?>{'type': 'unknown', 'confidence': 'medium'},
       'battery': <String, Object?>{'level': -1.0, 'isCharging': false},
       'extras': <String, Object?>{},
       'event': null,
     };
-  }
-
-  /// Haversine distance in meters between two lat/lng points.
-  static double _haversine(double lat1, double lon1, double lat2, double lon2) {
-    const earthRadius = 6371000.0; // meters
-    final dLat = _toRad(lat2 - lat1);
-    final dLon = _toRad(lon2 - lon1);
-    final a =
-        math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(_toRad(lat1)) *
-            math.cos(_toRad(lat2)) *
-            math.sin(dLon / 2) *
-            math.sin(dLon / 2);
-    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
-    return earthRadius * c;
-  }
-
-  static double _toRad(double deg) => deg * (math.pi / 180.0);
-
-  /// Simple UUID v4 generator (no crypto dependency).
-  static String _generateUuid() {
-    final rng = math.Random();
-    return '${_hex(rng, 8)}-${_hex(rng, 4)}-4${_hex(rng, 3)}-${_hexVariant(rng)}${_hex(rng, 3)}-${_hex(rng, 12)}';
-  }
-
-  static String _hex(math.Random rng, int count) {
-    final sb = StringBuffer();
-    for (var i = 0; i < count; i++) {
-      sb.write(rng.nextInt(16).toRadixString(16));
-    }
-    return sb.toString();
-  }
-
-  static String _hexVariant(math.Random rng) {
-    return (8 + rng.nextInt(4)).toRadixString(16);
   }
 
   /// Release all resources.

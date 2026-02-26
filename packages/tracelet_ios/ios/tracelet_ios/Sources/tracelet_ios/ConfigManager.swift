@@ -68,8 +68,6 @@ final class ConfigManager {
     func getDistanceFilter() -> Double { cache["distanceFilter"] as? Double ?? 10.0 }
     func getLocationTimeout() -> Int { cache["locationTimeout"] as? Int ?? 60 }
     func getStationaryRadius() -> Double { cache["stationaryRadius"] as? Double ?? 25.0 }
-    func getDisableElasticity() -> Bool { cache["disableElasticity"] as? Bool ?? false }
-    func getElasticityMultiplier() -> Double { cache["elasticityMultiplier"] as? Double ?? 1.0 }
     func getGeofenceProximityRadius() -> Double { cache["geofenceProximityRadius"] as? Double ?? 1000.0 }
     func getMaxDaysToPersist() -> Int { cache["maxDaysToPersist"] as? Int ?? -1 }
     func getMaxRecordsToPersist() -> Int { cache["maxRecordsToPersist"] as? Int ?? -1 }
@@ -87,10 +85,7 @@ final class ConfigManager {
     func getEnableTimestampMeta() -> Bool { cache["enableTimestampMeta"] as? Bool ?? false }
 
     // LocationFilter
-    func getFilterPolicy() -> Int { cache["policy"] as? Int ?? 0 }
-    func getMaxImpliedSpeed() -> Int { cache["maxImpliedSpeed"] as? Int ?? 0 }
     func getOdometerAccuracyThreshold() -> Int { cache["odometerAccuracyThreshold"] as? Int ?? 0 }
-    func getTrackingAccuracyThreshold() -> Int { cache["trackingAccuracyThreshold"] as? Int ?? 0 }
 
     // AppConfig
     func isDebug() -> Bool { cache["debug"] as? Bool ?? false }

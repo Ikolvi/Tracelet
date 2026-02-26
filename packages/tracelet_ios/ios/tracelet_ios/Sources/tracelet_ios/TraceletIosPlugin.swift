@@ -71,6 +71,8 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
             database: instance.database
         )
 
+        // Trip detection is now handled in Dart
+
         // Motion
         instance.motionDetector = MotionDetector(
             configManager: instance.configManager,
@@ -177,7 +179,19 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
             result(locationEngine.stopWatchPosition(watchId))
         case "changePace":
             let isMoving = call.arguments as? Bool ?? false
-            result(locationEngine.changePace(isMoving))
+            let changePaceResult = locationEngine.changePace(isMoving)
+
+            // Feed trip manager so manual pace changes trigger trip start/end
+            let locationMap: [String: Any]
+            if let last = locationEngine.getLastLocation() {
+                var map = locationEngine.buildLocationMap(last, speed: locationEngine.lastEffectiveSpeed)
+                map["isMoving"] = isMoving
+                map["event"] = "motionchange"
+                locationMap = map
+            } else {
+                locationMap = ["isMoving": isMoving]
+            }
+            result(changePaceResult)
         case "getOdometer":
             result(locationEngine.getOdometer())
         case "setOdometer":

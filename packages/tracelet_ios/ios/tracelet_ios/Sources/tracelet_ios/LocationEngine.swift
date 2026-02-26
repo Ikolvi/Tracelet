@@ -291,75 +291,15 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
         let consumedBySampler = feedSample(location)
 
         // --- Compute speed from distance/time as fallback ---
-        // CLLocation.speed can be -1 (invalid) or 0 when walking slowly,
-        // during cold GPS starts, or with low-accuracy modes. We compute
-        // speed ourselves from consecutive location pairs.
         var computedSpeed: Double = 0.0
 
-        // --- Elasticity: dynamically scale distanceFilter based on speed ---
-        let baseDistance = configManager.getDistanceFilter()
-
-        // Distance filter check (using elasticity-adjusted value)
+        // --- Filtering (elasticity, accuracy, speed) is now in shared Dart ---
+        // LocationProcessor in tracelet_platform_interface handles all filtering.
+        // Native sends ALL locations; Dart filters before delivering to user.
         if let last = lastLocation {
             let distance = location.distance(from: last)
-            let timeDelta = location.timestamp.timeIntervalSince(last.timestamp) // seconds
+            let timeDelta = location.timestamp.timeIntervalSince(last.timestamp)
             computedSpeed = (distance > 0 && timeDelta > 0) ? distance / timeDelta : 0.0
-
-            // Use platform speed if available, otherwise use computed speed
-            let effectiveSpeed = (location.speed > 0) ? location.speed : computedSpeed
-
-            let effectiveDistance: Double
-            if !configManager.getDisableElasticity() && effectiveSpeed > 0 {
-                let multiplier = max(configManager.getElasticityMultiplier(), 0.1)
-                // Scale: faster speed → larger distance filter
-                let speedFactor = min(max(effectiveSpeed / 10.0, 1.0), 10.0)
-                effectiveDistance = baseDistance * speedFactor * multiplier
-            } else {
-                effectiveDistance = baseDistance
-            }
-
-            if effectiveDistance > 0 && distance < effectiveDistance && !configManager.getAllowIdenticalLocations() {
-                // Fire one-shots regardless of distance
-                fireOneShots(location)
-                return
-            }
-
-            // --- Location Filtering / Denoising ---
-            let trackingAccuracyThreshold = configManager.getTrackingAccuracyThreshold()
-            if trackingAccuracyThreshold > 0 && location.horizontalAccuracy > Double(trackingAccuracyThreshold) {
-                let policy = configManager.getFilterPolicy() // 0=adjust, 1=ignore, 2=discard
-                switch policy {
-                case 2: // discard: drop + emit error event
-                    eventDispatcher.sendLocation(["error": "ACCURACY_FILTER", "message": "Location accuracy \(location.horizontalAccuracy)m exceeds threshold \(trackingAccuracyThreshold)m"])
-                    fireOneShots(location)
-                    return
-                case 1: // ignore: drop silently
-                    fireOneShots(location)
-                    return
-                default: // adjust: skip inaccurate point
-                    fireOneShots(location)
-                    return
-                }
-            }
-
-            let maxImpliedSpeed = configManager.getMaxImpliedSpeed()
-            if maxImpliedSpeed > 0 {
-                if timeDelta > 0 {
-                    let impliedSpeed = distance / timeDelta // m/s
-                    if impliedSpeed > Double(maxImpliedSpeed) {
-                        let policy = configManager.getFilterPolicy()
-                        switch policy {
-                        case 2:
-                            eventDispatcher.sendLocation(["error": "SPEED_FILTER", "message": "Implied speed \(impliedSpeed)m/s exceeds max \(maxImpliedSpeed)m/s"])
-                            fireOneShots(location)
-                            return
-                        default: // ignore or adjust: reject impossible speed
-                            fireOneShots(location)
-                            return
-                        }
-                    }
-                }
-            }
 
             // Odometer accuracy check
             let odometerAccuracyThreshold = configManager.getOdometerAccuracyThreshold()
@@ -368,6 +308,8 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
                 stateManager.odometer += distance
             }
         }
+
+        // Kalman filter is now applied in Dart — send raw location
 
         // Resolve effective speed: platform speed if available, otherwise computed
         let effectiveSpeed = (location.speed > 0) ? location.speed : computedSpeed

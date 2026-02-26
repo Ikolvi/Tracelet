@@ -462,6 +462,7 @@ class LocationFilter {
     this.maxImpliedSpeed = 0,
     this.odometerAccuracyThreshold = 0,
     this.trackingAccuracyThreshold = 0,
+    this.useKalmanFilter = false,
   });
 
   /// How the filter handles rejected locations.
@@ -487,6 +488,16 @@ class LocationFilter {
   /// Locations with worse accuracy are filtered. Defaults to `0` (accept all).
   final int trackingAccuracyThreshold;
 
+  /// Enable Extended Kalman Filter for GPS smoothing.
+  ///
+  /// When `true`, raw GPS coordinates are passed through a Kalman filter
+  /// that uses the device's reported accuracy as measurement noise. This
+  /// produces smoother paths, better speed estimates, and eliminates
+  /// GPS jitter — especially valuable for walking/cycling tracks.
+  ///
+  /// Defaults to `false`.
+  final bool useKalmanFilter;
+
   /// Creates a [LocationFilter] from a map.
   factory LocationFilter.fromMap(Map<String, Object?> map) {
     return LocationFilter(
@@ -504,6 +515,7 @@ class LocationFilter {
         map['trackingAccuracyThreshold'],
         fallback: 0,
       ),
+      useKalmanFilter: ensureBool(map['useKalmanFilter'], fallback: false),
     );
   }
 
@@ -514,6 +526,7 @@ class LocationFilter {
       'maxImpliedSpeed': maxImpliedSpeed,
       'odometerAccuracyThreshold': odometerAccuracyThreshold,
       'trackingAccuracyThreshold': trackingAccuracyThreshold,
+      'useKalmanFilter': useKalmanFilter,
     };
   }
 
@@ -521,7 +534,8 @@ class LocationFilter {
   String toString() =>
       'LocationFilter(policy: $policy, maxImpliedSpeed: $maxImpliedSpeed, '
       'odometerAccuracyThreshold: $odometerAccuracyThreshold, '
-      'trackingAccuracyThreshold: $trackingAccuracyThreshold)';
+      'trackingAccuracyThreshold: $trackingAccuracyThreshold, '
+      'useKalmanFilter: $useKalmanFilter)';
 
   @override
   bool operator ==(Object other) =>
@@ -531,7 +545,8 @@ class LocationFilter {
           policy == other.policy &&
           maxImpliedSpeed == other.maxImpliedSpeed &&
           odometerAccuracyThreshold == other.odometerAccuracyThreshold &&
-          trackingAccuracyThreshold == other.trackingAccuracyThreshold;
+          trackingAccuracyThreshold == other.trackingAccuracyThreshold &&
+          useKalmanFilter == other.useKalmanFilter;
 
   @override
   int get hashCode => Object.hash(
@@ -539,6 +554,7 @@ class LocationFilter {
     maxImpliedSpeed,
     odometerAccuracyThreshold,
     trackingAccuracyThreshold,
+    useKalmanFilter,
   );
 }
 

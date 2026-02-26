@@ -52,23 +52,4 @@ class TraceletEvents {
 
   /// Fired for watchPosition updates (multiplexed by watchId).
   static const String watchPosition = '$basePath/watchposition';
-
-  /// All event channel paths.
-  static const List<String> all = [
-    location,
-    motionChange,
-    activityChange,
-    providerChange,
-    geofence,
-    geofencesChange,
-    heartbeat,
-    http,
-    schedule,
-    powerSaveChange,
-    connectivityChange,
-    enabledChange,
-    notificationAction,
-    authorization,
-    watchPosition,
-  ];
 }

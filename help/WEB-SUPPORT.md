@@ -92,8 +92,8 @@ These features are **not available** on web. They return safe default values and
 | **Alarm manager** | `AppConfig.scheduleUseAlarmManager` | Ignored | Android-only exact alarms. |
 | **Motion permission** | `getMotionPermissionStatus()` / `requestMotionPermission()` | `3` (always granted) | No separate motion permission on web. |
 | **Temporary full accuracy** | `requestTemporaryFullAccuracy()` | `0` (full) | iOS 14+ feature; browser always provides full accuracy. |
-| **Elasticity** | `GeoConfig.disableElasticity` / `elasticityMultiplier` | Ignored | Speed-based distance filter scaling not implemented. |
-| **Location filter** | `LocationFilter` | Ignored | Server-side or native-only denoising. |
+| **Elasticity** | `GeoConfig.disableElasticity` / `elasticityMultiplier` | ✅ Works | Runs in shared Dart `LocationProcessor`. |
+| **Location filter** | `LocationFilter` | ✅ Works | Runs in shared Dart `LocationProcessor` — accuracy, speed, and distance filtering. |
 | **Auto-stop** | `GeoConfig.stopAfterElapsedMinutes` | Ignored | Not implemented; trivial to add as a Dart timer if needed. |
 | **Geofence high-accuracy mode** | `GeoConfig.geofenceModeHighAccuracy` | Ignored | Android-only; web already runs GPS for geofence checks. |
 | **Persist mode** | `PersistenceConfig.persistMode` | Ignored | All locations are stored in memory. |

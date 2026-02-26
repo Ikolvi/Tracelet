@@ -1,6 +1,6 @@
 name: tracelet_ios
 description: iOS implementation of the Tracelet background geolocation plugin.
-version: 0.5.5
+version: 0.6.1
 license: Apache-2.0
 homepage: https://github.com/Ikolvi/Tracelet
 repository: https://github.com/Ikolvi/Tracelet/tree/main/packages/tracelet_ios
@@ -12,7 +12,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  tracelet_platform_interface: ^0.5.5
+  tracelet_platform_interface: ^0.6.1
 
 dev_dependencies:
   flutter_test:

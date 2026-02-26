@@ -10,6 +10,10 @@
   <img src="assets/tracelet_ios_rec.webp" alt="Tracelet iOS" width="300"/>
 </p>
 
+<p align="center">
+  <img src="assets/map_view.png" alt="Tracelet Live Map" width="300"/>
+</p>
+
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![CI](https://github.com/Ikolvi/Tracelet/actions/workflows/ci.yml/badge.svg)](https://github.com/Ikolvi/Tracelet/actions)
 
@@ -21,7 +25,7 @@ Battery-conscious motion-detection intelligence, geofencing, SQLite persistence,
 
 - **Motion-detection intelligence** — Uses accelerometer, gyroscope & activity recognition to detect when the device is moving or stationary. Automatically toggles location services to conserve battery.
 - **Background location tracking** — Continuous GPS recording with configurable `distanceFilter` and `desiredAccuracy`. Works after app is minimized, killed, or device rebooted.
-- **Geofencing** — Add circular geofences with enter/exit/dwell detection. 100 on Android, intelligent nearest-20 rotation on iOS.
+- **Geofencing** — Add circular or polygon geofences with enter/exit/dwell detection. 100 on Android, intelligent nearest-20 rotation on iOS.
 - **SQLite persistence** — All locations stored locally in SQLite. Query, count, delete, or sync to your server. Configurable retention (max days/records) and per-type persistence modes.
 - **HTTP auto-sync** — Configurable batch upload with retry, exponential backoff, and offline queuing. Wi-Fi-only sync option via `disableAutoSyncOnCellular`.
 - **Headless execution** — Run Dart code in response to background events even when the Flutter UI is not running.
@@ -31,6 +35,9 @@ Battery-conscious motion-detection intelligence, geofencing, SQLite persistence,
 - **Debug sounds** — Audible feedback during development for location, motion, geofence, and HTTP events.
 - **Elasticity control** — Speed-based automatic distance filter scaling, with `disableElasticity` and `elasticityMultiplier` overrides.
 - **Location filtering** — Reject GPS spikes and low-accuracy readings with `LocationFilter` (accuracy thresholds, max implied speed, odometer filtering).
+- **Kalman filter GPS smoothing** — Optional Extended Kalman Filter smooths GPS coordinates in real-time, eliminating jitter and producing cleaner tracks. Enable with `useKalmanFilter: true` in `LocationFilter`.
+- **Trip detection** — Automatic trip start/stop events based on motion state transitions. Each trip includes distance, duration, start/stop location, and all waypoints. Subscribe via `onTrip()`.
+- **Polygon geofences** — Define geofences with arbitrary polygon vertices using ray-casting point-in-polygon containment checks. Set `vertices` on a `Geofence` instead of using a circular radius.
 - **Auto-stop** — Automatically stop tracking after a configurable number of minutes via `stopAfterElapsedMinutes`.
 - **Activity recognition tuning** — Adjust confidence thresholds, stop-detection delays, and stationary behavior.
 - **Timestamp metadata** — Optional extra timing fields on each location record via `enableTimestampMeta`.
@@ -38,6 +45,8 @@ Battery-conscious motion-detection intelligence, geofencing, SQLite persistence,
 - **Prevent suspend (iOS)** — Silent audio keep-alive to prevent iOS from suspending the app in the background.
 - **Dart-controlled permissions** — No native dialogs. Full Dart-side customization of permission UI, translations, and behavior.
 - **Foreground service toggle** — Run with or without a persistent notification (Android).
+- **Shared Dart algorithms** — Location filtering (elasticity, accuracy, speed), geofence proximity evaluation, schedule parsing, and persistence logic all run in shared Dart code for cross-platform consistency. Write once — works on Android, iOS, web, and future desktop platforms.
+- **Live map view** — Built-in example with OpenStreetMap tiles, speed-colored route trail, geofence visualization, trip overlay, and real-time status overlay.
 
 ## Architecture
 
@@ -196,6 +205,9 @@ await tl.Tracelet.start();
 | [Background Tracking](help/BACKGROUND-TRACKING.md) | Foreground service, silent mode, runtime switching |
 | [API Reference](help/API.md) | All methods, events, and return types |
 | [Configuration](help/CONFIGURATION.md) | All config groups with property tables |
+| [Kalman Filter](help/KALMAN-FILTER.md) | GPS smoothing — how it works, when to use it |
+| [Trip Detection](help/TRIP-DETECTION.md) | Automatic trip events — setup, API, edge cases |
+| [Polygon Geofences](help/POLYGON-GEOFENCES.md) | Polygon geofences — vertices, ray-casting, examples |
 | [Web Support](help/WEB-SUPPORT.md) | Web platform capabilities, limitations, and browser APIs |
 
 ## Requirements

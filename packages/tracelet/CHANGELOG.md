@@ -1,3 +1,15 @@
+## 0.6.1
+
+* **CHORE**: Bump all platform dependencies to ^0.6.1.
+
+## 0.6.0
+
+* **FEAT**: Integrate shared Dart `LocationProcessor` into `onLocation` stream — distance filtering, elasticity, accuracy filtering, and speed filtering now run in Dart for cross-platform consistency.
+* **FEAT**: Integrate shared Dart `GeofenceEvaluator` for high-accuracy proximity checks.
+* **FIX**: Fix broadcast stream bug — stateful `LocationProcessor` and `KalmanLocationFilter` were called once per listener per event, causing second subscriber to see distance=0 and filter all locations. Now uses cached `.asBroadcastStream()` so transformations run exactly once.
+* **PERF**: Native code no longer duplicates filtering logic — significantly reduces native code surface.
+* **CHORE**: Bump all platform dependencies to ^0.6.0.
+
 ## 0.5.5
 
 * **FIX**: iOS `onSchedule` event now sends full state map instead of partial data.

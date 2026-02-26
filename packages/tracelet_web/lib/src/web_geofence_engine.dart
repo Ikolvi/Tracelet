@@ -1,5 +1,7 @@
 import 'dart:async';
-import 'dart:math' as math;
+
+import 'package:tracelet_platform_interface/tracelet_platform_interface.dart'
+    show GeoUtils;
 
 import 'web_event_dispatcher.dart';
 
@@ -94,9 +96,32 @@ class WebGeofenceEngine {
 
       if (fenceLat == null || fenceLon == null) continue;
 
-      final distance = _haversine(lat, lon, fenceLat, fenceLon);
+      // Check if this is a polygon geofence (has vertices)
+      final verticesRaw = fence['vertices'] as List<Object?>?;
+      final bool isInside;
+
+      if (verticesRaw != null && verticesRaw.length >= 3) {
+        // Polygon geofence: convert vertices to List<List<double>> for ray-casting
+        final vertices = <List<double>>[];
+        for (final v in verticesRaw) {
+          if (v is List) {
+            final latV = (v[0] as num?)?.toDouble();
+            final lngV = (v[1] as num?)?.toDouble();
+            if (latV != null && lngV != null) {
+              vertices.add(<double>[latV, lngV]);
+            }
+          }
+        }
+        isInside = vertices.length >= 3
+            ? GeoUtils.isPointInPolygon(lat: lat, lng: lon, vertices: vertices)
+            : false;
+      } else {
+        // Circular geofence: use Haversine distance check
+        final distance = GeoUtils.haversine(lat, lon, fenceLat, fenceLon);
+        isInside = distance <= radius;
+      }
+
       final wasInside = _insideGeofences.containsKey(id);
-      final isInside = distance <= radius;
 
       if (isInside && !wasInside) {
         // ENTER
@@ -139,25 +164,6 @@ class WebGeofenceEngine {
       }
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // Haversine
-  // ---------------------------------------------------------------------------
-
-  static double _haversine(double lat1, double lon1, double lat2, double lon2) {
-    const r = 6371000.0;
-    final dLat = _toRad(lat2 - lat1);
-    final dLon = _toRad(lon2 - lon1);
-    final a =
-        math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(_toRad(lat1)) *
-            math.cos(_toRad(lat2)) *
-            math.sin(dLon / 2) *
-            math.sin(dLon / 2);
-    return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
-  }
-
-  static double _toRad(double deg) => deg * (math.pi / 180.0);
 
   /// Release all timers.
   void dispose() {

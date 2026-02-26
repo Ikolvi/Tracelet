@@ -78,19 +78,10 @@ void main() {
       expect(received?['status'], 200);
     });
 
-    test('log appends to internal log', () {
+    test('log does not throw', () {
+      // log() is a no-op pass-through; just verify it doesn't throw.
       events.log('info', 'Hello');
       events.log('error', 'Oops');
-
-      final log = events.getLog();
-      expect(log, contains('[info] Hello'));
-      expect(log, contains('[error] Oops'));
-    });
-
-    test('clearLog empties log', () {
-      events.log('info', 'something');
-      events.clearLog();
-      expect(events.getLog(), isEmpty);
     });
 
     test('multiple listeners on broadcast stream', () async {

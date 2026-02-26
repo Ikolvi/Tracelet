@@ -23,6 +23,7 @@ Config(
       maxImpliedSpeed: 80,
       odometerAccuracyThreshold: 50,
       policy: LocationFilterPolicy.adjust,
+      useKalmanFilter: true,         // Real-time GPS smoothing
     ),
   ),
   app: AppConfig(                    // Lifecycle behavior
@@ -98,6 +99,7 @@ Location accuracy, sampling, and filtering.
 | `maxImpliedSpeed` | `int` | `0` | Max implied speed in m/s (0 = off) |
 | `odometerAccuracyThreshold` | `int` | `0` | Max accuracy for odometer (0 = off) |
 | `policy` | `LocationFilterPolicy` | `adjust` | `adjust`, `ignore`, or `discard` |
+| `useKalmanFilter` | `bool` | `false` | Enable Extended Kalman Filter GPS smoothing ([details](KALMAN-FILTER.md)) |
 
 ---
 

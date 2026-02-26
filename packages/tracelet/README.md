@@ -10,6 +10,10 @@
   <img src="https://raw.githubusercontent.com/Ikolvi/Tracelet/main/assets/tracelet_ios_rec.webp" alt="Tracelet iOS" width="300"/>
 </p>
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Ikolvi/Tracelet/main/assets/map_view.png" alt="Tracelet Live Map" width="300"/>
+</p>
+
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 > **Production-grade background geolocation for Flutter — fully open-source.**
@@ -20,7 +24,7 @@ Battery-conscious motion-detection intelligence, geofencing, SQLite persistence,
 
 - **Background location tracking** — continuous GPS with configurable `distanceFilter` and `desiredAccuracy`
 - **Motion-detection intelligence** — accelerometer + activity recognition automatically toggle GPS to save battery
-- **Geofencing** — circular geofences with enter/exit/dwell events
+- **Geofencing** — circular and polygon geofences with enter/exit/dwell events
 - **SQLite persistence** — all locations stored locally, queryable, with configurable retention limits
 - **HTTP auto-sync** — batch upload with retry, exponential backoff, offline queue, Wi-Fi-only option
 - **Headless execution** — run Dart code in response to background events
@@ -31,11 +35,15 @@ Battery-conscious motion-detection intelligence, geofencing, SQLite persistence,
 - **Debug sounds** — audible feedback during development
 - **Elasticity control** — speed-based distance filter scaling with disable/multiplier overrides
 - **Location filtering** — reject GPS spikes, low-accuracy readings, and speed jumps via `LocationFilter`
+- **Kalman filter** — optional GPS coordinate smoothing via Extended Kalman Filter (`useKalmanFilter: true`)
+- **Trip detection** — automatic trip start/stop events with distance, duration, and waypoints
+- **Polygon geofences** — define geofences with arbitrary polygon vertices for non-circular regions
 - **Auto-stop** — automatically stop tracking after N minutes via `stopAfterElapsedMinutes`
 - **Activity recognition tuning** — confidence thresholds, stop-detection delays, stationary behavior
 - **Timestamp metadata** — optional extra timing fields on each location record
 - **Geofence high-accuracy mode** — full GPS pipeline in geofence-only mode (Android)
 - **Prevent suspend (iOS)** — silent audio keep-alive for continuous background execution
+- **Shared Dart algorithms** — location filtering, geofence proximity, schedule parsing, and persistence logic run in shared Dart for cross-platform consistency
 
 ## Quick Start
 
@@ -59,6 +67,7 @@ final state = await tl.Tracelet.ready(tl.Config(
     filter: tl.LocationFilter(
       trackingAccuracyThreshold: 100,
       maxImpliedSpeed: 80,
+      useKalmanFilter: true, // smooth GPS coordinates
     ),
   ),
   app: tl.AppConfig(
@@ -81,6 +90,57 @@ await tl.Tracelet.start();
 
 ## Documentation
 
+### Kalman Filter GPS Smoothing
+
+Enable the Extended Kalman Filter to smooth GPS coordinates, eliminate jitter, and produce cleaner tracks:
+
+```dart
+final state = await tl.Tracelet.ready(tl.Config(
+  geo: tl.GeoConfig(
+    filter: tl.LocationFilter(
+      useKalmanFilter: true, // Enable Kalman smoothing
+    ),
+  ),
+));
+```
+
+The filter uses a constant-velocity model with GPS accuracy as measurement noise. It runs natively on both Android and iOS for zero-overhead smoothing. See the [Kalman Filter Guide](https://github.com/Ikolvi/Tracelet/blob/main/help/KALMAN-FILTER.md) for details.
+
+### Trip Detection
+
+Subscribe to trip events that fire automatically when the device transitions from moving to stationary. See the [Trip Detection Guide](https://github.com/Ikolvi/Tracelet/blob/main/help/TRIP-DETECTION.md) for full details.
+
+```dart
+tl.Tracelet.onTrip((tl.TripEvent trip) {
+  print('Trip ended: ${trip.distance}m in ${trip.duration}s');
+  print('From: ${trip.startLocation}');
+  print('To: ${trip.stopLocation}');
+  print('Avg speed: ${trip.averageSpeed} m/s');
+  print('Waypoints: ${trip.waypoints.length}');
+});
+```
+
+### Polygon Geofences
+
+Define geofences with arbitrary polygon vertices instead of circular regions:
+
+```dart
+await tl.Tracelet.addGeofence(tl.Geofence(
+  identifier: 'campus',
+  latitude: 37.422,    // centroid for proximity sorting
+  longitude: -122.084,
+  radius: 0,           // ignored for polygon geofences
+  vertices: [
+    [37.423, -122.086],
+    [37.424, -122.082],
+    [37.421, -122.081],
+    [37.420, -122.085],
+  ],
+));
+```
+
+Polygon containment uses the ray-casting algorithm for efficient point-in-polygon checks. Requires `geofenceModeHighAccuracy: true`. See the [Polygon Geofences Guide](https://github.com/Ikolvi/Tracelet/blob/main/help/POLYGON-GEOFENCES.md) for full details.
+
 | Guide | Description |
 |---|---|
 | [Android Setup](https://github.com/Ikolvi/Tracelet/blob/main/help/INSTALL-ANDROID.md) | Gradle, permissions, and manifest configuration |
@@ -89,6 +149,9 @@ await tl.Tracelet.start();
 | [Background Tracking](https://github.com/Ikolvi/Tracelet/blob/main/help/BACKGROUND-TRACKING.md) | Foreground service, silent mode, runtime switching |
 | [API Reference](https://github.com/Ikolvi/Tracelet/blob/main/help/API.md) | All methods, events, and return types |
 | [Configuration](https://github.com/Ikolvi/Tracelet/blob/main/help/CONFIGURATION.md) | All config groups with property tables |
+| [Kalman Filter](https://github.com/Ikolvi/Tracelet/blob/main/help/KALMAN-FILTER.md) | GPS smoothing — how it works, when to use it |
+| [Trip Detection](https://github.com/Ikolvi/Tracelet/blob/main/help/TRIP-DETECTION.md) | Automatic trip events — setup, API, edge cases |
+| [Polygon Geofences](https://github.com/Ikolvi/Tracelet/blob/main/help/POLYGON-GEOFENCES.md) | Polygon geofences — vertices, ray-casting, examples |
 | [Web Support](https://github.com/Ikolvi/Tracelet/blob/main/help/WEB-SUPPORT.md) | Web platform capabilities, limitations, and browser APIs |
 
 ## Architecture

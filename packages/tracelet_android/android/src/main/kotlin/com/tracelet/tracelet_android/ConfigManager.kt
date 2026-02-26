@@ -23,8 +23,7 @@ class ConfigManager(context: Context) {
         const val DEFAULT_FASTEST_LOCATION_UPDATE_INTERVAL = 500L
         const val DEFAULT_STATIONARY_RADIUS = 25.0
         const val DEFAULT_LOCATION_TIMEOUT = 60
-        const val DEFAULT_DISABLE_ELASTICITY = false
-        const val DEFAULT_ELASTICITY_MULTIPLIER = 1.0
+
         const val DEFAULT_STOP_AFTER_ELAPSED_MINUTES = -1
         const val DEFAULT_DEFER_TIME = 0
         const val DEFAULT_ALLOW_IDENTICAL_LOCATIONS = false
@@ -90,10 +89,7 @@ class ConfigManager(context: Context) {
         const val DEFAULT_DISABLE_PROVIDER_CHANGE_RECORD = false
 
         // LocationFilter defaults
-        const val DEFAULT_FILTER_POLICY = 0 // LocationFilterPolicy.adjust
-        const val DEFAULT_MAX_IMPLIED_SPEED = 0
         const val DEFAULT_ODOMETER_ACCURACY_THRESHOLD = 0
-        const val DEFAULT_TRACKING_ACCURACY_THRESHOLD = 0
     }
 
     private val prefs: SharedPreferences =
@@ -190,12 +186,6 @@ class ConfigManager(context: Context) {
     fun getLocationTimeout(): Int =
         getInt("locationTimeout", DEFAULT_LOCATION_TIMEOUT)
 
-    fun getDisableElasticity(): Boolean =
-        getBool("disableElasticity", DEFAULT_DISABLE_ELASTICITY)
-
-    fun getElasticityMultiplier(): Double =
-        getDouble("elasticityMultiplier", DEFAULT_ELASTICITY_MULTIPLIER)
-
     fun getStopAfterElapsedMinutes(): Int =
         getInt("stopAfterElapsedMinutes", DEFAULT_STOP_AFTER_ELAPSED_MINUTES)
 
@@ -215,17 +205,8 @@ class ConfigManager(context: Context) {
         getBool("enableTimestampMeta", DEFAULT_ENABLE_TIMESTAMP_META)
 
     // LocationFilter sub-config
-    fun getFilterPolicy(): Int =
-        getInt("policy", DEFAULT_FILTER_POLICY)
-
-    fun getMaxImpliedSpeed(): Int =
-        getInt("maxImpliedSpeed", DEFAULT_MAX_IMPLIED_SPEED)
-
     fun getOdometerAccuracyThreshold(): Int =
         getInt("odometerAccuracyThreshold", DEFAULT_ODOMETER_ACCURACY_THRESHOLD)
-
-    fun getTrackingAccuracyThreshold(): Int =
-        getInt("trackingAccuracyThreshold", DEFAULT_TRACKING_ACCURACY_THRESHOLD)
 
     // ---------------------------------------------------------------------------
     // Typed Getters (AppConfig)

@@ -709,14 +709,14 @@
 ## Phase 7 — Advanced Features (Post-v1.0)
 
 ### 7.1 Trip Detection
-- [ ] Auto-detect trip start/end based on motion patterns
-- [ ] `onTripStart` / `onTripEnd` events
-- [ ] Trip summary: distance, duration, route, start/end locations
+- [x] Auto-detect trip start/end based on motion patterns *(v0.5.3 — shared Dart)*
+- [x] `onTripStart` / `onTripEnd` events *(v0.5.3 — `onTrip()` API)*
+- [x] Trip summary: distance, duration, route, start/end locations *(v0.5.3)*
 
 ### 7.2 Polygon Geofences
-- [ ] Support polygon vertices in `Geofence` model
-- [ ] Point-in-polygon algorithm for non-circular geofences
-- [ ] Native polygon geofence rendering on Android (custom) and iOS (custom)
+- [x] Support polygon vertices in `Geofence` model *(v0.5.3)*
+- [x] Point-in-polygon algorithm for non-circular geofences *(v0.5.3 — shared Dart `GeoUtils.isPointInPolygon`)*
+- [x] ~~Native polygon geofence rendering on Android (custom) and iOS (custom)~~ → Moved to shared Dart `GeofenceEvaluator` *(v0.6.0)*
 
 ### 7.3 Server-Side Geofence Sync
 - [ ] Fetch geofences from remote API
@@ -724,10 +724,24 @@
 - [ ] Periodic geofence sync via HTTP
 
 ### 7.4 Web Platform Support
-- [ ] `packages/tracelet_web/` — using browser Geolocation API + Service Workers
-- [ ] Limited feature set (no background tracking, basic geofencing via JS)
+- [x] `packages/tracelet_web/` — using browser Geolocation API *(v0.5.0)*
+- [x] Limited feature set (basic location, geofencing) *(v0.5.0)*
+- [x] Location filtering and Kalman smoothing now work on web via shared Dart *(v0.6.0)*
 
-### 7.5 macOS / Windows / Linux
+### 7.5 Shared Dart Algorithm Migration (v0.6.0)
+- [x] `KalmanLocationFilter` — shared Dart GPS smoothing (moved from native Kotlin/Swift)
+- [x] `TripManager` — shared Dart trip detection (moved from native Kotlin/Swift)
+- [x] `GeoUtils` — shared Dart haversine + point-in-polygon (moved from native)
+- [x] `LocationProcessor` — shared Dart distance/elasticity/accuracy/speed filtering (NEW)
+- [x] `GeofenceEvaluator` — shared Dart geofence proximity evaluation (NEW)
+- [x] `ScheduleParser` — shared Dart schedule parsing (NEW)
+- [x] `PersistDecider` — shared Dart persistence decision logic (NEW)
+- [x] Remove duplicate native filtering code from Kotlin `LocationEngine` / `GeofenceManager`
+- [x] Remove duplicate native filtering code from Swift `LocationEngine` / `GeofenceManager`
+- [x] Fix broadcast stream bug — cached `.asBroadcastStream()` for stateful transformations
+- [x] 86 algorithm unit tests (46 new + 40 existing)
+
+### 7.6 macOS / Windows / Linux
 - [ ] `packages/tracelet_macos/` — CoreLocation on macOS (shared Darwin source with iOS)
 - [ ] Windows/Linux via GNSS APIs (low priority)
 
@@ -766,15 +780,21 @@
 │  ┌───────────────────▼───────────────────────────────────┐  │
 │  │          tracelet_platform_interface                   │  │
 │  │  TraceletPlatform (abstract) + Pigeon definitions     │  │
-│  └──────────┬────────────────────────────┬───────────────┘  │
-│             │                            │                  │
-│  ┌──────────▼──────────┐   ┌─────────────▼─────────────┐   │
-│  │  tracelet_android   │   │      tracelet_ios          │   │
-│  │  (Pigeon HostApi)   │   │    (Pigeon HostApi)        │   │
-│  └──────────┬──────────┘   └─────────────┬─────────────┘   │
-└─────────────┼────────────────────────────┼──────────────────┘
-              │ Pigeon + EventChannel      │ Pigeon + EventChannel
-┌─────────────▼──────────┐   ┌─────────────▼─────────────────┐
+│  │  ┌─────────────────────────────────────────────────┐  │  │
+│  │  │         Shared Dart Algorithms (v0.6.0)         │  │  │
+│  │  │  KalmanFilter · LocationProcessor · GeoUtils    │  │  │
+│  │  │  GeofenceEvaluator · TripManager · ScheduleParser│ │  │
+│  │  │  PersistDecider                                 │  │  │
+│  │  └─────────────────────────────────────────────────┘  │  │
+│  └──────────┬──────────────┬─────────────┬──────────────┘  │
+│             │              │             │                  │
+│  ┌──────────▼────────┐ ┌───▼──────────┐ ┌▼──────────────┐  │
+│  │ tracelet_android  │ │ tracelet_ios  │ │ tracelet_web  │  │
+│  │ (Pigeon HostApi)  │ │(Pigeon HostApi)│ │(browser APIs) │  │
+│  └──────────┬────────┘ └──────┬───────┘ └───────────────┘  │
+└─────────────┼─────────────────┼─────────────────────────────┘
+              │ Pigeon           │ Pigeon
+┌─────────────▼──────────┐   ┌──▼────────────────────────────┐
 │   Android Native (Kt)  │   │      iOS Native (Swift)       │
 │ ┌────────────────────┐ │   │ ┌────────────────────────────┐│
 │ │  ForegroundService │ │   │ │  CLLocationManager         ││
@@ -801,5 +821,5 @@
 
 ---
 
-*Last updated: 2026-02-20*
-*Status: Planning*
+*Last updated: 2025-07-15*
+*Status: v0.6.0 — shared Dart algorithms migration complete*

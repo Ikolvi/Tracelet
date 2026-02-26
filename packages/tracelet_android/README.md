@@ -4,6 +4,12 @@ Android implementation of the [Tracelet](https://pub.dev/packages/tracelet) back
 
 This package uses Kotlin and native Android APIs (FusedLocationProvider, Room, WorkManager, Geofencing API) to provide production-grade background location tracking.
 
+## Native Features
+
+- **Kalman Filter GPS Smoothing** — Extended Kalman Filter implementation (`KalmanLocationFilter.kt`) smooths raw GPS coordinates using device-reported accuracy as measurement noise. Produces cleaner tracks and eliminates jitter. [Learn more →](https://github.com/Ikolvi/Tracelet/blob/main/help/KALMAN-FILTER.md)
+- **Trip Detection** — `TripManager.kt` tracks motion state transitions to detect trip start/stop. Each trip includes distance, duration, waypoints, and start/stop locations. [Learn more →](https://github.com/Ikolvi/Tracelet/blob/main/help/TRIP-DETECTION.md)
+- **Polygon Geofences** — Ray-casting point-in-polygon algorithm in `GeofenceManager.kt` for arbitrary polygon containment checks alongside circular geofences. [Learn more →](https://github.com/Ikolvi/Tracelet/blob/main/help/POLYGON-GEOFENCES.md)
+
 ## Usage
 
 **You should not depend on this package directly.** Instead, depend on [`tracelet`](https://pub.dev/packages/tracelet) which automatically includes this package on Android builds.

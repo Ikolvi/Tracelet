@@ -5,6 +5,7 @@
 /// default [MethodChannelTracelet] implementation.
 library;
 
+export 'src/algorithms/algorithms.dart';
 export 'src/tracelet_platform.dart';
 export 'src/method_channel_tracelet.dart';
 export 'src/event_channel_names.dart';

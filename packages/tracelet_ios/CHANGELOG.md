@@ -1,3 +1,15 @@
+## 0.6.1
+
+* **REFACTOR**: Remove 6 dead `ConfigManager` methods for filtering migrated to Dart in 0.6.0 (`getDisableElasticity`, `getElasticityMultiplier`, `getFilterPolicy`, `getMaxImpliedSpeed`, `getTrackingAccuracyThreshold`, `getUseKalmanFilter`).
+* **REFACTOR**: Remove dead `EventDispatcher.sendTrip()` and `"trip"` channel registration — trip events now from Dart `TripManager`.
+* **CHORE**: Bump `tracelet_platform_interface` to ^0.6.1.
+
+## 0.6.0
+
+* **REFACTOR**: Remove duplicate location filtering from `LocationEngine.didUpdateLocations()` — elasticity, distance filter, accuracy filter, and speed filter now handled by shared Dart `LocationProcessor`.
+* **REFACTOR**: Replace `GeofenceManager.evaluateHighAccuracyProximity()` with no-op stub — proximity evaluation moved to shared Dart `GeofenceEvaluator`.
+* **CHORE**: Bump `tracelet_platform_interface` to ^0.6.0.
+
 ## 0.5.5
 
 * **FIX**: `onSchedule` event now sends full state map (via `stateManager.toMap()`) instead of partial `["state": "on", "enabled": true]` — fixes `State.fromMap()` crash on schedule events.

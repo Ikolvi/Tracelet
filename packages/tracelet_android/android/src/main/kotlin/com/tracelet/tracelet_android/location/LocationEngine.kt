@@ -400,9 +400,6 @@ class LocationEngine(
         val distance = lastLocation?.distanceTo(location)?.toDouble() ?: 0.0
 
         // --- Compute speed from distance/time as fallback ---
-        // GPS-reported speed can be 0 when walking slowly, during cold starts,
-        // or when the provider doesn't calculate speed. We compute it ourselves
-        // from consecutive location pairs so that speed is always available.
         val timeDelta = if (lastLocation != null) {
             (location.time - lastLocation!!.time).toDouble() / 1000.0 // seconds
         } else {
@@ -417,56 +414,9 @@ class LocationEngine(
             computedSpeed
         }
 
-        // --- Elasticity: dynamically scale distanceFilter based on speed ---
-        val baseDistance = config.getDistanceFilter()
-        val effectiveDistance = if (!config.getDisableElasticity() && effectiveSpeed > 0) {
-            val multiplier = config.getElasticityMultiplier().coerceAtLeast(0.1)
-            // Scale: faster speed → larger distance filter
-            val speedFactor = (effectiveSpeed / 10.0).coerceIn(1.0, 10.0)
-            baseDistance * speedFactor * multiplier
-        } else {
-            baseDistance
-        }
-
-        // Check distance filter (using elasticity-adjusted value)
-        if (lastLocation != null && distance < effectiveDistance) {
-            return // Below distance filter threshold
-        }
-
-        // --- Location Filtering / Denoising ---
-        val trackingAccuracyThreshold = config.getTrackingAccuracyThreshold()
-        if (trackingAccuracyThreshold > 0 && location.accuracy > trackingAccuracyThreshold) {
-            // Location accuracy too poor
-            val policy = config.getFilterPolicy() // 0=adjust, 1=ignore, 2=discard
-            when (policy) {
-                2 -> { // discard: drop + emit error event
-                    events.sendLocation(mapOf("error" to "ACCURACY_FILTER", "message" to "Location accuracy ${location.accuracy}m exceeds threshold ${trackingAccuracyThreshold}m"))
-                    return
-                }
-                1 -> return // ignore: drop silently
-                else -> { /* adjust: fall through — use last-known-good if available */
-                    if (lastLocation != null) return // skip this inaccurate point
-                }
-            }
-        }
-
-        val maxImpliedSpeed = config.getMaxImpliedSpeed()
-        if (maxImpliedSpeed > 0 && lastLocation != null) {
-            if (timeDelta > 0) {
-                val impliedSpeed = distance / timeDelta // m/s
-                if (impliedSpeed > maxImpliedSpeed) {
-                    val policy = config.getFilterPolicy()
-                    when (policy) {
-                        2 -> {
-                            events.sendLocation(mapOf("error" to "SPEED_FILTER", "message" to "Implied speed ${impliedSpeed}m/s exceeds max ${maxImpliedSpeed}m/s"))
-                            return
-                        }
-                        1 -> return
-                        else -> return // adjust: reject impossible speed
-                    }
-                }
-            }
-        }
+        // --- Filtering (elasticity, accuracy, speed) is now in shared Dart ---
+        // LocationProcessor in tracelet_platform_interface handles all filtering.
+        // Native sends ALL locations; Dart filters before delivering to user.
 
         // Odometer accuracy check: only add to odometer if accurate enough
         val odometerAccuracyThreshold = config.getOdometerAccuracyThreshold()

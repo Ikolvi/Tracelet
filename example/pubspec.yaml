@@ -1,6 +1,7 @@
 name: tracelet_example
 description: "Unified example demonstrating Tracelet on Android & iOS."
 publish_to: 'none'
+version: 1.0.0+1
 
 environment:
   sdk: ^3.10.3
@@ -15,6 +16,8 @@ dependencies:
   tracelet_ios:
     path: ../packages/tracelet_ios
   cupertino_icons: ^1.0.8
+  flutter_map: ^8.2.2
+  latlong2: ^0.9.1
 
 dev_dependencies:
   integration_test:

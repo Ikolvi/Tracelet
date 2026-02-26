@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' as tl;
+import 'map_page.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Headless background callback — MUST be a top-level function.
@@ -69,8 +70,10 @@ class _DashboardPageState extends State<DashboardPage> {
   bool _isReady = false;
   bool _isTracking = false;
   bool _isMoving = false;
+  bool _kalmanEnabled = true;
   tl.Location? _lastLocation;
   tl.State? _pluginState;
+  tl.TripEvent? _lastTrip;
   final List<_LogEntry> _log = [];
 
   // Subscriptions
@@ -215,6 +218,19 @@ class _DashboardPageState extends State<DashboardPage> {
         _addLog('AUTH', 'success=${evt.success}  response=${evt.response}');
       }),
     );
+
+    _subs.add(
+      tl.Tracelet.onTrip((trip) {
+        setState(() => _lastTrip = trip);
+        _addLog(
+          'TRIP',
+          'distance=${trip.distance.toStringAsFixed(0)}m  '
+              'duration=${trip.duration.toStringAsFixed(0)}s  '
+              'speed=${trip.averageSpeed.toStringAsFixed(1)}m/s  '
+              'waypoints=${trip.waypoints.length}',
+        );
+      }),
+    );
   }
 
   // ── Lifecycle ───────────────────────────────────────────────────────────
@@ -254,6 +270,23 @@ class _DashboardPageState extends State<DashboardPage> {
         return;
       }
 
+      // ── Motion / Activity Recognition permission ──
+      // Request early so the plugin can use full activity detection
+      // (CMMotionActivityManager on iOS, Activity Recognition API on Android)
+      // from the very first start. Without this, motion detection silently
+      // falls back to accelerometer-only mode.
+      if (_isAndroid) {
+        await _ensureNotificationPermission();
+      }
+      final hasMotion = await _ensureMotionPermission();
+      if (!hasMotion) {
+        _addLog(
+          'WARN',
+          'Motion permission not granted — '
+              'using accelerometer-only motion detection',
+        );
+      }
+
       final state = await tl.Tracelet.ready(
         tl.Config(
           geo: tl.GeoConfig(
@@ -266,12 +299,13 @@ class _DashboardPageState extends State<DashboardPage> {
             elasticityMultiplier: 1.0,
             enableTimestampMeta: true,
             stopAfterElapsedMinutes: -1, // disabled by default
-            geofenceModeHighAccuracy: false,
+            geofenceModeHighAccuracy: true, // needed for polygon geofences
             // ── Location filter (denoising) ──
             filter: tl.LocationFilter(
               trackingAccuracyThreshold: 100,
               maxImpliedSpeed: 80,
               odometerAccuracyThreshold: 50,
+              useKalmanFilter: true, // GPS coordinate smoothing
             ),
             // iOS-specific
             activityType: _isAndroid
@@ -577,7 +611,7 @@ class _DashboardPageState extends State<DashboardPage> {
       _addLog(
         'START',
         'Accelerometer-only mode (no activity permission)  '
-            'enabled=\${state.enabled}',
+            'enabled=${state.enabled}',
       );
     } catch (e) {
       _addLog('ERROR', 'startWithoutActivityPermission() failed: $e');
@@ -644,6 +678,46 @@ class _DashboardPageState extends State<DashboardPage> {
       );
     } catch (e) {
       _addLog('ERROR', 'addGeofence() failed: $e');
+    }
+  }
+
+  /// Adds a polygon geofence around the current location (a ~200m square).
+  Future<void> _addPolygonGeofenceAtCurrentLocation() async {
+    if (_lastLocation == null) {
+      _addLog('WARN', 'No location yet — get a position first');
+      return;
+    }
+    try {
+      final loc = _lastLocation!;
+      final lat = loc.coords.latitude;
+      final lng = loc.coords.longitude;
+      final id = 'poly_${DateTime.now().millisecondsSinceEpoch}';
+
+      // Create a ~200m square around the current position
+      // ~0.0018 degrees ≈ 200m at mid-latitudes
+      const offset = 0.0018;
+      await tl.Tracelet.addGeofence(
+        tl.Geofence(
+          identifier: id,
+          latitude: lat,
+          longitude: lng,
+          radius: 0, // ignored for polygon
+          notifyOnEntry: true,
+          notifyOnExit: true,
+          vertices: [
+            [lat + offset, lng - offset], // NW
+            [lat + offset, lng + offset], // NE
+            [lat - offset, lng + offset], // SE
+            [lat - offset, lng - offset], // SW
+          ],
+        ),
+      );
+      _addLog(
+        'POLYGON+',
+        '$id  ~400m²  at ${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}',
+      );
+    } catch (e) {
+      _addLog('ERROR', 'addPolygonGeofence() failed: $e');
     }
   }
 
@@ -1251,6 +1325,61 @@ class _DashboardPageState extends State<DashboardPage> {
 
   // ── New Feature Demos ───────────────────────────────────────────────────
 
+  /// Toggle Kalman filter GPS smoothing at runtime.
+  Future<void> _toggleKalmanFilter() async {
+    try {
+      final newValue = !_kalmanEnabled;
+      final state = await tl.Tracelet.setConfig(
+        tl.Config(
+          geo: tl.GeoConfig(
+            filter: tl.LocationFilter(useKalmanFilter: newValue),
+          ),
+        ),
+      );
+      setState(() {
+        _kalmanEnabled = newValue;
+        _pluginState = state;
+      });
+      _addLog(
+        'KALMAN',
+        newValue ? 'ENABLED — GPS smoothing active' : 'DISABLED — raw GPS',
+      );
+    } catch (e) {
+      _addLog('ERROR', 'toggleKalmanFilter() failed: $e');
+    }
+  }
+
+  /// Show last trip summary in the log.
+  void _showLastTrip() {
+    final trip = _lastTrip;
+    if (trip == null) {
+      _addLog('TRIP', 'No trip recorded yet — start tracking and move!');
+      return;
+    }
+    final distKm = (trip.distance / 1000).toStringAsFixed(2);
+    final durMin = (trip.duration / 60).toStringAsFixed(1);
+    final speedKmh = (trip.averageSpeed * 3.6).toStringAsFixed(1);
+    _addLog(
+      'TRIP',
+      '$distKm km in $durMin min @ $speedKmh km/h  '
+          '(${trip.waypoints.length} waypoints)',
+    );
+    if (trip.startLocation.coords.latitude != 0) {
+      _addLog(
+        '  FROM',
+        '${trip.startLocation.coords.latitude.toStringAsFixed(5)}, '
+            '${trip.startLocation.coords.longitude.toStringAsFixed(5)}',
+      );
+    }
+    if (trip.stopLocation.coords.latitude != 0) {
+      _addLog(
+        '  TO',
+        '${trip.stopLocation.coords.latitude.toStringAsFixed(5)}, '
+            '${trip.stopLocation.coords.longitude.toStringAsFixed(5)}',
+      );
+    }
+  }
+
   /// Re-initialize with elasticity disabled to compare tracking behavior.
   Future<void> _toggleElasticity() async {
     try {
@@ -1411,6 +1540,15 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
         centerTitle: true,
         actions: [
+          // Open live map
+          IconButton(
+            tooltip: 'Live Map',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(builder: (_) => const MapPage()),
+            ),
+            icon: const Icon(Icons.map),
+          ),
           IconButton(
             tooltip: 'Clear log',
             onPressed: () => setState(() => _log.clear()),
@@ -1455,6 +1593,14 @@ class _DashboardPageState extends State<DashboardPage> {
                       _Chip('Stop', Icons.stop, _stop),
                       _Chip('Geofences Only', Icons.fence, _startGeofences),
                       _Chip('Get State', Icons.info_outline, _getState),
+                      _Chip('Live Map', Icons.map, () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => const MapPage(),
+                          ),
+                        );
+                      }),
                     ],
                   ),
 
@@ -1563,6 +1709,12 @@ class _DashboardPageState extends State<DashboardPage> {
                     color: Colors.amber.shade800,
                     children: [
                       _Chip(
+                        _kalmanEnabled ? 'Kalman: ON' : 'Kalman: OFF',
+                        _kalmanEnabled ? Icons.blur_on : Icons.blur_off,
+                        _toggleKalmanFilter,
+                      ),
+                      _Chip('Last Trip', Icons.route, _showLastTrip),
+                      _Chip(
                         'Disable Elasticity',
                         Icons.straighten,
                         _toggleElasticity,
@@ -1590,6 +1742,11 @@ class _DashboardPageState extends State<DashboardPage> {
                         '+ Geofence Here',
                         Icons.add_location_alt,
                         _addGeofenceAtCurrentLocation,
+                      ),
+                      _Chip(
+                        '+ Polygon Here',
+                        Icons.hexagon_outlined,
+                        _addPolygonGeofenceAtCurrentLocation,
                       ),
                       _Chip('List Geofences', Icons.list, _listGeofences),
                       _Chip(

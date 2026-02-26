@@ -36,7 +36,11 @@ export 'package:tracelet_platform_interface/tracelet_platform_interface.dart'
         LocationOrder,
         LocationActivityType,
         PersistMode,
-        LocationFilterPolicy;
+        LocationFilterPolicy,
+        // Shared algorithms (pure Dart — work on all platforms)
+        KalmanLocationFilter,
+        TripManager,
+        GeoUtils;
 
 // Models
 export 'src/models/config.dart';
@@ -55,6 +59,7 @@ export 'src/models/device_info.dart';
 export 'src/models/connectivity_change_event.dart';
 export 'src/models/authorization_event.dart';
 export 'src/models/sql_query.dart';
+export 'src/models/trip_event.dart';
 
 // Main API
 export 'src/tracelet.dart';

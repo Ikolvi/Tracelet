@@ -33,14 +33,21 @@ final class GeofenceManager: NSObject, CLLocationManagerDelegate {
 
     func addGeofence(_ data: [String: Any]) -> Bool {
         let _ = database.insertGeofence(data)
-        registerWithSystem(data)
+        // Polygon geofences are evaluated in Dart — skip system registration
+        let vertices = data["vertices"] as? [[Double]]
+        if vertices == nil || (vertices?.count ?? 0) < 3 {
+            registerWithSystem(data)
+        }
         return true
     }
 
     func addGeofences(_ geofences: [[String: Any]]) -> Bool {
         for g in geofences {
             let _ = database.insertGeofence(g)
-            registerWithSystem(g)
+            let vertices = g["vertices"] as? [[Double]]
+            if vertices == nil || (vertices?.count ?? 0) < 3 {
+                registerWithSystem(g)
+            }
         }
         return true
     }
@@ -81,77 +88,23 @@ final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     func reRegisterAll() {
         let geofences = database.getGeofences()
         for g in geofences {
+            // Polygon geofences are evaluated in Dart — skip system registration
+            let vertices = g["vertices"] as? [[Double]]
+            if vertices != nil && (vertices?.count ?? 0) >= 3 { continue }
             registerWithSystem(g)
         }
     }
 
     // MARK: - High-accuracy proximity evaluation
 
-    /// Called from LocationEngine on every location update when geofenceModeHighAccuracy is enabled.
-    /// Computes distance-from-center for each stored geofence and fires ENTER/EXIT transitions in-app.
+    /// High-accuracy geofence evaluation is now handled by shared Dart code
+    /// (GeofenceEvaluator in tracelet_platform_interface). This method is kept
+    /// as a no-op stub for call-site compatibility.
     func evaluateHighAccuracyProximity(latitude: Double, longitude: Double) {
-        let geofences = database.getGeofences()
-        let currentLocation = CLLocation(latitude: latitude, longitude: longitude)
-        var on: [[String: Any]] = []
-        var off: [[String: Any]] = []
-
-        for gf in geofences {
-            guard let identifier = gf["identifier"] as? String,
-                  let gfLat = gf["latitude"] as? Double,
-                  let gfLng = gf["longitude"] as? Double else { continue }
-            let gfRadius = gf["radius"] as? Double ?? 100.0
-
-            let gfLocation = CLLocation(latitude: gfLat, longitude: gfLng)
-            let distance = currentLocation.distance(from: gfLocation)
-
-            let wasInside = insideGeofenceIds.contains(identifier)
-            let isInside = distance <= gfRadius
-
-            if isInside && !wasInside {
-                // ENTER transition
-                insideGeofenceIds.insert(identifier)
-                let eventData: [String: Any] = [
-                    "identifier": identifier,
-                    "action": "ENTER",
-                    "location": [
-                        "coords": [
-                            "latitude": latitude,
-                            "longitude": longitude,
-                        ],
-                    ],
-                    "extras": gf["extras"] ?? [:] as [String: Any],
-                ]
-                eventDispatcher.sendGeofence(eventData)
-                on.append(gf)
-                NSLog("[Tracelet] High-accuracy ENTER: \(identifier) (distance=\(distance)m, radius=\(gfRadius)m)")
-            } else if !isInside && wasInside {
-                // EXIT transition
-                insideGeofenceIds.remove(identifier)
-                let eventData: [String: Any] = [
-                    "identifier": identifier,
-                    "action": "EXIT",
-                    "location": [
-                        "coords": [
-                            "latitude": latitude,
-                            "longitude": longitude,
-                        ],
-                    ],
-                    "extras": gf["extras"] ?? [:] as [String: Any],
-                ]
-                eventDispatcher.sendGeofence(eventData)
-                off.append(gf)
-
-                // KnockOut mode: remove geofence after EXIT
-                if configManager.getGeofenceModeKnockOut() {
-                    let _ = removeGeofence(identifier)
-                }
-                NSLog("[Tracelet] High-accuracy EXIT: \(identifier) (distance=\(distance)m, radius=\(gfRadius)m)")
-            }
-        }
-
-        if !on.isEmpty || !off.isEmpty {
-            eventDispatcher.sendGeofencesChange(["on": on, "off": off])
-        }
+        // Proximity evaluation moved to shared Dart GeofenceEvaluator.
+        // This method is intentionally empty — Dart handles all ENTER/EXIT
+        // transitions via GeofenceEvaluator.evaluateProximity() in the
+        // onLocation stream pipeline.
     }
 
     /// Clear high-accuracy tracking state.
@@ -178,6 +131,12 @@ final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         let latitude = data["latitude"] as? Double ?? 0
         let longitude = data["longitude"] as? Double ?? 0
         let radius = min(data["radius"] as? Double ?? 100, locationManager.maximumRegionMonitoringDistance)
+
+        // Guard against invalid radius (e.g. polygon geofences with radius=0)
+        guard radius > 0 else {
+            NSLog("[Tracelet] Skipping geofence \(identifier): invalid radius \(radius)")
+            return
+        }
 
         let center = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
         let region = CLCircularRegion(center: center, radius: radius, identifier: identifier)
@@ -224,6 +183,10 @@ final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     // MARK: - Transition handling
 
     private func handleTransition(region: CLCircularRegion, action: String) {
+        // When high-accuracy mode is active, evaluateHighAccuracyProximity()
+        // handles transitions in-app. Skip OS-level events to avoid duplicates.
+        if configManager.getGeofenceModeHighAccuracy() { return }
+
         let geofenceData = database.getGeofence(region.identifier)
         let location = locationManager.location
 
@@ -245,11 +208,11 @@ final class GeofenceManager: NSObject, CLLocationManagerDelegate {
 
         eventDispatcher.sendGeofence(eventData)
 
-        // Also fire geofencesChange with updated list
-        let allGeofences = database.getGeofences()
-        eventDispatcher.sendGeofencesChange([
-            "on": allGeofences.filter { _ in true },
-            "off": [] as [[String: Any]],
-        ])
+        // Also fire geofencesChange with correct on/off arrays
+        let geofence = geofenceData ?? ["identifier": region.identifier]
+        let on: [[String: Any]]  = action == "ENTER" ? [geofence] : []
+        let off: [[String: Any]] = action == "EXIT"  ? [geofence] : []
+        eventDispatcher.sendGeofencesChange(["on": on, "off": off])
     }
+
 }

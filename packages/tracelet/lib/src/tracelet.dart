@@ -22,6 +22,7 @@ import 'models/provider_change_event.dart';
 import 'models/sensors.dart';
 import 'models/sql_query.dart';
 import 'models/state.dart';
+import 'models/trip_event.dart';
 
 /// Production-grade background geolocation for Flutter.
 ///
@@ -69,6 +70,50 @@ class Tracelet {
   static final List<StreamSubscription<dynamic>> _onSubscriptions =
       <StreamSubscription<dynamic>>[];
 
+  // ---------------------------------------------------------------------------
+  // Shared Dart algorithms
+  // ---------------------------------------------------------------------------
+
+  /// Kalman filter instance for GPS smoothing (runs in Dart, not native).
+  static final KalmanLocationFilter _kalmanFilter = KalmanLocationFilter();
+
+  /// Trip manager instance for trip detection (runs in Dart, not native).
+  static final TripManager _tripManager = TripManager();
+
+  /// StreamController for trip events (replaces native EventChannel).
+  static final StreamController<TripEvent> _tripController =
+      StreamController<TripEvent>.broadcast();
+
+  /// Internal subscriptions that drive the TripManager.
+  static StreamSubscription<Location>? _tripLocationSub;
+  static StreamSubscription<Location>? _tripMotionSub;
+
+  /// Whether the Kalman filter is enabled (set from config).
+  static bool _useKalmanFilter = false;
+
+  /// Location processor for distance/accuracy/speed filtering
+  /// (runs in Dart, not native).
+  static LocationProcessor? _locationProcessor;
+
+  /// Geofence evaluator for high-accuracy proximity checks
+  /// (runs in Dart, not native).
+  static final GeofenceEvaluator _geofenceEvaluator = GeofenceEvaluator();
+
+  /// Cached processed location broadcast stream.
+  ///
+  /// Filtering and Kalman smoothing are applied ONCE here, then shared
+  /// across all `onLocation` subscribers. Without this, each listener
+  /// would independently call `_filterLocation` on the same stateful
+  /// [LocationProcessor], causing the second listener to see distance=0
+  /// and incorrectly filter the location.
+  static Stream<Location>? _processedLocationStream;
+
+  /// Whether the Kalman filter is currently enabled for GPS smoothing.
+  ///
+  /// Returns `true` if [ready] or [setConfig] was called with
+  /// `LocationFilter(useKalmanFilter: true)`.
+  static bool get isKalmanFilterEnabled => _useKalmanFilter;
+
   static Stream<Object?> _getEventStream(String name) {
     return _eventStreams.putIfAbsent(name, () {
       final channel = _eventChannels.putIfAbsent(
@@ -94,6 +139,29 @@ class Tracelet {
   /// print('Enabled: ${state.enabled}');
   /// ```
   static Future<State> ready(Config config) async {
+    // Capture Kalman filter setting from config.
+    _useKalmanFilter = config.geo.filter?.useKalmanFilter ?? false;
+    _kalmanFilter.reset();
+
+    // Initialize location processor from config.
+    _locationProcessor = LocationProcessor(
+      distanceFilter: config.geo.distanceFilter,
+      disableElasticity: config.geo.disableElasticity,
+      elasticityMultiplier: config.geo.elasticityMultiplier,
+      trackingAccuracyThreshold:
+          config.geo.filter?.trackingAccuracyThreshold ?? 0,
+      filterPolicy: config.geo.filter?.policy.index ?? 0,
+      maxImpliedSpeed: config.geo.filter?.maxImpliedSpeed ?? 0,
+      odometerAccuracyThreshold:
+          config.geo.filter?.odometerAccuracyThreshold ?? 0,
+    );
+    _geofenceEvaluator.clear();
+
+    // Wire trip manager output to the Dart stream controller.
+    _tripManager.onTripEnd = (tripData) {
+      _tripController.add(TripEvent.fromMap(tripData));
+    };
+
     final result = await _platform.ready(config.toMap());
     return State.fromMap(result);
   }
@@ -103,6 +171,10 @@ class Tracelet {
   /// Returns the updated [State] after starting.
   static Future<State> start() async {
     final result = await _platform.start();
+
+    // Start internal trip detection subscriptions.
+    _startTripDetection();
+
     return State.fromMap(result);
   }
 
@@ -111,6 +183,14 @@ class Tracelet {
   /// Returns the updated [State] after stopping.
   static Future<State> stop() async {
     final result = await _platform.stop();
+
+    // Stop trip detection and reset.
+    _stopTripDetection();
+    _tripManager.reset();
+    _kalmanFilter.reset();
+    _locationProcessor?.reset();
+    _geofenceEvaluator.clear();
+
     return State.fromMap(result);
   }
 
@@ -133,6 +213,34 @@ class Tracelet {
   ///
   /// Returns the updated [State].
   static Future<State> setConfig(Config config) async {
+    // Update Kalman filter setting.
+    _useKalmanFilter = config.geo.filter?.useKalmanFilter ?? false;
+
+    // Update location processor, preserving internal state.
+    _locationProcessor =
+        _locationProcessor?.copyWith(
+          distanceFilter: config.geo.distanceFilter,
+          disableElasticity: config.geo.disableElasticity,
+          elasticityMultiplier: config.geo.elasticityMultiplier,
+          trackingAccuracyThreshold:
+              config.geo.filter?.trackingAccuracyThreshold ?? 0,
+          filterPolicy: config.geo.filter?.policy.index ?? 0,
+          maxImpliedSpeed: config.geo.filter?.maxImpliedSpeed ?? 0,
+          odometerAccuracyThreshold:
+              config.geo.filter?.odometerAccuracyThreshold ?? 0,
+        ) ??
+        LocationProcessor(
+          distanceFilter: config.geo.distanceFilter,
+          disableElasticity: config.geo.disableElasticity,
+          elasticityMultiplier: config.geo.elasticityMultiplier,
+          trackingAccuracyThreshold:
+              config.geo.filter?.trackingAccuracyThreshold ?? 0,
+          filterPolicy: config.geo.filter?.policy.index ?? 0,
+          maxImpliedSpeed: config.geo.filter?.maxImpliedSpeed ?? 0,
+          odometerAccuracyThreshold:
+              config.geo.filter?.odometerAccuracyThreshold ?? 0,
+        );
+
     final result = await _platform.setConfig(config.toMap());
     return State.fromMap(result);
   }
@@ -688,11 +796,22 @@ class Tracelet {
   static StreamSubscription<Location> onLocation(
     void Function(Location) callback,
   ) {
-    return _tracked(
-      _getEventStream(
-        TraceletEvents.location,
-      ).map(_castToMap).map(Location.fromMap).listen(callback),
-    );
+    return _tracked(_getProcessedLocationStream().listen(callback));
+  }
+
+  /// Returns a shared broadcast stream of locations that have been filtered
+  /// by [LocationProcessor] and smoothed by [KalmanLocationFilter].
+  ///
+  /// The stream is created lazily on first access and cached so that
+  /// stateful transformations (distance filter state, Kalman state) are
+  /// applied exactly once per event regardless of subscriber count.
+  static Stream<Location> _getProcessedLocationStream() {
+    return _processedLocationStream ??= _getEventStream(TraceletEvents.location)
+        .map(_castToMap)
+        .map(Location.fromMap)
+        .expand(_filterLocation)
+        .map(_applyKalmanFilter)
+        .asBroadcastStream();
   }
 
   /// Subscribe to motion change events.
@@ -884,6 +1003,24 @@ class Tracelet {
     );
   }
 
+  /// Subscribe to trip events.
+  ///
+  /// Fires when a trip ends (device transitions from moving to stationary).
+  /// The event includes a full summary: distance, duration, start/stop
+  /// locations, and the ordered list of waypoints recorded during the trip.
+  ///
+  /// ```dart
+  /// Tracelet.onTrip((trip) {
+  ///   print('Trip ended: ${trip.distance}m in ${trip.duration}s');
+  ///   print('Waypoints: ${trip.waypoints.length}');
+  /// });
+  /// ```
+  static StreamSubscription<TripEvent> onTrip(
+    void Function(TripEvent) callback,
+  ) {
+    return _tracked(_tripController.stream.listen(callback));
+  }
+
   // ---------------------------------------------------------------------------
   // Cleanup
   // ---------------------------------------------------------------------------
@@ -915,6 +1052,10 @@ class Tracelet {
     _watchSubscriptions.clear();
     _eventStreams.clear();
     _eventChannels.clear();
+    _processedLocationStream = null;
+
+    // Stop trip detection subscriptions.
+    _stopTripDetection();
   }
 
   // ---------------------------------------------------------------------------
@@ -934,6 +1075,95 @@ class Tracelet {
       );
     }
     return const <String, Object?>{};
+  }
+
+  /// Apply the [LocationProcessor] to filter a location.
+  ///
+  /// Returns a single-element list if the location passes all filters,
+  /// or an empty list if it was filtered out. Used with [Stream.expand].
+  static List<Location> _filterLocation(Location location) {
+    final processor = _locationProcessor;
+    if (processor == null) return <Location>[location];
+
+    final ts = DateTime.tryParse(location.timestamp);
+    if (ts == null) return <Location>[location];
+
+    final result = processor.process(
+      latitude: location.coords.latitude,
+      longitude: location.coords.longitude,
+      accuracy: location.coords.accuracy,
+      speed: location.coords.speed,
+      timestampMs: ts.millisecondsSinceEpoch,
+    );
+
+    if (!result.accepted) return <Location>[];
+    return <Location>[location];
+  }
+
+  /// Apply Kalman filter to a [Location] if enabled.
+  static Location _applyKalmanFilter(Location location) {
+    if (!_useKalmanFilter) return location;
+
+    // Parse timestamp safely — skip filtering if timestamp is invalid.
+    final ts = DateTime.tryParse(location.timestamp);
+    if (ts == null) return location;
+
+    final result = _kalmanFilter.process(
+      latitude: location.coords.latitude,
+      longitude: location.coords.longitude,
+      accuracy: location.coords.accuracy,
+      timestampMs: ts.millisecondsSinceEpoch,
+    );
+
+    // Return a new Location with smoothed coordinates but original metadata.
+    return Location.fromMap(<String, Object?>{
+      ...location.toMap(),
+      'coords': <String, Object?>{
+        ...(location.toMap()['coords'] as Map<String, Object?>? ??
+            const <String, Object?>{}),
+        'latitude': result.latitude,
+        'longitude': result.longitude,
+      },
+    });
+  }
+
+  /// Start internal subscriptions that feed the TripManager.
+  static void _startTripDetection() {
+    _stopTripDetection(); // Ensure clean state.
+
+    // Listen to motion changes to start/end trips.
+    _tripMotionSub = _getEventStream(TraceletEvents.motionChange)
+        .map(_castToMap)
+        .map(Location.fromMap)
+        .listen((location) {
+          final isMoving = location.isMoving;
+          _tripManager.onMotionStateChanged(
+            isMoving: isMoving,
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+            timestamp: location.timestamp,
+          );
+        });
+
+    // Listen to location updates to record waypoints.
+    _tripLocationSub = _getEventStream(TraceletEvents.location)
+        .map(_castToMap)
+        .map(Location.fromMap)
+        .listen((location) {
+          _tripManager.onLocationReceived(
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+            timestamp: location.timestamp,
+          );
+        });
+  }
+
+  /// Stop internal subscriptions that feed the TripManager.
+  static void _stopTripDetection() {
+    _tripLocationSub?.cancel();
+    _tripLocationSub = null;
+    _tripMotionSub?.cancel();
+    _tripMotionSub = null;
   }
 }
 
