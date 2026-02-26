@@ -197,7 +197,10 @@ class WebHttpEngine {
       responseFuture,
       Future<web.Response>.delayed(
         Duration(milliseconds: _httpTimeout),
-        () => throw TimeoutException('HTTP request timed out', Duration(milliseconds: _httpTimeout)),
+        () => throw TimeoutException(
+          'HTTP request timed out',
+          Duration(milliseconds: _httpTimeout),
+        ),
       ),
     ]);
   }

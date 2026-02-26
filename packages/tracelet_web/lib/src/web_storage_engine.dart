@@ -11,7 +11,6 @@ import 'dart:math' as math;
 /// If the browser has no localStorage (e.g., incognito in some browsers),
 /// falls back to pure in-memory storage.
 class WebStorageEngine {
-
   /// In-memory location store.
   final List<Map<String, Object?>> _locations = <Map<String, Object?>>[];
 

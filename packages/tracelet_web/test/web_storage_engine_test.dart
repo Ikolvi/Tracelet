@@ -11,10 +11,7 @@ void main() {
   group('WebStorageEngine — Locations', () {
     test('insertLocation stores and returns uuid', () async {
       final uuid = await storage.insertLocation(<String, Object?>{
-        'coords': <String, Object?>{
-          'latitude': 37.0,
-          'longitude': -122.0,
-        },
+        'coords': <String, Object?>{'latitude': 37.0, 'longitude': -122.0},
       });
 
       expect(uuid, isNotEmpty);
@@ -54,9 +51,7 @@ void main() {
         });
       }
 
-      final limited = await storage.getLocations(<String, Object?>{
-        'limit': 3,
-      });
+      final limited = await storage.getLocations(<String, Object?>{'limit': 3});
       expect(limited, hasLength(3));
     });
 

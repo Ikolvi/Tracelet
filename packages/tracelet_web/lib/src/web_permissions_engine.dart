@@ -25,14 +25,8 @@ class WebPermissionsEngine {
     if (_connectivityListening) return;
     _connectivityListening = true;
 
-    web.window.addEventListener(
-      'online',
-      _onOnline.toJS,
-    );
-    web.window.addEventListener(
-      'offline',
-      _onOffline.toJS,
-    );
+    web.window.addEventListener('online', _onOnline.toJS);
+    web.window.addEventListener('offline', _onOffline.toJS);
   }
 
   void _onOnline(web.Event event) {
@@ -64,9 +58,11 @@ class WebPermissionsEngine {
   /// - 4 = deniedForever (denied)
   Future<int> getPermissionStatus() async {
     try {
-      final descriptor = <String, String>{'name': 'geolocation'}.jsify() as JSObject;
-      final status =
-          await web.window.navigator.permissions.query(descriptor).toDart;
+      final descriptor =
+          <String, String>{'name': 'geolocation'}.jsify() as JSObject;
+      final status = await web.window.navigator.permissions
+          .query(descriptor)
+          .toDart;
       return _mapPermissionState(status.state);
     } catch (_) {
       // Permissions API not supported — assume prompt.

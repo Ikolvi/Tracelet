@@ -1,3 +1,7 @@
+## 0.5.2
+
+* **CHORE**: Bump version to 0.5.2.
+
 ## 0.5.1
 
 * **DOCS**: Update README with links to all federated packages.

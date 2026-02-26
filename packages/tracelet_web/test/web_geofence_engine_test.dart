@@ -155,10 +155,7 @@ void main() {
 
       // Exit (far away).
       final loc2 = <String, Object?>{
-        'coords': <String, Object?>{
-          'latitude': 38.0,
-          'longitude': -123.0,
-        },
+        'coords': <String, Object?>{'latitude': 38.0, 'longitude': -123.0},
       };
       engine.checkGeofences(38.0, -123.0, loc2);
 

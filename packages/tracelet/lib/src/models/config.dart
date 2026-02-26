@@ -1070,8 +1070,27 @@ class MotionConfig {
   /// location tracking. Defaults to `0`.
   final int motionTriggerDelay;
 
-  /// If `true`, disable the hardware motion activity detection (accelerometer /
-  /// activity recognition). Defaults to `false`.
+  /// If `true`, disable the platform activity recognition APIs that require
+  /// user permission (`ACTIVITY_RECOGNITION` on Android 10+, Motion & Fitness
+  /// on iOS).
+  ///
+  /// When disabled, the plugin automatically falls back to **accelerometer-only
+  /// motion detection** — a permission-free mode that uses raw hardware sensor
+  /// data to detect stationary↔moving transitions. This fallback provides basic
+  /// motion/stillness detection but does **not** classify activity types
+  /// (walking, running, driving, etc.) and `onActivityChange` events will not
+  /// fire.
+  ///
+  /// Use this when:
+  /// - You don't want to prompt the user for physical activity permission.
+  /// - Your app only needs location tracking, not activity classification.
+  /// - You're targeting privacy-conscious markets.
+  ///
+  /// **Battery note:** The accelerometer-only fallback is slightly less
+  /// power-efficient than the platform activity APIs (which use dedicated
+  /// low-power co-processors), but still far better than continuous GPS.
+  ///
+  /// Defaults to `false`.
   final bool disableMotionActivityUpdates;
 
   /// Initial motion state. If `true`, begin in moving mode. Defaults to `false`.

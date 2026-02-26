@@ -112,19 +112,16 @@ class WebGeofenceEngine {
         // Start dwell timer if configured.
         if (notifyOnDwell && loiteringDelay > 0) {
           _dwellTimers[id]?.cancel();
-          _dwellTimers[id] = Timer(
-            Duration(milliseconds: loiteringDelay),
-            () {
-              if (_insideGeofences.containsKey(id)) {
-                _events.emitGeofence(<String, Object?>{
-                  'identifier': id,
-                  'action': 'DWELL',
-                  'location': locationMap,
-                  'extras': fence['extras'],
-                });
-              }
-            },
-          );
+          _dwellTimers[id] = Timer(Duration(milliseconds: loiteringDelay), () {
+            if (_insideGeofences.containsKey(id)) {
+              _events.emitGeofence(<String, Object?>{
+                'identifier': id,
+                'action': 'DWELL',
+                'location': locationMap,
+                'extras': fence['extras'],
+              });
+            }
+          });
         }
       } else if (!isInside && wasInside) {
         // EXIT
@@ -147,16 +144,12 @@ class WebGeofenceEngine {
   // Haversine
   // ---------------------------------------------------------------------------
 
-  static double _haversine(
-    double lat1,
-    double lon1,
-    double lat2,
-    double lon2,
-  ) {
+  static double _haversine(double lat1, double lon1, double lat2, double lon2) {
     const r = 6371000.0;
     final dLat = _toRad(lat2 - lat1);
     final dLon = _toRad(lon2 - lon1);
-    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+    final a =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
         math.cos(_toRad(lat1)) *
             math.cos(_toRad(lat2)) *
             math.sin(dLon / 2) *

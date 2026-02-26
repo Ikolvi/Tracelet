@@ -163,7 +163,7 @@ Motion detection tuning.
 | `stopDetectionDelay` | `int` | `0` | Extra delay (seconds) before stationary |
 | `stopOnStationary` | `bool` | `false` | Fully stop tracking when stationary |
 | `motionTriggerDelay` | `int` | `0` | Delay (seconds) before declaring moving |
-| `disableMotionActivityUpdates` | `bool` | `false` | Disable activity recognition |
+| `disableMotionActivityUpdates` | `bool` | `false` | Disable platform activity recognition; falls back to permission-free accelerometer-only motion detection |
 
 ---
 

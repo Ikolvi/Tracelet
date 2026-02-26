@@ -245,7 +245,8 @@ Future<bool> _showNotificationRationale(BuildContext context) async {
 ## Motion Permission
 
 Motion/activity recognition permission is required for automatic motion
-detection (stationary ↔ moving transitions).
+detection (stationary ↔ moving transitions) **only when using full activity
+recognition mode** (the default).
 
 | Platform | Permission | Required Since |
 |----------|-----------|----------------|
@@ -254,7 +255,39 @@ detection (stationary ↔ moving transitions).
 
 On Android < 10, both methods return `3` (granted — no runtime permission needed).
 
-### Recommended Flow
+### Opting Out of Motion Permission
+
+If you don't want to prompt users for physical activity permission, set
+`disableMotionActivityUpdates: true` in `MotionConfig`:
+
+```dart
+final config = Config(
+  motion: MotionConfig(
+    disableMotionActivityUpdates: true,
+    isMoving: true, // start in moving mode
+  ),
+);
+```
+
+When disabled, the plugin automatically falls back to **accelerometer-only
+motion detection** — a permission-free mode that uses raw hardware sensors
+(accelerometer + significant-motion trigger on Android, raw accelerometer on
+iOS) to detect stationary↔moving transitions.
+
+| Feature | Full Mode (default) | Accelerometer-Only Mode |
+|---------|-------------------|----------------------|
+| Permission needed | Yes (`ACTIVITY_RECOGNITION` / Motion & Fitness) | **None** |
+| Activity classification | walking, running, driving, cycling | Not available |
+| `onActivityChange` events | Yes | No |
+| Stop detection | Via Activity Transition API | Via sustained accelerometer stillness |
+| Move detection | Via Activity Transition API | Via shake / significant-motion sensor |
+| Battery impact | Best (hardware co-processor) | Good (slightly higher than full mode) |
+
+When `disableMotionActivityUpdates` is `true`, both `getMotionPermissionStatus()`
+and `requestMotionPermission()` return `3` (granted) immediately without
+triggering any OS dialog.
+
+### Recommended Flow (Full Mode)
 
 ```dart
 final motionStatus = await tl.Tracelet.getMotionPermissionStatus();

@@ -478,8 +478,11 @@ class Tracelet {
   /// On iOS, returns the CMMotionActivityManager authorization status.
   ///
   /// **When to use:** Call before [start] to check if the device can detect
-  /// motion transitions (walking, driving, stationary). Without this
-  /// permission, automatic motion detection will not work.
+  /// motion transitions (walking, driving, stationary).
+  ///
+  /// **Note:** When [Config.motion.disableMotionActivityUpdates] is `true`,
+  /// this always returns `3` (granted) because the accelerometer-only
+  /// fallback mode does not require any permission.
   static Future<int> getMotionPermissionStatus() {
     return _platform.getMotionPermissionStatus();
   }
@@ -492,9 +495,13 @@ class Tracelet {
   ///
   /// Returns the actual status after the user responds.
   ///
-  /// **Important:** Without this permission, the plugin cannot detect
-  /// motion transitions automatically. The device will not fire
+  /// **Important:** Without this permission **and** without the
+  /// accelerometer-only fallback ([Config.motion.disableMotionActivityUpdates]),
+  /// the plugin cannot detect motion transitions. The device will not fire
   /// `onMotionChange` events unless [changePace] is called manually.
+  ///
+  /// When [Config.motion.disableMotionActivityUpdates] is `true`, returns `3`
+  /// immediately without showing any dialog.
   static Future<int> requestMotionPermission() {
     return _platform.requestMotionPermission();
   }

@@ -76,7 +76,8 @@ class _DashboardPageState extends State<DashboardPage> {
   // Subscriptions
   final List<StreamSubscription<Object?>> _subs = [];
 
-  bool get _isAndroid => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  bool get _isAndroid =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
   bool get _isWeb => kIsWeb;
 
   @override
@@ -522,6 +523,64 @@ class _DashboardPageState extends State<DashboardPage> {
       );
     } catch (e) {
       _addLog('ERROR', 'startWithoutNotification() failed: $e');
+    }
+  }
+
+  /// Start tracking with **no physical activity permission** required.
+  ///
+  /// Enables `disableMotionActivityUpdates: true` which bypasses the
+  /// ACTIVITY_RECOGNITION (Android) / Motion & Fitness (iOS) permission.
+  /// Motion detection uses the accelerometer-only fallback — basic
+  /// stationary↔moving detection without activity classification.
+  Future<void> _startWithoutActivityPermission() async {
+    try {
+      if (!_isReady) {
+        _addLog('WARN', 'Call Initialize first');
+        return;
+      }
+
+      // On Android 13+, still request notification permission.
+      if (_isAndroid) {
+        await _ensureNotificationPermission();
+      }
+
+      // No motion permission request — accelerometer-only fallback
+      _addLog(
+        'MOTION',
+        'Skipping activity permission — using accelerometer-only mode',
+      );
+
+      await tl.Tracelet.setConfig(
+        tl.Config(
+          motion: const tl.MotionConfig(
+            disableMotionActivityUpdates: true,
+            isMoving: true, // start in moving mode
+            stopTimeout: 5,
+          ),
+          app: tl.AppConfig(
+            stopOnTerminate: false,
+            startOnBoot: true,
+            foregroundService: _isAndroid
+                ? const tl.ForegroundServiceConfig(
+                    notificationTitle: 'Tracelet Demo',
+                    notificationText: 'No activity permission — accel mode',
+                  )
+                : const tl.ForegroundServiceConfig(enabled: false),
+          ),
+        ),
+      );
+      final state = await tl.Tracelet.start();
+      setState(() {
+        _isTracking = state.enabled;
+        _pluginState = state;
+      });
+      _addLog(
+        'START',
+        'Accelerometer-only mode (no activity permission)  '
+            'enabled=\${state.enabled}',
+      );
+    } catch (e) {
+      _addLog('ERROR', 'startWithoutActivityPermission() failed: $e');
     }
   }
 
@@ -1343,7 +1402,13 @@ class _DashboardPageState extends State<DashboardPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Tracelet ${_isWeb ? "Web" : _isAndroid ? "Android" : "iOS"}'),
+        title: Text(
+          'Tracelet ${_isWeb
+              ? "Web"
+              : _isAndroid
+              ? "Android"
+              : "iOS"}',
+        ),
         centerTitle: true,
         actions: [
           IconButton(
@@ -1469,6 +1534,11 @@ class _DashboardPageState extends State<DashboardPage> {
                         'Start No Notification',
                         Icons.notifications_off,
                         _startWithoutNotification,
+                      ),
+                      _Chip(
+                        'No Activity Permission',
+                        Icons.do_not_disturb,
+                        _startWithoutActivityPermission,
                       ),
                     ],
                   ),

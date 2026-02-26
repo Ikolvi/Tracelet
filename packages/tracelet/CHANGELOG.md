@@ -1,3 +1,10 @@
+## 0.5.2
+
+* **FEAT**: `disableMotionActivityUpdates` now falls back to permission-free accelerometer-only motion detection instead of disabling all motion detection entirely.
+* **DOCS**: Expanded `MotionConfig.disableMotionActivityUpdates` documentation with fallback behavior, use cases, and battery notes.
+* **DOCS**: Updated `getMotionPermissionStatus()` / `requestMotionPermission()` docs to reflect accelerometer-only mode behavior.
+* **DOCS**: Added "Opting Out of Motion Permission" section to PERMISSIONS.md with comparison table.
+
 ## 0.5.1
 
 * **DOCS**: Update README with web platform in architecture and documentation tables.

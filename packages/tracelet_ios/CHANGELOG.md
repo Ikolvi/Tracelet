@@ -1,3 +1,10 @@
+## 0.5.2
+
+* **FEAT**: Accelerometer-only motion detection mode — when `disableMotionActivityUpdates` is `true`, uses `CMMotionManager` raw accelerometer for permission-free stationary↔moving detection (no `NSMotionUsageDescription` required).
+* **FEAT**: `getMotionAuthorizationStatus()` / `requestMotionPermission()` return `3` (granted) immediately in accelerometer-only mode — no OS dialog shown.
+* **PERF**: Reuse shared `CMMotionManager` instance for sensor queries instead of creating throwaway instances.
+* **FIX**: Auto-fallback to accelerometer-only when `CMMotionActivityManager.isActivityAvailable()` returns `false`.
+
 ## 0.5.1
 
 * **DOCS**: Rewrite README with proper description, setup guide link, and related packages table.

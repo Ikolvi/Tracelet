@@ -59,7 +59,8 @@ class WebLocationEngine {
     final geo = config['geo'];
     if (geo is Map) {
       final geoMap = Map<String, Object?>.from(geo);
-      _desiredAccuracy = (geoMap['desiredAccuracy'] as int?) ?? _desiredAccuracy;
+      _desiredAccuracy =
+          (geoMap['desiredAccuracy'] as int?) ?? _desiredAccuracy;
       _distanceFilter =
           (geoMap['distanceFilter'] as num?)?.toDouble() ?? _distanceFilter;
       _stationaryRadius =
@@ -375,13 +376,12 @@ class WebLocationEngine {
     _stopHeartbeat();
     if (_heartbeatInterval <= 0) return;
 
-    _heartbeatTimer = Timer.periodic(
-      Duration(seconds: _heartbeatInterval),
-      (_) {
-        final loc = _lastLocation ?? _emptyLocation();
-        _events.emitHeartbeat(loc);
-      },
-    );
+    _heartbeatTimer = Timer.periodic(Duration(seconds: _heartbeatInterval), (
+      _,
+    ) {
+      final loc = _lastLocation ?? _emptyLocation();
+      _events.emitHeartbeat(loc);
+    });
   }
 
   void _stopHeartbeat() {
@@ -422,10 +422,7 @@ class WebLocationEngine {
       'isMoving': _isMoving,
       'uuid': _generateUuid(),
       'odometer': _odometer,
-      'activity': <String, Object?>{
-        'type': 'unknown',
-        'confidence': 'medium',
-      },
+      'activity': <String, Object?>{'type': 'unknown', 'confidence': 'medium'},
       'battery': <String, Object?>{'level': -1.0, 'isCharging': false},
       'extras': <String, Object?>{},
       'event': null,
@@ -458,16 +455,12 @@ class WebLocationEngine {
   }
 
   /// Haversine distance in meters between two lat/lng points.
-  static double _haversine(
-    double lat1,
-    double lon1,
-    double lat2,
-    double lon2,
-  ) {
+  static double _haversine(double lat1, double lon1, double lat2, double lon2) {
     const earthRadius = 6371000.0; // meters
     final dLat = _toRad(lat2 - lat1);
     final dLon = _toRad(lon2 - lon1);
-    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+    final a =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
         math.cos(_toRad(lat1)) *
             math.cos(_toRad(lat2)) *
             math.sin(dLon / 2) *

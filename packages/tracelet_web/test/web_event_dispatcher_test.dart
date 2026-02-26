@@ -71,10 +71,7 @@ void main() {
       Map<String, Object?>? received;
       events.onHttp.listen((e) => received = e);
 
-      events.emitHttp(<String, Object?>{
-        'success': true,
-        'status': 200,
-      });
+      events.emitHttp(<String, Object?>{'success': true, 'status': 200});
       await Future<void>.delayed(Duration.zero);
 
       expect(received?['success'], true);

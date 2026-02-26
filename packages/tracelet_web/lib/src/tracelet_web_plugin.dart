@@ -40,12 +40,13 @@ class TraceletWebPlugin extends TraceletPlatform {
 
   late final WebEventDispatcher _events = WebEventDispatcher();
   late final WebGeofenceEngine _geofenceEngine = WebGeofenceEngine(_events);
-  late final WebLocationEngine _locationEngine =
-      WebLocationEngine(_events, _geofenceEngine);
+  late final WebLocationEngine _locationEngine = WebLocationEngine(
+    _events,
+    _geofenceEngine,
+  );
   late final WebStorageEngine _storage = WebStorageEngine();
   late final WebHttpEngine _httpEngine = WebHttpEngine(_events, _storage);
-  late final WebPermissionsEngine _permissions =
-      WebPermissionsEngine(_events);
+  late final WebPermissionsEngine _permissions = WebPermissionsEngine(_events);
 
   // ---------------------------------------------------------------------------
   // State
@@ -80,25 +81,81 @@ class TraceletWebPlugin extends TraceletPlatform {
   void _registerEventChannels(Registrar registrar) {
     // We have to bridge our internal broadcast streams to Flutter EventChannels
     // so the app-facing Tracelet class can listen as normal.
-    _registerStreamHandler(registrar, TraceletEvents.location, _events.onLocation);
-    _registerStreamHandler(registrar, TraceletEvents.motionChange, _events.onMotionChange);
-    _registerStreamHandler(registrar, TraceletEvents.activityChange, _events.onActivityChange);
-    _registerStreamHandler(registrar, TraceletEvents.providerChange, _events.onProviderChange);
-    _registerStreamHandler(registrar, TraceletEvents.geofence, _events.onGeofence);
-    _registerStreamHandler(registrar, TraceletEvents.geofencesChange, _events.onGeofencesChange);
-    _registerStreamHandler(registrar, TraceletEvents.heartbeat, _events.onHeartbeat);
+    _registerStreamHandler(
+      registrar,
+      TraceletEvents.location,
+      _events.onLocation,
+    );
+    _registerStreamHandler(
+      registrar,
+      TraceletEvents.motionChange,
+      _events.onMotionChange,
+    );
+    _registerStreamHandler(
+      registrar,
+      TraceletEvents.activityChange,
+      _events.onActivityChange,
+    );
+    _registerStreamHandler(
+      registrar,
+      TraceletEvents.providerChange,
+      _events.onProviderChange,
+    );
+    _registerStreamHandler(
+      registrar,
+      TraceletEvents.geofence,
+      _events.onGeofence,
+    );
+    _registerStreamHandler(
+      registrar,
+      TraceletEvents.geofencesChange,
+      _events.onGeofencesChange,
+    );
+    _registerStreamHandler(
+      registrar,
+      TraceletEvents.heartbeat,
+      _events.onHeartbeat,
+    );
     _registerStreamHandler(registrar, TraceletEvents.http, _events.onHttp);
-    _registerStreamHandler(registrar, TraceletEvents.schedule, _events.onSchedule);
-    _registerStreamHandler(registrar, TraceletEvents.connectivityChange, _events.onConnectivityChange);
-    _registerStreamHandler(registrar, TraceletEvents.authorization, _events.onAuthorization);
-    _registerStreamHandler(registrar, TraceletEvents.watchPosition, _events.onWatchPosition);
+    _registerStreamHandler(
+      registrar,
+      TraceletEvents.schedule,
+      _events.onSchedule,
+    );
+    _registerStreamHandler(
+      registrar,
+      TraceletEvents.connectivityChange,
+      _events.onConnectivityChange,
+    );
+    _registerStreamHandler(
+      registrar,
+      TraceletEvents.authorization,
+      _events.onAuthorization,
+    );
+    _registerStreamHandler(
+      registrar,
+      TraceletEvents.watchPosition,
+      _events.onWatchPosition,
+    );
 
     // Bool streams need special handling.
-    _registerBoolStreamHandler(registrar, TraceletEvents.powerSaveChange, _events.onPowerSaveChange);
-    _registerBoolStreamHandler(registrar, TraceletEvents.enabledChange, _events.onEnabledChange);
+    _registerBoolStreamHandler(
+      registrar,
+      TraceletEvents.powerSaveChange,
+      _events.onPowerSaveChange,
+    );
+    _registerBoolStreamHandler(
+      registrar,
+      TraceletEvents.enabledChange,
+      _events.onEnabledChange,
+    );
 
     // String stream.
-    _registerStringStreamHandler(registrar, TraceletEvents.notificationAction, _events.onNotificationAction);
+    _registerStringStreamHandler(
+      registrar,
+      TraceletEvents.notificationAction,
+      _events.onNotificationAction,
+    );
   }
 
   void _registerStreamHandler(
@@ -106,8 +163,11 @@ class TraceletWebPlugin extends TraceletPlatform {
     String channelName,
     Stream<Map<String, Object?>> stream,
   ) {
-    // ignore: deprecated_member_use
-    final channel = PluginEventChannel<Object?>(channelName, const StandardMethodCodec(), registrar.messenger);
+    final channel = PluginEventChannel<Object?>(
+      channelName,
+      const StandardMethodCodec(),
+      registrar,
+    );
     channel.setController(_bridgedController<Object?>(stream.cast<Object?>()));
   }
 
@@ -116,8 +176,11 @@ class TraceletWebPlugin extends TraceletPlatform {
     String channelName,
     Stream<bool> stream,
   ) {
-    // ignore: deprecated_member_use
-    final channel = PluginEventChannel<Object?>(channelName, const StandardMethodCodec(), registrar.messenger);
+    final channel = PluginEventChannel<Object?>(
+      channelName,
+      const StandardMethodCodec(),
+      registrar,
+    );
     channel.setController(_bridgedController<Object?>(stream.cast<Object?>()));
   }
 
@@ -126,8 +189,11 @@ class TraceletWebPlugin extends TraceletPlatform {
     String channelName,
     Stream<String> stream,
   ) {
-    // ignore: deprecated_member_use
-    final channel = PluginEventChannel<Object?>(channelName, const StandardMethodCodec(), registrar.messenger);
+    final channel = PluginEventChannel<Object?>(
+      channelName,
+      const StandardMethodCodec(),
+      registrar,
+    );
     channel.setController(_bridgedController<Object?>(stream.cast<Object?>()));
   }
 
@@ -435,10 +501,7 @@ class TraceletWebPlugin extends TraceletPlatform {
   @override
   Future<bool> emailLog(String email) async {
     // Could open mailto: link but impractical. Log a warning.
-    _events.log(
-      'warning',
-      '[Tracelet Web] emailLog() is not supported on web',
-    );
+    _events.log('warning', '[Tracelet Web] emailLog() is not supported on web');
     return false;
   }
 

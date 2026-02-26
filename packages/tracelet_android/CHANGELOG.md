@@ -1,3 +1,11 @@
+## 0.5.2
+
+* **FEAT**: Accelerometer-only motion detection mode — when `disableMotionActivityUpdates` is `true`, uses hardware accelerometer + `TYPE_SIGNIFICANT_MOTION` sensor for permission-free stationary↔moving detection.
+* **PERF**: Lazily initialize `ActivityRecognitionClient` — no longer created when unused in accelerometer-only mode.
+* **PERF**: Cache `SensorManager` instance via `obtainSensorManager()` instead of re-fetching on each call.
+* **FIX**: Graceful degradation — if `ACTIVITY_RECOGNITION` permission throws `SecurityException`, automatically falls back to accelerometer-only mode.
+* **REFACTOR**: Extract `activityTransition()` helper to reduce boilerplate in transition registration.
+
 ## 0.5.1
 
 * **DOCS**: Rewrite README with proper description, setup guide link, and related packages table.

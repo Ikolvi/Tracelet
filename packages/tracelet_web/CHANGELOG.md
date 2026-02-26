@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.2
+
+* **FIX**: Replace deprecated `registrar.messenger` with `registrar` directly in event channel registration.
+* **CHORE**: Bump version to 0.5.2.
+
 ## 0.5.1
 
 * **DOCS**: Update README with usage instructions, compatibility table, and related packages.
