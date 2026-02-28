@@ -52,7 +52,7 @@ android {
         implementation("com.google.android.gms:play-services-location:21.3.0")
 
         // JSON serialization
-        implementation("org.json:json:20231013")
+        implementation("org.json:json:20251224")
 
         // WorkManager for reliable background scheduling
         implementation("androidx.work:work-runtime-ktx:2.11.1")
