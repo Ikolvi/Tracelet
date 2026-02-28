@@ -55,7 +55,7 @@ android {
         implementation("org.json:json:20231013")
 
         // WorkManager for reliable background scheduling
-        implementation("androidx.work:work-runtime-ktx:2.9.1")
+        implementation("androidx.work:work-runtime-ktx:2.11.1")
 
         // OkHttp for HTTP sync
         implementation("com.squareup.okhttp3:okhttp:4.12.0")
