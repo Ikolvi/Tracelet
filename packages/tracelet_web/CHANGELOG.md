@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.1
+
+* **DOCS**: Add mock detection passthrough note to README feature table.
+* **CHORE**: Bump `tracelet_platform_interface` to ^0.7.1.
+
 ## 0.7.0
 
 * **FEAT**: `_positionToMap()` and `_emptyLocation()` now include `mock: false` field — browser Geolocation API has no mock detection capability.

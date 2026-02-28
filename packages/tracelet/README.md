@@ -44,6 +44,7 @@ Battery-conscious motion-detection intelligence, geofencing, SQLite persistence,
 - **Geofence high-accuracy mode** — full GPS pipeline in geofence-only mode (Android)
 - **Prevent suspend (iOS)** — silent audio keep-alive for continuous background execution
 - **Shared Dart algorithms** — location filtering, geofence proximity, schedule parsing, and persistence logic run in shared Dart for cross-platform consistency
+- **Mock location detection** — detect and reject spoofed GPS with configurable detection levels (basic platform flags + advanced heuristics). [Learn more →](https://github.com/Ikolvi/Tracelet/blob/main/help/MOCK-DETECTION.md)
 
 ## Quick Start
 
@@ -153,6 +154,7 @@ Polygon containment uses the ray-casting algorithm for efficient point-in-polygo
 | [Trip Detection](https://github.com/Ikolvi/Tracelet/blob/main/help/TRIP-DETECTION.md) | Automatic trip events — setup, API, edge cases |
 | [Polygon Geofences](https://github.com/Ikolvi/Tracelet/blob/main/help/POLYGON-GEOFENCES.md) | Polygon geofences — vertices, ray-casting, examples |
 | [Web Support](https://github.com/Ikolvi/Tracelet/blob/main/help/WEB-SUPPORT.md) | Web platform capabilities, limitations, and browser APIs |
+| [Mock Detection](https://github.com/Ikolvi/Tracelet/blob/main/help/MOCK-DETECTION.md) | Detect & reject spoofed GPS — detection levels, heuristics, platform details |
 
 ## Architecture
 

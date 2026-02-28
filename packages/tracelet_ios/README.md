@@ -9,6 +9,7 @@ This package uses Swift and native Apple frameworks (CoreLocation, CoreMotion, B
 - **Kalman Filter GPS Smoothing** — Extended Kalman Filter implementation (`KalmanLocationFilter.swift`) smooths raw GPS coordinates using device-reported accuracy as measurement noise. Produces cleaner tracks and eliminates jitter. [Learn more →](https://github.com/Ikolvi/Tracelet/blob/main/help/KALMAN-FILTER.md)
 - **Trip Detection** — `TripManager.swift` tracks motion state transitions to detect trip start/stop. Each trip includes distance, duration, waypoints, and start/stop locations. [Learn more →](https://github.com/Ikolvi/Tracelet/blob/main/help/TRIP-DETECTION.md)
 - **Polygon Geofences** — Ray-casting point-in-polygon algorithm in `GeofenceManager.swift` for arbitrary polygon containment checks alongside circular geofences. [Learn more →](https://github.com/Ikolvi/Tracelet/blob/main/help/POLYGON-GEOFENCES.md)
+- **Mock Location Detection** — Spoof detection using `CLLocationSourceInformation` (iOS 15+) and timestamp drift heuristic. Configurable via `MockDetectionLevel`. [Learn more →](https://github.com/Ikolvi/Tracelet/blob/main/help/MOCK-DETECTION.md)
 
 ## Usage
 

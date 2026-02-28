@@ -30,6 +30,7 @@ For a full compatibility matrix of what works and what doesn't on web, see the [
 | HTTP Sync | Full | Via browser `fetch()` API |
 | Permissions | Partial | Via `navigator.permissions.query()` |
 | Connectivity | Full | Via `navigator.onLine` events |
+| Mock Detection | Passthrough | `Location.isMock` always `false` — browser API has no spoof detection |
 | Headless / Background | No | Not possible on web |
 | System Settings | No | Cannot open OS settings from browser |
 

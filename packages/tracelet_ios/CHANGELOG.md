@@ -1,3 +1,8 @@
+## 0.7.1
+
+* **DOCS**: Add mock location detection feature to README with platform-specific detection details.
+* **CHORE**: Bump `tracelet_platform_interface` to ^0.7.1.
+
 ## 0.7.0
 
 * **FEAT**: Mock location detection — `isLocationMock()` uses `CLLocationSourceInformation` (iOS 15+) to detect simulated locations.

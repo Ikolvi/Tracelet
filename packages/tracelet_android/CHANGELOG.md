@@ -1,3 +1,8 @@
+## 0.7.1
+
+* **DOCS**: Add mock location detection feature to README with platform-specific detection details.
+* **CHORE**: Bump `tracelet_platform_interface` to ^0.7.1.
+
 ## 0.7.0
 
 * **FEAT**: Mock location detection — `isLocationMock()` uses `Location.isMock()` (API 31+) and `isFromMockProvider()` (API 18+) to flag spoofed GPS.

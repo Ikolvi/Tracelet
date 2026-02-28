@@ -1,3 +1,7 @@
+## 0.7.1
+
+* **DOCS**: Update README with shared Dart algorithms description and mock detection reference.
+
 ## 0.7.0
 
 * **FEAT**: `MockDetectionLevel` enum — `disabled`, `basic`, `heuristic` detection depth for mock/spoofed GPS.

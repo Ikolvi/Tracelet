@@ -1,3 +1,9 @@
+## 0.7.1
+
+* **DOCS**: Add mock location detection feature to README with documentation links and feature description.
+* **DOCS**: Add Mock Detection guide to documentation table.
+* **CHORE**: Bump all platform dependencies to ^0.7.1.
+
 ## 0.7.0
 
 * **FEAT**: Mock location detection & prevention — detect and reject spoofed GPS locations across Android, iOS, and Web.
