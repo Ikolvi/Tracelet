@@ -414,6 +414,7 @@ class WebLocationEngine {
       'isMoving': _isMoving,
       'uuid': generateUuid(),
       'odometer': _odometer,
+      'mock': false, // Web Geolocation API has no mock detection capability.
       'activity': <String, Object?>{'type': 'unknown', 'confidence': 'medium'},
       'battery': <String, Object?>{'level': -1.0, 'isCharging': false},
       'extras': <String, Object?>{},
@@ -439,6 +440,7 @@ class WebLocationEngine {
       'isMoving': false,
       'uuid': generateUuid(),
       'odometer': _odometer,
+      'mock': false,
       'activity': <String, Object?>{'type': 'unknown', 'confidence': 'medium'},
       'battery': <String, Object?>{'level': -1.0, 'isCharging': false},
       'extras': <String, Object?>{},

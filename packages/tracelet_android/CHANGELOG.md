@@ -1,3 +1,12 @@
+## 0.7.0
+
+* **FEAT**: Mock location detection — `isLocationMock()` uses `Location.isMock()` (API 31+) and `isFromMockProvider()` (API 18+) to flag spoofed GPS.
+* **FEAT**: Heuristic mock detection (level 2) — satellite count check (< 4 = suspicious) and `SystemClock.elapsedRealtimeNanos` drift detection (> 5s = suspicious).
+* **FEAT**: `enrichLocation()` includes `mock` flag and `mockHeuristics` metadata map (satellites, elapsedRealtimeDriftMs, platformFlagMock).
+* **FEAT**: Native-level mock rejection — when `rejectMockLocations` is enabled, drops mocked locations before sending to Dart and fires `ProviderChangeEvent.mockLocationsDetected`.
+* **FEAT**: `ConfigManager.getMockDetectionLevel()` and `getRejectMockLocations()` getters.
+* **CHORE**: Bump `tracelet_platform_interface` to ^0.7.0.
+
 ## 0.6.1
 
 * **REFACTOR**: Remove 6 dead `ConfigManager` constants and methods for filtering migrated to Dart in 0.6.0 (`getDisableElasticity`, `getElasticityMultiplier`, `getFilterPolicy`, `getMaxImpliedSpeed`, `getTrackingAccuracyThreshold`, `getUseKalmanFilter`).

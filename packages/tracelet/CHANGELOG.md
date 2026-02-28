@@ -1,3 +1,16 @@
+## 0.7.0
+
+* **FEAT**: Mock location detection & prevention — detect and reject spoofed GPS locations across Android, iOS, and Web.
+* **FEAT**: `Location.isMock` field — boolean flag indicating if a location came from a mock provider.
+* **FEAT**: `Location.mockHeuristics` field — `MockHeuristics` metadata (satellite count, elapsed realtime drift, timestamp drift, platform flag).
+* **FEAT**: `LocationFilter.rejectMockLocations` config — block spoofed locations from reaching the app.
+* **FEAT**: `LocationFilter.mockDetectionLevel` config — `MockDetectionLevel` enum (`disabled`, `basic`, `heuristic`) for configurable detection depth.
+* **FEAT**: `ProviderChangeEvent.mockLocationsDetected` — real-time alert when mock locations are detected.
+* **FEAT**: Re-export `MockDetectionLevel` from `tracelet.dart` barrel file.
+* **DOCS**: Comprehensive [MOCK-DETECTION.md](help/MOCK-DETECTION.md) guide.
+* **DOCS**: Updated [CONFIGURATION.md](help/CONFIGURATION.md) with mock detection options.
+* **CHORE**: Bump all platform dependencies to ^0.7.0.
+
 ## 0.6.1
 
 * **CHORE**: Bump all platform dependencies to ^0.6.1.

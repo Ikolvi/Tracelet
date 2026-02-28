@@ -1,7 +1,7 @@
 # Tracelet — Missing Features Plan
 
 > Compared against [`flutter_background_geolocation`](https://pub.dev/packages/flutter_background_geolocation) (transistorsoft).
-> **Last updated**: February 2026 — all 13 features are now ✅ fully implemented (Dart + Android + iOS).
+> **Last updated**: July 2025 — all 14 features are now ✅ fully implemented (Dart + Android + iOS + Web).
 
 ---
 
@@ -143,6 +143,19 @@
 | 11 | `enableTimestampMeta` | ✅ Done |
 | 12 | Geofence High Accuracy | ✅ Done |
 | 13 | `removeListeners()` | ✅ Done |
+| 14 | Mock Location Detection | ✅ Done |
+
+## 14. Mock Location Detection & Prevention ✅
+
+**What**: Detect and reject spoofed/mock GPS locations. Three detection levels: `disabled` (no checks), `basic` (platform API flags only), `heuristic` (platform flags + satellite count, elapsed realtime drift, timestamp monotonicity).
+
+**Dart model**: `LocationFilter.rejectMockLocations`, `LocationFilter.mockDetectionLevel` (`MockDetectionLevel` enum: `disabled`, `basic`, `heuristic`), `Location.isMock`, `Location.mockHeuristics` (`MockHeuristics` class), `ProviderChangeEvent.mockLocationsDetected` — ✅ done.
+
+**Native**: ✅ Android — `Location.isMock()` (API 31+) / `isFromMockProvider()` (API 18+), satellite count check, `SystemClock.elapsedRealtimeNanos` drift detection. iOS — `CLLocationSourceInformation` (iOS 15+), timestamp drift heuristic. Web — always `mock: false` (browser API has no detection). Dart `LocationProcessor` — timestamp monotonicity check (all platforms).
+
+**Docs**: ✅ Comprehensive [MOCK-DETECTION.md](help/MOCK-DETECTION.md) guide + [CONFIGURATION.md](help/CONFIGURATION.md) updated.
+
+---
 
 ### Remaining P3 Items (deferred)
 

@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
+import android.os.Build
 import android.os.Looper
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.*
@@ -59,6 +60,9 @@ class LocationEngine(
     // watchPosition watchers: watchId -> LocationCallback
     private val watchers = ConcurrentHashMap<Int, LocationCallback>()
     private var nextWatchId = 1
+
+    /** Whether a mock location warning has already been fired for this session. */
+    private var mockLocationWarningFired = false
 
     /** Whether continuous tracking is active. */
     val isTracking: Boolean get() = trackingCallback != null
@@ -396,6 +400,18 @@ class LocationEngine(
     // =========================================================================
 
     private fun onLocationReceived(location: Location, event: String) {
+        // --- Mock location rejection (defense-in-depth) ---
+        if (config.getRejectMockLocations() && isLocationMock(location)) {
+            // Fire a provider change event to notify Dart that mock was detected.
+            if (!mockLocationWarningFired) {
+                mockLocationWarningFired = true
+                val providerState = buildProviderState().toMutableMap()
+                providerState["mockLocationsDetected"] = true
+                events.sendProviderChange(providerState)
+            }
+            return // Drop the mock location entirely.
+        }
+
         // Calculate distance from last location for odometer
         val distance = lastLocation?.distanceTo(location)?.toDouble() ?: 0.0
 
@@ -459,12 +475,29 @@ class LocationEngine(
         // Use provided effective speed, or fall back to platform speed.
         val effectiveSpeed = speed ?: location.speed.toDouble()
 
+        val mock = isLocationMock(location)
+
+        // Build optional heuristic metadata when detection level is 'heuristic'.
+        val mockHeuristics: Map<String, Any?>? = if (config.getMockDetectionLevel() >= 2) {
+            val extras = location.extras
+            val satellites = extras?.getInt("satellites", -1) ?: -1
+            val driftNanos = SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos
+            val driftMs = driftNanos / 1_000_000.0
+            mapOf(
+                "satellites" to satellites,
+                "elapsedRealtimeDriftMs" to driftMs,
+                "platformFlagMock" to if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) location.isMock else location.isFromMockProvider,
+            )
+        } else null
+
         val result = mutableMapOf<String, Any?>(
             "uuid" to UUID.randomUUID().toString(),
             "timestamp" to timestamp,
             "isMoving" to state.isMoving,
             "odometer" to state.odometer,
             "event" to event,
+            "mock" to mock,
+            "mockHeuristics" to mockHeuristics,
             "coords" to mapOf(
                 "latitude" to location.latitude,
                 "longitude" to location.longitude,
@@ -640,5 +673,63 @@ class LocationEngine(
         if (maxDays > 0) db.pruneOldLocations(maxDays)
         val maxRecords = config.getMaxRecordsToPersist()
         if (maxRecords > 0) db.enforceMaxRecords(maxRecords)
+    }
+
+    /**
+     * Detects whether a [Location] was produced by a mock/spoofing provider.
+     *
+     * Detection level is controlled by `mockDetectionLevel` in config:
+     * - **0 (disabled)**: Always returns `false`.
+     * - **1 (basic)**: Uses `Location.isMock()` (API 31+) or
+     *   `Location.isFromMockProvider()` (API 18–30).
+     * - **2 (heuristic)**: Basic + satellite count check + elapsed realtime
+     *   drift check.
+     *
+     * **Note:** On rooted devices with Xposed/Magisk modules, platform flags
+     * can be stripped. Heuristic checks partially compensate for this.
+     */
+    @Suppress("DEPRECATION")
+    private fun isLocationMock(location: Location): Boolean {
+        val level = config.getMockDetectionLevel()
+        if (level == 0) return false
+
+        // Level 1+ (basic): Platform API flag
+        val platformFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            location.isMock
+        } else {
+            location.isFromMockProvider
+        }
+        if (platformFlag) return true
+        if (level < 2) return false
+
+        // Level 2 (heuristic): Additional native-side checks
+
+        // 1. Satellite count: real GPS fixes report 4–30 satellites.
+        //    Mock locations from Fake GPS apps typically report 0.
+        val extras = location.extras
+        if (extras != null) {
+            val satellites = extras.getInt("satellites", -1)
+            // Only flag if satellites is explicitly 0 (not missing/-1) and
+            // accuracy suggests an outdoor fix (< 50m).
+            if (satellites == 0 && location.accuracy < 50.0) {
+                return true
+            }
+        }
+
+        // 2. Elapsed realtime drift: Compare the location's elapsedRealtimeNanos
+        //    (set by GPS hardware using the monotonic clock) against the current
+        //    SystemClock.elapsedRealtimeNanos(). A large discrepancy means the
+        //    location was not produced by real hardware at the claimed time.
+        val locationElapsedNanos = location.elapsedRealtimeNanos
+        val currentElapsedNanos = SystemClock.elapsedRealtimeNanos()
+        // Location should be recent — within 10 seconds. Old or future values
+        // indicate replay or time manipulation.
+        val driftNanos = currentElapsedNanos - locationElapsedNanos
+        val driftSeconds = driftNanos / 1_000_000_000.0
+        if (driftSeconds < -1.0 || driftSeconds > 10.0) {
+            return true
+        }
+
+        return false
     }
 }

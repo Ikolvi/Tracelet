@@ -387,5 +387,224 @@ void main() {
       // 15m > 10m → accepted.
       expect(result.accepted, isTrue);
     });
+
+    // ========================================================================
+    // Mock location filter
+    // ========================================================================
+
+    test('mock filter — disabled by default, mock locations pass through', () {
+      final p = LocationProcessor(distanceFilter: 0.0);
+
+      final result = p.process(
+        latitude: 37.4220,
+        longitude: -122.0841,
+        accuracy: 10.0,
+        speed: 0.0,
+        timestampMs: 1000000,
+        isMock: true,
+      );
+
+      expect(result.accepted, isTrue);
+    });
+
+    test('mock filter — rejects mock location when enabled', () {
+      final p = LocationProcessor(
+        distanceFilter: 0.0,
+        rejectMockLocations: true,
+      );
+
+      final result = p.process(
+        latitude: 37.4220,
+        longitude: -122.0841,
+        accuracy: 10.0,
+        speed: 0.0,
+        timestampMs: 1000000,
+        isMock: true,
+      );
+
+      expect(result.accepted, isFalse);
+      expect(result.reason, 'MOCK_LOCATION');
+      expect(result.isError, isFalse);
+    });
+
+    test('mock filter — discard policy returns error for mock location', () {
+      final p = LocationProcessor(
+        distanceFilter: 0.0,
+        rejectMockLocations: true,
+        filterPolicy: 2, // discard
+      );
+
+      final result = p.process(
+        latitude: 37.4220,
+        longitude: -122.0841,
+        accuracy: 10.0,
+        speed: 0.0,
+        timestampMs: 1000000,
+        isMock: true,
+      );
+
+      expect(result.accepted, isFalse);
+      expect(result.reason, 'MOCK_LOCATION');
+      expect(result.isError, isTrue);
+      expect(result.errorMessage, contains('mock'));
+    });
+
+    test('mock filter — accepts real location when enabled', () {
+      final p = LocationProcessor(
+        distanceFilter: 0.0,
+        rejectMockLocations: true,
+      );
+
+      final result = p.process(
+        latitude: 37.4220,
+        longitude: -122.0841,
+        accuracy: 10.0,
+        speed: 0.0,
+        timestampMs: 1000000,
+        isMock: false, // Real location
+      );
+
+      expect(result.accepted, isTrue);
+    });
+
+    test('copyWith preserves rejectMockLocations', () {
+      final p = LocationProcessor(
+        distanceFilter: 10.0,
+        rejectMockLocations: true,
+      );
+
+      final p2 = p.copyWith(distanceFilter: 50.0);
+      expect(p2.rejectMockLocations, isTrue);
+    });
+
+    // ─── P2 Heuristic tests ────────────────────────────────────────────────
+
+    test(
+      'timestamp monotonicity — rejects backward timestamp at heuristic level',
+      () {
+        final p = LocationProcessor(
+          distanceFilter: 0.0,
+          rejectMockLocations: true,
+          mockDetectionLevel: 2, // heuristic
+        );
+
+        // First location — accepted.
+        final r1 = p.process(
+          latitude: 37.4220,
+          longitude: -122.0841,
+          accuracy: 10.0,
+          speed: 1.0,
+          timestampMs: 2000000,
+        );
+        expect(r1.accepted, isTrue);
+
+        // Second location with earlier timestamp — should be rejected.
+        final r2 = p.process(
+          latitude: 37.4230,
+          longitude: -122.0841,
+          accuracy: 10.0,
+          speed: 1.0,
+          timestampMs: 1000000, // 1 second BEFORE the first
+        );
+        expect(r2.accepted, isFalse);
+        expect(r2.reason, 'MOCK_LOCATION_TIMESTAMP');
+      },
+    );
+
+    test('timestamp monotonicity — not checked at basic level', () {
+      final p = LocationProcessor(
+        distanceFilter: 0.0,
+        rejectMockLocations: true,
+        mockDetectionLevel: 1, // basic
+      );
+
+      // First location — accepted.
+      p.process(
+        latitude: 37.4220,
+        longitude: -122.0841,
+        accuracy: 10.0,
+        speed: 1.0,
+        timestampMs: 2000000,
+      );
+
+      // Second location with earlier timestamp — NOT rejected at basic level.
+      final r2 = p.process(
+        latitude: 37.4230,
+        longitude: -122.0841,
+        accuracy: 10.0,
+        speed: 1.0,
+        timestampMs: 1000000,
+      );
+      expect(r2.accepted, isTrue);
+    });
+
+    test(
+      'timestamp monotonicity — not checked when rejectMockLocations is false',
+      () {
+        final p = LocationProcessor(
+          distanceFilter: 0.0,
+          rejectMockLocations: false,
+          mockDetectionLevel: 2, // heuristic but mock rejection disabled
+        );
+
+        p.process(
+          latitude: 37.4220,
+          longitude: -122.0841,
+          accuracy: 10.0,
+          speed: 1.0,
+          timestampMs: 2000000,
+        );
+
+        final r2 = p.process(
+          latitude: 37.4230,
+          longitude: -122.0841,
+          accuracy: 10.0,
+          speed: 1.0,
+          timestampMs: 1000000,
+        );
+        expect(r2.accepted, isTrue);
+      },
+    );
+
+    test('timestamp monotonicity — discard policy returns error', () {
+      final p = LocationProcessor(
+        distanceFilter: 0.0,
+        rejectMockLocations: true,
+        mockDetectionLevel: 2,
+        filterPolicy: 2, // discard
+      );
+
+      p.process(
+        latitude: 37.4220,
+        longitude: -122.0841,
+        accuracy: 10.0,
+        speed: 1.0,
+        timestampMs: 2000000,
+      );
+
+      final r2 = p.process(
+        latitude: 37.4230,
+        longitude: -122.0841,
+        accuracy: 10.0,
+        speed: 1.0,
+        timestampMs: 1000000,
+      );
+      expect(r2.accepted, isFalse);
+      expect(r2.reason, 'MOCK_LOCATION_TIMESTAMP');
+      expect(r2.isError, isTrue);
+      expect(r2.errorMessage, contains('non-monotonic'));
+    });
+
+    test('copyWith preserves mockDetectionLevel', () {
+      final p = LocationProcessor(distanceFilter: 10.0, mockDetectionLevel: 2);
+
+      final p2 = p.copyWith(distanceFilter: 50.0);
+      expect(p2.mockDetectionLevel, 2);
+    });
+
+    test('default mockDetectionLevel is basic (1)', () {
+      final p = LocationProcessor();
+      expect(p.mockDetectionLevel, 1);
+    });
   });
 }

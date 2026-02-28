@@ -463,6 +463,8 @@ class LocationFilter {
     this.odometerAccuracyThreshold = 0,
     this.trackingAccuracyThreshold = 0,
     this.useKalmanFilter = false,
+    this.rejectMockLocations = false,
+    this.mockDetectionLevel = MockDetectionLevel.disabled,
   });
 
   /// How the filter handles rejected locations.
@@ -498,6 +500,39 @@ class LocationFilter {
   /// Defaults to `false`.
   final bool useKalmanFilter;
 
+  /// Reject locations flagged as mock/spoofed by the native platform.
+  ///
+  /// When `true`, locations where `Location.isMock` is `true` are
+  /// automatically dropped. On Android, this uses
+  /// `Location.isFromMockProvider()` / `Location.isMock()`. On iOS 15+, this
+  /// uses `CLLocation.sourceInformation?.isSimulatedBySoftware`.
+  ///
+  /// Mock locations are rejected at both the native level (before
+  /// transmission to Dart) and in the Dart [LocationProcessor] as a
+  /// defense-in-depth measure.
+  ///
+  /// **Note:** iOS < 15 and Web have no mock detection API, so locations
+  /// from those platforms always pass this filter.
+  ///
+  /// Defaults to `false`.
+  final bool rejectMockLocations;
+
+  /// Controls the aggressiveness of mock/spoof detection.
+  ///
+  /// - [MockDetectionLevel.disabled]: No detection (default). `isMock` is
+  ///   always `false`.
+  /// - [MockDetectionLevel.basic]: Uses platform API flags only
+  ///   (`Location.isMock()` on Android, `sourceInformation` on iOS 15+).
+  /// - [MockDetectionLevel.heuristic]: Basic + satellite count check,
+  ///   elapsed-realtime drift (Android), and timestamp monotonicity (all
+  ///   platforms).
+  ///
+  /// This controls *what gets flagged*. To *drop* flagged locations, also
+  /// set [rejectMockLocations] to `true`.
+  ///
+  /// Defaults to [MockDetectionLevel.disabled].
+  final MockDetectionLevel mockDetectionLevel;
+
   /// Creates a [LocationFilter] from a map.
   factory LocationFilter.fromMap(Map<String, Object?> map) {
     return LocationFilter(
@@ -516,6 +551,15 @@ class LocationFilter {
         fallback: 0,
       ),
       useKalmanFilter: ensureBool(map['useKalmanFilter'], fallback: false),
+      rejectMockLocations: ensureBool(
+        map['rejectMockLocations'],
+        fallback: false,
+      ),
+      mockDetectionLevel:
+          MockDetectionLevel.values[ensureInt(
+            map['mockDetectionLevel'],
+            fallback: 0,
+          ).clamp(0, MockDetectionLevel.values.length - 1)],
     );
   }
 
@@ -527,6 +571,8 @@ class LocationFilter {
       'odometerAccuracyThreshold': odometerAccuracyThreshold,
       'trackingAccuracyThreshold': trackingAccuracyThreshold,
       'useKalmanFilter': useKalmanFilter,
+      'rejectMockLocations': rejectMockLocations,
+      'mockDetectionLevel': mockDetectionLevel.index,
     };
   }
 
@@ -535,7 +581,9 @@ class LocationFilter {
       'LocationFilter(policy: $policy, maxImpliedSpeed: $maxImpliedSpeed, '
       'odometerAccuracyThreshold: $odometerAccuracyThreshold, '
       'trackingAccuracyThreshold: $trackingAccuracyThreshold, '
-      'useKalmanFilter: $useKalmanFilter)';
+      'useKalmanFilter: $useKalmanFilter, '
+      'rejectMockLocations: $rejectMockLocations, '
+      'mockDetectionLevel: $mockDetectionLevel)';
 
   @override
   bool operator ==(Object other) =>
@@ -546,7 +594,9 @@ class LocationFilter {
           maxImpliedSpeed == other.maxImpliedSpeed &&
           odometerAccuracyThreshold == other.odometerAccuracyThreshold &&
           trackingAccuracyThreshold == other.trackingAccuracyThreshold &&
-          useKalmanFilter == other.useKalmanFilter;
+          useKalmanFilter == other.useKalmanFilter &&
+          rejectMockLocations == other.rejectMockLocations &&
+          mockDetectionLevel == other.mockDetectionLevel;
 
   @override
   int get hashCode => Object.hash(
@@ -555,6 +605,8 @@ class LocationFilter {
     odometerAccuracyThreshold,
     trackingAccuracyThreshold,
     useKalmanFilter,
+    rejectMockLocations,
+    mockDetectionLevel,
   );
 }
 

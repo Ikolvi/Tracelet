@@ -97,6 +97,7 @@ These features are **not available** on web. They return safe default values and
 | **Auto-stop** | `GeoConfig.stopAfterElapsedMinutes` | Ignored | Not implemented; trivial to add as a Dart timer if needed. |
 | **Geofence high-accuracy mode** | `GeoConfig.geofenceModeHighAccuracy` | Ignored | Android-only; web already runs GPS for geofence checks. |
 | **Persist mode** | `PersistenceConfig.persistMode` | Ignored | All locations are stored in memory. |
+| **Mock detection** | `LocationFilter.rejectMockLocations` / `mockDetectionLevel` | `Location.isMock` always `false` | Browser Geolocation API has no mock/spoof detection. See [MOCK-DETECTION.md](MOCK-DETECTION.md). |
 
 ## Data Persistence
 

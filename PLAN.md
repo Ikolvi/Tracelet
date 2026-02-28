@@ -741,11 +741,23 @@
 - [x] Fix broadcast stream bug — cached `.asBroadcastStream()` for stateful transformations
 - [x] 86 algorithm unit tests (46 new + 40 existing)
 
-### 7.6 macOS / Windows / Linux
+### 7.7 Mock Location Detection & Prevention
+- [x] `Location.isMock` field + serialization (all platforms)
+- [x] `LocationFilter.rejectMockLocations` config — reject spoofed GPS
+- [x] `MockDetectionLevel` enum — `disabled`, `basic`, `heuristic`
+- [x] Android: `Location.isMock()` / `isFromMockProvider()`, satellite count, elapsed realtime drift
+- [x] iOS: `CLLocationSourceInformation` (iOS 15+), timestamp drift heuristic
+- [x] Web: `mock: false` passthrough (browser API has no detection)
+- [x] Dart `LocationProcessor` — timestamp monotonicity check (all platforms)
+- [x] `Location.mockHeuristics` — `MockHeuristics` metadata model
+- [x] `ProviderChangeEvent.mockLocationsDetected` — alert for live detection
+- [x] `help/MOCK-DETECTION.md` comprehensive documentation
+
+### 7.8 macOS / Windows / Linux
 - [ ] `packages/tracelet_macos/` — CoreLocation on macOS (shared Darwin source with iOS)
 - [ ] Windows/Linux via GNSS APIs (low priority)
 
-### 7.6 analytics Dashboard
+### 7.9 Analytics Dashboard
 - [ ] Open-source companion web dashboard (Vue.js / React)
 - [ ] Real-time device tracking on map
 - [ ] Historical route playback
@@ -822,4 +834,4 @@
 ---
 
 *Last updated: 2025-07-15*
-*Status: v0.6.0 — shared Dart algorithms migration complete*
+*Status: v0.6.0 — shared Dart algorithms migration complete + mock location detection*

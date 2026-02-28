@@ -16,6 +16,7 @@ class ProviderChangeEvent {
     this.gps = false,
     this.network = false,
     this.accuracyAuthorization = AccuracyAuthorization.full,
+    this.mockLocationsDetected = false,
   });
 
   /// Whether location services are globally enabled on the device.
@@ -33,6 +34,14 @@ class ProviderChangeEvent {
   /// The accuracy authorization (iOS 14+). On Android, always [AccuracyAuthorization.full].
   final AccuracyAuthorization accuracyAuthorization;
 
+  /// Whether mock/spoofed locations have been detected.
+  ///
+  /// Fires `true` when the first mock location is encountered. On Android
+  /// this is derived from `Location.isMock()` / `isFromMockProvider()`. On
+  /// iOS 15+ from `CLLocation.sourceInformation?.isSimulatedBySoftware`.
+  /// Always `false` on Web and iOS < 15.
+  final bool mockLocationsDetected;
+
   /// Creates a [ProviderChangeEvent] from a platform map.
   factory ProviderChangeEvent.fromMap(Map<String, Object?> map) {
     return ProviderChangeEvent(
@@ -49,6 +58,10 @@ class ProviderChangeEvent {
             map['accuracyAuthorization'],
             fallback: 0,
           ).clamp(0, AccuracyAuthorization.values.length - 1)],
+      mockLocationsDetected: ensureBool(
+        map['mockLocationsDetected'],
+        fallback: false,
+      ),
     );
   }
 
@@ -60,13 +73,15 @@ class ProviderChangeEvent {
       'gps': gps,
       'network': network,
       'accuracyAuthorization': accuracyAuthorization.index,
+      'mockLocationsDetected': mockLocationsDetected,
     };
   }
 
   @override
   String toString() =>
       'ProviderChangeEvent(enabled: $enabled, status: $status, '
-      'accuracy: $accuracyAuthorization)';
+      'accuracy: $accuracyAuthorization, '
+      'mockLocationsDetected: $mockLocationsDetected)';
 
   @override
   bool operator ==(Object other) =>

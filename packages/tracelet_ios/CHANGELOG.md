@@ -1,3 +1,12 @@
+## 0.7.0
+
+* **FEAT**: Mock location detection — `isLocationMock()` uses `CLLocationSourceInformation` (iOS 15+) to detect simulated locations.
+* **FEAT**: Heuristic mock detection (level 2) — timestamp drift check (> 10s between location timestamp and system time = suspicious).
+* **FEAT**: `buildLocationMap()` includes `mock` flag and `mockHeuristics` metadata map (timestampDriftMs, platformFlagMock).
+* **FEAT**: Native-level mock rejection — when `rejectMockLocations` is enabled, drops mocked locations before sending to Dart and fires `ProviderChangeEvent.mockLocationsDetected`.
+* **FEAT**: `ConfigManager.getMockDetectionLevel()` and `getRejectMockLocations()` getters.
+* **CHORE**: Bump `tracelet_platform_interface` to ^0.7.0.
+
 ## 0.6.1
 
 * **REFACTOR**: Remove 6 dead `ConfigManager` methods for filtering migrated to Dart in 0.6.0 (`getDisableElasticity`, `getElasticityMultiplier`, `getFilterPolicy`, `getMaxImpliedSpeed`, `getTrackingAccuracyThreshold`, `getUseKalmanFilter`).

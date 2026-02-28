@@ -110,6 +110,8 @@ class LocationProcessor {
     this.filterPolicy = 0,
     this.maxImpliedSpeed = 0,
     this.odometerAccuracyThreshold = 0,
+    this.rejectMockLocations = false,
+    this.mockDetectionLevel = 1,
   });
 
   /// Base distance filter in meters.
@@ -147,6 +149,20 @@ class LocationProcessor {
   /// add to the odometer. `0` disables the threshold (all count).
   final int odometerAccuracyThreshold;
 
+  /// When `true`, locations flagged as mock/spoofed (`isMock == true`) are
+  /// automatically rejected. The rejection behavior follows [filterPolicy]:
+  /// - `0` / `1`: silent drop.
+  /// - `2`: drop and fire an error event.
+  final bool rejectMockLocations;
+
+  /// Mock detection level.
+  ///
+  /// - `0` (disabled): No mock detection.
+  /// - `1` (basic): Only platform-flag-based detection.
+  /// - `2` (heuristic): Platform flags + native heuristics (satellite count,
+  ///   elapsed realtime drift) + Dart-side timestamp monotonicity check.
+  final int mockDetectionLevel;
+
   // ─────────────────────────────────────────────────────────────────────────
   // Internal state
   // ─────────────────────────────────────────────────────────────────────────
@@ -174,7 +190,37 @@ class LocationProcessor {
     required double accuracy,
     required double speed,
     required int timestampMs,
+    bool isMock = false,
   }) {
+    // ── Mock location filter ──────────────────────────────────────────────
+    if (rejectMockLocations && isMock) {
+      if (filterPolicy == 2) {
+        return LocationProcessorResult.error(
+          'MOCK_LOCATION',
+          'Location rejected: flagged as mock/spoofed by the platform',
+        );
+      }
+      return LocationProcessorResult.filtered('MOCK_LOCATION');
+    }
+
+    // ── Timestamp monotonicity (heuristic level) ──────────────────────────
+    // When mockDetectionLevel >= 2 and we have a previous timestamp, reject
+    // locations whose timestamp goes backwards. Real GPS hardware never
+    // produces decreasing timestamps; replayed / injected locations can.
+    if (mockDetectionLevel >= 2 &&
+        rejectMockLocations &&
+        _lastTimestampMs > 0 &&
+        timestampMs < _lastTimestampMs) {
+      if (filterPolicy == 2) {
+        return LocationProcessorResult.error(
+          'MOCK_LOCATION_TIMESTAMP',
+          'Location rejected: timestamp $timestampMs is before previous '
+              '$_lastTimestampMs (non-monotonic — possible replay attack)',
+        );
+      }
+      return LocationProcessorResult.filtered('MOCK_LOCATION_TIMESTAMP');
+    }
+
     // ── Distance & speed computation ──────────────────────────────────────
     double distance = 0;
     double timeDelta = 0;
@@ -282,6 +328,8 @@ class LocationProcessor {
     int? filterPolicy,
     int? maxImpliedSpeed,
     int? odometerAccuracyThreshold,
+    bool? rejectMockLocations,
+    int? mockDetectionLevel,
   }) {
     final copy = LocationProcessor(
       distanceFilter: distanceFilter ?? this.distanceFilter,
@@ -293,6 +341,8 @@ class LocationProcessor {
       maxImpliedSpeed: maxImpliedSpeed ?? this.maxImpliedSpeed,
       odometerAccuracyThreshold:
           odometerAccuracyThreshold ?? this.odometerAccuracyThreshold,
+      rejectMockLocations: rejectMockLocations ?? this.rejectMockLocations,
+      mockDetectionLevel: mockDetectionLevel ?? this.mockDetectionLevel,
     );
     // Preserve internal state.
     copy._lastLatitude = _lastLatitude;

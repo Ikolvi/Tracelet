@@ -201,6 +201,65 @@ void main() {
       const b = MotionConfig(stopDetectionDelay: 10);
       expect(a, isNot(equals(b)));
     });
+
+    test('LocationFilter.rejectMockLocations defaults to false', () {
+      const filter = LocationFilter();
+      expect(filter.rejectMockLocations, false);
+    });
+
+    test('LocationFilter.rejectMockLocations round-trip serialization', () {
+      const filter = LocationFilter(rejectMockLocations: true);
+      final map = filter.toMap();
+      expect(map['rejectMockLocations'], true);
+
+      final restored = LocationFilter.fromMap(map);
+      expect(restored.rejectMockLocations, true);
+    });
+
+    test('LocationFilter.rejectMockLocations affects equality', () {
+      const a = LocationFilter(rejectMockLocations: false);
+      const b = LocationFilter(rejectMockLocations: true);
+      expect(a, isNot(equals(b)));
+    });
+
+    test(
+      'LocationFilter.rejectMockLocations from empty map defaults false',
+      () {
+        final filter = LocationFilter.fromMap(const {});
+        expect(filter.rejectMockLocations, false);
+      },
+    );
+
+    test('LocationFilter.mockDetectionLevel defaults to disabled', () {
+      const filter = LocationFilter();
+      expect(filter.mockDetectionLevel, MockDetectionLevel.disabled);
+    });
+
+    test('LocationFilter.mockDetectionLevel round-trip serialization', () {
+      const filter = LocationFilter(
+        mockDetectionLevel: MockDetectionLevel.heuristic,
+      );
+      final map = filter.toMap();
+      expect(map['mockDetectionLevel'], 2); // heuristic == index 2
+      final restored = LocationFilter.fromMap(map);
+      expect(restored.mockDetectionLevel, MockDetectionLevel.heuristic);
+    });
+
+    test('LocationFilter.mockDetectionLevel affects equality', () {
+      const a = LocationFilter(mockDetectionLevel: MockDetectionLevel.basic);
+      const b = LocationFilter(
+        mockDetectionLevel: MockDetectionLevel.heuristic,
+      );
+      expect(a, isNot(equals(b)));
+    });
+
+    test(
+      'LocationFilter.mockDetectionLevel from empty map defaults disabled',
+      () {
+        final filter = LocationFilter.fromMap(const {});
+        expect(filter.mockDetectionLevel, MockDetectionLevel.disabled);
+      },
+    );
   });
 
   // ==========================================================================
@@ -298,6 +357,144 @@ void main() {
       expect(loc.coords.speedAccuracy, 1.5);
       expect(loc.coords.headingAccuracy, 2.0);
       expect(loc.battery.isCharging, false);
+    });
+
+    test('isMock defaults to false', () {
+      final loc = Location.fromMap(const {
+        'uuid': 'mock-default',
+        'timestamp': '2024-01-01T00:00:00Z',
+        'is_moving': false,
+        'odometer': 0.0,
+        'coords': {'latitude': 0.0, 'longitude': 0.0},
+      });
+      expect(loc.isMock, false);
+    });
+
+    test('isMock parsed from mock key', () {
+      final loc = Location.fromMap(const {
+        'uuid': 'mock-true',
+        'timestamp': '2024-01-01T00:00:00Z',
+        'is_moving': false,
+        'odometer': 0.0,
+        'mock': true,
+        'coords': {'latitude': 0.0, 'longitude': 0.0},
+      });
+      expect(loc.isMock, true);
+    });
+
+    test('isMock parsed from is_mock key', () {
+      final loc = Location.fromMap(const {
+        'uuid': 'mock-snake',
+        'timestamp': '2024-01-01T00:00:00Z',
+        'is_moving': false,
+        'odometer': 0.0,
+        'is_mock': true,
+        'coords': {'latitude': 0.0, 'longitude': 0.0},
+      });
+      expect(loc.isMock, true);
+    });
+
+    test('isMock round-trips through toMap/fromMap', () {
+      final original = Location.fromMap(const {
+        'uuid': 'mock-rt',
+        'timestamp': '2024-01-01T00:00:00Z',
+        'is_moving': false,
+        'odometer': 0.0,
+        'mock': true,
+        'coords': {'latitude': 0.0, 'longitude': 0.0},
+      });
+      expect(original.isMock, true);
+
+      final map = original.toMap();
+      expect(map['is_mock'], true);
+
+      final restored = Location.fromMap(map);
+      expect(restored.isMock, true);
+    });
+
+    test('mockHeuristics defaults to null', () {
+      final loc = Location.fromMap(const {
+        'uuid': 'test-uuid',
+        'timestamp': '2024-01-01T00:00:00.000Z',
+        'coords': {'latitude': 37.0, 'longitude': -122.0},
+      });
+      expect(loc.mockHeuristics, isNull);
+    });
+
+    test('mockHeuristics parsed from Android heuristics map', () {
+      final loc = Location.fromMap(const {
+        'uuid': 'test-uuid',
+        'timestamp': '2024-01-01T00:00:00.000Z',
+        'coords': {'latitude': 37.0, 'longitude': -122.0},
+        'mockHeuristics': {
+          'satellites': 0,
+          'elapsedRealtimeDriftMs': 15000.0,
+          'platformFlagMock': true,
+        },
+      });
+      expect(loc.mockHeuristics, isNotNull);
+      expect(loc.mockHeuristics!.satellites, 0);
+      expect(loc.mockHeuristics!.elapsedRealtimeDriftMs, 15000.0);
+      expect(loc.mockHeuristics!.platformFlagMock, true);
+      expect(loc.mockHeuristics!.timestampDriftMs, isNull);
+    });
+
+    test('mockHeuristics parsed from iOS heuristics map', () {
+      final loc = Location.fromMap(const {
+        'uuid': 'test-uuid',
+        'timestamp': '2024-01-01T00:00:00.000Z',
+        'coords': {'latitude': 37.0, 'longitude': -122.0},
+        'mockHeuristics': {
+          'timestampDriftMs': 500.0,
+          'platformFlagMock': false,
+        },
+      });
+      expect(loc.mockHeuristics, isNotNull);
+      expect(loc.mockHeuristics!.timestampDriftMs, 500.0);
+      expect(loc.mockHeuristics!.platformFlagMock, false);
+      expect(loc.mockHeuristics!.satellites, isNull);
+      expect(loc.mockHeuristics!.elapsedRealtimeDriftMs, isNull);
+    });
+
+    test('mockHeuristics round-trips through toMap/fromMap', () {
+      const original = Location(
+        coords: Coords(latitude: 37.0, longitude: -122.0),
+        timestamp: '2024-01-01T00:00:00.000Z',
+        isMoving: false,
+        uuid: 'test-uuid',
+        odometer: 0,
+        isMock: true,
+        mockHeuristics: MockHeuristics(
+          satellites: 5,
+          elapsedRealtimeDriftMs: 200.0,
+          platformFlagMock: false,
+        ),
+      );
+      final map = original.toMap();
+      expect(map['mockHeuristics'], isNotNull);
+
+      final restored = Location.fromMap(map);
+      expect(restored.mockHeuristics, isNotNull);
+      expect(restored.mockHeuristics!.satellites, 5);
+      expect(restored.mockHeuristics!.elapsedRealtimeDriftMs, 200.0);
+      expect(restored.mockHeuristics!.platformFlagMock, false);
+    });
+
+    test('MockHeuristics equality', () {
+      const a = MockHeuristics(satellites: 5, platformFlagMock: true);
+      const b = MockHeuristics(satellites: 5, platformFlagMock: true);
+      const c = MockHeuristics(satellites: 0, platformFlagMock: true);
+      expect(a, equals(b));
+      expect(a, isNot(equals(c)));
+    });
+
+    test('MockHeuristics toMap omits null fields', () {
+      const h = MockHeuristics(satellites: 10);
+      final map = h.toMap();
+      expect(map.containsKey('satellites'), isTrue);
+      expect(map.containsKey('elapsedRealtimeDriftMs'), isFalse);
+      expect(map.containsKey('timestampDriftMs'), isFalse);
+      expect(map.containsKey('platformFlagMock'), isFalse);
     });
   });
 
@@ -546,6 +743,36 @@ void main() {
       expect(event.status, AuthorizationStatus.always);
       expect(event.gps, true);
       expect(event.accuracyAuthorization, AccuracyAuthorization.full);
+    });
+
+    test('mockLocationsDetected defaults to false', () {
+      final event = ProviderChangeEvent.fromMap(const {
+        'enabled': true,
+        'status': 3,
+      });
+      expect(event.mockLocationsDetected, false);
+    });
+
+    test('mockLocationsDetected parsed when true', () {
+      final event = ProviderChangeEvent.fromMap(const {
+        'enabled': true,
+        'status': 3,
+        'mockLocationsDetected': true,
+      });
+      expect(event.mockLocationsDetected, true);
+    });
+
+    test('mockLocationsDetected round-trips', () {
+      final event = ProviderChangeEvent.fromMap(const {
+        'enabled': true,
+        'status': 3,
+        'mockLocationsDetected': true,
+      });
+      final map = event.toMap();
+      expect(map['mockLocationsDetected'], true);
+
+      final restored = ProviderChangeEvent.fromMap(map);
+      expect(restored.mockLocationsDetected, true);
     });
   });
 

@@ -109,11 +109,30 @@ class _DashboardPageState extends State<DashboardPage> {
     _subs.add(
       tl.Tracelet.onLocation((loc) {
         setState(() => _lastLocation = loc);
+        final mockTag = loc.isMock ? ' [MOCK]' : '';
+        var heuristicsInfo = '';
+        if (loc.mockHeuristics != null) {
+          final h = loc.mockHeuristics!;
+          final parts = <String>[];
+          if (h.satellites != null) parts.add('sat=${h.satellites}');
+          if (h.elapsedRealtimeDriftMs != null) {
+            parts.add(
+              'drift=${h.elapsedRealtimeDriftMs!.toStringAsFixed(0)}ms',
+            );
+          }
+          if (h.timestampDriftMs != null) {
+            parts.add('tsDrift=${h.timestampDriftMs!.toStringAsFixed(0)}ms');
+          }
+          if (h.platformFlagMock != null) {
+            parts.add('flag=${h.platformFlagMock}');
+          }
+          if (parts.isNotEmpty) heuristicsInfo = '  heur=[${parts.join(', ')}]';
+        }
         _addLog(
           'LOCATION',
           '${loc.coords.latitude.toStringAsFixed(6)}, ${loc.coords.longitude.toStringAsFixed(6)}  '
               'acc=${loc.coords.accuracy.toStringAsFixed(1)}m  spd=${loc.coords.speed.toStringAsFixed(1)}m/s  '
-              'odo=${loc.odometer.toStringAsFixed(0)}m',
+              'odo=${loc.odometer.toStringAsFixed(0)}m$mockTag$heuristicsInfo',
         );
       }),
     );
@@ -136,6 +155,12 @@ class _DashboardPageState extends State<DashboardPage> {
 
     _subs.add(
       tl.Tracelet.onProviderChange((evt) {
+        if (evt.mockLocationsDetected) {
+          _addLog(
+            '⚠️ MOCK',
+            'Mock location provider detected! Spoofed locations will be rejected.',
+          );
+        }
         if (_isAndroid) {
           _addLog(
             'PROVIDER',
@@ -306,6 +331,9 @@ class _DashboardPageState extends State<DashboardPage> {
               maxImpliedSpeed: 80,
               odometerAccuracyThreshold: 50,
               useKalmanFilter: true, // GPS coordinate smoothing
+              // ── Mock location detection ──
+              rejectMockLocations: true,
+              mockDetectionLevel: tl.MockDetectionLevel.heuristic,
             ),
             // iOS-specific
             activityType: _isAndroid
@@ -1904,6 +1932,19 @@ class _StatusCard extends StatelessWidget {
                   Text('Odo: ${location!.odometer.toStringAsFixed(0)}m'),
                 ],
               ),
+              if (location!.isMock)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Chip(
+                    avatar: const Icon(Icons.warning_amber, size: 18),
+                    label: const Text('MOCK LOCATION'),
+                    backgroundColor: cs.errorContainer,
+                    labelStyle: TextStyle(
+                      color: cs.onErrorContainer,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
             ],
           ],
         ),

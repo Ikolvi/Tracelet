@@ -86,6 +86,8 @@ final class ConfigManager {
 
     // LocationFilter
     func getOdometerAccuracyThreshold() -> Int { cache["odometerAccuracyThreshold"] as? Int ?? 0 }
+    func getRejectMockLocations() -> Bool { cache["rejectMockLocations"] as? Bool ?? false }
+    func getMockDetectionLevel() -> Int { cache["mockDetectionLevel"] as? Int ?? 1 }
 
     // AppConfig
     func isDebug() -> Bool { cache["debug"] as? Bool ?? false }

@@ -1,3 +1,10 @@
+## 0.7.0
+
+* **FEAT**: `MockDetectionLevel` enum — `disabled`, `basic`, `heuristic` detection depth for mock/spoofed GPS.
+* **FEAT**: `LocationProcessor` mock location filter — rejects locations with `isMock: true` when `rejectMockLocations` is enabled.
+* **FEAT**: `LocationProcessor` timestamp monotonicity check — detects backward timestamps as heuristic spoof indicator (level ≥ 2).
+* **FEAT**: `LocationProcessor.mockDetectionLevel` field + `copyWith()` support.
+
 ## 0.6.1
 
 * **REFACTOR**: Remove dead `TraceletEvents.trip` constant and `TraceletEvents.all` list — trip events now produced by Dart `TripManager`.

@@ -154,6 +154,8 @@ class Tracelet {
       maxImpliedSpeed: config.geo.filter?.maxImpliedSpeed ?? 0,
       odometerAccuracyThreshold:
           config.geo.filter?.odometerAccuracyThreshold ?? 0,
+      rejectMockLocations: config.geo.filter?.rejectMockLocations ?? false,
+      mockDetectionLevel: config.geo.filter?.mockDetectionLevel.index ?? 1,
     );
     _geofenceEvaluator.clear();
 
@@ -228,6 +230,8 @@ class Tracelet {
           maxImpliedSpeed: config.geo.filter?.maxImpliedSpeed ?? 0,
           odometerAccuracyThreshold:
               config.geo.filter?.odometerAccuracyThreshold ?? 0,
+          rejectMockLocations: config.geo.filter?.rejectMockLocations ?? false,
+          mockDetectionLevel: config.geo.filter?.mockDetectionLevel.index ?? 1,
         ) ??
         LocationProcessor(
           distanceFilter: config.geo.distanceFilter,
@@ -239,6 +243,8 @@ class Tracelet {
           maxImpliedSpeed: config.geo.filter?.maxImpliedSpeed ?? 0,
           odometerAccuracyThreshold:
               config.geo.filter?.odometerAccuracyThreshold ?? 0,
+          rejectMockLocations: config.geo.filter?.rejectMockLocations ?? false,
+          mockDetectionLevel: config.geo.filter?.mockDetectionLevel.index ?? 1,
         );
 
     final result = await _platform.setConfig(config.toMap());
@@ -1094,6 +1100,7 @@ class Tracelet {
       accuracy: location.coords.accuracy,
       speed: location.coords.speed,
       timestampMs: ts.millisecondsSinceEpoch,
+      isMock: location.isMock,
     );
 
     if (!result.accepted) return <Location>[];

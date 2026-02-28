@@ -25,6 +25,9 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// Optional callback invoked on every accepted location (for geofenceModeHighAccuracy).
     var onLocationUpdate: ((Double, Double) -> Void)?
 
+    /// Whether a mock location warning has already been fired for this session.
+    private var mockLocationWarningFired = false
+
     init(configManager: ConfigManager,
          stateManager: StateManager,
          eventDispatcher: EventDispatcher,
@@ -287,6 +290,17 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
 
+        // --- Mock location rejection (defense-in-depth) ---
+        if configManager.getRejectMockLocations() && isLocationMock(location) {
+            if !mockLocationWarningFired {
+                mockLocationWarningFired = true
+                var providerState = buildProviderState()
+                providerState["mockLocationsDetected"] = true
+                eventDispatcher.sendProviderChange(providerState)
+            }
+            return // Drop the mock location entirely.
+        }
+
         // Feed multi-sample collection if active
         let consumedBySampler = feedSample(location)
 
@@ -508,12 +522,29 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
 
         let battery = BatteryUtils.getBatteryInfo()
 
+        let mock = isLocationMock(location)
+
+        // Build optional heuristic metadata when detection level is 'heuristic'.
+        var mockHeuristics: [String: Any]? = nil
+        if configManager.getMockDetectionLevel() >= 2 {
+            let driftMs = Date().timeIntervalSince(location.timestamp) * 1000.0
+            var heuristics: [String: Any] = [
+                "timestampDriftMs": driftMs,
+            ]
+            if #available(iOS 15.0, *) {
+                heuristics["platformFlagMock"] = location.sourceInformation?.isSimulatedBySoftware ?? false
+            }
+            mockHeuristics = heuristics
+        }
+
         var result: [String: Any] = [
             "uuid": UUID().uuidString,
             "timestamp": iso8601String(from: location.timestamp),
             "coords": coords,
             "is_moving": stateManager.isMoving,
             "odometer": stateManager.odometer,
+            "mock": mock,
+            "mockHeuristics": mockHeuristics as Any,
             "activity": [
                 "type": "unknown",
                 "confidence": -1,
@@ -559,5 +590,41 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
         if maxDays > 0 { database.pruneOldLocations(maxDays: maxDays) }
         let maxRecords = configManager.getMaxRecordsToPersist()
         if maxRecords > 0 { database.enforceMaxRecords(maxRecords: maxRecords) }
+    }
+
+    /// Detects whether a CLLocation was produced by a simulated/mock provider.
+    ///
+    /// Detection level is controlled by `mockDetectionLevel` in config:
+    /// - **0 (disabled)**: Always returns `false`.
+    /// - **1 (basic)**: Uses `CLLocation.sourceInformation?.isSimulatedBySoftware`
+    ///   on iOS 15+. Returns `false` on older iOS versions.
+    /// - **2 (heuristic)**: Basic + timestamp drift check (compare location
+    ///   timestamp against current wall-clock time; large drift is suspicious).
+    ///
+    /// iOS has fewer heuristic signals than Android (no satellite count, no
+    /// monotonic elapsed-realtime clock on locations), so heuristic mode
+    /// primarily adds timestamp drift detection.
+    private func isLocationMock(_ location: CLLocation) -> Bool {
+        let level = configManager.getMockDetectionLevel()
+        if level == 0 { return false }
+
+        // Level 1+ (basic): Platform API flag
+        if #available(iOS 15.0, *) {
+            if location.sourceInformation?.isSimulatedBySoftware ?? false {
+                return true
+            }
+        }
+        if level < 2 { return false }
+
+        // Level 2 (heuristic): Timestamp drift check
+        // Real GPS locations have a timestamp very close to the current time
+        // (within a few seconds). Replayed or injected locations often have
+        // timestamps far in the past or future.
+        let driftSeconds = abs(Date().timeIntervalSince(location.timestamp))
+        if driftSeconds > 10.0 {
+            return true
+        }
+
+        return false
     }
 }

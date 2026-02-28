@@ -24,6 +24,8 @@ Config(
       odometerAccuracyThreshold: 50,
       policy: LocationFilterPolicy.adjust,
       useKalmanFilter: true,         // Real-time GPS smoothing
+      rejectMockLocations: true,     // Block spoofed GPS
+      mockDetectionLevel: MockDetectionLevel.heuristic, // Advanced detection
     ),
   ),
   app: AppConfig(                    // Lifecycle behavior
@@ -100,6 +102,8 @@ Location accuracy, sampling, and filtering.
 | `odometerAccuracyThreshold` | `int` | `0` | Max accuracy for odometer (0 = off) |
 | `policy` | `LocationFilterPolicy` | `adjust` | `adjust`, `ignore`, or `discard` |
 | `useKalmanFilter` | `bool` | `false` | Enable Extended Kalman Filter GPS smoothing ([details](KALMAN-FILTER.md)) |
+| `rejectMockLocations` | `bool` | `false` | Reject mock/spoofed locations ([details](MOCK-DETECTION.md)) |
+| `mockDetectionLevel` | `MockDetectionLevel` | `disabled` | Detection depth: `disabled`, `basic`, or `heuristic` ([details](MOCK-DETECTION.md)) |
 
 ---
 

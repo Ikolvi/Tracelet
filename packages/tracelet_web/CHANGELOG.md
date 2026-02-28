@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.0
+
+* **FEAT**: `_positionToMap()` and `_emptyLocation()` now include `mock: false` field — browser Geolocation API has no mock detection capability.
+* **CHORE**: Bump `tracelet_platform_interface` to ^0.7.0.
+
 ## 0.6.1
 
 * **FIX**: Remove duplicate distance filter from `WebLocationEngine` — all location filtering now handled by shared Dart `LocationProcessor` via `tracelet.dart` pipeline, matching Android/iOS behavior.

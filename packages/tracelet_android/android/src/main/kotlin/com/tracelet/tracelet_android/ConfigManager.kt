@@ -90,6 +90,7 @@ class ConfigManager(context: Context) {
 
         // LocationFilter defaults
         const val DEFAULT_ODOMETER_ACCURACY_THRESHOLD = 0
+        const val DEFAULT_REJECT_MOCK_LOCATIONS = false
     }
 
     private val prefs: SharedPreferences =
@@ -207,6 +208,12 @@ class ConfigManager(context: Context) {
     // LocationFilter sub-config
     fun getOdometerAccuracyThreshold(): Int =
         getInt("odometerAccuracyThreshold", DEFAULT_ODOMETER_ACCURACY_THRESHOLD)
+
+    fun getRejectMockLocations(): Boolean =
+        getBool("rejectMockLocations", DEFAULT_REJECT_MOCK_LOCATIONS)
+
+    fun getMockDetectionLevel(): Int =
+        getInt("mockDetectionLevel", 1)
 
     // ---------------------------------------------------------------------------
     // Typed Getters (AppConfig)
