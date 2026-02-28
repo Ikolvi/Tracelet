@@ -55,7 +55,7 @@ jobs:
         run: flutter test --coverage
       - name: Upload coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-${{ matrix.package }}
           path: packages/${{ matrix.package }}/coverage/lcov.info
