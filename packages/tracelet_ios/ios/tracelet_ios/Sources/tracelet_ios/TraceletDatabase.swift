@@ -86,7 +86,8 @@ final class TraceletDatabase {
                 notify_on_exit INTEGER DEFAULT 1,
                 notify_on_dwell INTEGER DEFAULT 0,
                 loitering_delay INTEGER DEFAULT 0,
-                extras TEXT
+                extras TEXT,
+                vertices TEXT
             )
         """)
 
@@ -306,8 +307,8 @@ final class TraceletDatabase {
             let sql = """
                 INSERT OR REPLACE INTO geofences
                 (identifier, latitude, longitude, radius, notify_on_entry, notify_on_exit,
-                 notify_on_dwell, loitering_delay, extras)
-                VALUES (?,?,?,?,?,?,?,?,?)
+                 notify_on_dwell, loitering_delay, extras, vertices)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
             """
             var stmt: OpaquePointer?
             guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
@@ -325,6 +326,27 @@ final class TraceletDatabase {
             let extrasJson = extras.flatMap { try? JSONSerialization.data(withJSONObject: $0) }
                 .flatMap { String(data: $0, encoding: .utf8) }
             sqlite3_bind_text(stmt, 9, nsString(extrasJson ?? ""), -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+
+            // Serialize vertices as JSON
+            if let vertices = data["vertices"] as? [[Any]], !vertices.isEmpty {
+                var verticesArray: [[Double]] = []
+                for vertex in vertices {
+                    if vertex.count >= 2,
+                       let lat = vertex[0] as? Double,
+                       let lng = vertex[1] as? Double {
+                        verticesArray.append([lat, lng])
+                    }
+                }
+                if let verticesData = try? JSONSerialization.data(withJSONObject: verticesArray),
+                   let verticesJson = String(data: verticesData, encoding: .utf8) {
+                    sqlite3_bind_text(stmt, 10, nsString(verticesJson), -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+                } else {
+                    sqlite3_bind_null(stmt, 10)
+                }
+            } else {
+                sqlite3_bind_null(stmt, 10)
+            }
+
             success = sqlite3_step(stmt) == SQLITE_DONE
         }
         return success
@@ -723,6 +745,16 @@ final class TraceletDatabase {
         let extras: [String: Any]? = extrasStr.isEmpty ? nil :
             (try? JSONSerialization.jsonObject(with: Data(extrasStr.utf8)) as? [String: Any])
 
+        // Parse vertices from JSON
+        let verticesStr = columnText(stmt, 9)
+        var vertices: [[Double]] = []
+        if !verticesStr.isEmpty {
+            if let verticesData = verticesStr.data(using: .utf8),
+               let verticesArray = try? JSONSerialization.jsonObject(with: verticesData) as? [[Double]] {
+                vertices = verticesArray
+            }
+        }
+
         return [
             "identifier": columnText(stmt, 0),
             "latitude": sqlite3_column_double(stmt, 1),
@@ -733,6 +765,7 @@ final class TraceletDatabase {
             "notifyOnDwell": sqlite3_column_int(stmt, 6) == 1,
             "loiteringDelay": Int(sqlite3_column_int(stmt, 7)),
             "extras": extras as Any,
+            "vertices": vertices,
         ]
     }
 

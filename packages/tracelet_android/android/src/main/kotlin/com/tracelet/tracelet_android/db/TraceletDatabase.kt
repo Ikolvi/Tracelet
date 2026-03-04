@@ -21,7 +21,7 @@ class TraceletDatabase private constructor(context: Context) :
 
     companion object {
         private const val DB_NAME = "tracelet.db"
-        private const val DB_VERSION = 3
+        private const val DB_VERSION = 4
 
         // Location table
         const val TABLE_LOCATIONS = "locations"
@@ -57,6 +57,7 @@ class TraceletDatabase private constructor(context: Context) :
         const val COL_NOTIFY_ON_DWELL = "notify_on_dwell"
         const val COL_LOITERING_DELAY = "loitering_delay"
         const val COL_GF_EXTRAS = "gf_extras"
+        const val COL_VERTICES = "vertices"
 
         // Log table
         const val TABLE_LOGS = "logs"
@@ -135,7 +136,8 @@ class TraceletDatabase private constructor(context: Context) :
                 $COL_NOTIFY_ON_EXIT INTEGER DEFAULT 1,
                 $COL_NOTIFY_ON_DWELL INTEGER DEFAULT 0,
                 $COL_LOITERING_DELAY INTEGER DEFAULT 0,
-                $COL_GF_EXTRAS TEXT
+                $COL_GF_EXTRAS TEXT,
+                $COL_VERTICES TEXT
             )
         """.trimIndent())
 
@@ -208,6 +210,12 @@ class TraceletDatabase private constructor(context: Context) :
                     $COL_PZ_ACTION INTEGER NOT NULL DEFAULT 0,
                     $COL_PZ_DEGRADED_ACCURACY REAL DEFAULT 1000.0
                 )
+            """.trimIndent())
+        }
+        // v3 → v4: Add vertices column to geofences table
+        if (oldVersion < 4) {
+            db.execSQL("""
+                ALTER TABLE $TABLE_GEOFENCES ADD COLUMN $COL_VERTICES TEXT
             """.trimIndent())
         }
     }
@@ -359,6 +367,23 @@ class TraceletDatabase private constructor(context: Context) :
             put(COL_NOTIFY_ON_DWELL, if (geofence["notifyOnDwell"] == true) 1 else 0)
             put(COL_LOITERING_DELAY, (geofence["loiteringDelay"] as? Number)?.toInt() ?: 0)
             put(COL_GF_EXTRAS, geofence["extras"]?.toString())
+
+            // Serialize vertices as JSON
+            val vertices = geofence["vertices"] as? List<*>
+            if (vertices != null && vertices.isNotEmpty()) {
+                val verticesJson = org.json.JSONArray()
+                for (vertex in vertices) {
+                    if (vertex is List<*> && vertex.size >= 2) {
+                        val vertexArray = org.json.JSONArray()
+                        vertexArray.put((vertex[0] as? Number)?.toDouble() ?: 0.0)
+                        vertexArray.put((vertex[1] as? Number)?.toDouble() ?: 0.0)
+                        verticesJson.put(vertexArray)
+                    }
+                }
+                put(COL_VERTICES, verticesJson.toString())
+            } else {
+                put(COL_VERTICES, null as String?)
+            }
         }
         writableDatabase.insertWithOnConflict(TABLE_GEOFENCES, null, values, SQLiteDatabase.CONFLICT_REPLACE)
         return true
@@ -533,6 +558,26 @@ class TraceletDatabase private constructor(context: Context) :
     }
 
     private fun cursorToGeofence(c: Cursor): Map<String, Any?> {
+        // Parse vertices from JSON
+        val verticesJson = c.getString(c.getColumnIndexOrThrow(COL_VERTICES))
+        val vertices = mutableListOf<List<Double>>()
+        if (verticesJson != null && verticesJson.isNotEmpty()) {
+            try {
+                val jsonArray = org.json.JSONArray(verticesJson)
+                for (i in 0 until jsonArray.length()) {
+                    val vertexArray = jsonArray.getJSONArray(i)
+                    if (vertexArray.length() >= 2) {
+                        vertices.add(listOf(
+                            vertexArray.getDouble(0),
+                            vertexArray.getDouble(1)
+                        ))
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore parse errors, return empty vertices
+            }
+        }
+
         return mapOf(
             "identifier" to c.getString(c.getColumnIndexOrThrow(COL_IDENTIFIER)),
             "latitude" to c.getDouble(c.getColumnIndexOrThrow(COL_LATITUDE)),
@@ -543,6 +588,7 @@ class TraceletDatabase private constructor(context: Context) :
             "notifyOnDwell" to (c.getInt(c.getColumnIndexOrThrow(COL_NOTIFY_ON_DWELL)) == 1),
             "loiteringDelay" to c.getInt(c.getColumnIndexOrThrow(COL_LOITERING_DELAY)),
             "extras" to c.getString(c.getColumnIndexOrThrow(COL_GF_EXTRAS)),
+            "vertices" to vertices,
         )
     }
 
