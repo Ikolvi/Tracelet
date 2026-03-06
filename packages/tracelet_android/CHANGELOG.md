@@ -1,3 +1,12 @@
+## 1.0.0
+
+### 🎉 Stable Release
+
+- **FEAT**: First stable release of `tracelet_android`.
+- **DOCS**: Add Play Store background location declaration guide.
+- **REFACTOR**: Remove third-party company name references.
+- All native Android APIs are finalized and production-ready.
+
 ## 0.12.0
 
 ### Performance Audit — 29 Android issues resolved

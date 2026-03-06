@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.0
+
+### 🎉 Stable Release
+
+- **FEAT**: First stable release of `tracelet_web`.
+- **REFACTOR**: Remove third-party company name references.
+- All Web APIs are finalized and production-ready.
+
 ## 0.12.0
 
 ### Performance Audit — Web optimizations

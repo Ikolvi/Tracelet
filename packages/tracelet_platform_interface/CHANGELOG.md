@@ -1,3 +1,11 @@
+## 1.0.0
+
+### 🎉 Stable Release
+
+- **FEAT**: First stable release of `tracelet_platform_interface`.
+- **REFACTOR**: Remove third-party company name references — use generic `flutter_background_geolocation` throughout.
+- All APIs are finalized and production-ready.
+
 ## 0.12.0
 
 ### Performance Audit — Dart algorithm optimizations

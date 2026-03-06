@@ -1,3 +1,11 @@
+## 1.0.0
+
+### 🎉 Stable Release
+
+- **FEAT**: First stable release of `tracelet_ios`.
+- **REFACTOR**: Remove third-party company name references.
+- All native iOS APIs are finalized and production-ready.
+
 ## 0.12.0
 
 ### Performance Audit — 22 iOS issues resolved

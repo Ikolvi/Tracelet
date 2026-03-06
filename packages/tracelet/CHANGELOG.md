@@ -1,3 +1,13 @@
+## 1.0.0
+
+### 🎉 Stable Release
+
+- **FEAT**: First stable release of `tracelet` — production-grade background geolocation for Flutter.
+- **DOCS**: Add Play Store background location declaration guide.
+- **REFACTOR**: Remove third-party company name references — use generic `flutter_background_geolocation` throughout.
+- **REFACTOR**: Rename migration guide to `MIGRATION-FROM-FBG.md`.
+- All APIs are finalized and production-ready.
+
 ## 0.12.0
 
 ### Performance Audit — 74 of 77 issues resolved
