@@ -263,9 +263,9 @@ Native Exception
 
 ## 7. Competitive Comparison
 
-### 7.1 vs. transistorsoft/flutter_background_geolocation
+### 7.1 vs. flutter_background_geolocation
 
-| Dimension | Tracelet | transistorsoft |
+| Dimension | Tracelet | flutter_background_geolocation |
 |-----------|----------|----------------|
 | **License** | Apache 2.0 (free forever) | Proprietary ($299/app or $999/yr) |
 | **Source availability** | Fully open | Obfuscated native SDKs |
@@ -339,7 +339,7 @@ These features exist in the Dart model but need native Android/iOS implementatio
 | Add `TraceletConfig.fromJson()` / `.toJson()` | Medium | 2h | Config management |
 | Publish dartdoc to GitHub Pages | Medium | 1h | Documentation |
 | Create video tutorial | Medium | 8h | Onboarding |
-| Add migration guide from transistorsoft | High | 4h | Adoption |
+| Add migration guide from flutter_background_geolocation | High | 4h | Adoption |
 | GitHub Actions CI (lint + analyze + test) | High | 4h | Quality |
 | Pub.dev score optimization (screenshots, topics) | Medium | 2h | Discoverability |
 
@@ -362,7 +362,7 @@ These features exist in the Dart model but need native Android/iOS implementatio
 | Feature | Description | Differentiation |
 |---------|-------------|-----------------|
 | **Smart Adaptive Tracking** | ML-based distance filter that learns user patterns — commute vs. walk vs. idle. Adjusts accuracy/frequency automatically. | No competitor does this. |
-| **Polygon Geofences** | Support arbitrary polygon boundaries, not just circles. Use ray-casting for point-in-polygon. | transistorsoft supports this; we should too. |
+| **Polygon Geofences** | Support arbitrary polygon boundaries, not just circles. Use ray-casting for point-in-polygon. | flutter_background_geolocation supports this; we should too. |
 | **Trip Detection** | Auto-detect trip start/end with summary (distance, duration, route polyline, idle time). | Builds on motion detection. |
 | **Offline Map Matching** | Snap GPS coordinates to road network using offline tile data. | Dramatically improves data quality for driving use cases. |
 | **Geofence Clustering** | Spatial indexing (R-tree) of geofences for efficient monitoring of 1000+ geofences — far beyond platform limits. | Unique — no Flutter plugin does this. |
@@ -393,7 +393,7 @@ These features exist in the Dart model but need native Android/iOS implementatio
 
 ### 9.4 Differentiator Matrix
 
-| Feature | Tracelet (Planned) | transistorsoft | geolocator | bg_locator_2 |
+| Feature | Tracelet (Planned) | flutter_background_geolocation | geolocator | bg_locator_2 |
 |---------|--------------------|----------------|------------|---------------|
 | Open source native code | ✅ | ❌ | ✅ | ✅ |
 | Accelerometer-only mode | ✅ | ❌ | ❌ | ❌ |
@@ -452,7 +452,7 @@ These features exist in the Dart model but need native Android/iOS implementatio
 | Complete all P0–P1 native wiring | +6 (reliability) | 20–30h |
 | Add GitHub Actions CI | +3 (testing) | 4h |
 | Hit 90% test coverage | +4 (testing) | 20h |
-| Publish migration guide from transistorsoft | +2 (community) | 4h |
+| Publish migration guide from flutter_background_geolocation | +2 (community) | 4h |
 | Create video tutorial | +2 (community) | 8h |
 | Implement Kalman filter + elasticity | +3 (innovation, reliability) | 10h |
 | Ship v1.0 with ALL features wired | +5 (reliability, platform) | 40h |

@@ -51,6 +51,11 @@ Tracelet's plugin AndroidManifest automatically merges the following permissions
 
 **You do not need to add these to your app's `AndroidManifest.xml`** — they are merged automatically from the plugin.
 
+> **Play Store requirement:** The `ACCESS_BACKGROUND_LOCATION` permission
+> triggers a **mandatory declaration** in the Google Play Console, including a
+> short video. See [Play Store Declaration Guide](PLAY-STORE-DECLARATION.md)
+> for step-by-step instructions.
+
 ### Runtime Permissions
 
 The plugin requests permissions at runtime when you call `Tracelet.requestPermission()`. The flow is:

@@ -618,6 +618,15 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
                 state.callback(nil)
             }
         }
+
+        // In periodic mode, ensure GPS and background updates are turned off
+        // on error — mirrors the cleanup in didUpdateLocations. Without this,
+        // a failed requestLocation() leaves allowsBackgroundLocationUpdates
+        // enabled, keeping the location icon visible until the timeout fires.
+        if isPeriodicTracking {
+            locationManager.stopUpdatingLocation()
+            locationManager.allowsBackgroundLocationUpdates = false
+        }
     }
 
     func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {

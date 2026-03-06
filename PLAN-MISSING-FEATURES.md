@@ -1,6 +1,6 @@
 # Tracelet — Missing Features Plan
 
-> Compared against [`flutter_background_geolocation`](https://pub.dev/packages/flutter_background_geolocation) (transistorsoft).
+> Compared against [`flutter_background_geolocation`](https://pub.dev/packages/flutter_background_geolocation).
 > **Last updated**: July 2025 — all 14 features are now ✅ fully implemented (Dart + Android + iOS + Web).
 
 ---

@@ -111,7 +111,7 @@ flutter test integration_test/
 
 ## Golden Rules
 
-1. **Never copy code from transistorsoft** — all native code is original
+1. **Never copy code from flutter_background_geolocation** — all native code is original
 2. **Type-safety first** — use Pigeon, avoid `dynamic`
 3. **Battery consciousness** — never poll, use event-driven APIs
 4. **Error handling** — never swallow exceptions

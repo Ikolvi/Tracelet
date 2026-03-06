@@ -676,8 +676,8 @@
   - [ ] Podfile configuration
   - [ ] App Store review guidelines for location apps
   - [ ] Troubleshooting common issues
-- [ ] `help/MIGRATION-FROM-TRANSISTORSOFT.md`
-  - [ ] API mapping table (transistorsoft method → Tracelet method)
+- [ ] `help/MIGRATION-FROM-FBG.md`
+  - [ ] API mapping table (flutter_background_geolocation method → Tracelet method)
   - [ ] Config key changes
   - [ ] Import changes
   - [ ] Breaking differences and workarounds

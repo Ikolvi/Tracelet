@@ -549,7 +549,12 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
             self?.geofenceManager.updateProximity(latitude: lat, longitude: lng)
         }
 
-        startHeartbeat()
+        // Do NOT start the heartbeat timer in periodic mode. The heartbeat
+        // calls getCurrentPosition() → requestLocation() on every tick
+        // (default: every 60 s), which activates GPS and causes the location
+        // icon to appear nearly continuously. The periodic timer already
+        // provides location fixes at the configured periodicLocationInterval.
+        // startHeartbeat() — intentionally omitted for periodic mode.
         startStopAfterElapsedTimer()
 
         // Schedule BGAppRefreshTask as a supplementary wake-up mechanism.
