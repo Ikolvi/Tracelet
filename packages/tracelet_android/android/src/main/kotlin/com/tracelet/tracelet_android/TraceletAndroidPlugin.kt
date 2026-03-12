@@ -116,6 +116,7 @@ class TraceletAndroidPlugin :
         locationEngine = LocationEngine(context, configManager, stateManager, eventDispatcher, database)
         locationEngine.auditTrailManager = auditTrailManager
         locationEngine.privacyZoneManager = privacyZoneManager
+        locationEngine.onLocationPersisted = { httpSyncManager.onLocationInserted() }
 
         // Trip detection is now handled in shared Dart code (tracelet_platform_interface).
 

@@ -19,6 +19,7 @@ import com.tracelet.tracelet_android.ConfigManager
 import com.tracelet.tracelet_android.EventDispatcher
 import com.tracelet.tracelet_android.StateManager
 import com.tracelet.tracelet_android.db.TraceletDatabase
+import com.tracelet.tracelet_android.http.HttpSyncManager
 import com.tracelet.tracelet_android.receiver.PeriodicAlarmReceiver
 import com.tracelet.tracelet_android.service.HeadlessTaskService
 import com.tracelet.tracelet_android.util.BatteryUtils
@@ -254,6 +255,21 @@ class PeriodicLocationWorker(
 
                 // Persist to database
                 db.insertLocation(locationMap)
+
+                // Trigger HTTP sync synchronously so the location is sent before
+                // the worker exits. Uses a latch to wait for the async executor.
+                // If eventDispatcher is null the app is running headless; HTTP events
+                // are silently dropped (no Dart or headless channel to receive them).
+                val dispatcher = eventDispatcher ?: EventDispatcher()
+                val httpSyncManager = HttpSyncManager(applicationContext, config, dispatcher, db)
+                httpSyncManager.start()
+                val latch = java.util.concurrent.CountDownLatch(1)
+                httpSyncManager.sync { _ -> latch.countDown() }
+                val synced = latch.await(60, java.util.concurrent.TimeUnit.SECONDS)
+                if (!synced) {
+                    Log.w(TAG, "HTTP sync did not complete within 60 s timeout for periodic fix")
+                }
+                httpSyncManager.stop()
 
                 // Dispatch to Dart
                 dispatchLocation(locationMap)

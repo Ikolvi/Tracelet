@@ -75,6 +75,10 @@ class LocationEngine(
     /** Optional callback invoked on every accepted location (for geofenceModeHighAccuracy). */
     var onLocationUpdate: ((Double, Double) -> Unit)? = null
 
+    /** Optional callback invoked after each location is persisted to the database.
+     *  Used to trigger HTTP auto-sync without coupling LocationEngine to HttpSyncManager. */
+    var onLocationPersisted: (() -> Unit)? = null
+
     /** Optional audit trail manager (Enterprise). Set by the plugin after construction. */
     var auditTrailManager: AuditTrailManager? = null
 
@@ -859,6 +863,7 @@ class LocationEngine(
         if (event == "providerchange" && config.getDisableProviderChangeRecord()) return
 
         db.insertLocationAsync(location)
+        onLocationPersisted?.invoke()
 
         // Throttle retention pruning — only run every N inserts instead of on
         // each insert. This avoids a COUNT query + potential DELETE on every
