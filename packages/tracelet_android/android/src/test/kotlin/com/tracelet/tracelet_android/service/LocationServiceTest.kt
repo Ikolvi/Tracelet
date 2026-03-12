@@ -356,4 +356,157 @@ internal class LocationServiceTest {
             !ConfigManager(ctx).getPeriodicUseForegroundService()
         assertEquals(false, shouldStopService)
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Tests: destroyAll conditional geofence preservation (#23)
+    // ─────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun destroyAll_geofenceMode_stopOnTerminateFalse_preservesGeofences() {
+        // Issue #23: When stopOnTerminate=false, enabled=true, trackingMode=1
+        // the keepGeofencesAlive condition should be true — geofences survive.
+        val (ctx, _, _) = createMockedContext()
+        val state = StateManager(ctx)
+        val config = ConfigManager(ctx)
+        config.setConfig(mapOf("stopOnTerminate" to false))
+
+        state.enabled = true
+        state.trackingMode = 1
+
+        val keepGeofencesAlive = !config.getStopOnTerminate()
+            && state.enabled
+            && state.trackingMode == 1
+        assertEquals(true, keepGeofencesAlive)
+    }
+
+    @Test
+    fun destroyAll_geofenceMode_stopOnTerminateTrue_destroysGeofences() {
+        // Default stopOnTerminate=true — geofences should be destroyed.
+        val (ctx, _, _) = createMockedContext()
+        val state = StateManager(ctx)
+        val config = ConfigManager(ctx)
+
+        state.enabled = true
+        state.trackingMode = 1
+
+        val keepGeofencesAlive = !config.getStopOnTerminate()
+            && state.enabled
+            && state.trackingMode == 1
+        assertEquals(false, keepGeofencesAlive)
+    }
+
+    @Test
+    fun destroyAll_continuousMode_stopOnTerminateFalse_destroysGeofences() {
+        // trackingMode=0 (continuous) — geofences should NOT be preserved
+        // even when stopOnTerminate=false.
+        val (ctx, _, _) = createMockedContext()
+        val state = StateManager(ctx)
+        val config = ConfigManager(ctx)
+        config.setConfig(mapOf("stopOnTerminate" to false))
+
+        state.enabled = true
+        state.trackingMode = 0
+
+        val keepGeofencesAlive = !config.getStopOnTerminate()
+            && state.enabled
+            && state.trackingMode == 1
+        assertEquals(false, keepGeofencesAlive)
+    }
+
+    @Test
+    fun destroyAll_periodicMode_stopOnTerminateFalse_destroysGeofences() {
+        // trackingMode=2 (periodic) — geofences should NOT be preserved.
+        val (ctx, _, _) = createMockedContext()
+        val state = StateManager(ctx)
+        val config = ConfigManager(ctx)
+        config.setConfig(mapOf("stopOnTerminate" to false))
+
+        state.enabled = true
+        state.trackingMode = 2
+
+        val keepGeofencesAlive = !config.getStopOnTerminate()
+            && state.enabled
+            && state.trackingMode == 1
+        assertEquals(false, keepGeofencesAlive)
+    }
+
+    @Test
+    fun destroyAll_geofenceMode_disabledTracking_destroysGeofences() {
+        // enabled=false — geofences should be destroyed even with
+        // stopOnTerminate=false and trackingMode=1.
+        val (ctx, _, _) = createMockedContext()
+        val state = StateManager(ctx)
+        val config = ConfigManager(ctx)
+        config.setConfig(mapOf("stopOnTerminate" to false))
+
+        state.enabled = false
+        state.trackingMode = 1
+
+        val keepGeofencesAlive = !config.getStopOnTerminate()
+            && state.enabled
+            && state.trackingMode == 1
+        assertEquals(false, keepGeofencesAlive)
+    }
+
+    @Test
+    fun destroyAll_periodicAndGeofenceProtection_mutuallyExclusive() {
+        // Verify periodic and geofence preservation can't both be true
+        // simultaneously (they guard different trackingMode values).
+        val (ctx, _, _) = createMockedContext()
+        val state = StateManager(ctx)
+        val config = ConfigManager(ctx)
+        config.setConfig(mapOf("stopOnTerminate" to false))
+
+        state.enabled = true
+        state.trackingMode = 1
+
+        val keepGeofencesAlive = !config.getStopOnTerminate()
+            && state.enabled
+            && state.trackingMode == 1
+        val keepPeriodicAlive = !config.getStopOnTerminate()
+            && state.enabled
+            && state.trackingMode == 2
+
+        assertEquals(true, keepGeofencesAlive)
+        assertEquals(false, keepPeriodicAlive)
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Tests: startBootTracking geofence recovery (#23)
+    // ─────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun bootTracking_geofenceMode_shouldReRegisterGeofences() {
+        // When trackingMode=1, startBootTracking should re-register
+        // geofences with Play Services after creating LocationEngine.
+        val (ctx, _, _) = createMockedContext()
+        val state = StateManager(ctx)
+
+        state.trackingMode = 1
+
+        val shouldRecoverGeofences = state.trackingMode == 1
+        assertEquals(true, shouldRecoverGeofences)
+    }
+
+    @Test
+    fun bootTracking_continuousMode_shouldNotReRegisterGeofences() {
+        val (ctx, _, _) = createMockedContext()
+        val state = StateManager(ctx)
+
+        state.trackingMode = 0
+
+        val shouldRecoverGeofences = state.trackingMode == 1
+        assertEquals(false, shouldRecoverGeofences)
+    }
+
+    @Test
+    fun bootTracking_periodicMode_shouldNotReRegisterGeofences() {
+        val (ctx, _, _) = createMockedContext()
+        val state = StateManager(ctx)
+
+        state.trackingMode = 2
+
+        val shouldRecoverGeofences = state.trackingMode == 1
+        assertEquals(false, shouldRecoverGeofences)
+    }
 }

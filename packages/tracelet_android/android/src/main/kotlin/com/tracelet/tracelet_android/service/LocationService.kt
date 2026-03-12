@@ -18,8 +18,10 @@ import com.tracelet.tracelet_android.ConfigManager
 import com.tracelet.tracelet_android.EventDispatcher
 import com.tracelet.tracelet_android.StateManager
 import com.tracelet.tracelet_android.db.TraceletDatabase
+import com.tracelet.tracelet_android.geofence.GeofenceManager
 import com.tracelet.tracelet_android.location.LocationEngine
 import com.tracelet.tracelet_android.location.PeriodicLocationWorker
+import com.tracelet.tracelet_android.receiver.GeofenceBroadcastReceiver
 import com.tracelet.tracelet_android.util.OemCompat
 
 /**
@@ -362,6 +364,16 @@ class LocationService : Service() {
                 bootLocationEngine = engine
                 Log.d(TAG, "Boot-mode native tracking started (trackingMode=$trackingMode)")
                 startBootHeartbeat(config, engine, eventDispatcher)
+
+                // Geofence mode: re-register persisted geofences with Play Services
+                // and restore the static BroadcastReceiver reference so transition
+                // events are not silently dropped after process death.
+                if (trackingMode == 1) {
+                    val geoManager = GeofenceManager(ctx, config, eventDispatcher, database)
+                    geoManager.reRegisterAll()
+                    GeofenceBroadcastReceiver.geofenceManager = geoManager
+                    Log.d(TAG, "Geofence registrations restored after boot/task-removal")
+                }
             }
         }
     }

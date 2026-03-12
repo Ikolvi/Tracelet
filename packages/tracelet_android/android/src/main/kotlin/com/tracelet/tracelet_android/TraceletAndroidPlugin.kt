@@ -1227,7 +1227,18 @@ class TraceletAndroidPlugin :
     private fun destroyAll() {
         locationEngine.destroy()
         motionDetector.stop()
-        geofenceManager.destroy()
+
+        // Only destroy geofences if stopOnTerminate is true or geofence mode
+        // is not active. When stopOnTerminate is false and geofence mode is
+        // active, the Play Services registrations must survive process death
+        // so that GeofenceBroadcastReceiver can still fire transition events.
+        val keepGeofencesAlive = !configManager.getStopOnTerminate()
+            && stateManager.enabled
+            && stateManager.trackingMode == 1
+        if (!keepGeofencesAlive) {
+            geofenceManager.destroy()
+        }
+
         httpSyncManager.stop()
         headlessService.destroy()
         scheduleManager.stop()
@@ -1246,6 +1257,8 @@ class TraceletAndroidPlugin :
         }
         PeriodicLocationWorker.eventDispatcher = null
         PeriodicLocationWorker.httpSyncManager = null
-        GeofenceBroadcastReceiver.geofenceManager = null
+        if (!keepGeofencesAlive) {
+            GeofenceBroadcastReceiver.geofenceManager = null
+        }
     }
 }
