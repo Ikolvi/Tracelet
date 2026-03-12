@@ -761,7 +761,18 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
             stopHeartbeat()
             cancelStopAfterElapsedTimer()
             periodicRefreshScheduler.stop()
-            geofenceManager.destroy()
+
+            // Only destroy geofences if stopOnTerminate is true or geofence mode
+            // is not active. When stopOnTerminate is false and geofence mode is
+            // active, CLLocationManager region registrations must survive so the
+            // OS can still deliver transition events after app termination.
+            let keepGeofencesAlive = !configManager.getStopOnTerminate()
+                && stateManager.enabled
+                && stateManager.trackingMode == 1
+            if !keepGeofencesAlive {
+                geofenceManager.destroy()
+            }
+
             preventSuspendManager.stop()
             backgroundActivitySessionManager.stop()
             serviceSessionManager.stop()
