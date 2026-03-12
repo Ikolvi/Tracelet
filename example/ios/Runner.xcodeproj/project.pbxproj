@@ -14,6 +14,7 @@
 		A1B2C3D4E5F60003AABBCC01 /* AutoResumeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60004AABBCC01 /* AutoResumeTests.swift */; };
 		B1A2C3D4E5F60001BBCCDD01 /* PrivacyZoneManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A2C3D4E5F60002BBCCDD01 /* PrivacyZoneManagerTests.swift */; };
 		B1A2C3D4E5F60003BBCCDD01 /* ConfigManagerPrivacyZoneTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A2C3D4E5F60004BBCCDD01 /* ConfigManagerPrivacyZoneTests.swift */; };
+		E1F2A3B4C5D60001EEFFAA01 /* ConfigManagerHttpTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D60002EEFFAA01 /* ConfigManagerHttpTests.swift */; };
 		C1D2E3F4A5B60001CCDDEE01 /* TraceletDatabaseGeofenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F4A5B60002CCDDEE01 /* TraceletDatabaseGeofenceTests.swift */; };
 		D1E2F3A4B5C60001DDEEFF01 /* TraceletDatabaseMigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1E2F3A4B5C60002DDEEFF01 /* TraceletDatabaseMigrationTests.swift */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
@@ -56,6 +57,7 @@
 		A1B2C3D4E5F60004AABBCC01 /* AutoResumeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoResumeTests.swift; sourceTree = "<group>"; };
 		B1A2C3D4E5F60002BBCCDD01 /* PrivacyZoneManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyZoneManagerTests.swift; sourceTree = "<group>"; };
 		B1A2C3D4E5F60004BBCCDD01 /* ConfigManagerPrivacyZoneTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigManagerPrivacyZoneTests.swift; sourceTree = "<group>"; };
+		E1F2A3B4C5D60002EEFFAA01 /* ConfigManagerHttpTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigManagerHttpTests.swift; sourceTree = "<group>"; };
 		C1D2E3F4A5B60002CCDDEE01 /* TraceletDatabaseGeofenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceletDatabaseGeofenceTests.swift; sourceTree = "<group>"; };
 		D1E2F3A4B5C60002DDEEFF01 /* TraceletDatabaseMigrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceletDatabaseMigrationTests.swift; sourceTree = "<group>"; };
 		331C8081294A63A400263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -107,6 +109,7 @@
 				A1B2C3D4E5F60004AABBCC01 /* AutoResumeTests.swift */,
 				B1A2C3D4E5F60002BBCCDD01 /* PrivacyZoneManagerTests.swift */,
 				B1A2C3D4E5F60004BBCCDD01 /* ConfigManagerPrivacyZoneTests.swift */,
+				E1F2A3B4C5D60002EEFFAA01 /* ConfigManagerHttpTests.swift */,
 				C1D2E3F4A5B60002CCDDEE01 /* TraceletDatabaseGeofenceTests.swift */,
 				D1E2F3A4B5C60002DDEEFF01 /* TraceletDatabaseMigrationTests.swift */,
 			);
@@ -392,6 +395,7 @@
 				A1B2C3D4E5F60003AABBCC01 /* AutoResumeTests.swift in Sources */,
 				B1A2C3D4E5F60001BBCCDD01 /* PrivacyZoneManagerTests.swift in Sources */,
 				B1A2C3D4E5F60003BBCCDD01 /* ConfigManagerPrivacyZoneTests.swift in Sources */,
+				E1F2A3B4C5D60001EEFFAA01 /* ConfigManagerHttpTests.swift in Sources */,
 				C1D2E3F4A5B60001CCDDEE01 /* TraceletDatabaseGeofenceTests.swift in Sources */,
 				D1E2F3A4B5C60001DDEEFF01 /* TraceletDatabaseMigrationTests.swift in Sources */,
 			);

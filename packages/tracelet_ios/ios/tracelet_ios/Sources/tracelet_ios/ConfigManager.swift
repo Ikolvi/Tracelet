@@ -155,7 +155,10 @@ final class ConfigManager {
     func getAutoSync() -> Bool { cache["autoSync"] as? Bool ?? true }
     func getAutoSyncThreshold() -> Int { cache["autoSyncThreshold"] as? Int ?? 0 }
     func getBatchSync() -> Bool { cache["batchSync"] as? Bool ?? false }
-    func getMaxBatchSize() -> Int { cache["maxBatchSize"] as? Int ?? 250 }
+    func getMaxBatchSize() -> Int {
+        let value = cache["maxBatchSize"] as? Int ?? 250
+        return value < 0 ? 250 : value
+    }
     func getHttpRootProperty() -> String { cache["httpRootProperty"] as? String ?? "location" }
     func getHttpHeaders() -> [String: String] {
         if let headers = cache["headers"] as? [String: String] {
