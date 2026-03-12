@@ -155,10 +155,25 @@ final class ConfigManager {
     func getAutoSync() -> Bool { cache["autoSync"] as? Bool ?? true }
     func getAutoSyncThreshold() -> Int { cache["autoSyncThreshold"] as? Int ?? 0 }
     func getBatchSync() -> Bool { cache["batchSync"] as? Bool ?? false }
-    func getMaxBatchSize() -> Int { cache["maxBatchSize"] as? Int ?? -1 }
+    func getMaxBatchSize() -> Int { cache["maxBatchSize"] as? Int ?? 250 }
     func getHttpRootProperty() -> String { cache["httpRootProperty"] as? String ?? "location" }
-    func getHttpHeaders() -> [String: String] { cache["headers"] as? [String: String] ?? [:] }
-    func getHttpMethod() -> String { cache["method"] as? String ?? "POST" }
+    func getHttpHeaders() -> [String: String] {
+        if let headers = cache["headers"] as? [String: String] {
+            return headers
+        }
+        // Platform channel may deliver values as [String: Any] — coerce to strings.
+        if let headers = cache["headers"] as? [String: Any] {
+            return headers.mapValues { "\($0)" }
+        }
+        return [:]
+    }
+    func getHttpMethod() -> String {
+        // Dart serializes method as an Int (0 = POST, 1 = PUT).
+        if let index = cache["method"] as? Int {
+            return index == 1 ? "PUT" : "POST"
+        }
+        return cache["method"] as? String ?? "POST"
+    }
     func getHttpTimeout() -> Int { cache["httpTimeout"] as? Int ?? 60000 }
     func getLocationsOrderDirection() -> String { cache["locationsOrderDirection"] as? String ?? "ASC" }
     func getDisableAutoSyncOnCellular() -> Bool { cache["disableAutoSyncOnCellular"] as? Bool ?? false }

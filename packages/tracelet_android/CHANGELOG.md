@@ -1,3 +1,8 @@
+## 1.0.1
+
+- **FIX**: HTTP auto-sync never triggered from automatic location tracking — `onLocationInserted()` was only called from the manual `insertLocation` handler, not from `LocationEngine.persistLocationIfAllowed()` ([#21](https://github.com/Ikolvi/Tracelet/issues/21)).
+- **FIX**: `PeriodicLocationWorker` now triggers HTTP auto-sync after each periodic location insert.
+
 ## 1.0.0
 
 ### 🎉 Stable Release

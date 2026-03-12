@@ -1,3 +1,10 @@
+## 1.0.1
+
+- **FIX**: HTTP auto-sync was not triggered during automatic location tracking on any platform — locations accumulated in the database without being synced to the server ([#21](https://github.com/Ikolvi/Tracelet/issues/21)).
+- **FIX**: (iOS) `HttpMethod.put` was silently ignored due to type mismatch in native config parsing.
+- **FIX**: (iOS) HTTP headers could be dropped when platform channel delivered mixed-type maps.
+- **FIX**: (iOS) `maxBatchSize` default corrected from 100 to 250.
+
 ## 1.0.0
 
 ### 🎉 Stable Release

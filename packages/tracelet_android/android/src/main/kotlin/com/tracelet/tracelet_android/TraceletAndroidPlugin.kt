@@ -117,6 +117,11 @@ class TraceletAndroidPlugin :
         locationEngine.auditTrailManager = auditTrailManager
         locationEngine.privacyZoneManager = privacyZoneManager
 
+        // Wire location persistence → HTTP auto-sync trigger
+        locationEngine.onLocationPersisted = {
+            httpSyncManager.onLocationInserted()
+        }
+
         // Trip detection is now handled in shared Dart code (tracelet_platform_interface).
 
         // Motion
@@ -173,6 +178,7 @@ class TraceletAndroidPlugin :
         // (e.g., app returns to foreground after process restart by AlarmManager).
         if (stateManager.enabled && stateManager.trackingMode == 2) {
             PeriodicLocationWorker.eventDispatcher = eventDispatcher
+            PeriodicLocationWorker.httpSyncManager = httpSyncManager
         }
     }
 
@@ -431,6 +437,7 @@ class TraceletAndroidPlugin :
         locationEngine.stopPeriodic()
         PeriodicLocationWorker.cancel(context)
         PeriodicLocationWorker.eventDispatcher = null
+        PeriodicLocationWorker.httpSyncManager = null
 
         stateManager.enabled = true
         stateManager.trackingMode = 0 // Location tracking
@@ -517,6 +524,7 @@ class TraceletAndroidPlugin :
 
         // Wire the shared EventDispatcher so WorkManager workers can dispatch
         PeriodicLocationWorker.eventDispatcher = eventDispatcher
+        PeriodicLocationWorker.httpSyncManager = httpSyncManager
 
         // Determine scheduling strategy:
         // - Foreground service: use in-process timer (any interval, shows notification)
@@ -596,6 +604,7 @@ class TraceletAndroidPlugin :
         // Cancel WorkManager periodic work if it was scheduled
         PeriodicLocationWorker.cancel(context)
         PeriodicLocationWorker.eventDispatcher = null
+        PeriodicLocationWorker.httpSyncManager = null
 
         // Stop foreground service if it was running
         if (configManager.isForegroundServiceEnabled()) {
@@ -1236,6 +1245,7 @@ class TraceletAndroidPlugin :
             PeriodicLocationWorker.cancel(context)
         }
         PeriodicLocationWorker.eventDispatcher = null
+        PeriodicLocationWorker.httpSyncManager = null
         GeofenceBroadcastReceiver.geofenceManager = null
     }
 }

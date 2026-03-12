@@ -249,6 +249,43 @@ void main() {
       expect(restored.retryBackoffCap, 180000);
     });
 
+    test('HttpConfig.toMap serializes method as int index', () {
+      const postConfig = HttpConfig(method: HttpMethod.post);
+      const putConfig = HttpConfig(method: HttpMethod.put);
+      expect(postConfig.toMap()['method'], 0);
+      expect(putConfig.toMap()['method'], 1);
+    });
+
+    test('HttpConfig.fromMap restores method from int index', () {
+      // Simulates what the native platform receives after Config.toMap()
+      final fromPost = HttpConfig.fromMap(const {'method': 0});
+      final fromPut = HttpConfig.fromMap(const {'method': 1});
+      expect(fromPost.method, HttpMethod.post);
+      expect(fromPut.method, HttpMethod.put);
+    });
+
+    test('HttpConfig.toMap includes headers map', () {
+      const config = HttpConfig(
+        headers: {'x-api-key': 'abc123', 'x-account-id': 'acct'},
+      );
+      final map = config.toMap();
+      final headers = map['headers'] as Map<String, String>;
+      expect(headers['x-api-key'], 'abc123');
+      expect(headers['x-account-id'], 'acct');
+    });
+
+    test('HttpConfig.fromMap handles missing headers gracefully', () {
+      final config = HttpConfig.fromMap(const {});
+      expect(config.headers, isEmpty);
+    });
+
+    test('HttpConfig maxBatchSize defaults to 250', () {
+      const config = HttpConfig();
+      expect(config.maxBatchSize, 250);
+      final fromMap = HttpConfig.fromMap(const {});
+      expect(fromMap.maxBatchSize, 250);
+    });
+
     test('ForegroundServiceConfig equality includes all fields', () {
       const a = ForegroundServiceConfig(
         channelId: 'ch1',

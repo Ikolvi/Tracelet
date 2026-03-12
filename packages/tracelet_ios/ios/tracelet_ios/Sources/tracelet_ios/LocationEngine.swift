@@ -25,6 +25,10 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// Optional callback invoked on every accepted location (for geofenceModeHighAccuracy).
     var onLocationUpdate: ((Double, Double) -> Void)?
 
+    /// Optional callback invoked after a location is persisted to the database.
+    /// Used by the plugin to trigger HTTP auto-sync.
+    var onLocationPersisted: (() -> Void)?
+
     /// Whether a mock location warning has already been fired for this session.
     private var mockLocationWarningFired = false
 
@@ -839,6 +843,9 @@ final class LocationEngine: NSObject, CLLocationManagerDelegate {
         if event == "providerchange" && configManager.getDisableProviderChangeRecord() { return }
 
         let _ = database.insertLocation(location)
+
+        // Notify HTTP sync manager (if wired) so auto-sync can fire.
+        onLocationPersisted?()
 
         // Throttle retention pruning — only run every N inserts instead of on
         // each insert. This avoids a COUNT query + potential DELETE on every

@@ -1,3 +1,10 @@
+## 1.0.1
+
+- **FIX**: HTTP auto-sync never triggered from automatic location tracking — `onLocationInserted()` was only called from the manual `insertLocation` handler, not from `LocationEngine.persistLocationIfAllowed()` ([#21](https://github.com/Ikolvi/Tracelet/issues/21)).
+- **FIX**: `ConfigManager.getHttpMethod()` cast `Int` as `String`, silently ignoring `HttpMethod.put` — now correctly maps `0` → POST, `1` → PUT.
+- **FIX**: `ConfigManager.getHttpHeaders()` strict `[String: String]` cast could drop headers when platform channel delivers `[String: Any]` — now coerces values to strings.
+- **FIX**: `maxBatchSize` default corrected from 100 to 250 to match Dart and Android defaults.
+
 ## 1.0.0
 
 ### 🎉 Stable Release

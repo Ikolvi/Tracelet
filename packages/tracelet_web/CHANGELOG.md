@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.1
+
+- **FIX**: HTTP auto-sync now triggers after `insertLocation()` and `getCurrentPosition(persist: true)` — previously auto-sync was never invoked on web ([#21](https://github.com/Ikolvi/Tracelet/issues/21)).
+- **FEAT**: `WebHttpEngine` now parses `autoSync`, `autoSyncThreshold`, and `disableAutoSyncOnCellular` from config.
+
 ## 1.0.0
 
 ### 🎉 Stable Release

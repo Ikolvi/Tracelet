@@ -19,6 +19,7 @@ import com.tracelet.tracelet_android.ConfigManager
 import com.tracelet.tracelet_android.EventDispatcher
 import com.tracelet.tracelet_android.StateManager
 import com.tracelet.tracelet_android.db.TraceletDatabase
+import com.tracelet.tracelet_android.http.HttpSyncManager
 import com.tracelet.tracelet_android.receiver.PeriodicAlarmReceiver
 import com.tracelet.tracelet_android.service.HeadlessTaskService
 import com.tracelet.tracelet_android.util.BatteryUtils
@@ -62,6 +63,14 @@ class PeriodicLocationWorker(
          */
         @Volatile
         var eventDispatcher: EventDispatcher? = null
+
+        /**
+         * Shared reference to the plugin's HttpSyncManager.
+         * Set by TraceletAndroidPlugin so periodic fixes trigger auto-sync.
+         * Null when the app process is running without a Flutter UI (headless).
+         */
+        @Volatile
+        var httpSyncManager: HttpSyncManager? = null
 
         /**
          * Schedules periodic location work using WorkManager.
@@ -254,6 +263,9 @@ class PeriodicLocationWorker(
 
                 // Persist to database
                 db.insertLocation(locationMap)
+
+                // Trigger HTTP auto-sync if manager is available
+                httpSyncManager?.onLocationInserted()
 
                 // Dispatch to Dart
                 dispatchLocation(locationMap)

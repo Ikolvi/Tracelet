@@ -88,6 +88,11 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
             database: instance.database,
             configManager: instance.configManager
         )
+        // Wire location persistence → HTTP auto-sync trigger
+        instance.locationEngine.onLocationPersisted = { [weak instance] in
+            instance?.httpSyncManager.onLocationInserted()
+        }
+
         instance.locationEngine.auditTrailManager = instance.auditTrailManager
 
         // [Enterprise] Privacy Zones

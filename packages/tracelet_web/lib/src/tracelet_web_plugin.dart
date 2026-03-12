@@ -303,6 +303,7 @@ class TraceletWebPlugin extends TraceletPlatform {
     final persist = options['persist'] as bool? ?? true;
     if (persist) {
       await _storage.persistLocation(location);
+      _httpEngine.onLocationInserted();
     }
     return location;
   }
@@ -405,8 +406,10 @@ class TraceletWebPlugin extends TraceletPlatform {
   }
 
   @override
-  Future<String> insertLocation(Map<String, Object?> params) {
-    return _storage.insertLocation(params);
+  Future<String> insertLocation(Map<String, Object?> params) async {
+    final uuid = await _storage.insertLocation(params);
+    _httpEngine.onLocationInserted();
+    return uuid;
   }
 
   // ---------------------------------------------------------------------------

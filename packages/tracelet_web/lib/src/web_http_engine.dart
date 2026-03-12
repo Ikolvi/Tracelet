@@ -24,6 +24,9 @@ class WebHttpEngine {
   bool _batchSync = false;
   int _maxBatchSize = 250;
   int _httpTimeout = 60000;
+  bool _autoSync = true;
+  int _autoSyncThreshold = 0;
+  bool _disableAutoSyncOnCellular = false;
 
   void applyConfig(Map<String, Object?> config) {
     final http = config['http'];
@@ -47,7 +50,33 @@ class WebHttpEngine {
       _batchSync = (hm['batchSync'] as bool?) ?? _batchSync;
       _maxBatchSize = (hm['maxBatchSize'] as int?) ?? _maxBatchSize;
       _httpTimeout = (hm['httpTimeout'] as int?) ?? _httpTimeout;
+      _autoSync = (hm['autoSync'] as bool?) ?? _autoSync;
+      _autoSyncThreshold =
+          (hm['autoSyncThreshold'] as int?) ?? _autoSyncThreshold;
+      _disableAutoSyncOnCellular =
+          (hm['disableAutoSyncOnCellular'] as bool?) ??
+          _disableAutoSyncOnCellular;
     }
+  }
+
+  /// Trigger auto-sync if conditions are met. Called after each location
+  /// insert to mirror the native platform behaviour.
+  void onLocationInserted() {
+    if (!_autoSync) return;
+    if (_url.isEmpty) return;
+    // Note: `_disableAutoSyncOnCellular` cannot be reliably enforced on
+    // web because the Network Information API has limited adoption.
+    // We skip that guard here.
+    if (_autoSyncThreshold > 0) {
+      // Approximate un-synced count via storage.
+      _storage.getCount().then((count) {
+        if (count >= _autoSyncThreshold) {
+          sync();
+        }
+      });
+      return;
+    }
+    sync();
   }
 
   // ---------------------------------------------------------------------------
