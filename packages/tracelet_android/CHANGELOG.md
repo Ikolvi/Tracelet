@@ -1,3 +1,7 @@
+## 1.0.2
+
+- **FIX**: `destroyAll()` unconditionally removed geofence registrations from Play Services even when `stopOnTerminate: false` was configured with `trackingMode=1` (geofence mode). Geofences now survive app termination and are re-registered on boot/task-removal ([#23](https://github.com/Ikolvi/Tracelet/issues/23)).
+
 ## 1.0.1
 
 - **FIX**: HTTP auto-sync never triggered from automatic location tracking — `onLocationInserted()` was only called from the manual `insertLocation` handler, not from `LocationEngine.persistLocationIfAllowed()` ([#21](https://github.com/Ikolvi/Tracelet/issues/21)).
