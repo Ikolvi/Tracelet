@@ -1,3 +1,7 @@
+## 1.0.2
+
+- **FIX**: (Android/iOS) Geofence registrations were unconditionally destroyed on app termination and reset, even when `stopOnTerminate: false` was configured with `trackingMode=1`. Geofences now survive process death and are properly re-registered ([#23](https://github.com/Ikolvi/Tracelet/issues/23)).
+
 ## 1.0.1
 
 - **FIX**: HTTP auto-sync was not triggered during automatic location tracking on any platform — locations accumulated in the database without being synced to the server ([#21](https://github.com/Ikolvi/Tracelet/issues/21)).
