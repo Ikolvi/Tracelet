@@ -14,6 +14,9 @@ This package uses Kotlin and native Android APIs (FusedLocationProvider, Room, W
 - **OEM Compatibility** — Automatic mitigations for aggressive OEM power management: Huawei PowerGenie wakelock tag hack, Xiaomi autostart detection, Samsung/OnePlus/Oppo/Vivo settings deep-links, boot receiver wakelock, and ProGuard consumer rules. Settings Health API exposes device health for user-facing onboarding. [Learn more →](https://github.com/Ikolvi/Tracelet/blob/main/help/OEM-COMPATIBILITY.md)
 - **HTTP Sync Retry Engine** — Configurable retry with exponential backoff in `HttpSyncManager.kt` for transient 5xx, 429, and timeout failures. Respects `Retry-After` headers and defers sync on connectivity loss. [Learn more →](https://github.com/Ikolvi/Tracelet/blob/main/help/HTTP-SYNC.md)
 - **Configurable Motion Sensitivity** — `MotionDetector.kt` reads `shakeThreshold`, `stillThreshold`, and `stillSampleCount` from config at runtime, allowing per-app tuning of accelerometer sensitivity without code changes.
+- **Delta Encoding** — Native `DeltaEncoder.kt` compresses HTTP sync payloads by encoding only field deltas between consecutive locations, achieving 60–80% bandwidth reduction. Mirrors the Dart implementation for platform consistency.
+- **Wi-Fi-Only Sync** — `HttpSyncManager.kt` supports `disableAutoSyncOnCellular` to skip auto-sync on cellular networks.
+- **Periodic Mode** — `PeriodicLocationWorker` supports configurable intervals (60 sec–12 hrs), foreground service for sub-15-minute intervals, and exact alarms via `AlarmManager.setExactAndAllowWhileIdle()`.
 
 ## Usage
 
@@ -21,7 +24,7 @@ This package uses Kotlin and native Android APIs (FusedLocationProvider, Room, W
 
 ```yaml
 dependencies:
-  tracelet: ^0.5.0
+  tracelet: ^1.1.0
 ```
 
 For Android-specific setup (permissions, Gradle configuration), see the [Android Setup Guide](https://github.com/Ikolvi/Tracelet/blob/main/help/INSTALL-ANDROID.md).

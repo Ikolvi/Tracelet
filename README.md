@@ -49,6 +49,15 @@ Battery-conscious motion-detection intelligence, geofencing, SQLite persistence,
 - **Dart-controlled permissions** — No native dialogs. Full Dart-side customization of permission UI, translations, and behavior.
 - **Foreground service toggle** — Run with or without a persistent notification (Android).
 - **Shared Dart algorithms** — Location filtering (elasticity, accuracy, speed), geofence proximity evaluation, schedule parsing, and persistence logic all run in shared Dart code for cross-platform consistency. Write once — works on Android, iOS, web, and future desktop platforms.
+- **Battery budget engine** — Automatic feedback control loop adjusts `distanceFilter`, `desiredAccuracy`, and periodic interval to stay within a configurable battery drain budget (`batteryBudgetPerHour`, typical 1.0–5.0 %/hr). Subscribe to real-time adjustment events via `onBudgetAdjustment()`.
+- **Carbon footprint estimator** — Per-trip and cumulative CO₂ emission calculator using EU EEA 2024 mode-specific factors (gCO₂/km): car = 192, bus = 89, train = 41, walking/cycling = 0. Integrates with activity recognition to track distance per transport mode.
+- **Delta encoding** — Batch location compression codec achieving 60–80% payload reduction for HTTP sync. First location transmitted in full; subsequent positions as deltas with shortened field names. Triple implementation (Dart + Kotlin + Swift) for native encoding.
+- **R-tree spatial index** — O(log n) geofence proximity queries supporting 10,000+ geofences with sub-millisecond lookup. `queryCircle()` and `queryBBox()` APIs with Haversine-verified results.
+- **GDPR/CCPA compliance reports** — `generateComplianceReport()` returns a structured data processing inventory covering: stored/synced counts, retention policy, privacy zones, encryption status, permissions, audit trail, and tracking config. Exports to JSON and Markdown.
+- **Sparse updates** — App-level location deduplication at the persistence layer. Drops locations within `sparseDistanceThreshold` (default 50 m) of the last recorded position, with configurable idle heartbeat interval.
+- **Dead reckoning** — Inertial navigation using accelerometer + gyroscope + compass when GPS is lost for longer than `deadReckoningActivationDelay` seconds. Auto-stops after configurable duration to prevent IMU drift.
+- **Wi-Fi-only sync** — `disableAutoSyncOnCellular` skips HTTP auto-sync on cellular networks, syncing only when connected to Wi-Fi. Supported on Android, iOS, and Web.
+- **Periodic mode** — Configurable one-shot location fixes at intervals from 60 seconds to 12 hours. Android supports sub-15-minute intervals via foreground service and exact alarms via `AlarmManager`.
 - **Live map view** — Built-in example with OpenStreetMap tiles, speed-colored route trail, geofence visualization, trip overlay, and real-time status overlay.
 
 ## Architecture
@@ -216,6 +225,8 @@ await tl.Tracelet.start();
 | [Adaptive Sampling](help/ADAPTIVE-SAMPLING.md) | Multi-factor distance filter — activity, battery, speed |
 | [Health Check](help/HEALTH-CHECK.md) | Single-call diagnostics — warnings, permissions, sensors |
 | [HTTP Sync](help/HTTP-SYNC.md) | Retry strategy, exponential backoff, connectivity handling |
+| [Privacy Zones](help/PRIVACY-ZONES.md) | Location exclusion zones for sensitive areas |
+| [Audit Trail](help/AUDIT-TRAIL.md) | Cryptographic hash-chain audit trail for compliance |
 | [Mock Detection](help/MOCK-DETECTION.md) | Detect spoofed locations, mock provider flags, trust scoring |
 | [OEM Compatibility](help/OEM-COMPATIBILITY.md) | OEM-specific battery kill issues, manufacturer workarounds |
 

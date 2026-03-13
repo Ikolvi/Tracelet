@@ -43,6 +43,15 @@ Battery-conscious motion-detection intelligence, geofencing, SQLite persistence,
 - **Prevent suspend (iOS)** — silent audio keep-alive for continuous background execution
 - **Unlimited geofences** — monitor thousands of geofences despite platform limits (100 Android / 20 iOS). Only the closest geofences within `geofenceProximityRadius` are registered with the OS. As the device moves, geofences are automatically swapped in/out, with `onGeofencesChange` events for each activation/deactivation.
 - **Shared Dart algorithms** — location filtering, geofence proximity, schedule parsing, and persistence logic run in shared Dart for cross-platform consistency
+- **Battery budget engine** — adaptive feedback control adjusts `distanceFilter`, `desiredAccuracy`, and periodic interval to maintain a configurable `batteryBudgetPerHour` target (1.0–5.0 %/hr). Subscribe via `onBudgetAdjustment()`.
+- **Carbon footprint estimator** — per-trip and cumulative CO₂ calculator using EU EEA 2024 emission factors (gCO₂/km) per transport mode. Returns `TripCarbonSummary` with breakdown by mode.
+- **Delta encoding** — 60–80% HTTP batch payload reduction via delta compression. Dart + Kotlin + Swift implementations for native encoding during sync.
+- **R-tree spatial index** — O(log n) geofence queries supporting 10,000+ geofences with sub-ms lookup. `queryCircle()` and `queryBBox()` APIs.
+- **GDPR/CCPA compliance reports** — `generateComplianceReport()` returns structured data processing inventory (JSON & Markdown export).
+- **Sparse updates** — app-level deduplication drops locations within `sparseDistanceThreshold` of last recorded position.
+- **Dead reckoning** — inertial navigation (accel + gyro + compass) when GPS lost, with configurable activation delay and max duration.
+- **Wi-Fi-only sync** — `disableAutoSyncOnCellular` defers HTTP sync to Wi-Fi connections.
+- **Periodic mode** — configurable one-shot fixes (60 sec–12 hrs), with Android foreground service and exact alarm support.
 - **Mock location detection** — detect and reject spoofed GPS with configurable detection levels (basic platform flags + advanced heuristics). [Learn more →](https://github.com/Ikolvi/Tracelet/blob/main/help/MOCK-DETECTION.md)
 - **OEM compatibility** — automatic mitigations for aggressive OEM power management (Huawei, Xiaomi, OnePlus, Samsung, Oppo, Vivo) with Settings Health API. [Learn more →](https://github.com/Ikolvi/Tracelet/blob/main/help/OEM-COMPATIBILITY.md)
 - **iOS background hardening** — all critical native operations wrapped in `beginBackgroundTask`, with iOS 17+ `CLBackgroundActivitySession` and iOS 18+ `CLServiceSession` for extended background runtime. [Learn more →](https://github.com/Ikolvi/Tracelet/blob/main/help/IOS-BACKGROUND-HARDENING.md)
@@ -165,6 +174,8 @@ Polygon containment uses the ray-casting algorithm for efficient point-in-polygo
 | [Health Check](https://github.com/Ikolvi/Tracelet/blob/main/help/HEALTH-CHECK.md) | Diagnostic API — permissions, battery, sensors, database |
 | [HTTP Sync](https://github.com/Ikolvi/Tracelet/blob/main/help/HTTP-SYNC.md) | Retry engine, exponential backoff, offline queue |
 | [iOS Background Hardening](https://github.com/Ikolvi/Tracelet/blob/main/help/IOS-BACKGROUND-HARDENING.md) | Background task protection, session APIs, prevent suspend |
+| [Privacy Zones](https://github.com/Ikolvi/Tracelet/blob/main/help/PRIVACY-ZONES.md) | Location exclusion zones for sensitive areas |
+| [Audit Trail](https://github.com/Ikolvi/Tracelet/blob/main/help/AUDIT-TRAIL.md) | Cryptographic hash-chain audit trail for compliance |
 
 ## Architecture
 

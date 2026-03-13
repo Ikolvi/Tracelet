@@ -17,6 +17,8 @@ This package uses Swift and native Apple frameworks (CoreLocation, CoreMotion, B
 - **iOS 18+ Service Session** — `CLServiceSession` maintains location authorization state during background execution.
 - **HTTP Sync Retry Engine** — Configurable retry with exponential backoff in `HttpSyncManager.swift` for transient 5xx, 429, and timeout failures. Defers sync on connectivity loss via `NWPathMonitor`. [Learn more →](https://github.com/Ikolvi/Tracelet/blob/main/help/HTTP-SYNC.md)
 - **Configurable Motion Sensitivity** — `MotionDetector.swift` reads `shakeThreshold`, `stillThreshold`, and `stillSampleCount` from config at runtime (auto-converts m/s² to g-force).
+- **Delta Encoding** — Native `DeltaEncoder.swift` compresses HTTP sync payloads by encoding only field deltas between consecutive locations, achieving 60–80% bandwidth reduction. Uses Foundation's `ISO8601DateFormatter` with fractional seconds fallback.
+- **Wi-Fi-Only Sync** — `HttpSyncManager.swift` supports `disableAutoSyncOnCellular` to skip auto-sync on cellular networks.
 
 ## Usage
 
@@ -24,7 +26,7 @@ This package uses Swift and native Apple frameworks (CoreLocation, CoreMotion, B
 
 ```yaml
 dependencies:
-  tracelet: ^0.5.0
+  tracelet: ^1.1.0
 ```
 
 For iOS-specific setup (Info.plist, capabilities, entitlements), see the [iOS Setup Guide](https://github.com/Ikolvi/Tracelet/blob/main/help/INSTALL-IOS.md).

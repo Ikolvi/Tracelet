@@ -13,7 +13,7 @@ This package uses browser APIs (Geolocation, Permissions, `fetch`, `navigator.on
 
 ```yaml
 dependencies:
-  tracelet: ^0.5.0
+  tracelet: ^1.1.0
 ```
 
 For a full compatibility matrix of what works and what doesn't on web, see the [Web Support Guide](https://github.com/Ikolvi/Tracelet/blob/main/help/WEB-SUPPORT.md).
@@ -27,7 +27,7 @@ For a full compatibility matrix of what works and what doesn't on web, see the [
 | `stop` / `stopWatchPosition` | Full | Via `navigator.geolocation.clearWatch()` |
 | Geofencing | Emulated | Distance-based enter/exit/dwell computed in Dart |
 | Persistence | In-memory | Lost on page refresh. Use HTTP sync for durability. |
-| HTTP Sync | Full | Via browser `fetch()` API |
+| HTTP Sync | Full | Via browser `fetch()` API with delta compression support |
 | Permissions | Partial | Via `navigator.permissions.query()` |
 | Connectivity | Full | Via `navigator.onLine` events |
 | Mock Detection | Passthrough | `Location.isMock` always `false` — browser API has no spoof detection |
