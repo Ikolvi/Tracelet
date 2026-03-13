@@ -19,6 +19,23 @@ Config(
     enableTimestampMeta: true,       // Extra timing fields on each location
     stopAfterElapsedMinutes: -1,     // Auto-stop after N minutes (-1 = off)
     geofenceModeHighAccuracy: false, // Full GPS in geofence-only mode (Android)
+    locationUpdateInterval: 1000,    // Android: desired update interval (ms)
+    fastestLocationUpdateInterval: 500, // Android: fastest update interval (ms)
+    locationTimeout: 60,             // Timeout for location request (s)
+    activityType: LocationActivityType.other, // iOS: activity type hint
+    deferTime: 0,                    // Android: defer updates for N ms
+    locationAuthorizationRequest: 'Always', // Authorization level to request
+    disableLocationAuthorizationAlert: false, // Suppress system auth prompt
+    // Battery budget:
+    batteryBudgetPerHour: 3.0,       // Target max %/hr drain (0 = disabled)
+    // Sparse updates:
+    enableSparseUpdates: true,       // App-level location deduplication
+    sparseDistanceThreshold: 50.0,   // Min meters between recorded locations
+    sparseMaxIdleSeconds: 300,       // Force update after N seconds idle
+    // Dead reckoning:
+    enableDeadReckoning: true,       // IMU navigation during GPS loss
+    deadReckoningActivationDelay: 10, // Seconds without GPS before IMU
+    deadReckoningMaxDuration: 120,   // Max seconds of dead reckoning
     // Periodic mode options (used with Tracelet.startPeriodic()):
     periodicLocationInterval: 900,           // 15 min between fixes
     periodicDesiredAccuracy: DesiredAccuracy.medium,
@@ -55,6 +72,8 @@ Config(
     maxRetries: 10,                  // Retry transient failures
     retryBackoffBase: 1000,          // 1s base delay
     retryBackoffCap: 300000,         // 5 min max backoff
+    enableDeltaCompression: true,    // Delta encoding for batch payloads
+    deltaCoordinatePrecision: 6,     // Coordinate decimal places (6 ≈ 0.11m)
   ),
   motion: MotionConfig(              // Motion detection
     stopTimeout: 5,
@@ -105,6 +124,23 @@ Location accuracy, sampling, and filtering.
 | `showsBackgroundLocationIndicator` | `bool` | `true` | iOS: show blue status bar indicator |
 | `pausesLocationUpdatesAutomatically` | `bool` | `false` | iOS: allow system to pause updates |
 | `enableAdaptiveMode` | `bool` | `false` | Enable adaptive sampling — automatically adjusts `distanceFilter` based on activity, battery, and speed ([details](ADAPTIVE-SAMPLING.md)) |
+| `locationUpdateInterval` | `int` | `1000` | **Android**: desired update interval in ms |
+| `fastestLocationUpdateInterval` | `int` | `500` | **Android**: fastest update interval in ms |
+| `locationTimeout` | `int` | `60` | Timeout for individual location request in seconds |
+| `activityType` | `LocationActivityType` | `other` | **iOS**: hint for CLLocationManager (`other`, `automotiveNavigation`, `fitness`, `airborne`) |
+| `deferTime` | `int` | `0` | **Android**: defer location updates for N ms (batching) |
+| `locationAuthorizationRequest` | `String` | `'Always'` | Authorization level to request: `'Always'` or `'WhenInUse'` |
+| `disableLocationAuthorizationAlert` | `bool` | `false` | Suppress system authorization prompt |
+| **Battery Budget** | | | |
+| `batteryBudgetPerHour` | `double` | `0.0` | Target max battery drain %/hr. `0` = disabled. Adjusts distanceFilter, accuracy, and periodic interval automatically ([details](BATTERY-BUDGET.md)) |
+| **Sparse Updates** | | | |
+| `enableSparseUpdates` | `bool` | `false` | App-level location deduplication — record only when moved beyond threshold ([details](SPARSE-UPDATES.md)) |
+| `sparseDistanceThreshold` | `double` | `50.0` | Min meters from last recorded point before recording |
+| `sparseMaxIdleSeconds` | `int` | `300` | Force a record after N seconds of no movement (`0` = disabled) |
+| **Dead Reckoning** | | | |
+| `enableDeadReckoning` | `bool` | `false` | IMU-based inertial navigation when GPS signal lost ([details](DEAD-RECKONING.md)) |
+| `deadReckoningActivationDelay` | `int` | `10` | Seconds without GPS before activating IMU |
+| `deadReckoningMaxDuration` | `int` | `120` | Max seconds of dead reckoning estimation |
 | `filter` | `LocationFilter?` | `null` | GPS denoising configuration |
 | **Periodic Mode** | | | |
 | `periodicLocationInterval` | `int` | `900` | Seconds between periodic fixes (min 60). WorkManager enforces ≥ 15 min on Android. |
@@ -154,7 +190,11 @@ App lifecycle, foreground service, and scheduling.
 | `notificationTitle` | `String` | `'App'` | Notification title |
 | `notificationText` | `String` | `'Location tracking active'` | Notification body |
 | `notificationSmallIcon` | `String?` | `null` | Custom icon resource name |
+| `notificationColor` | `String?` | `null` | Notification accent color (hex string, e.g. `'#FF0000'`) |
+| `notificationLargeIcon` | `String?` | `null` | Large notification icon resource name |
+| `notificationOngoing` | `bool` | `true` | Make notification non-dismissible |
 | `notificationPriority` | `int` | `0` | Notification priority |
+| `actions` | `List<String>` | `[]` | Custom notification action buttons |
 
 ---
 
@@ -168,7 +208,7 @@ Server sync configuration.
 | `method` | `HttpMethod` | `post` | HTTP method (`post` or `put`) |
 | `autoSync` | `bool` | `true` | Auto-sync on location insert |
 | `batchSync` | `bool` | `false` | Send all locations in one request |
-| `maxBatchSize` | `int` | `-1` | Max locations per batch (-1 = unlimited) |
+| `maxBatchSize` | `int` | `250` | Max locations per batch (-1 = unlimited) |
 | `headers` | `Map<String, String>` | `{}` | Custom HTTP headers |
 | `params` | `Map<String, String>` | `{}` | Query parameters |
 | `extras` | `Map<String, Object?>` | `{}` | Extra data added to each location |
@@ -178,6 +218,10 @@ Server sync configuration.
 | `maxRetries` | `int` | `10` | Max retry attempts for transient failures (5xx, 429, timeout). Set to `0` to disable retries ([details](HTTP-SYNC.md)) |
 | `retryBackoffBase` | `int` | `1000` | Base delay in ms for exponential backoff between retries |
 | `retryBackoffCap` | `int` | `300000` | Max backoff delay in ms (5 min). Caps exponential growth |
+| `httpRootProperty` | `String` | `'location'` | Root JSON key wrapping each location in payloads |
+| `locationsOrderDirection` | `LocationOrder` | `asc` | Sort order for synced locations: `asc` (oldest first) or `desc` |
+| `enableDeltaCompression` | `bool` | `false` | Delta-encode batch payloads for 60–80% size reduction. Requires `batchSync: true` ([details](DELTA-ENCODING.md)) |
+| `deltaCoordinatePrecision` | `int` | `6` | Decimal places for coordinate deltas: `5` ≈ 1.1m, `6` ≈ 0.11m, `7` ≈ 0.011m |
 | `authorization` | `Authorization?` | `null` | Token refresh config |
 
 ---
