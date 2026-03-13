@@ -1,3 +1,10 @@
+## 1.2.0
+
+### New Enums
+
+- **FEAT**: Add `NotificationPriority` enum — `min`, `low`, `defaultPriority`, `high`, `max` — replacing raw `int` for Android foreground notification priority.
+- **FEAT**: Add `HashAlgorithm` enum — `sha256`, `sha384`, `sha512` — replacing `String` for audit trail hash algorithm configuration.
+
 ## 1.1.0
 
 ### New Algorithms

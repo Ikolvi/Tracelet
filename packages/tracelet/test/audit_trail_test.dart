@@ -9,25 +9,25 @@ void main() {
     test('has sensible defaults', () {
       const config = AuditConfig();
       expect(config.enabled, false);
-      expect(config.hashAlgorithm, 'SHA-256');
+      expect(config.hashAlgorithm, HashAlgorithm.sha256);
       expect(config.includeExtrasInHash, false);
     });
 
     test('custom values', () {
       const config = AuditConfig(
         enabled: true,
-        hashAlgorithm: 'SHA-512',
+        hashAlgorithm: HashAlgorithm.sha512,
         includeExtrasInHash: true,
       );
       expect(config.enabled, true);
-      expect(config.hashAlgorithm, 'SHA-512');
+      expect(config.hashAlgorithm, HashAlgorithm.sha512);
       expect(config.includeExtrasInHash, true);
     });
 
     test('round-trip serialization preserves all fields', () {
       const original = AuditConfig(
         enabled: true,
-        hashAlgorithm: 'SHA-256',
+        hashAlgorithm: HashAlgorithm.sha256,
         includeExtrasInHash: true,
       );
 
@@ -35,14 +35,14 @@ void main() {
       final restored = AuditConfig.fromMap(map);
 
       expect(restored.enabled, true);
-      expect(restored.hashAlgorithm, 'SHA-256');
+      expect(restored.hashAlgorithm, HashAlgorithm.sha256);
       expect(restored.includeExtrasInHash, true);
     });
 
     test('fromMap with defaults when keys missing', () {
       final restored = AuditConfig.fromMap(const <String, Object?>{});
       expect(restored.enabled, false);
-      expect(restored.hashAlgorithm, 'SHA-256');
+      expect(restored.hashAlgorithm, HashAlgorithm.sha256);
       expect(restored.includeExtrasInHash, false);
     });
 
@@ -56,9 +56,12 @@ void main() {
     });
 
     test('equality', () {
-      const a = AuditConfig(enabled: true, hashAlgorithm: 'SHA-256');
-      const b = AuditConfig(enabled: true, hashAlgorithm: 'SHA-256');
-      const c = AuditConfig(enabled: false, hashAlgorithm: 'SHA-256');
+      const a = AuditConfig(enabled: true, hashAlgorithm: HashAlgorithm.sha256);
+      const b = AuditConfig(enabled: true, hashAlgorithm: HashAlgorithm.sha256);
+      const c = AuditConfig(
+        enabled: false,
+        hashAlgorithm: HashAlgorithm.sha256,
+      );
       expect(a, equals(b));
       expect(a, isNot(equals(c)));
     });
@@ -279,7 +282,7 @@ void main() {
     test('default Config has audit disabled', () {
       const config = Config();
       expect(config.audit.enabled, false);
-      expect(config.audit.hashAlgorithm, 'SHA-256');
+      expect(config.audit.hashAlgorithm, HashAlgorithm.sha256);
     });
 
     test('Config with audit enabled round-trips', () {
@@ -292,7 +295,7 @@ void main() {
 
       expect(restored.audit.enabled, true);
       expect(restored.audit.includeExtrasInHash, true);
-      expect(restored.audit.hashAlgorithm, 'SHA-256');
+      expect(restored.audit.hashAlgorithm, HashAlgorithm.sha256);
     });
 
     test('Config equality includes audit', () {

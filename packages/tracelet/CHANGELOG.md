@@ -1,3 +1,15 @@
+## 1.2.0
+
+### Breaking Changes
+
+- **REFACTOR**: `ForegroundServiceConfig.notificationPriority` changed from `int` to `NotificationPriority` enum. Replace raw integers (`-2`..`2`) with enum values (`NotificationPriority.min`, `.low`, `.defaultPriority`, `.high`, `.max`).
+- **REFACTOR**: `AuditConfig.hashAlgorithm` changed from `String` to `HashAlgorithm` enum. Replace `'SHA-256'` with `HashAlgorithm.sha256`, `'SHA-512'` with `HashAlgorithm.sha512`, etc.
+- **REFACTOR**: `MotionConfig.triggerActivities` changed from comma-separated `String` to `Set<ActivityType>`. Replace `'on_foot, in_vehicle'` with `{ActivityType.onFoot, ActivityType.inVehicle}`.
+
+### Notes
+
+- Native platform channel serialization is backward-compatible — no native code changes required. `notificationPriority` still serializes as int, `hashAlgorithm` as `"SHA-256"` string, and `triggerActivities` as comma-separated string.
+
 ## 1.1.0
 
 ### New Features

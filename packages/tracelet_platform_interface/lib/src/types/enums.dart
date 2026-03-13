@@ -253,3 +253,36 @@ enum LocationAuthorizationRequest {
   /// Background tracking will not work with this setting on iOS.
   whenInUse,
 }
+
+/// Android notification priority levels for the foreground service.
+///
+/// Maps to `NotificationCompat.PRIORITY_*` constants and
+/// `NotificationManager.IMPORTANCE_*` for the notification channel.
+enum NotificationPriority {
+  /// Minimum priority. Notification may be completely hidden.
+  min,
+
+  /// Low priority.
+  low,
+
+  /// Default priority.
+  defaultPriority,
+
+  /// High priority. May cause a heads-up notification.
+  high,
+
+  /// Maximum priority.
+  max,
+}
+
+/// Hash algorithms for the audit trail chain.
+enum HashAlgorithm {
+  /// SHA-256 (default). 256-bit digest.
+  sha256,
+
+  /// SHA-384. 384-bit digest.
+  sha384,
+
+  /// SHA-512. 512-bit digest.
+  sha512,
+}

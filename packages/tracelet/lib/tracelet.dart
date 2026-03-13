@@ -39,6 +39,8 @@ export 'package:tracelet_platform_interface/tracelet_platform_interface.dart'
         LocationFilterPolicy,
         MockDetectionLevel,
         LocationAuthorizationRequest,
+        NotificationPriority,
+        HashAlgorithm,
         // Shared algorithms (pure Dart — work on all platforms)
         KalmanLocationFilter,
         TripManager,

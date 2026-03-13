@@ -291,13 +291,13 @@ void main() {
         channelId: 'ch1',
         notificationTitle: 'T',
         notificationText: 'B',
-        notificationPriority: 0,
+        notificationPriority: NotificationPriority.defaultPriority,
       );
       const b = ForegroundServiceConfig(
         channelId: 'ch1',
         notificationTitle: 'T',
         notificationText: 'B',
-        notificationPriority: 2,
+        notificationPriority: NotificationPriority.max,
       );
       expect(a, isNot(equals(b)));
     });
@@ -1164,6 +1164,234 @@ void main() {
       final map = query.toMap();
       expect(map['start'], now.millisecondsSinceEpoch);
       expect(map['limit'], 100);
+    });
+  });
+
+  // ==========================================================================
+  // NotificationPriority enum parsing
+  // ==========================================================================
+  group('NotificationPriority', () {
+    test('ForegroundServiceConfig defaults to defaultPriority', () {
+      const config = ForegroundServiceConfig();
+      expect(config.notificationPriority, NotificationPriority.defaultPriority);
+    });
+
+    test('fromMap parses int -2 as min', () {
+      final config = ForegroundServiceConfig.fromMap(const {
+        'notificationPriority': -2,
+      });
+      expect(config.notificationPriority, NotificationPriority.min);
+    });
+
+    test('fromMap parses int -1 as low', () {
+      final config = ForegroundServiceConfig.fromMap(const {
+        'notificationPriority': -1,
+      });
+      expect(config.notificationPriority, NotificationPriority.low);
+    });
+
+    test('fromMap parses int 0 as defaultPriority', () {
+      final config = ForegroundServiceConfig.fromMap(const {
+        'notificationPriority': 0,
+      });
+      expect(config.notificationPriority, NotificationPriority.defaultPriority);
+    });
+
+    test('fromMap parses int 1 as high', () {
+      final config = ForegroundServiceConfig.fromMap(const {
+        'notificationPriority': 1,
+      });
+      expect(config.notificationPriority, NotificationPriority.high);
+    });
+
+    test('fromMap parses int 2 as max', () {
+      final config = ForegroundServiceConfig.fromMap(const {
+        'notificationPriority': 2,
+      });
+      expect(config.notificationPriority, NotificationPriority.max);
+    });
+
+    test('fromMap clamps out-of-range int to min', () {
+      final config = ForegroundServiceConfig.fromMap(const {
+        'notificationPriority': -5,
+      });
+      expect(config.notificationPriority, NotificationPriority.min);
+    });
+
+    test('fromMap clamps out-of-range int to max', () {
+      final config = ForegroundServiceConfig.fromMap(const {
+        'notificationPriority': 10,
+      });
+      expect(config.notificationPriority, NotificationPriority.max);
+    });
+
+    test('toMap serializes back to int', () {
+      const config = ForegroundServiceConfig(
+        notificationPriority: NotificationPriority.high,
+      );
+      final map = config.toMap();
+      expect(map['notificationPriority'], 1);
+    });
+
+    test('round-trip preserves all priority values', () {
+      for (final priority in NotificationPriority.values) {
+        final config = ForegroundServiceConfig(notificationPriority: priority);
+        final restored = ForegroundServiceConfig.fromMap(config.toMap());
+        expect(restored.notificationPriority, priority);
+      }
+    });
+  });
+
+  // ==========================================================================
+  // HashAlgorithm enum parsing
+  // ==========================================================================
+  group('HashAlgorithm', () {
+    test('AuditConfig defaults to sha256', () {
+      const config = AuditConfig();
+      expect(config.hashAlgorithm, HashAlgorithm.sha256);
+    });
+
+    test('fromMap parses SHA-256 string', () {
+      final config = AuditConfig.fromMap(const {'hashAlgorithm': 'SHA-256'});
+      expect(config.hashAlgorithm, HashAlgorithm.sha256);
+    });
+
+    test('fromMap parses SHA-384 string', () {
+      final config = AuditConfig.fromMap(const {'hashAlgorithm': 'SHA-384'});
+      expect(config.hashAlgorithm, HashAlgorithm.sha384);
+    });
+
+    test('fromMap parses SHA-512 string', () {
+      final config = AuditConfig.fromMap(const {'hashAlgorithm': 'SHA-512'});
+      expect(config.hashAlgorithm, HashAlgorithm.sha512);
+    });
+
+    test('fromMap defaults unknown string to sha256', () {
+      final config = AuditConfig.fromMap(const {'hashAlgorithm': 'MD5'});
+      expect(config.hashAlgorithm, HashAlgorithm.sha256);
+    });
+
+    test('fromMap defaults missing key to sha256', () {
+      final config = AuditConfig.fromMap(const <String, Object?>{});
+      expect(config.hashAlgorithm, HashAlgorithm.sha256);
+    });
+
+    test('toMap serializes to standard string format', () {
+      const config = AuditConfig(hashAlgorithm: HashAlgorithm.sha256);
+      expect(config.toMap()['hashAlgorithm'], 'SHA-256');
+
+      const config384 = AuditConfig(hashAlgorithm: HashAlgorithm.sha384);
+      expect(config384.toMap()['hashAlgorithm'], 'SHA-384');
+
+      const config512 = AuditConfig(hashAlgorithm: HashAlgorithm.sha512);
+      expect(config512.toMap()['hashAlgorithm'], 'SHA-512');
+    });
+
+    test('round-trip preserves all algorithm values', () {
+      for (final algo in HashAlgorithm.values) {
+        final config = AuditConfig(hashAlgorithm: algo);
+        final restored = AuditConfig.fromMap(config.toMap());
+        expect(restored.hashAlgorithm, algo);
+      }
+    });
+  });
+
+  // ==========================================================================
+  // triggerActivities Set<ActivityType> parsing
+  // ==========================================================================
+  group('triggerActivities', () {
+    test('MotionConfig defaults to empty set', () {
+      const config = MotionConfig();
+      expect(config.triggerActivities, isEmpty);
+    });
+
+    test('fromMap parses comma-separated string', () {
+      final config = MotionConfig.fromMap(const {
+        'triggerActivities': 'on_foot, in_vehicle',
+      });
+      expect(config.triggerActivities, {
+        ActivityType.onFoot,
+        ActivityType.inVehicle,
+      });
+    });
+
+    test('fromMap parses single activity', () {
+      final config = MotionConfig.fromMap(const {
+        'triggerActivities': 'walking',
+      });
+      expect(config.triggerActivities, {ActivityType.walking});
+    });
+
+    test('fromMap handles all activity types', () {
+      final config = MotionConfig.fromMap(const {
+        'triggerActivities':
+            'still,walking,running,on_foot,in_vehicle,on_bicycle,unknown',
+      });
+      expect(config.triggerActivities, {
+        ActivityType.still,
+        ActivityType.walking,
+        ActivityType.running,
+        ActivityType.onFoot,
+        ActivityType.inVehicle,
+        ActivityType.onBicycle,
+        ActivityType.unknown,
+      });
+    });
+
+    test('fromMap ignores invalid activity names', () {
+      final config = MotionConfig.fromMap(const {
+        'triggerActivities': 'walking, flying, running',
+      });
+      expect(config.triggerActivities, {
+        ActivityType.walking,
+        ActivityType.running,
+      });
+    });
+
+    test('fromMap handles empty string', () {
+      final config = MotionConfig.fromMap(const {'triggerActivities': ''});
+      expect(config.triggerActivities, isEmpty);
+    });
+
+    test('fromMap handles missing key', () {
+      final config = MotionConfig.fromMap(const <String, Object?>{});
+      expect(config.triggerActivities, isEmpty);
+    });
+
+    test('toMap serializes to comma-separated snake_case string', () {
+      const config = MotionConfig(
+        triggerActivities: {ActivityType.onFoot, ActivityType.inVehicle},
+      );
+      final value = config.toMap()['triggerActivities'] as String;
+      expect(value, contains('on_foot'));
+      expect(value, contains('in_vehicle'));
+    });
+
+    test('toMap serializes empty set to empty string', () {
+      const config = MotionConfig();
+      expect(config.toMap()['triggerActivities'], '');
+    });
+
+    test('round-trip preserves activities through serialization', () {
+      const activities = {
+        ActivityType.walking,
+        ActivityType.running,
+        ActivityType.onBicycle,
+      };
+      const config = MotionConfig(triggerActivities: activities);
+      final restored = MotionConfig.fromMap(config.toMap());
+      expect(restored.triggerActivities, activities);
+    });
+
+    test('case-insensitive parsing', () {
+      final config = MotionConfig.fromMap(const {
+        'triggerActivities': 'Walking, ON_FOOT, In_Vehicle',
+      });
+      expect(config.triggerActivities, {
+        ActivityType.walking,
+        ActivityType.onFoot,
+        ActivityType.inVehicle,
+      });
     });
   });
 }

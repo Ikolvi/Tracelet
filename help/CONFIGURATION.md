@@ -193,7 +193,7 @@ App lifecycle, foreground service, and scheduling.
 | `notificationColor` | `String?` | `null` | Notification accent color (hex string, e.g. `'#FF0000'`) |
 | `notificationLargeIcon` | `String?` | `null` | Large notification icon resource name |
 | `notificationOngoing` | `bool` | `true` | Make notification non-dismissible |
-| `notificationPriority` | `int` | `0` | Notification priority |
+| `notificationPriority` | `NotificationPriority` | `defaultPriority` | Notification priority (`min`, `low`, `defaultPriority`, `high`, `max`) |
 | `actions` | `List<String>` | `[]` | Custom notification action buttons |
 
 ---
@@ -234,7 +234,7 @@ Motion detection tuning.
 |---|---|---|---|
 | `stopTimeout` | `int` | `5` | Minutes of stillness before declaring stationary |
 | `minimumActivityRecognitionConfidence` | `int` | `75` | Min confidence (0–100) |
-| `triggerActivities` | `String` | `''` | Comma-separated activity filter |
+| `triggerActivities` | `Set<ActivityType>` | `{}` | Activity types that trigger motion |
 | `disableStopDetection` | `bool` | `false` | Never declare stationary |
 | `stopDetectionDelay` | `int` | `0` | Extra delay (seconds) before stationary |
 | `stopOnStationary` | `bool` | `false` | Fully stop tracking when stationary |

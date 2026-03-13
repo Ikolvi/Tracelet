@@ -179,7 +179,7 @@ minimumActivityRecognitionConfidence   → motion.minimumActivityRecognitionConf
 disableStopDetection                   → motion.disableStopDetection
 stopDetectionDelay                     → motion.stopDetectionDelay
 stopOnStationary                       → motion.stopOnStationary
-triggerActivities                      → motion.triggerActivities (comma-separated)
+triggerActivities                      → motion.triggerActivities (Set<ActivityType>)
 ```
 
 **🆕 Tracelet-exclusive MotionConfig fields:**
@@ -284,7 +284,7 @@ debug                  → logger.debug (alert sounds — fun at demos, terrifyi
 ### 🔐 Audit Trail → `AuditConfig` (Tracelet-exclusive)
 
 - **`audit.enabled`** — `false` by default. SHA-256 hash chain on every location — tamper = busted
-- **`audit.hashAlgorithm`** — `'SHA-256'`
+- **`audit.hashAlgorithm`** — `HashAlgorithm.sha256`
 - **`audit.includeExtrasInHash`** — `false` by default
 
 ### 🛡️ Privacy Zones → `PrivacyZoneConfig` (Tracelet-exclusive)

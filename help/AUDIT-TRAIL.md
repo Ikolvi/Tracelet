@@ -55,9 +55,9 @@ Config(
     // Enable the audit trail (default: false)
     enabled: true,
 
-    // Hash algorithm (default: 'SHA-256')
+    // Hash algorithm (default: HashAlgorithm.sha256)
     // Currently only SHA-256 is supported.
-    hashAlgorithm: 'SHA-256',
+    hashAlgorithm: HashAlgorithm.sha256,
 
     // Include location extras in the hash (default: false)
     // When true, the extras map is included in the canonical hash input.
@@ -70,7 +70,7 @@ Config(
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
 | `enabled` | `bool` | `false` | Enable tamper-proof audit trail |
-| `hashAlgorithm` | `String` | `'SHA-256'` | Hash algorithm for chain computation |
+| `hashAlgorithm` | `HashAlgorithm` | `sha256` | Hash algorithm for chain computation |
 | `includeExtrasInHash` | `bool` | `false` | Include extras map in hash input |
 
 ## API Reference

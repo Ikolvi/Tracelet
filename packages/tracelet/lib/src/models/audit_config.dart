@@ -1,4 +1,5 @@
 import 'package:meta/meta.dart';
+import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 
 import '_helpers.dart';
 
@@ -48,7 +49,7 @@ import '_helpers.dart';
 /// Config(
 ///   audit: AuditConfig(
 ///     enabled: true,
-///     hashAlgorithm: 'SHA-256', // only SHA-256 supported currently
+///     hashAlgorithm: HashAlgorithm.sha256,
 ///   ),
 /// )
 /// ```
@@ -59,7 +60,7 @@ class AuditConfig {
   /// Creates a new [AuditConfig].
   const AuditConfig({
     this.enabled = false,
-    this.hashAlgorithm = 'SHA-256',
+    this.hashAlgorithm = HashAlgorithm.sha256,
     this.includeExtrasInHash = false,
   });
 
@@ -71,9 +72,11 @@ class AuditConfig {
 
   /// The hash algorithm used for the audit chain.
   ///
-  /// Currently only `'SHA-256'` is supported. This field exists for
-  /// future extensibility (e.g., SHA-384, SHA-512). Defaults to `'SHA-256'`.
-  final String hashAlgorithm;
+  /// Currently only [HashAlgorithm.sha256] is supported. This field exists
+  /// for future extensibility (SHA-384, SHA-512).
+  ///
+  /// Defaults to [HashAlgorithm.sha256].
+  final HashAlgorithm hashAlgorithm;
 
   /// Whether to include the `extras` map in the hash computation.
   ///
@@ -86,7 +89,7 @@ class AuditConfig {
   factory AuditConfig.fromMap(Map<String, Object?> map) {
     return AuditConfig(
       enabled: ensureBool(map['enabled'], fallback: false),
-      hashAlgorithm: map['hashAlgorithm'] as String? ?? 'SHA-256',
+      hashAlgorithm: _parseHashAlgorithm(map['hashAlgorithm']),
       includeExtrasInHash: ensureBool(
         map['includeExtrasInHash'],
         fallback: false,
@@ -98,7 +101,7 @@ class AuditConfig {
   Map<String, Object?> toMap() {
     return <String, Object?>{
       'enabled': enabled,
-      'hashAlgorithm': hashAlgorithm,
+      'hashAlgorithm': _hashAlgorithmToString(hashAlgorithm),
       'includeExtrasInHash': includeExtrasInHash,
     };
   }
@@ -119,4 +122,36 @@ class AuditConfig {
 
   @override
   int get hashCode => Object.hash(enabled, hashAlgorithm, includeExtrasInHash);
+}
+
+/// Parse a hash algorithm value from a native map.
+///
+/// Accepts the string forms (`'SHA-256'`, `'SHA-384'`, `'SHA-512'`) sent
+/// over platform channels and the enum itself.
+HashAlgorithm _parseHashAlgorithm(Object? value) {
+  if (value is HashAlgorithm) return value;
+  if (value is String) {
+    switch (value) {
+      case 'SHA-384':
+        return HashAlgorithm.sha384;
+      case 'SHA-512':
+        return HashAlgorithm.sha512;
+      case 'SHA-256':
+      default:
+        return HashAlgorithm.sha256;
+    }
+  }
+  return HashAlgorithm.sha256;
+}
+
+/// Serialize a [HashAlgorithm] to the string format expected by native code.
+String _hashAlgorithmToString(HashAlgorithm algorithm) {
+  switch (algorithm) {
+    case HashAlgorithm.sha256:
+      return 'SHA-256';
+    case HashAlgorithm.sha384:
+      return 'SHA-384';
+    case HashAlgorithm.sha512:
+      return 'SHA-512';
+  }
 }

@@ -1083,7 +1083,7 @@ class ForegroundServiceConfig {
     this.notificationColor,
     this.notificationSmallIcon,
     this.notificationLargeIcon,
-    this.notificationPriority = 0,
+    this.notificationPriority = NotificationPriority.defaultPriority,
     this.notificationOngoing = true,
     this.actions = const <String>[],
   });
@@ -1123,8 +1123,10 @@ class ForegroundServiceConfig {
   /// Resource name of the large icon.
   final String? notificationLargeIcon;
 
-  /// Notification priority (`-2` to `2`). Defaults to `0`.
-  final int notificationPriority;
+  /// Notification priority level.
+  ///
+  /// Defaults to [NotificationPriority.defaultPriority].
+  final NotificationPriority notificationPriority;
 
   /// Whether the notification is ongoing (cannot be swiped away). Defaults to `true`.
   final bool notificationOngoing;
@@ -1152,7 +1154,9 @@ class ForegroundServiceConfig {
       notificationColor: map['notificationColor'] as String?,
       notificationSmallIcon: map['notificationSmallIcon'] as String?,
       notificationLargeIcon: map['notificationLargeIcon'] as String?,
-      notificationPriority: ensureInt(map['notificationPriority'], fallback: 0),
+      notificationPriority: _parseNotificationPriority(
+        map['notificationPriority'],
+      ),
       notificationOngoing: ensureBool(
         map['notificationOngoing'],
         fallback: true,
@@ -1172,7 +1176,7 @@ class ForegroundServiceConfig {
       'notificationColor': notificationColor,
       'notificationSmallIcon': notificationSmallIcon,
       'notificationLargeIcon': notificationLargeIcon,
-      'notificationPriority': notificationPriority,
+      'notificationPriority': notificationPriority.index - 2,
       'notificationOngoing': notificationOngoing,
       'actions': actions,
     };
@@ -1511,7 +1515,7 @@ class MotionConfig {
     this.disableStopDetection = false,
     this.stopDetectionDelay = 0,
     this.stopOnStationary = false,
-    this.triggerActivities = '',
+    this.triggerActivities = const <ActivityType>{},
     this.shakeThreshold = 2.5,
     this.stillThreshold = 0.4,
     this.stillSampleCount = 25,
@@ -1573,11 +1577,11 @@ class MotionConfig {
   /// Defaults to `false`.
   final bool stopOnStationary;
 
-  /// Comma-separated activity names that should trigger motion.
+  /// Activity types that should trigger a transition to the moving state.
   ///
-  /// Example: `'on_foot, in_vehicle'`. Empty string (default) means all
-  /// activities trigger motion.
-  final String triggerActivities;
+  /// Example: `{ActivityType.onFoot, ActivityType.inVehicle}`. An empty
+  /// set (default) means all activities trigger motion.
+  final Set<ActivityType> triggerActivities;
 
   /// Accelerometer magnitude (m/s², gravity-subtracted) required to trigger
   /// a transition from stationary to moving.
@@ -1641,7 +1645,7 @@ class MotionConfig {
       ),
       stopDetectionDelay: ensureInt(map['stopDetectionDelay'], fallback: 0),
       stopOnStationary: ensureBool(map['stopOnStationary'], fallback: false),
-      triggerActivities: map['triggerActivities'] as String? ?? '',
+      triggerActivities: _parseTriggerActivities(map['triggerActivities']),
       shakeThreshold: ensureDouble(map['shakeThreshold'], fallback: 2.5),
       stillThreshold: ensureDouble(map['stillThreshold'], fallback: 0.4),
       stillSampleCount: ensureInt(map['stillSampleCount'], fallback: 25),
@@ -1661,7 +1665,7 @@ class MotionConfig {
       'disableStopDetection': disableStopDetection,
       'stopDetectionDelay': stopDetectionDelay,
       'stopOnStationary': stopOnStationary,
-      'triggerActivities': triggerActivities,
+      'triggerActivities': _serializeTriggerActivities(triggerActivities),
       'shakeThreshold': shakeThreshold,
       'stillThreshold': stillThreshold,
       'stillSampleCount': stillSampleCount,
@@ -2012,4 +2016,53 @@ LocationAuthorizationRequest _parseLocationAuthorizationRequest(Object? value) {
     }
   }
   return LocationAuthorizationRequest.always;
+}
+
+/// Parse a notification priority value from a native map.
+///
+/// Accepts an int in the range -2..2, mapping to [NotificationPriority] values.
+NotificationPriority _parseNotificationPriority(Object? value) {
+  if (value is NotificationPriority) return value;
+  final raw = ensureInt(value, fallback: 0).clamp(-2, 2);
+  return NotificationPriority.values[raw + 2];
+}
+
+/// Activity type name mapping for native interop (snake_case).
+const _activityTypeNames = <ActivityType, String>{
+  ActivityType.still: 'still',
+  ActivityType.walking: 'walking',
+  ActivityType.running: 'running',
+  ActivityType.onFoot: 'on_foot',
+  ActivityType.inVehicle: 'in_vehicle',
+  ActivityType.onBicycle: 'on_bicycle',
+  ActivityType.unknown: 'unknown',
+};
+
+/// Reverse mapping: snake_case name → [ActivityType].
+final _activityTypeByName = {
+  for (final e in _activityTypeNames.entries) e.value: e.key,
+};
+
+/// Parse a trigger-activities value from a native map.
+///
+/// Accepts a comma-separated string (native format) or the [Set] itself.
+Set<ActivityType> _parseTriggerActivities(Object? value) {
+  if (value is Set<ActivityType>) return value;
+  if (value is String) {
+    if (value.isEmpty) return const <ActivityType>{};
+    final result = <ActivityType>{};
+    for (final part in value.split(',')) {
+      final name = part.trim().toLowerCase();
+      final type = _activityTypeByName[name];
+      if (type != null) result.add(type);
+    }
+    return result;
+  }
+  return const <ActivityType>{};
+}
+
+/// Serialize a [Set<ActivityType>] to the comma-separated string native format.
+String _serializeTriggerActivities(Set<ActivityType> activities) {
+  if (activities.isEmpty) return '';
+  return activities.map((a) => _activityTypeNames[a] ?? a.name).join(',');
 }

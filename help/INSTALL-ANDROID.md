@@ -80,7 +80,7 @@ await Tracelet.ready(Config(
       notificationTitle: 'My App',
       notificationText: 'Tracking your route',
       notificationSmallIcon: 'drawable/ic_notification',
-      notificationPriority: 0,  // DEFAULT
+      notificationPriority: NotificationPriority.defaultPriority,
     ),
   ),
 ));
