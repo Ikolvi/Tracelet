@@ -1,3 +1,11 @@
+## 1.1.0
+
+### New Features
+
+- **FEAT**: Add native `DeltaEncoder` (Kotlin) for delta-compressed HTTP sync payloads — mirrors the Dart implementation exactly for platform consistency. Encodes only field deltas between consecutive locations using shortened keys (`la`, `lo`, `t`, `s`, `h`, `a`, `al`, `b`), achieving 60–80% bandwidth reduction. Uses `java.time.Instant` for ISO 8601 timestamp parsing with flexible numeric type coercion.
+- **FEAT**: `ConfigManager` now reads and applies the following new configuration fields from Dart: `batteryBudgetPerHour` (adaptive battery budget target), `enableSparseUpdates`, `sparseDistanceThreshold`, `sparseMaxIdleSeconds` (app-level deduplication), `enableDeadReckoning`, `deadReckoningActivationDelay`, `deadReckoningMaxDuration` (inertial navigation when GPS lost), `enableDeltaCompression`, `deltaCoordinatePrecision` (HTTP delta encoding), and `disableAutoSyncOnCellular` (WiFi-only sync).
+- **FEAT**: `HttpSyncManager` now supports `disableAutoSyncOnCellular` — skips auto-sync when device is on cellular network, syncing only on WiFi. Also conditionally applies `DeltaEncoder.encode()` to multi-location batches before HTTP upload when `enableDeltaCompression` is enabled, reducing upload size by 60–80%.
+
 ## 1.0.2
 
 - **FIX**: `destroyAll()` unconditionally removed geofence registrations from Play Services even when `stopOnTerminate: false` was configured with `trackingMode=1` (geofence mode). Geofences now survive app termination and are re-registered on boot/task-removal ([#23](https://github.com/Ikolvi/Tracelet/issues/23)).

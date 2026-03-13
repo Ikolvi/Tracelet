@@ -188,11 +188,15 @@ final class HttpSyncManager {
     private func syncBatch(_ locations: [[String: Any]],
                            completion: @escaping ([[String: Any]]) -> Void) {
         let rootProperty = configManager.getHttpRootProperty()
+        let useDelta = configManager.getEnableDeltaCompression() && locations.count > 1
+        let payload: [[String: Any]] = useDelta
+            ? DeltaEncoder.encode(locations, precision: configManager.getDeltaCoordinatePrecision())
+            : locations
         let body: [String: Any]
         if rootProperty.isEmpty {
-            body = ["locations": locations]
+            body = ["locations": payload]
         } else {
-            body = [rootProperty: locations]
+            body = [rootProperty: payload]
         }
 
         sendRequest(body: body) { [weak self] success, statusCode, responseBody in

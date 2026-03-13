@@ -470,6 +470,12 @@ class ConfigManager internal constructor(context: Context) {
 
     fun getRetryBackoffCap(): Int = getInt("retryBackoffCap", 300000)
 
+    fun getEnableDeltaCompression(): Boolean =
+        getBool("enableDeltaCompression", false)
+
+    fun getDeltaCoordinatePrecision(): Int =
+        getInt("deltaCoordinatePrecision", 6)
+
     // ---------------------------------------------------------------------------
     // Typed Getters (PersistenceConfig)
     // ---------------------------------------------------------------------------

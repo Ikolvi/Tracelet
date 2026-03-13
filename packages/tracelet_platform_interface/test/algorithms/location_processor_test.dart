@@ -606,5 +606,147 @@ void main() {
       final p = LocationProcessor();
       expect(p.mockDetectionLevel, 1);
     });
+
+    group('transferStateTo', () {
+      test('copies odometer state to target processor', () {
+        final source = LocationProcessor(distanceFilter: 10.0);
+
+        // Process two locations so source has internal state.
+        source.process(
+          latitude: 37.4220,
+          longitude: -122.0841,
+          accuracy: 5.0,
+          speed: 3.0,
+          timestampMs: 1000000,
+        );
+        source.process(
+          latitude: 37.4230,
+          longitude: -122.0830,
+          accuracy: 5.0,
+          speed: 5.0,
+          timestampMs: 1010000,
+        );
+
+        expect(source.hasLastLocation, isTrue);
+        expect(source.lastEffectiveSpeed, greaterThan(0));
+
+        // Create a fresh target with different config.
+        final target = LocationProcessor(distanceFilter: 50.0);
+        expect(target.hasLastLocation, isFalse);
+
+        source.transferStateTo(target);
+
+        // Target now has source's internal state.
+        expect(target.hasLastLocation, isTrue);
+        expect(target.lastEffectiveSpeed, source.lastEffectiveSpeed);
+
+        // Target's config is unchanged.
+        expect(target.distanceFilter, 50.0);
+      });
+
+      test('preserves sparse update bookkeeping', () {
+        final source = LocationProcessor(
+          distanceFilter: 10.0,
+          enableSparseUpdates: true,
+          sparseDistanceThreshold: 50.0,
+          sparseMaxIdleSeconds: 300,
+        );
+
+        // Accept a location to populate sparse state.
+        source.process(
+          latitude: 37.4220,
+          longitude: -122.0841,
+          accuracy: 5.0,
+          speed: 0.0,
+          timestampMs: 1000000,
+        );
+
+        // A near-duplicate should be filtered by sparse dedup.
+        final filtered = source.process(
+          latitude: 37.42201,
+          longitude: -122.08411,
+          accuracy: 5.0,
+          speed: 0.0,
+          timestampMs: 1001000,
+        );
+        expect(filtered.accepted, isFalse);
+
+        // Transfer to a new processor with same sparse config.
+        final target = LocationProcessor(
+          distanceFilter: 10.0,
+          enableSparseUpdates: true,
+          sparseDistanceThreshold: 50.0,
+          sparseMaxIdleSeconds: 300,
+        );
+        source.transferStateTo(target);
+
+        // The near-duplicate should still be filtered because sparse state
+        // was transferred (same last-recorded position).
+        final result = target.process(
+          latitude: 37.42202,
+          longitude: -122.08412,
+          accuracy: 5.0,
+          speed: 0.0,
+          timestampMs: 1002000,
+        );
+        expect(result.accepted, isFalse);
+      });
+
+      test('target without prior state behaves like source after transfer', () {
+        final source = LocationProcessor(distanceFilter: 10.0);
+
+        // Process a location.
+        source.process(
+          latitude: 37.4220,
+          longitude: -122.0841,
+          accuracy: 5.0,
+          speed: 2.0,
+          timestampMs: 1000000,
+        );
+
+        final target = LocationProcessor(distanceFilter: 10.0);
+        source.transferStateTo(target);
+
+        // A close location should be filtered (same as if source processed it).
+        final result = target.process(
+          latitude: 37.42201,
+          longitude: -122.08411,
+          accuracy: 5.0,
+          speed: 0.0,
+          timestampMs: 1001000,
+        );
+        expect(result.accepted, isFalse);
+        expect(result.reason, 'DISTANCE_FILTER');
+
+        // A far-away location should be accepted.
+        final result2 = target.process(
+          latitude: 37.4240,
+          longitude: -122.0820,
+          accuracy: 5.0,
+          speed: 5.0,
+          timestampMs: 1010000,
+        );
+        expect(result2.accepted, isTrue);
+      });
+
+      test('transfer from fresh processor is a no-op', () {
+        final source = LocationProcessor(distanceFilter: 10.0);
+        final target = LocationProcessor(distanceFilter: 20.0);
+
+        // Source has no state; transfer should not break anything.
+        source.transferStateTo(target);
+        expect(target.hasLastLocation, isFalse);
+
+        // Target should still accept its first location normally.
+        final result = target.process(
+          latitude: 37.4220,
+          longitude: -122.0841,
+          accuracy: 5.0,
+          speed: 1.0,
+          timestampMs: 1000000,
+        );
+        expect(result.accepted, isTrue);
+      });
+    });
   });
 }

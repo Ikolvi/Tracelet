@@ -164,10 +164,16 @@ class HttpSyncManager(
         val maxRetryMs = config.getRetryBackoffCap().toLong()
 
         // Build JSON body
+        val useDelta = config.getEnableDeltaCompression() && config.getBatchSync() && locations.size > 1
         val body: String
         if (config.getBatchSync() && locations.size > 1) {
+            val payload = if (useDelta) {
+                DeltaEncoder.encode(locations, config.getDeltaCoordinatePrecision())
+            } else {
+                locations
+            }
             val jsonArray = JSONArray()
-            for (loc in locations) {
+            for (loc in payload) {
                 jsonArray.put(JSONObject(loc))
             }
             val wrapper = JSONObject()

@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:js_interop';
 
+import 'package:tracelet_platform_interface/tracelet_platform_interface.dart'
+    show DeltaEncoder;
 import 'package:web/web.dart' as web;
 
 import 'web_event_dispatcher.dart';
@@ -27,6 +29,8 @@ class WebHttpEngine {
   bool _autoSync = true;
   int _autoSyncThreshold = 0;
   bool _disableAutoSyncOnCellular = false;
+  bool _enableDeltaCompression = false;
+  int _deltaCoordinatePrecision = 6;
 
   void applyConfig(Map<String, Object?> config) {
     final http = config['http'];
@@ -56,6 +60,10 @@ class WebHttpEngine {
       _disableAutoSyncOnCellular =
           (hm['disableAutoSyncOnCellular'] as bool?) ??
           _disableAutoSyncOnCellular;
+      _enableDeltaCompression =
+          (hm['enableDeltaCompression'] as bool?) ?? _enableDeltaCompression;
+      _deltaCoordinatePrecision =
+          (hm['deltaCoordinatePrecision'] as int?) ?? _deltaCoordinatePrecision;
     }
   }
 
@@ -169,7 +177,10 @@ class WebHttpEngine {
 
   Future<bool> _sendBatch(List<Map<String, Object?>> locations) async {
     try {
-      final body = <String, Object?>{_httpRootProperty: locations};
+      final payload = (_enableDeltaCompression && locations.length > 1)
+          ? DeltaEncoder.encode(locations, precision: _deltaCoordinatePrecision)
+          : locations;
+      final body = <String, Object?>{_httpRootProperty: payload};
       final response = await _doFetch(jsonEncode(body));
 
       final status = response.status;

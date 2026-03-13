@@ -183,6 +183,8 @@ final class ConfigManager {
     func getMaxRetries() -> Int { cache["maxRetries"] as? Int ?? 10 }
     func getRetryBackoffBase() -> Int { cache["retryBackoffBase"] as? Int ?? 1000 }
     func getRetryBackoffCap() -> Int { cache["retryBackoffCap"] as? Int ?? 300000 }
+    func getEnableDeltaCompression() -> Bool { cache["enableDeltaCompression"] as? Bool ?? false }
+    func getDeltaCoordinatePrecision() -> Int { cache["deltaCoordinatePrecision"] as? Int ?? 6 }
 
     // PersistenceConfig
     func getPersistMode() -> Int { cache["persistMode"] as? Int ?? 0 }

@@ -220,6 +220,13 @@ class GeoConfig {
     this.periodicDesiredAccuracy = DesiredAccuracy.medium,
     this.periodicUseForegroundService = false,
     this.periodicUseExactAlarms = false,
+    this.enableSparseUpdates = false,
+    this.sparseDistanceThreshold = 50.0,
+    this.sparseMaxIdleSeconds = 300,
+    this.enableDeadReckoning = false,
+    this.deadReckoningActivationDelay = 10,
+    this.deadReckoningMaxDuration = 120,
+    this.batteryBudgetPerHour = 0.0,
     this.filter,
   });
 
@@ -378,6 +385,65 @@ class GeoConfig {
   /// Defaults to `false`.
   final bool periodicUseExactAlarms;
 
+  /// Enable sparse updates. When true, locations that haven't moved
+  /// beyond [sparseDistanceThreshold] meters from the last recorded
+  /// location are silently dropped.
+  ///
+  /// Unlike [distanceFilter] (which controls GPS sampling frequency at the
+  /// platform level), sparse updates control whether a *received* location
+  /// is worth *recording* (downstream, app-level deduplication).
+  ///
+  /// Defaults to `false`.
+  final bool enableSparseUpdates;
+
+  /// Minimum distance (meters) from the last recorded location before
+  /// a new update is persisted/dispatched. Only applies when
+  /// [enableSparseUpdates] is `true`.
+  ///
+  /// Defaults to `50.0` meters.
+  final double sparseDistanceThreshold;
+
+  /// Maximum time (seconds) between recorded locations, even if the
+  /// device hasn't moved beyond [sparseDistanceThreshold]. Ensures
+  /// periodic "I'm still here" updates.
+  ///
+  /// `0` = disabled (no forced updates — only movement triggers recording).
+  /// Defaults to `300` (5 minutes).
+  final int sparseMaxIdleSeconds;
+
+  /// Enable dead reckoning when GPS signal is lost.
+  ///
+  /// When `true` and GPS signal is lost for longer than
+  /// [deadReckoningActivationDelay] seconds, the plugin switches to inertial
+  /// navigation using accelerometer + gyroscope + compass to estimate
+  /// position. Requires accelerometer + gyroscope (most modern devices).
+  ///
+  /// Defaults to `false`.
+  final bool enableDeadReckoning;
+
+  /// Seconds of GPS absence before dead reckoning activates.
+  ///
+  /// Defaults to `10`.
+  final int deadReckoningActivationDelay;
+
+  /// Maximum duration (seconds) of dead reckoning before stopping.
+  ///
+  /// IMU drift makes estimates unreliable beyond ~2 minutes.
+  /// Defaults to `120`.
+  final int deadReckoningMaxDuration;
+
+  /// Maximum battery consumption per hour (percentage points).
+  ///
+  /// When set (> 0), the plugin auto-adjusts accuracy, distance filter,
+  /// and sampling rate to stay within the budget. Overrides manual
+  /// [distanceFilter] / [desiredAccuracy] settings.
+  ///
+  /// `0` = disabled (manual configuration).
+  /// Typical values: `1.0` (ultra-conservative) to `5.0` (high-accuracy).
+  ///
+  /// Defaults to `0.0` (disabled).
+  final double batteryBudgetPerHour;
+
   /// Location filtering / denoising settings.
   ///
   /// Controls Kalman filtering, speed-jump rejection, and accuracy
@@ -474,6 +540,34 @@ class GeoConfig {
         map['periodicUseExactAlarms'],
         fallback: false,
       ),
+      enableSparseUpdates: ensureBool(
+        map['enableSparseUpdates'],
+        fallback: false,
+      ),
+      sparseDistanceThreshold: ensureDouble(
+        map['sparseDistanceThreshold'],
+        fallback: 50.0,
+      ),
+      sparseMaxIdleSeconds: ensureInt(
+        map['sparseMaxIdleSeconds'],
+        fallback: 300,
+      ),
+      enableDeadReckoning: ensureBool(
+        map['enableDeadReckoning'],
+        fallback: false,
+      ),
+      deadReckoningActivationDelay: ensureInt(
+        map['deadReckoningActivationDelay'],
+        fallback: 10,
+      ),
+      deadReckoningMaxDuration: ensureInt(
+        map['deadReckoningMaxDuration'],
+        fallback: 120,
+      ),
+      batteryBudgetPerHour: ensureDouble(
+        map['batteryBudgetPerHour'],
+        fallback: 0.0,
+      ),
       filter: filterMap != null ? LocationFilter.fromMap(filterMap) : null,
     );
   }
@@ -506,6 +600,13 @@ class GeoConfig {
       'periodicDesiredAccuracy': periodicDesiredAccuracy.index,
       'periodicUseForegroundService': periodicUseForegroundService,
       'periodicUseExactAlarms': periodicUseExactAlarms,
+      'enableSparseUpdates': enableSparseUpdates,
+      'sparseDistanceThreshold': sparseDistanceThreshold,
+      'sparseMaxIdleSeconds': sparseMaxIdleSeconds,
+      'enableDeadReckoning': enableDeadReckoning,
+      'deadReckoningActivationDelay': deadReckoningActivationDelay,
+      'deadReckoningMaxDuration': deadReckoningMaxDuration,
+      'batteryBudgetPerHour': batteryBudgetPerHour,
       if (filter != null) 'filter': filter!.toMap(),
     };
   }
@@ -517,6 +618,8 @@ class GeoConfig {
       'locationUpdateInterval: $locationUpdateInterval, '
       'disableElasticity: $disableElasticity, '
       'enableAdaptiveMode: $enableAdaptiveMode, '
+      'enableSparseUpdates: $enableSparseUpdates, '
+      'batteryBudgetPerHour: $batteryBudgetPerHour, '
       'filter: $filter)';
 
   @override
@@ -553,6 +656,13 @@ class GeoConfig {
           periodicDesiredAccuracy == other.periodicDesiredAccuracy &&
           periodicUseForegroundService == other.periodicUseForegroundService &&
           periodicUseExactAlarms == other.periodicUseExactAlarms &&
+          enableSparseUpdates == other.enableSparseUpdates &&
+          sparseDistanceThreshold == other.sparseDistanceThreshold &&
+          sparseMaxIdleSeconds == other.sparseMaxIdleSeconds &&
+          enableDeadReckoning == other.enableDeadReckoning &&
+          deadReckoningActivationDelay == other.deadReckoningActivationDelay &&
+          deadReckoningMaxDuration == other.deadReckoningMaxDuration &&
+          batteryBudgetPerHour == other.batteryBudgetPerHour &&
           filter == other.filter;
 
   @override
@@ -582,6 +692,13 @@ class GeoConfig {
     periodicDesiredAccuracy,
     periodicUseForegroundService,
     periodicUseExactAlarms,
+    enableSparseUpdates,
+    sparseDistanceThreshold,
+    sparseMaxIdleSeconds,
+    enableDeadReckoning,
+    deadReckoningActivationDelay,
+    deadReckoningMaxDuration,
+    batteryBudgetPerHour,
     filter,
   ]);
 }
@@ -779,6 +896,10 @@ class AppConfig {
     this.scheduleUseAlarmManager = false,
     this.preventSuspend = false,
     this.foregroundService = const ForegroundServiceConfig(),
+    this.remoteConfigUrl,
+    this.remoteConfigHeaders = const <String, String>{},
+    this.remoteConfigTimeout = 10000,
+    this.remoteConfigRefreshInterval = 0,
   });
 
   /// Whether to stop tracking when the app is terminated. Defaults to `true`.
@@ -815,6 +936,32 @@ class AppConfig {
   /// Android foreground service notification configuration.
   final ForegroundServiceConfig foregroundService;
 
+  /// URL to fetch remote config JSON. When set, `ready()` will attempt
+  /// to download config from this URL before initializing.
+  ///
+  /// The response must be a JSON object matching the Config structure.
+  /// Only HTTPS URLs are accepted (HTTP is rejected for security).
+  ///
+  /// Defaults to `null` (disabled).
+  final String? remoteConfigUrl;
+
+  /// Custom headers for the remote config request (e.g., auth tokens).
+  ///
+  /// Defaults to empty.
+  final Map<String, String> remoteConfigHeaders;
+
+  /// Timeout for the remote config fetch (milliseconds).
+  ///
+  /// If the fetch fails or times out, the local config is used as fallback.
+  /// Defaults to `10000` (10 seconds).
+  final int remoteConfigTimeout;
+
+  /// How often to re-fetch remote config (seconds).
+  ///
+  /// `0` = only on `ready()` (one-time fetch).
+  /// Defaults to `0`.
+  final int remoteConfigRefreshInterval;
+
   /// Creates an [AppConfig] from a map.
   factory AppConfig.fromMap(Map<String, Object?> map) {
     final rawSchedule = map['schedule'];
@@ -840,6 +987,16 @@ class AppConfig {
       foregroundService: fgMap != null
           ? ForegroundServiceConfig.fromMap(fgMap)
           : const ForegroundServiceConfig(),
+      remoteConfigUrl: map['remoteConfigUrl'] as String?,
+      remoteConfigHeaders: castStringMap(map['remoteConfigHeaders']),
+      remoteConfigTimeout: ensureInt(
+        map['remoteConfigTimeout'],
+        fallback: 10000,
+      ),
+      remoteConfigRefreshInterval: ensureInt(
+        map['remoteConfigRefreshInterval'],
+        fallback: 0,
+      ),
     );
   }
 
@@ -853,6 +1010,10 @@ class AppConfig {
       'scheduleUseAlarmManager': scheduleUseAlarmManager,
       'preventSuspend': preventSuspend,
       'foregroundService': foregroundService.toMap(),
+      'remoteConfigUrl': remoteConfigUrl,
+      'remoteConfigHeaders': remoteConfigHeaders,
+      'remoteConfigTimeout': remoteConfigTimeout,
+      'remoteConfigRefreshInterval': remoteConfigRefreshInterval,
     };
   }
 
@@ -872,7 +1033,10 @@ class AppConfig {
           heartbeatInterval == other.heartbeatInterval &&
           scheduleUseAlarmManager == other.scheduleUseAlarmManager &&
           preventSuspend == other.preventSuspend &&
-          foregroundService == other.foregroundService;
+          foregroundService == other.foregroundService &&
+          remoteConfigUrl == other.remoteConfigUrl &&
+          remoteConfigTimeout == other.remoteConfigTimeout &&
+          remoteConfigRefreshInterval == other.remoteConfigRefreshInterval;
 
   @override
   int get hashCode => Object.hash(
@@ -882,6 +1046,9 @@ class AppConfig {
     scheduleUseAlarmManager,
     preventSuspend,
     foregroundService,
+    remoteConfigUrl,
+    remoteConfigTimeout,
+    remoteConfigRefreshInterval,
   );
 }
 
@@ -1065,6 +1232,8 @@ class HttpConfig {
     this.maxRetries = 10,
     this.retryBackoffBase = 1000,
     this.retryBackoffCap = 300000,
+    this.enableDeltaCompression = false,
+    this.deltaCoordinatePrecision = 6,
   });
 
   /// The server URL to sync locations to. `null` disables HTTP sync.
@@ -1126,6 +1295,23 @@ class HttpConfig {
   /// don't wait indefinitely. Defaults to `300000` (5 minutes).
   final int retryBackoffCap;
 
+  /// Enable delta compression for HTTP sync payloads.
+  ///
+  /// When `true`, batch sync sends one full reference location followed
+  /// by deltas relative to the previous location in the batch.
+  /// Only applies when [batchSync] is `true`.
+  ///
+  /// Reduces payload size by 60–80% for high-frequency tracking.
+  ///
+  /// Defaults to `false`.
+  final bool enableDeltaCompression;
+
+  /// Coordinate precision (decimal places) for delta encoding.
+  ///
+  /// `5` = ~1.1m precision, `6` = ~0.11m. Lower = smaller payloads.
+  /// Defaults to `6`.
+  final int deltaCoordinatePrecision;
+
   /// Creates an [HttpConfig] from a map.
   factory HttpConfig.fromMap(Map<String, Object?> map) {
     return HttpConfig(
@@ -1156,6 +1342,14 @@ class HttpConfig {
       maxRetries: ensureInt(map['maxRetries'], fallback: 10),
       retryBackoffBase: ensureInt(map['retryBackoffBase'], fallback: 1000),
       retryBackoffCap: ensureInt(map['retryBackoffCap'], fallback: 300000),
+      enableDeltaCompression: ensureBool(
+        map['enableDeltaCompression'],
+        fallback: false,
+      ),
+      deltaCoordinatePrecision: ensureInt(
+        map['deltaCoordinatePrecision'],
+        fallback: 6,
+      ),
     );
   }
 
@@ -1178,6 +1372,8 @@ class HttpConfig {
       'maxRetries': maxRetries,
       'retryBackoffBase': retryBackoffBase,
       'retryBackoffCap': retryBackoffCap,
+      'enableDeltaCompression': enableDeltaCompression,
+      'deltaCoordinatePrecision': deltaCoordinatePrecision,
     };
   }
 
@@ -1202,7 +1398,9 @@ class HttpConfig {
           disableAutoSyncOnCellular == other.disableAutoSyncOnCellular &&
           maxRetries == other.maxRetries &&
           retryBackoffBase == other.retryBackoffBase &&
-          retryBackoffCap == other.retryBackoffCap;
+          retryBackoffCap == other.retryBackoffCap &&
+          enableDeltaCompression == other.enableDeltaCompression &&
+          deltaCoordinatePrecision == other.deltaCoordinatePrecision;
 
   @override
   int get hashCode => Object.hash(
@@ -1219,6 +1417,8 @@ class HttpConfig {
     maxRetries,
     retryBackoffBase,
     retryBackoffCap,
+    enableDeltaCompression,
+    deltaCoordinatePrecision,
   );
 }
 

@@ -97,6 +97,20 @@ class _DashboardPageState extends State<DashboardPage>
   tl.HealthCheck? _lastHealthCheck;
   final List<_LogEntry> _log = [];
 
+  // Battery Budget state
+  bool _budgetEnabled = false;
+  tl.BudgetAdjustmentEvent? _lastBudgetEvent;
+
+  // Carbon Estimator
+  final tl.CarbonEstimator _carbonEstimator = tl.CarbonEstimator();
+  tl.TripCarbonSummary? _lastCarbonSummary;
+  String _lastActivityName = 'unknown';
+
+  // Dead Reckoning / Sparse Updates toggles
+  bool _deadReckoningEnabled = false;
+  bool _sparseUpdatesEnabled = false;
+  bool _cellularSyncDisabled = true; // matches config default
+
   // Scroll controller for the main ListView
   final ScrollController _scrollController = ScrollController();
 
@@ -231,11 +245,28 @@ class _DashboardPageState extends State<DashboardPage>
           _lastLocation = loc;
         });
         _addLog('MOTION', loc.isMoving ? 'MOVING' : 'STATIONARY');
+        // Carbon estimator: start/end trip on motion changes.
+        if (loc.isMoving) {
+          _carbonEstimator.startTrip();
+        } else {
+          final summary = _carbonEstimator.endTrip();
+          if (summary != null) {
+            setState(() => _lastCarbonSummary = summary);
+            _addLog(
+              'CO\u2082',
+              '${summary.totalCarbonGrams.toStringAsFixed(1)}g CO\u2082  '
+                  '${(summary.totalDistanceMeters / 1000).toStringAsFixed(2)}km  '
+                  'mode=${summary.dominantMode}',
+            );
+          }
+        }
       }),
     );
 
     _subs.add(
       tl.Tracelet.onActivityChange((evt) {
+        _lastActivityName = evt.activity.name;
+        _carbonEstimator.setActivity(_lastActivityName);
         _addLog('ACTIVITY', '${evt.activity.name} (${evt.confidence.name})');
       }),
     );
@@ -349,6 +380,30 @@ class _DashboardPageState extends State<DashboardPage>
         );
       }),
     );
+
+    // Feed locations to the carbon estimator.
+    _subs.add(
+      tl.Tracelet.onLocation((loc) {
+        _carbonEstimator.onLocationReceived(
+          loc.coords.latitude,
+          loc.coords.longitude,
+        );
+      }),
+    );
+
+    // Battery budget adjustment events.
+    _subs.add(
+      tl.Tracelet.onBudgetAdjustment((evt) {
+        setState(() => _lastBudgetEvent = evt);
+        _addLog(
+          'BUDGET',
+          'drain=${evt.currentBatteryDrain.toStringAsFixed(2)}%/hr  '
+              'target=${evt.targetBudget.toStringAsFixed(2)}%/hr  '
+              'df=${evt.newDistanceFilter.toStringAsFixed(0)}m  '
+              'acc=${evt.newDesiredAccuracy}',
+        );
+      }),
+    );
   }
 
   // ── Lifecycle ───────────────────────────────────────────────────────────
@@ -418,6 +473,8 @@ class _DashboardPageState extends State<DashboardPage>
             enableTimestampMeta: true,
             stopAfterElapsedMinutes: -1, // disabled by default
             geofenceModeHighAccuracy: true, // needed for polygon geofences
+            // ── Battery budget (auto-adjusts tracking to save battery) ──
+            batteryBudgetPerHour: 3.0, // 3% max drain per hour
             // ── Location filter (denoising) ──
             filter: tl.LocationFilter(
               trackingAccuracyThreshold: 100,
@@ -482,6 +539,7 @@ class _DashboardPageState extends State<DashboardPage>
         _isReady = true;
         _isTracking = state.enabled;
         _pluginState = state;
+        _budgetEnabled = true; // batteryBudgetPerHour > 0 in config
         // Restore periodic mode flag from persisted native state
         _isPeriodicMode = state.trackingMode == tl.TrackingMode.periodic;
       });
@@ -1806,6 +1864,501 @@ class _DashboardPageState extends State<DashboardPage>
     }
   }
 
+  // ── Battery Budget ────────────────────────────────────────────────────
+
+  Future<void> _toggleBatteryBudget() async {
+    try {
+      final newBudget = _budgetEnabled ? 0.0 : 3.0;
+      final state = await tl.Tracelet.setConfig(
+        tl.Config(geo: tl.GeoConfig(batteryBudgetPerHour: newBudget)),
+      );
+      setState(() {
+        _budgetEnabled = !_budgetEnabled;
+        _pluginState = state;
+        if (!_budgetEnabled) _lastBudgetEvent = null;
+      });
+      _addLog(
+        'BUDGET',
+        _budgetEnabled
+            ? 'ENABLED — target 3%/hr max drain'
+            : 'DISABLED — no battery budget constraint',
+      );
+    } catch (e) {
+      _addLog('ERROR', 'toggleBatteryBudget() failed: $e');
+    }
+  }
+
+  void _showBudgetDashboard() {
+    final evt = _lastBudgetEvent;
+    if (evt == null) {
+      _addLog(
+        'BUDGET',
+        _budgetEnabled
+            ? 'No adjustments yet — waiting for battery samples'
+            : 'Budget is disabled — enable it first',
+      );
+      return;
+    }
+    final accuracyNames = ['high', 'medium', 'low', 'veryLow', 'passive'];
+    final accName = evt.newDesiredAccuracy < accuracyNames.length
+        ? accuracyNames[evt.newDesiredAccuracy]
+        : '${evt.newDesiredAccuracy}';
+    _addLog(
+      'BUDGET',
+      'Drain: ${evt.currentBatteryDrain.toStringAsFixed(2)}%/hr  '
+          'Target: ${evt.targetBudget.toStringAsFixed(2)}%/hr',
+    );
+    _addLog(
+      'BUDGET',
+      'Adjusted → distanceFilter=${evt.newDistanceFilter.toStringAsFixed(0)}m  '
+          'accuracy=$accName'
+          '${evt.newPeriodicInterval != null ? "  interval=${evt.newPeriodicInterval}s" : ""}',
+    );
+  }
+
+  // ── Carbon Estimator ──────────────────────────────────────────────────
+
+  void _showCarbonSummary() {
+    final summary = _lastCarbonSummary;
+    if (summary == null) {
+      _addLog(
+        'CO\u2082',
+        'No trip carbon data yet — complete a trip first (start moving, then stop)',
+      );
+      return;
+    }
+    _addLog(
+      'CO\u2082',
+      '${summary.totalCarbonGrams.toStringAsFixed(1)}g CO\u2082  '
+          '${(summary.totalDistanceMeters / 1000).toStringAsFixed(2)}km  '
+          'mode=${summary.dominantMode}',
+    );
+    for (final entry in summary.carbonByMode.entries) {
+      final distKm = (summary.distanceByMode[entry.key] ?? 0) / 1000;
+      _addLog(
+        '  ${entry.key}',
+        '${entry.value.toStringAsFixed(1)}g CO\u2082  '
+            '${distKm.toStringAsFixed(2)}km',
+      );
+    }
+    // Cumulative stats
+    final cumReport = _carbonEstimator.getCumulativeReport();
+    final cumGrams = cumReport['totalCarbonGrams'] as double;
+    final cumTrips = cumReport['totalTrips'] as int;
+    _addLog(
+      'CO\u2082 TOTAL',
+      '${cumGrams.toStringAsFixed(1)}g across $cumTrips trip(s)',
+    );
+  }
+
+  void _showCarbonBottomSheet() {
+    final summary = _lastCarbonSummary;
+    final cumReport = _carbonEstimator.getCumulativeReport();
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.5,
+        minChildSize: 0.25,
+        maxChildSize: 0.7,
+        expand: false,
+        builder: (ctx, scrollCtrl) => ListView(
+          controller: scrollCtrl,
+          padding: const EdgeInsets.all(20),
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.eco, color: Colors.green, size: 28),
+                const SizedBox(width: 10),
+                Text(
+                  'Carbon Footprint',
+                  style: Theme.of(
+                    ctx,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const Divider(height: 24),
+            if (summary != null) ...[
+              Text(
+                'Last Trip',
+                style: Theme.of(
+                  ctx,
+                ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              _HealthRow(
+                'CO\u2082 Emitted',
+                '${summary.totalCarbonGrams.toStringAsFixed(1)} g',
+              ),
+              _HealthRow(
+                'Distance',
+                '${(summary.totalDistanceMeters / 1000).toStringAsFixed(2)} km',
+              ),
+              _HealthRow('Dominant Mode', summary.dominantMode),
+              const SizedBox(height: 8),
+              for (final entry in summary.carbonByMode.entries)
+                _HealthRow(
+                  entry.key,
+                  '${entry.value.toStringAsFixed(1)}g  /  '
+                  '${((summary.distanceByMode[entry.key] ?? 0) / 1000).toStringAsFixed(2)}km',
+                ),
+              const Divider(height: 16),
+            ] else
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text('No trip completed yet. Start moving, then stop.'),
+              ),
+            Text(
+              'Cumulative',
+              style: Theme.of(
+                ctx,
+              ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            _HealthRow(
+              'Total CO\u2082',
+              '${(cumReport['totalCarbonGrams'] as double).toStringAsFixed(1)} g',
+            ),
+            _HealthRow('Total Trips', '${cumReport['totalTrips']}'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Compliance Report ─────────────────────────────────────────────────
+
+  Future<void> _showComplianceReport() async {
+    try {
+      _addLog('COMPLIANCE', 'Generating report...');
+      final report = await tl.Tracelet.generateComplianceReport();
+      _addLog(
+        'COMPLIANCE',
+        'Report ready — ${report.totalLocationsStored} locations stored',
+      );
+      if (!mounted) return;
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        builder: (ctx) => DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.3,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (ctx, scrollCtrl) => ListView(
+            controller: scrollCtrl,
+            padding: const EdgeInsets.all(20),
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.policy, color: Colors.indigo, size: 28),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Compliance Report',
+                    style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Generated: ${report.generatedAt.toIso8601String()}',
+                style: Theme.of(ctx).textTheme.bodySmall,
+              ),
+              const Divider(height: 24),
+
+              // Data Inventory
+              Text(
+                'Data Inventory',
+                style: Theme.of(
+                  ctx,
+                ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              _HealthRow('Locations Stored', '${report.totalLocationsStored}'),
+              _HealthRow('Locations Synced', '${report.totalLocationsSynced}'),
+              _HealthRow('Oldest Record', report.oldestRecord ?? 'N/A'),
+              _HealthRow('Newest Record', report.newestRecord ?? 'N/A'),
+              const Divider(height: 16),
+
+              // Retention Policy
+              Text(
+                'Retention Policy',
+                style: Theme.of(
+                  ctx,
+                ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              _HealthRow(
+                'Max Days',
+                report.maxDaysToPersist == -1
+                    ? 'Unlimited'
+                    : '${report.maxDaysToPersist} days',
+              ),
+              _HealthRow(
+                'Max Records',
+                report.maxRecordsToPersist == -1
+                    ? 'Unlimited'
+                    : '${report.maxRecordsToPersist}',
+              ),
+              const Divider(height: 16),
+
+              // Privacy Measures
+              Text(
+                'Privacy Measures',
+                style: Theme.of(
+                  ctx,
+                ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              _HealthRow(
+                'Database Encryption',
+                report.databaseEncrypted ? 'Enabled' : 'Disabled',
+                valueColor: report.databaseEncrypted
+                    ? Colors.green
+                    : Colors.orange,
+              ),
+              _HealthRow('Privacy Zones', '${report.activePrivacyZones}'),
+              _HealthRow(
+                'Sparse Updates',
+                report.sparseUpdatesEnabled ? 'Enabled' : 'Disabled',
+              ),
+              _HealthRow(
+                'Kalman Filter',
+                report.kalmanFilterEnabled ? 'Enabled' : 'Disabled',
+              ),
+              _HealthRow(
+                'Delta Compression',
+                report.deltaCompressionEnabled ? 'Enabled' : 'Disabled',
+              ),
+              const Divider(height: 16),
+
+              // Data Destinations
+              Text(
+                'Data Destinations',
+                style: Theme.of(
+                  ctx,
+                ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              _HealthRow(
+                'HTTP Sync URL',
+                report.httpSyncUrl ?? 'Not configured',
+              ),
+              _HealthRow(
+                'Auto Sync',
+                report.autoSyncEnabled ? 'Enabled' : 'Disabled',
+              ),
+              const Divider(height: 16),
+
+              // Audit Trail
+              Text(
+                'Audit Trail',
+                style: Theme.of(
+                  ctx,
+                ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              _HealthRow('Enabled', report.auditTrailEnabled ? 'Yes' : 'No'),
+              _HealthRow(
+                'Chain Valid',
+                report.auditTrailValid == null
+                    ? 'Not verified'
+                    : report.auditTrailValid!
+                    ? 'Yes'
+                    : 'No',
+                valueColor: report.auditTrailValid == true
+                    ? Colors.green
+                    : report.auditTrailValid == false
+                    ? Colors.red
+                    : null,
+              ),
+              const Divider(height: 16),
+
+              // Tracking State
+              Text(
+                'Tracking State',
+                style: Theme.of(
+                  ctx,
+                ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              _HealthRow(
+                'Tracking',
+                report.trackingEnabled ? 'Active' : 'Stopped',
+                valueColor: report.trackingEnabled ? Colors.green : Colors.red,
+              ),
+              _HealthRow('Mode', report.trackingMode),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      _addLog('ERROR', 'generateComplianceReport() failed: $e');
+    }
+  }
+
+  // ── Dead Reckoning ────────────────────────────────────────────────────
+
+  Future<void> _toggleDeadReckoning() async {
+    try {
+      final newValue = !_deadReckoningEnabled;
+      final state = await tl.Tracelet.setConfig(
+        tl.Config(
+          geo: tl.GeoConfig(
+            enableDeadReckoning: newValue,
+            deadReckoningActivationDelay: 10,
+            deadReckoningMaxDuration: 120,
+          ),
+        ),
+      );
+      setState(() {
+        _deadReckoningEnabled = newValue;
+        _pluginState = state;
+      });
+      _addLog(
+        'DEAD_RECKONING',
+        newValue
+            ? 'ENABLED — IMU fallback after 10s GPS loss (max 120s)'
+            : 'DISABLED',
+      );
+    } catch (e) {
+      _addLog('ERROR', 'toggleDeadReckoning() failed: $e');
+    }
+  }
+
+  // ── Sparse Updates ────────────────────────────────────────────────────
+
+  Future<void> _toggleSparseUpdates() async {
+    try {
+      final newValue = !_sparseUpdatesEnabled;
+      final state = await tl.Tracelet.setConfig(
+        tl.Config(
+          geo: tl.GeoConfig(
+            enableSparseUpdates: newValue,
+            sparseDistanceThreshold: 50,
+            sparseMaxIdleSeconds: 300,
+          ),
+        ),
+      );
+      setState(() {
+        _sparseUpdatesEnabled = newValue;
+        _pluginState = state;
+      });
+      _addLog(
+        'SPARSE',
+        newValue
+            ? 'ENABLED — skip locations <50m apart (heartbeat every 300s)'
+            : 'DISABLED — all locations dispatched',
+      );
+    } catch (e) {
+      _addLog('ERROR', 'toggleSparseUpdates() failed: $e');
+    }
+  }
+
+  // ── Delta Encoding Demo ───────────────────────────────────────────────
+
+  Future<void> _showDeltaEncodingDemo() async {
+    try {
+      final locations = await tl.Tracelet.getLocations();
+      if (locations.isEmpty) {
+        _addLog('DELTA', 'No locations stored — track first, then try again');
+        return;
+      }
+      final batch = locations.take(20).map((l) => l.toMap()).toList();
+      final encoded = tl.DeltaEncoder.encode(batch);
+      final originalJson = batch.toString();
+      final encodedJson = encoded.toString();
+      final savings = (1 - encodedJson.length / originalJson.length) * 100;
+      _addLog(
+        'DELTA',
+        '${batch.length} locations: '
+            'original=${originalJson.length} bytes  '
+            'compressed=${encodedJson.length} bytes  '
+            'savings=${savings.toStringAsFixed(1)}%',
+      );
+      // Verify roundtrip
+      final decoded = tl.DeltaEncoder.decode(encoded);
+      _addLog('DELTA', 'Roundtrip OK — decoded ${decoded.length} locations');
+    } catch (e) {
+      _addLog('ERROR', 'deltaEncodingDemo() failed: $e');
+    }
+  }
+
+  // ── HTTP Sync Control ─────────────────────────────────────────────────
+
+  Future<void> _toggleCellularSync() async {
+    try {
+      final newValue = !_cellularSyncDisabled;
+      final state = await tl.Tracelet.setConfig(
+        tl.Config(http: tl.HttpConfig(disableAutoSyncOnCellular: newValue)),
+      );
+      setState(() {
+        _cellularSyncDisabled = newValue;
+        _pluginState = state;
+      });
+      _addLog(
+        'HTTP',
+        newValue
+            ? 'Cellular sync DISABLED — Wi-Fi only'
+            : 'Cellular sync ENABLED — sync on any connection',
+      );
+    } catch (e) {
+      _addLog('ERROR', 'toggleCellularSync() failed: $e');
+    }
+  }
+
+  Future<void> _manualSync() async {
+    try {
+      _addLog('HTTP', 'Triggering manual sync...');
+      final synced = await tl.Tracelet.sync();
+      _addLog('HTTP', 'Synced ${synced.length} location(s)');
+    } catch (e) {
+      _addLog('ERROR', 'sync() failed: $e');
+    }
+  }
+
+  // ── R-Tree Demo ───────────────────────────────────────────────────────
+
+  Future<void> _showRTreeDemo() async {
+    try {
+      final geofences = await tl.Tracelet.getGeofences();
+      if (geofences.isEmpty) {
+        _addLog('RTREE', 'No geofences registered — add some geofences first');
+        return;
+      }
+      final tree = tl.RTree<String>();
+      for (final gf in geofences) {
+        tree.insert(gf.latitude, gf.longitude, gf.radius, gf.identifier);
+      }
+      _addLog('RTREE', 'Indexed ${tree.size} geofence(s)');
+
+      // Query around the current position
+      final pos = _lastLocation;
+      if (pos != null) {
+        final sw = Stopwatch()..start();
+        final nearby = tree.queryCircle(
+          pos.coords.latitude,
+          pos.coords.longitude,
+          5000, // 5km search radius
+        );
+        sw.stop();
+        _addLog(
+          'RTREE',
+          'Query (5km radius): ${nearby.length} match(es) in '
+              '${sw.elapsedMicroseconds}\u00b5s  '
+              '[${nearby.join(", ")}]',
+        );
+      } else {
+        _addLog('RTREE', 'No current position — start tracking to query');
+      }
+    } catch (e) {
+      _addLog('ERROR', 'rTreeDemo() failed: $e');
+    }
+  }
+
   /// Show last trip summary in the log.
   void _showLastTrip() {
     final trip = _lastTrip;
@@ -2991,6 +3544,111 @@ class _DashboardPageState extends State<DashboardPage>
                       ),
                       _Chip('Verify Trail', Icons.verified, _verifyAuditTrail),
                       _Chip('Audit Proof', Icons.receipt_long, _getAuditProof),
+                    ],
+                  ),
+
+                  // ── Battery Budget ──
+                  _Section(
+                    title: 'Battery Budget',
+                    color: Colors.amber.shade900,
+                    children: [
+                      _Chip(
+                        _budgetEnabled ? 'Budget: ON' : 'Budget: OFF',
+                        _budgetEnabled
+                            ? Icons.battery_saver
+                            : Icons.battery_full,
+                        _toggleBatteryBudget,
+                      ),
+                      _Chip(
+                        'Budget Status',
+                        Icons.monitor_heart,
+                        _showBudgetDashboard,
+                      ),
+                    ],
+                  ),
+
+                  // ── Carbon Footprint ──
+                  _Section(
+                    title: 'Carbon Footprint',
+                    color: Colors.green.shade800,
+                    children: [
+                      _Chip(
+                        'Last Trip CO\u2082',
+                        Icons.eco,
+                        _showCarbonSummary,
+                      ),
+                      _Chip(
+                        'Carbon Dashboard',
+                        Icons.bar_chart,
+                        _showCarbonBottomSheet,
+                      ),
+                    ],
+                  ),
+
+                  // ── Compliance ──
+                  _Section(
+                    title: 'Compliance (GDPR/CCPA)',
+                    color: Colors.indigo.shade800,
+                    children: [
+                      _Chip(
+                        'Generate Report',
+                        Icons.policy,
+                        _showComplianceReport,
+                      ),
+                    ],
+                  ),
+
+                  // ── Dead Reckoning & Sparse Updates ──
+                  _Section(
+                    title: 'Advanced Tracking',
+                    color: Colors.deepPurple.shade700,
+                    children: [
+                      _Chip(
+                        _deadReckoningEnabled
+                            ? 'Dead Reckoning: ON'
+                            : 'Dead Reckoning: OFF',
+                        _deadReckoningEnabled
+                            ? Icons.explore
+                            : Icons.explore_off,
+                        _toggleDeadReckoning,
+                      ),
+                      _Chip(
+                        _sparseUpdatesEnabled ? 'Sparse: ON' : 'Sparse: OFF',
+                        _sparseUpdatesEnabled
+                            ? Icons.compress
+                            : Icons.unfold_more,
+                        _toggleSparseUpdates,
+                      ),
+                    ],
+                  ),
+
+                  // ── Delta Encoding & R-Tree ──
+                  _Section(
+                    title: 'Algorithms',
+                    color: Colors.cyan.shade800,
+                    children: [
+                      _Chip(
+                        'Delta Encoding',
+                        Icons.data_saver_on,
+                        _showDeltaEncodingDemo,
+                      ),
+                      _Chip('R-Tree Query', Icons.account_tree, _showRTreeDemo),
+                    ],
+                  ),
+
+                  // ── HTTP Sync Control ──
+                  _Section(
+                    title: 'HTTP Sync Control',
+                    color: Colors.teal.shade800,
+                    children: [
+                      _Chip(
+                        _cellularSyncDisabled
+                            ? 'Cellular: OFF'
+                            : 'Cellular: ON',
+                        _cellularSyncDisabled ? Icons.wifi : Icons.cell_tower,
+                        _toggleCellularSync,
+                      ),
+                      _Chip('Manual Sync', Icons.cloud_sync, _manualSync),
                     ],
                   ),
 

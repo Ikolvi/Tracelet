@@ -10,6 +10,7 @@ import 'models/activity_change_event.dart';
 import 'models/audit_config.dart';
 import 'models/audit_proof.dart';
 import 'models/authorization_event.dart';
+import 'models/compliance_report.dart';
 import 'models/config.dart';
 import 'models/connectivity_change_event.dart';
 import 'models/device_info.dart';
@@ -93,6 +94,16 @@ class Tracelet {
   static StreamSubscription<Location>? _tripLocationSub;
   static StreamSubscription<Location>? _tripMotionSub;
 
+  /// Battery budget engine instance (null when disabled).
+  static BatteryBudgetEngine? _batteryBudgetEngine;
+
+  /// StreamController for budget adjustment events.
+  static final StreamController<BudgetAdjustmentEvent> _budgetController =
+      StreamController<BudgetAdjustmentEvent>.broadcast();
+
+  /// Subscription that feeds location battery levels to the budget engine.
+  static StreamSubscription<Location>? _budgetLocationSub;
+
   /// Whether the Kalman filter is enabled (set from config).
   static bool _useKalmanFilter = false;
 
@@ -137,6 +148,43 @@ class Tracelet {
   /// `LocationFilter(useKalmanFilter: true)`.
   static bool get isKalmanFilterEnabled => _useKalmanFilter;
 
+  /// Create a [LocationProcessor] from the geo settings in [config].
+  static LocationProcessor _processorFromConfig(Config config) {
+    return LocationProcessor(
+      distanceFilter: config.geo.distanceFilter,
+      disableElasticity: config.geo.disableElasticity,
+      elasticityMultiplier: config.geo.elasticityMultiplier,
+      enableAdaptiveMode: config.geo.enableAdaptiveMode,
+      trackingAccuracyThreshold:
+          config.geo.filter?.trackingAccuracyThreshold ?? 0,
+      filterPolicy: config.geo.filter?.policy.index ?? 0,
+      maxImpliedSpeed: config.geo.filter?.maxImpliedSpeed ?? 0,
+      odometerAccuracyThreshold:
+          config.geo.filter?.odometerAccuracyThreshold ?? 0,
+      rejectMockLocations: config.geo.filter?.rejectMockLocations ?? false,
+      mockDetectionLevel: config.geo.filter?.mockDetectionLevel.index ?? 1,
+      enableSparseUpdates: config.geo.enableSparseUpdates,
+      sparseDistanceThreshold: config.geo.sparseDistanceThreshold,
+      sparseMaxIdleSeconds: config.geo.sparseMaxIdleSeconds,
+    );
+  }
+
+  /// Initialize or tear down the [BatteryBudgetEngine] based on [config].
+  static void _initBatteryBudget(Config config) {
+    if (config.geo.batteryBudgetPerHour > 0) {
+      _batteryBudgetEngine = BatteryBudgetEngine(
+        targetBudgetPerHour: config.geo.batteryBudgetPerHour,
+        initialDistanceFilter: config.geo.distanceFilter,
+        initialAccuracyIndex: config.geo.desiredAccuracy.index,
+        initialPeriodicInterval: config.geo.periodicLocationInterval > 0
+            ? config.geo.periodicLocationInterval
+            : null,
+      );
+    } else {
+      _batteryBudgetEngine = null;
+    }
+  }
+
   static Stream<Object?> _getEventStream(String name) {
     return _eventStreams.putIfAbsent(name, () {
       final channel = _eventChannels.putIfAbsent(
@@ -170,21 +218,11 @@ class Tracelet {
     _enableAdaptiveMode = config.geo.enableAdaptiveMode;
 
     // Initialize location processor from config.
-    _locationProcessor = LocationProcessor(
-      distanceFilter: config.geo.distanceFilter,
-      disableElasticity: config.geo.disableElasticity,
-      elasticityMultiplier: config.geo.elasticityMultiplier,
-      enableAdaptiveMode: config.geo.enableAdaptiveMode,
-      trackingAccuracyThreshold:
-          config.geo.filter?.trackingAccuracyThreshold ?? 0,
-      filterPolicy: config.geo.filter?.policy.index ?? 0,
-      maxImpliedSpeed: config.geo.filter?.maxImpliedSpeed ?? 0,
-      odometerAccuracyThreshold:
-          config.geo.filter?.odometerAccuracyThreshold ?? 0,
-      rejectMockLocations: config.geo.filter?.rejectMockLocations ?? false,
-      mockDetectionLevel: config.geo.filter?.mockDetectionLevel.index ?? 1,
-    );
+    _locationProcessor = _processorFromConfig(config);
     _geofenceEvaluator.clear();
+
+    // Initialize battery budget engine from config.
+    _initBatteryBudget(config);
 
     // Wire trip manager output to the Dart stream controller.
     _tripManager.onTripEnd = (tripData) {
@@ -207,6 +245,9 @@ class Tracelet {
     // Start adaptive sampling activity tracking if enabled.
     _startAdaptiveActivityTracking();
 
+    // Start battery budget tracking if enabled.
+    _startBatteryBudgetTracking();
+
     return State.fromMap(result);
   }
 
@@ -223,6 +264,8 @@ class Tracelet {
     _locationProcessor?.reset();
     _geofenceEvaluator.clear();
     _stopAdaptiveActivityTracking();
+    _stopBatteryBudgetTracking();
+    _batteryBudgetEngine?.reset();
 
     return State.fromMap(result);
   }
@@ -309,11 +352,11 @@ class Tracelet {
     ]);
 
     return HealthCheck.fromMaps(
-      state: results[0] as Map<String, Object?>,
-      provider: results[1] as Map<String, Object?>,
-      settingsHealth: results[2] as Map<String, Object?>,
-      sensors: results[3] as Map<String, Object?>,
-      deviceInfo: results[4] as Map<String, Object?>,
+      state: Map<String, Object?>.from(results[0] as Map),
+      provider: Map<String, Object?>.from(results[1] as Map),
+      settingsHealth: Map<String, Object?>.from(results[2] as Map),
+      sensors: Map<String, Object?>.from(results[3] as Map),
+      deviceInfo: Map<String, Object?>.from(results[4] as Map),
       isPowerSave: results[5] as bool,
       ignoringBatteryOpt: results[6] as bool,
       locationPermissionStatus: results[7] as int,
@@ -333,36 +376,12 @@ class Tracelet {
     _enableAdaptiveMode = config.geo.enableAdaptiveMode;
 
     // Update location processor, preserving internal state.
-    // Construct a fresh processor and transfer state from the old one if it
-    // exists, avoiding duplicated parameter lists (D-L5).
-    final newProcessor = LocationProcessor(
-      distanceFilter: config.geo.distanceFilter,
-      disableElasticity: config.geo.disableElasticity,
-      elasticityMultiplier: config.geo.elasticityMultiplier,
-      enableAdaptiveMode: config.geo.enableAdaptiveMode,
-      trackingAccuracyThreshold:
-          config.geo.filter?.trackingAccuracyThreshold ?? 0,
-      filterPolicy: config.geo.filter?.policy.index ?? 0,
-      maxImpliedSpeed: config.geo.filter?.maxImpliedSpeed ?? 0,
-      odometerAccuracyThreshold:
-          config.geo.filter?.odometerAccuracyThreshold ?? 0,
-      rejectMockLocations: config.geo.filter?.rejectMockLocations ?? false,
-      mockDetectionLevel: config.geo.filter?.mockDetectionLevel.index ?? 1,
-    );
-    _locationProcessor =
-        _locationProcessor?.copyWith(
-          distanceFilter: newProcessor.distanceFilter,
-          disableElasticity: newProcessor.disableElasticity,
-          elasticityMultiplier: newProcessor.elasticityMultiplier,
-          enableAdaptiveMode: newProcessor.enableAdaptiveMode,
-          trackingAccuracyThreshold: newProcessor.trackingAccuracyThreshold,
-          filterPolicy: newProcessor.filterPolicy,
-          maxImpliedSpeed: newProcessor.maxImpliedSpeed,
-          odometerAccuracyThreshold: newProcessor.odometerAccuracyThreshold,
-          rejectMockLocations: newProcessor.rejectMockLocations,
-          mockDetectionLevel: newProcessor.mockDetectionLevel,
-        ) ??
-        newProcessor;
+    final newProcessor = _processorFromConfig(config);
+    _locationProcessor?.transferStateTo(newProcessor);
+    _locationProcessor = newProcessor;
+
+    // Update battery budget engine from config.
+    _initBatteryBudget(config);
 
     // Invalidate cached stream pipeline so it rebuilds with new settings (D-M8).
     _processedLocationStream = null;
@@ -1134,6 +1153,112 @@ class Tracelet {
   }
 
   // ---------------------------------------------------------------------------
+  // Compliance Report (Enterprise)
+  // ---------------------------------------------------------------------------
+
+  /// **Enterprise** — Generate a GDPR Article 30 / CCPA compliance report.
+  ///
+  /// Aggregates all location data processing information into a structured
+  /// [ComplianceReport]: data inventory, retention policy, privacy measures,
+  /// data destinations, audit trail status, and consent status.
+  ///
+  /// The report can be exported as JSON ([ComplianceReport.toJson]) for
+  /// automated compliance tooling, or as Markdown ([ComplianceReport.toMarkdown])
+  /// for human review.
+  ///
+  /// ```dart
+  /// final report = await Tracelet.generateComplianceReport();
+  /// print(report.toMarkdown());
+  /// ```
+  static Future<ComplianceReport> generateComplianceReport() async {
+    // Gather all data in parallel for efficiency.
+    final results = await Future.wait([
+      _platform.getState(), // 0
+      _platform.getCount(), // 1
+      _platform.getPermissionStatus(), // 2
+      _platform.getMotionPermissionStatus(), // 3
+      _platform.getPrivacyZones(), // 4
+      _platform.getLocations(<String, Object?>{
+        'limit': 1,
+        'order': 0,
+      }), // 5 oldest
+      _platform.getLocations(<String, Object?>{
+        'limit': 1,
+        'order': 1,
+      }), // 6 newest
+    ]);
+
+    final stateMap = Map<String, Object?>.from(results[0] as Map);
+    final count = results[1] as int;
+    final locationPerm = results[2] as int;
+    final motionPerm = results[3] as int;
+    final zones = (results[4] as List)
+        .map((z) => Map<String, Object?>.from(z as Map))
+        .toList();
+    final oldestList = (results[5] as List)
+        .map((l) => Map<String, Object?>.from(l as Map))
+        .toList();
+    final newestList = (results[6] as List)
+        .map((l) => Map<String, Object?>.from(l as Map))
+        .toList();
+
+    final state = State.fromMap(stateMap);
+
+    // Extract config values from the raw state map for compliance data.
+    final rawConfig = stateMap['config'];
+    final configMap = rawConfig is Map
+        ? Map<String, Object?>.from(rawConfig)
+        : null;
+    final rawGeo = configMap?['geo'];
+    final geoMap = rawGeo is Map ? Map<String, Object?>.from(rawGeo) : null;
+    final rawHttp = configMap?['http'];
+    final httpMap = rawHttp is Map ? Map<String, Object?>.from(rawHttp) : null;
+    final rawAudit = configMap?['audit'];
+    final auditMap = rawAudit is Map
+        ? Map<String, Object?>.from(rawAudit)
+        : null;
+    final rawPersist = configMap?['persistence'];
+    final persistMap = rawPersist is Map
+        ? Map<String, Object?>.from(rawPersist)
+        : null;
+
+    // Extract timestamps from oldest/newest records.
+    final oldestTs = oldestList.isNotEmpty
+        ? oldestList.first['timestamp'] as String?
+        : null;
+    final newestTs = newestList.isNotEmpty
+        ? newestList.first['timestamp'] as String?
+        : null;
+
+    return ComplianceReport(
+      generatedAt: DateTime.now(),
+      totalLocationsStored: count,
+      totalLocationsSynced: 0, // Not tracked separately yet
+      maxDaysToPersist: persistMap?['maxDaysToPersist'] as int? ?? -1,
+      maxRecordsToPersist: persistMap?['maxRecordsToPersist'] as int? ?? -1,
+      oldestRecord: oldestTs,
+      newestRecord: newestTs,
+      databaseEncrypted: false, // Will be wired when Feature 8 is implemented
+      activePrivacyZones: zones.length,
+      privacyZoneIdentifiers: zones
+          .map((z) => z['identifier'] as String? ?? '')
+          .toList(),
+      httpSyncUrl: httpMap?['url'] as String?,
+      autoSyncEnabled: httpMap?['autoSync'] as bool? ?? true,
+      auditTrailEnabled: auditMap?['enabled'] as bool? ?? false,
+      auditTrailValid: null, // Not verified until explicitly called
+      locationPermissionStatus: locationPerm,
+      motionPermissionStatus: motionPerm,
+      sparseUpdatesEnabled: geoMap?['enableSparseUpdates'] as bool? ?? false,
+      kalmanFilterEnabled: _useKalmanFilter,
+      deltaCompressionEnabled:
+          httpMap?['enableDeltaCompression'] as bool? ?? false,
+      trackingEnabled: state.enabled,
+      trackingMode: state.trackingMode.name,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // Event Subscriptions
   // ---------------------------------------------------------------------------
 
@@ -1368,6 +1493,26 @@ class Tracelet {
     return _tracked(_tripController.stream.listen(callback));
   }
 
+  /// Subscribe to battery budget adjustment events.
+  ///
+  /// Fires when the battery budget engine adjusts tracking parameters
+  /// (distance filter, desired accuracy, periodic interval) to stay
+  /// within the configured [GeoConfig.batteryBudgetPerHour] budget.
+  ///
+  /// Only fires when `batteryBudgetPerHour > 0` in the config.
+  ///
+  /// ```dart
+  /// Tracelet.onBudgetAdjustment((event) {
+  ///   print('Drain: ${event.currentBatteryDrain}%/hr');
+  ///   print('New distance filter: ${event.newDistanceFilter}m');
+  /// });
+  /// ```
+  static StreamSubscription<BudgetAdjustmentEvent> onBudgetAdjustment(
+    void Function(BudgetAdjustmentEvent) callback,
+  ) {
+    return _tracked(_budgetController.stream.listen(callback));
+  }
+
   // ---------------------------------------------------------------------------
   // Cleanup
   // ---------------------------------------------------------------------------
@@ -1574,6 +1719,72 @@ class Tracelet {
     _lastActivityConfidence = ActivityConfidence.low;
     _lastBatteryLevel = -1.0;
     _lastIsCharging = false;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Battery Budget — auto-adjust tracking params to stay within budget
+  // ---------------------------------------------------------------------------
+
+  /// Start feeding battery levels to the [BatteryBudgetEngine].
+  static void _startBatteryBudgetTracking() {
+    if (_batteryBudgetEngine == null) return;
+    _stopBatteryBudgetTracking();
+
+    _budgetLocationSub = _getProcessedLocationStream().listen((location) {
+      final engine = _batteryBudgetEngine;
+      if (engine == null) return;
+
+      final batteryLevel = location.battery.level;
+      if (batteryLevel < 0) return; // No battery info available.
+
+      final adjustment = engine.processSample(batteryLevel);
+      if (adjustment == null) return;
+
+      _budgetController.add(adjustment);
+      _applyBudgetAdjustment(adjustment);
+    });
+  }
+
+  /// Stop the battery budget tracking subscription.
+  static void _stopBatteryBudgetTracking() {
+    _budgetLocationSub?.cancel();
+    _budgetLocationSub = null;
+  }
+
+  /// Apply a budget adjustment by sending updated geo config to native.
+  static void _applyBudgetAdjustment(BudgetAdjustmentEvent adjustment) {
+    final geoUpdate = <String, Object?>{
+      'distanceFilter': adjustment.newDistanceFilter,
+      'desiredAccuracy': adjustment.newDesiredAccuracy,
+    };
+    if (adjustment.newPeriodicInterval != null) {
+      geoUpdate['periodicLocationInterval'] = adjustment.newPeriodicInterval;
+    }
+
+    // Update the Dart-side location processor to match.
+    final processor = _locationProcessor;
+    if (processor != null) {
+      final updated = LocationProcessor(
+        distanceFilter: adjustment.newDistanceFilter,
+        disableElasticity: processor.disableElasticity,
+        elasticityMultiplier: processor.elasticityMultiplier,
+        enableAdaptiveMode: processor.enableAdaptiveMode,
+        trackingAccuracyThreshold: processor.trackingAccuracyThreshold,
+        filterPolicy: processor.filterPolicy,
+        maxImpliedSpeed: processor.maxImpliedSpeed,
+        odometerAccuracyThreshold: processor.odometerAccuracyThreshold,
+        rejectMockLocations: processor.rejectMockLocations,
+        mockDetectionLevel: processor.mockDetectionLevel,
+        enableSparseUpdates: processor.enableSparseUpdates,
+        sparseDistanceThreshold: processor.sparseDistanceThreshold,
+        sparseMaxIdleSeconds: processor.sparseMaxIdleSeconds,
+      );
+      processor.transferStateTo(updated);
+      _locationProcessor = updated;
+    }
+
+    // Send to native (fire-and-forget — the native side merges & restarts).
+    _platform.setConfig(<String, Object?>{'geo': geoUpdate});
   }
 }
 

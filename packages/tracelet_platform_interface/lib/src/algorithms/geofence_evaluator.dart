@@ -1,4 +1,5 @@
 import 'geo_utils.dart';
+import 'rtree.dart';
 
 /// A single geofence state transition detected by [GeofenceEvaluator].
 class GeofenceTransition {
@@ -64,9 +65,54 @@ class GeofenceEvaluator {
   /// Cached unmodifiable view — invalidated when [_insideGeofenceIds] changes (D-M4).
   Set<String>? _cachedInsideView;
 
+  /// Spatial index for O(log n) geofence queries. Built by [indexGeofences].
+  RTree<Map<String, Object?>>? _rtree;
+
+  /// Geofence data indexed by identifier, for EXIT detection on indexed path.
+  Map<String, Map<String, Object?>>? _indexedGeofences;
+
   /// Read-only view of the geofence identifiers currently marked as "inside".
   Set<String> get insideGeofenceIds =>
       _cachedInsideView ??= Set<String>.unmodifiable(_insideGeofenceIds);
+
+  /// Whether a spatial index is currently active.
+  bool get isIndexed => _rtree != null;
+
+  /// Build an R-tree spatial index over [geofences] for O(log n) queries.
+  ///
+  /// When the index is present, [evaluateProximity] uses it to narrow
+  /// candidates before computing exact distances. For ≤ 50 geofences the
+  /// linear scan is fast enough; the index becomes worthwhile at 100+.
+  ///
+  /// Call this whenever the registered geofence list changes. To remove
+  /// the index, call [clearIndex].
+  void indexGeofences(List<Map<String, Object?>> geofences) {
+    final tree = RTree<Map<String, Object?>>(maxEntries: 8);
+    final lookup = <String, Map<String, Object?>>{};
+
+    for (final gf in geofences) {
+      final id = gf['identifier'] as String?;
+      if (id == null) continue;
+
+      final lat = _toDouble(gf['latitude']);
+      final lng = _toDouble(gf['longitude']);
+      if (lat == null || lng == null) continue;
+
+      final radius = _toDouble(gf['radius']) ?? 100.0;
+      tree.insert(lat, lng, radius, gf);
+      lookup[id] = gf;
+    }
+
+    _rtree = tree;
+    _indexedGeofences = lookup;
+  }
+
+  /// Remove the spatial index. [evaluateProximity] will fall back to O(n).
+  void clearIndex() {
+    _rtree?.clear();
+    _rtree = null;
+    _indexedGeofences = null;
+  }
 
   /// Evaluate all geofences against the current position.
   ///
@@ -85,9 +131,16 @@ class GeofenceEvaluator {
     required double longitude,
     required List<Map<String, Object?>> geofences,
   }) {
+    // When a spatial index exists, use it to narrow candidates.
+    final effectiveGeofences = _resolveGeofences(
+      latitude,
+      longitude,
+      geofences,
+    );
+
     final transitions = <GeofenceTransition>[];
 
-    for (final gf in geofences) {
+    for (final gf in effectiveGeofences) {
       final identifier = gf['identifier'] as String?;
       if (identifier == null) continue;
 
@@ -187,6 +240,7 @@ class GeofenceEvaluator {
   void clear() {
     _insideGeofenceIds.clear();
     _cachedInsideView = null;
+    clearIndex();
   }
 
   /// Remove a specific geofence from the "inside" set.
@@ -200,6 +254,41 @@ class GeofenceEvaluator {
   // ─────────────────────────────────────────────────────────────────────────
   // Private
   // ─────────────────────────────────────────────────────────────────────────
+
+  /// When a spatial index exists, narrow the candidate list using an R-tree
+  /// query plus any currently-inside geofences (to catch EXITs).
+  /// Falls back to [allGeofences] when no index is built.
+  List<Map<String, Object?>> _resolveGeofences(
+    double lat,
+    double lng,
+    List<Map<String, Object?>> allGeofences,
+  ) {
+    final tree = _rtree;
+    final lookup = _indexedGeofences;
+    if (tree == null || lookup == null) return allGeofences;
+
+    // Query a generous radius — 50 km covers any practical geofence.
+    const searchRadius = 50000.0; // meters
+    final nearby = tree.queryCircle(lat, lng, searchRadius);
+
+    // Ensure currently-inside geofences are always evaluated (EXIT detection).
+    if (_insideGeofenceIds.isEmpty) return nearby;
+
+    final seen = <String>{};
+    final merged = <Map<String, Object?>>[];
+    for (final gf in nearby) {
+      final id = gf['identifier'] as String?;
+      if (id != null) seen.add(id);
+      merged.add(gf);
+    }
+    for (final id in _insideGeofenceIds) {
+      if (!seen.contains(id)) {
+        final gf = lookup[id];
+        if (gf != null) merged.add(gf);
+      }
+    }
+    return merged;
+  }
 
   static double? _toDouble(Object? value) {
     if (value is double) return value;

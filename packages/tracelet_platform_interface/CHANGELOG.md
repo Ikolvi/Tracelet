@@ -1,3 +1,17 @@
+## 1.1.0
+
+### New Algorithms
+
+- **FEAT**: Add `BatteryBudgetEngine` — a pure-Dart feedback control loop that automatically adjusts `distanceFilter`, `desiredAccuracy`, and periodic interval to stay within a configurable battery budget (% drain/hour). Compares measured drain against target every 5 minutes; if over budget, increases distance filter (up to 1000 m) and degrades accuracy (high → medium → low → veryLow → passive); if under budget, tightens distance filter (down to 10 m) and improves accuracy. Includes `BudgetAdjustmentEvent` with `currentBatteryDrain`, `targetBudget`, `newDistanceFilter`, `newDesiredAccuracy`, and optional `newPeriodicInterval`.
+- **FEAT**: Add `CarbonEstimator` — per-trip and cumulative CO₂ emission calculator using mode-specific emission factors (gCO₂/km). Default factors use EU EEA 2024 averages: car = 192, bus = 89, train = 41, walking/cycling = 0. Accepts GPS coordinates + activity type from activity recognition, accumulates distance per mode via Haversine, and provides structured `TripCarbonSummary` with `totalCarbonGrams`, `totalDistanceMeters`, `carbonByMode`, `distanceByMode`, and `dominantMode`. Tracks cumulative totals across multiple trips for fleet/compliance reporting.
+- **FEAT**: Add `DeltaEncoder` — batch location compression codec using delta encoding. First location in a batch is transmitted in full (marked `ref: true`); subsequent positions sent as deltas with shortened field names (`la` = Δlatitude, `lo` = Δlongitude, `t` = Δtime in seconds, `s` = Δspeed, `h` = Δheading with shortest-arc normalization, `a` = Δaccuracy, `al` = Δaltitude, `b` = Δbattery). Coordinate precision configurable (5 = ~1.1 m, 6 = ~0.11 m). Symmetric `encode()`/`decode()` for bidirectional use. Achieves 60–80% payload reduction for high-frequency tracking batches.
+- **FEAT**: Add `RTree<T>` — generic R-tree spatial index enabling O(log n) geofence proximity queries versus O(n) linear search. Supports `insert(lat, lng, radius, data)`, `remove(data)`, `queryCircle(lat, lng, radiusMeters)`, and `queryBBox(minLat, minLng, maxLat, maxLng)`. Uses quadratic split strategy, latitude-corrected degree-to-meter bbox conversion, and Haversine post-filtering for accurate circle queries. Handles 10,000+ geofences with sub-millisecond lookup times.
+
+### Changes
+
+- **FEAT**: Export `BatteryBudgetEngine`, `BudgetAdjustmentEvent`, `CarbonEstimator`, `TripCarbonSummary`, `DeltaEncoder`, and `RTree` from the `algorithms.dart` barrel file.
+- **REFACTOR**: Update `GeofenceEvaluator` and `LocationProcessor` for improved algorithm integration with new sparse updates and dead reckoning configuration.
+
 ## 1.0.0
 
 ### 🎉 Stable Release

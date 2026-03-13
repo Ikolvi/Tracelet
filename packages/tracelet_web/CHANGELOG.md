@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.0
+
+### New Features
+
+- **FEAT**: `WebHttpEngine` now supports delta-compressed batch uploads — conditionally applies `DeltaEncoder.encode()` when `enableDeltaCompression` is true and batch size > 1, achieving 60–80% payload reduction for high-frequency tracking scenarios. Reads `enableDeltaCompression` (bool) and `deltaCoordinatePrecision` (int, default 6) from HTTP config.
+- **FEAT**: `WebHttpEngine` supports `disableAutoSyncOnCellular` — guards auto-sync on cellular networks via the Network Information API (where available), syncing only on WiFi connections.
+
 ## 1.0.1
 
 - **FIX**: HTTP auto-sync now triggers after `insertLocation()` and `getCurrentPosition(persist: true)` — previously auto-sync was never invoked on web ([#21](https://github.com/Ikolvi/Tracelet/issues/21)).

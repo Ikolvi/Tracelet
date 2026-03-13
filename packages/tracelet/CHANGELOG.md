@@ -1,3 +1,33 @@
+## 1.1.0
+
+### New Features
+
+- **FEAT**: Add `ComplianceReport` model and `Tracelet.generateComplianceReport()` API for GDPR Article 30 / CCPA data processing inventory reports. Auto-generates a structured snapshot of all location data collection metadata including: `totalLocationsStored`, `totalLocationsSynced`, data retention policy (`maxDaysToPersist`, `maxRecordsToPersist`), timestamp bounds of stored records (`oldestRecord`, `newestRecord`), database encryption status, active privacy zone count and identifiers, HTTP sync URL and auto-sync state, audit trail status with chain validation, permission states (location + motion), and tracking configuration flags (sparse updates, Kalman filter, delta compression, tracking mode). Supports `toJson()` for automated tooling integration and `toMarkdown()` for human-readable audit documents.
+- **FEAT**: Add `BatteryBudgetEngine` algorithm — a feedback control loop that automatically adjusts `distanceFilter`, `desiredAccuracy`, and periodic interval to maintain a configurable battery budget. Set `batteryBudgetPerHour` in `GeoConfig` (typical range: 1.0–5.0 %/hr) to enable. Subscribe to `Tracelet.onBudgetAdjustment()` for real-time adjustment events showing current drain vs. target and the new parameters being applied.
+- **FEAT**: Add `CarbonEstimator` — per-trip and cumulative CO₂ emission calculator using EU EEA 2024 mode-specific emission factors (gCO₂/km): car = 192, bus = 89, train = 41, walking/cycling = 0. Integrates with activity recognition to track distance per transport mode via Haversine. Returns `TripCarbonSummary` with `totalCarbonGrams`, `totalDistanceMeters`, `carbonByMode`, `distanceByMode`, and `dominantMode`. Tracks cumulative totals across trips.
+- **FEAT**: Add `DeltaEncoder` algorithm — batch location compression codec using delta encoding with 60–80% payload reduction. First location transmitted in full; subsequent positions as deltas with shortened field names and configurable coordinate precision (5 = ~1.1 m, 6 = ~0.11 m). Native implementations provided on Android (Kotlin) and iOS (Swift) for consistency.
+- **FEAT**: Add `RTree<T>` spatial index — O(log n) geofence proximity queries supporting 10,000+ geofences with sub-millisecond lookup. Provides `queryCircle()` and `queryBBox()` APIs with Haversine-verified results.
+
+### New Configuration Fields
+
+- **FEAT**: `GeoConfig.batteryBudgetPerHour` (`double`, default `0.0`) — target max battery drain (%/hr). When > 0, enables `BatteryBudgetEngine` which auto-adjusts accuracy, distance filter, and sample rate. Overrides manual settings.
+- **FEAT**: `GeoConfig.enableSparseUpdates` (`bool`, default `false`) — app-level deduplication that drops locations within `sparseDistanceThreshold` (default 50 m) of the last recorded position. Unlike `distanceFilter` (which controls platform GPS sampling), this filters at the persistence layer. `sparseMaxIdleSeconds` (default 300) forces periodic "still here" updates.
+- **FEAT**: `GeoConfig.enableDeadReckoning` (`bool`, default `false`) — inertial navigation using accelerometer + gyroscope + compass when GPS is lost for longer than `deadReckoningActivationDelay` seconds (default 10). Auto-stops after `deadReckoningMaxDuration` seconds (default 120) to prevent IMU drift accumulation.
+- **FEAT**: `HttpConfig.enableDeltaCompression` (`bool`, default `false`) — enable delta encoding for batch HTTP syncs. `deltaCoordinatePrecision` (default 6) controls coordinate precision.
+- **FEAT**: `HttpConfig.disableAutoSyncOnCellular` (`bool`, default `false`) — skip auto-sync on cellular networks, only sync on WiFi. Supported on Android, iOS, and Web (via Network Information API).
+- **FEAT**: `GeoConfig.enableAdaptiveMode` (`bool`, default `false`) — dynamic sampling based on activity type + battery level + charging state. Activity profiles: still → 500 m, walking → 50 m, driving → 10 m; battery scaling progressively widens filter below 50%/20%/10%.
+- **FEAT**: Periodic mode configuration: `periodicLocationInterval` (60–43200 sec), `periodicDesiredAccuracy`, `periodicUseForegroundService` (Android — sub-15-min intervals), `periodicUseExactAlarms` (Android — `AlarmManager` precision).
+
+### Bug Fixes
+
+- **FIX**: `generateComplianceReport()` and `getHealthCheck()` no longer crash with `type 'Map<Object?, Object?>' is not a subtype of type 'Map<String, Object?>'` errors. Platform channel maps are now safely converted via `Map<String, Object?>.from()` instead of direct `as` casts. Also fixed nested config sub-map casts (`config`, `geo`, `http`, `audit`, `persistence`) using null-safe `is Map` checks.
+
+### Infrastructure
+
+- **CHORE**: Migrate melos configuration from standalone `melos.yaml` to `pubspec.yaml` under the `melos:` key for melos 7.x compatibility. All 13 scripts (analyze, format, format:fix, test, test:dart, pigeon, clean, pub:get, build:example:android/ios/web, coverage, benchmark) now run via `melos run <name>`.
+- **CHORE**: Adopt Dart pub workspaces — root `pubspec.yaml` declares `workspace:` listing all 6 packages; each package declares `resolution: workspace`. Removed 5 `pubspec_overrides.yaml` files that are no longer needed.
+- **CHORE**: Upgrade melos dependency from `^6.0.0` to `^7.0.0`.
+
 ## 1.0.2
 
 - **FIX**: (Android/iOS) Geofence registrations were unconditionally destroyed on app termination and reset, even when `stopOnTerminate: false` was configured with `trackingMode=1`. Geofences now survive process death and are properly re-registered ([#23](https://github.com/Ikolvi/Tracelet/issues/23)).

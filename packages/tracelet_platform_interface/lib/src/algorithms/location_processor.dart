@@ -114,6 +114,9 @@ class LocationProcessor {
     this.odometerAccuracyThreshold = 0,
     this.rejectMockLocations = false,
     this.mockDetectionLevel = 1,
+    this.enableSparseUpdates = false,
+    this.sparseDistanceThreshold = 50.0,
+    this.sparseMaxIdleSeconds = 300,
   });
 
   /// Cached adaptive sampling engine — avoids re-creation per GPS fix.
@@ -177,6 +180,22 @@ class LocationProcessor {
   ///   elapsed realtime drift) + Dart-side timestamp monotonicity check.
   final int mockDetectionLevel;
 
+  /// Enable sparse updates (intelligent deduplication).
+  ///
+  /// When `true`, locations that haven't moved beyond
+  /// [sparseDistanceThreshold] from the last *recorded* location are
+  /// silently dropped — unless [sparseMaxIdleSeconds] has elapsed.
+  final bool enableSparseUpdates;
+
+  /// Minimum distance (meters) to move before recording a new location
+  /// when sparse updates are enabled.
+  final double sparseDistanceThreshold;
+
+  /// Maximum idle time (seconds) before forcing a recording even if the
+  /// device hasn't moved beyond [sparseDistanceThreshold].
+  /// `0` disables idle timeout (only movement triggers recording).
+  final int sparseMaxIdleSeconds;
+
   // ─────────────────────────────────────────────────────────────────────────
   // Internal state
   // ─────────────────────────────────────────────────────────────────────────
@@ -184,6 +203,11 @@ class LocationProcessor {
   double? _lastLatitude;
   double? _lastLongitude;
   int _lastTimestampMs = 0;
+
+  /// Last recorded location for sparse deduplication.
+  double? _sparseLastLat;
+  double? _sparseLastLng;
+  int _sparseLastTimestampMs = 0;
 
   /// Last computed effective speed in m/s.
   double lastEffectiveSpeed = 0;
@@ -325,6 +349,35 @@ class LocationProcessor {
       odometerDelta = distance;
     }
 
+    // ── Sparse deduplication ──────────────────────────────────────────────
+    if (enableSparseUpdates) {
+      if (_sparseLastLat != null && _sparseLastLng != null) {
+        final sparseDist = GeoUtils.haversine(
+          _sparseLastLat!,
+          _sparseLastLng!,
+          latitude,
+          longitude,
+        );
+        final sparseElapsed = (timestampMs - _sparseLastTimestampMs) / 1000.0;
+
+        final withinDistance = sparseDist < sparseDistanceThreshold;
+        final withinTime =
+            sparseMaxIdleSeconds == 0 || sparseElapsed < sparseMaxIdleSeconds;
+
+        if (withinDistance && withinTime) {
+          // Update the base distance/speed state but don't record.
+          _lastLatitude = latitude;
+          _lastLongitude = longitude;
+          _lastTimestampMs = timestampMs;
+          lastEffectiveSpeed = effectiveSpeed;
+          return LocationProcessorResult.filtered('SPARSE_FILTER');
+        }
+      }
+      _sparseLastLat = latitude;
+      _sparseLastLng = longitude;
+      _sparseLastTimestampMs = timestampMs;
+    }
+
     // ── Accept ────────────────────────────────────────────────────────────
     _lastLatitude = latitude;
     _lastLongitude = longitude;
@@ -344,6 +397,9 @@ class LocationProcessor {
     _lastLongitude = null;
     _lastTimestampMs = 0;
     lastEffectiveSpeed = 0;
+    _sparseLastLat = null;
+    _sparseLastLng = null;
+    _sparseLastTimestampMs = 0;
   }
 
   /// Create a new [LocationProcessor] with updated configuration.
@@ -361,6 +417,9 @@ class LocationProcessor {
     int? odometerAccuracyThreshold,
     bool? rejectMockLocations,
     int? mockDetectionLevel,
+    bool? enableSparseUpdates,
+    double? sparseDistanceThreshold,
+    int? sparseMaxIdleSeconds,
   }) {
     final copy = LocationProcessor(
       distanceFilter: distanceFilter ?? this.distanceFilter,
@@ -375,12 +434,34 @@ class LocationProcessor {
           odometerAccuracyThreshold ?? this.odometerAccuracyThreshold,
       rejectMockLocations: rejectMockLocations ?? this.rejectMockLocations,
       mockDetectionLevel: mockDetectionLevel ?? this.mockDetectionLevel,
+      enableSparseUpdates: enableSparseUpdates ?? this.enableSparseUpdates,
+      sparseDistanceThreshold:
+          sparseDistanceThreshold ?? this.sparseDistanceThreshold,
+      sparseMaxIdleSeconds: sparseMaxIdleSeconds ?? this.sparseMaxIdleSeconds,
     );
     // Preserve internal state.
     copy._lastLatitude = _lastLatitude;
     copy._lastLongitude = _lastLongitude;
     copy._lastTimestampMs = _lastTimestampMs;
     copy.lastEffectiveSpeed = lastEffectiveSpeed;
+    copy._sparseLastLat = _sparseLastLat;
+    copy._sparseLastLng = _sparseLastLng;
+    copy._sparseLastTimestampMs = _sparseLastTimestampMs;
     return copy;
+  }
+
+  /// Copy internal tracking state (odometer position, timestamps, speed,
+  /// sparse-update bookkeeping) from this processor into [target].
+  ///
+  /// Use this when replacing a processor with updated config parameters
+  /// while preserving continuity of distance/speed calculations.
+  void transferStateTo(LocationProcessor target) {
+    target._lastLatitude = _lastLatitude;
+    target._lastLongitude = _lastLongitude;
+    target._lastTimestampMs = _lastTimestampMs;
+    target.lastEffectiveSpeed = lastEffectiveSpeed;
+    target._sparseLastLat = _sparseLastLat;
+    target._sparseLastLng = _sparseLastLng;
+    target._sparseLastTimestampMs = _sparseLastTimestampMs;
   }
 }

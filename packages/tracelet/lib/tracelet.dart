@@ -41,11 +41,18 @@ export 'package:tracelet_platform_interface/tracelet_platform_interface.dart'
         // Shared algorithms (pure Dart — work on all platforms)
         KalmanLocationFilter,
         TripManager,
-        GeoUtils;
+        GeoUtils,
+        DeltaEncoder,
+        CarbonEstimator,
+        TripCarbonSummary,
+        BatteryBudgetEngine,
+        BudgetAdjustmentEvent,
+        RTree;
 
 // Models
 export 'src/models/audit_config.dart';
 export 'src/models/audit_proof.dart';
+export 'src/models/compliance_report.dart';
 export 'src/models/config.dart';
 export 'src/models/privacy_zone.dart';
 export 'src/models/privacy_zone_config.dart';
