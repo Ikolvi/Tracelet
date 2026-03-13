@@ -161,15 +161,20 @@ class RTree<T> {
       return;
     }
 
-    final leaf = _chooseLeaf(_root!, entry.bbox);
+    // Track the path from root to the chosen leaf.
+    final path = <_RTreeNode<T>>[];
+    final leaf = _chooseLeaf(_root!, entry.bbox, path);
     leaf.entries.add(entry);
     leaf.recalculateBBox();
     _size++;
 
     if (leaf.entries.length > maxEntries) {
-      _splitAndPropagate(leaf);
+      _splitLeafAndPropagate(leaf, path);
     } else {
-      _propagateBBox(leaf);
+      // Propagate bbox changes up the path.
+      for (final node in path) {
+        node.recalculateBBox();
+      }
     }
   }
 
@@ -245,8 +250,14 @@ class RTree<T> {
 
   // ── Internal methods ────────────────────────────────────────────────────
 
-  _RTreeNode<T> _chooseLeaf(_RTreeNode<T> node, RTreeBBox bbox) {
+  _RTreeNode<T> _chooseLeaf(
+    _RTreeNode<T> node,
+    RTreeBBox bbox,
+    List<_RTreeNode<T>> path,
+  ) {
     if (node.isLeaf) return node;
+
+    path.add(node);
 
     // Choose the child that requires the least enlargement.
     _RTreeNode<T>? best;
@@ -264,78 +275,150 @@ class RTree<T> {
       }
     }
 
-    return _chooseLeaf(best!, bbox);
+    return _chooseLeaf(best!, bbox, path);
   }
 
-  void _splitAndPropagate(_RTreeNode<T> node) {
-    // Simple quadratic split: pick seeds, then distribute.
-    if (node.isLeaf) {
-      final entries = List<_RTreeEntry<T>>.from(node.entries);
-      node.entries.clear();
+  /// Split a leaf node and propagate splits upward through [path].
+  void _splitLeafAndPropagate(_RTreeNode<T> leaf, List<_RTreeNode<T>> path) {
+    final entries = List<_RTreeEntry<T>>.from(leaf.entries);
+    leaf.entries.clear();
 
-      final sibling = _RTreeNode<T>(isLeaf: true);
+    final sibling = _RTreeNode<T>(isLeaf: true);
 
-      // Pick the two entries with maximum wasted area.
-      int seed1 = 0, seed2 = 1;
-      double maxWaste = double.negativeInfinity;
-      for (var i = 0; i < entries.length; i++) {
-        for (var j = i + 1; j < entries.length; j++) {
-          final combined = RTreeBBox(
-            math.min(entries[i].bbox.minLat, entries[j].bbox.minLat),
-            math.min(entries[i].bbox.minLng, entries[j].bbox.minLng),
-            math.max(entries[i].bbox.maxLat, entries[j].bbox.maxLat),
-            math.max(entries[i].bbox.maxLng, entries[j].bbox.maxLng),
-          );
-          final waste =
-              combined.area - entries[i].bbox.area - entries[j].bbox.area;
-          if (waste > maxWaste) {
-            maxWaste = waste;
-            seed1 = i;
-            seed2 = j;
-          }
+    _pickSeedsAndDistribute(entries, leaf, sibling);
+
+    leaf.recalculateBBox();
+    sibling.recalculateBBox();
+
+    _insertSiblingIntoParent(leaf, sibling, path);
+  }
+
+  /// Pick seeds using quadratic split, then distribute entries between
+  /// [node] and [sibling].
+  void _pickSeedsAndDistribute(
+    List<_RTreeEntry<T>> entries,
+    _RTreeNode<T> node,
+    _RTreeNode<T> sibling,
+  ) {
+    int seed1 = 0, seed2 = 1;
+    double maxWaste = double.negativeInfinity;
+    for (var i = 0; i < entries.length; i++) {
+      for (var j = i + 1; j < entries.length; j++) {
+        final combined = RTreeBBox(
+          math.min(entries[i].bbox.minLat, entries[j].bbox.minLat),
+          math.min(entries[i].bbox.minLng, entries[j].bbox.minLng),
+          math.max(entries[i].bbox.maxLat, entries[j].bbox.maxLat),
+          math.max(entries[i].bbox.maxLng, entries[j].bbox.maxLng),
+        );
+        final waste =
+            combined.area - entries[i].bbox.area - entries[j].bbox.area;
+        if (waste > maxWaste) {
+          maxWaste = waste;
+          seed1 = i;
+          seed2 = j;
         }
       }
+    }
 
-      node.entries.add(entries[seed1]);
-      sibling.entries.add(entries[seed2]);
+    node.entries.add(entries[seed1]);
+    sibling.entries.add(entries[seed2]);
 
-      for (var i = 0; i < entries.length; i++) {
-        if (i == seed1 || i == seed2) continue;
-        // Add to the node whose bbox requires less enlargement.
-        node.recalculateBBox();
-        sibling.recalculateBBox();
-        final e1 = node.bbox.enlargement(entries[i].bbox);
-        final e2 = sibling.bbox.enlargement(entries[i].bbox);
-        if (e1 <= e2) {
-          node.entries.add(entries[i]);
-        } else {
-          sibling.entries.add(entries[i]);
-        }
-      }
-
+    for (var i = 0; i < entries.length; i++) {
+      if (i == seed1 || i == seed2) continue;
       node.recalculateBBox();
       sibling.recalculateBBox();
-
-      _handleSplit(node, sibling);
+      final e1 = node.bbox.enlargement(entries[i].bbox);
+      final e2 = sibling.bbox.enlargement(entries[i].bbox);
+      if (e1 <= e2) {
+        node.entries.add(entries[i]);
+      } else {
+        sibling.entries.add(entries[i]);
+      }
     }
   }
 
-  void _handleSplit(_RTreeNode<T> node, _RTreeNode<T> sibling) {
-    if (identical(node, _root)) {
-      // Create a new root.
+  /// Insert [sibling] into the parent of [node], splitting the parent if
+  /// it overflows. Walks up [path] toward the root.
+  void _insertSiblingIntoParent(
+    _RTreeNode<T> node,
+    _RTreeNode<T> sibling,
+    List<_RTreeNode<T>> path,
+  ) {
+    if (path.isEmpty) {
+      // node is the root — create a new root.
       final newRoot = _RTreeNode<T>(isLeaf: false);
       newRoot.children.add(node);
       newRoot.children.add(sibling);
       newRoot.recalculateBBox();
       _root = newRoot;
+      return;
     }
-    // Note: For a complete R-tree, parent-splitting should also be handled,
-    // but for typical geofence counts (< 100K), this simple implementation
-    // provides adequate performance.
+
+    final parent = path.removeLast();
+    parent.children.add(sibling);
+    parent.recalculateBBox();
+
+    if (parent.children.length > maxEntries) {
+      _splitInternalAndPropagate(parent, path);
+    } else {
+      // Propagate bbox changes up the remaining path.
+      for (final ancestor in path) {
+        ancestor.recalculateBBox();
+      }
+    }
   }
 
-  void _propagateBBox(_RTreeNode<T> node) {
+  /// Split an internal (non-leaf) node and propagate upward.
+  void _splitInternalAndPropagate(
+    _RTreeNode<T> node,
+    List<_RTreeNode<T>> path,
+  ) {
+    final children = List<_RTreeNode<T>>.from(node.children);
+    node.children.clear();
+
+    final sibling = _RTreeNode<T>(isLeaf: false);
+
+    // Pick seeds: two children with maximum wasted area.
+    int seed1 = 0, seed2 = 1;
+    double maxWaste = double.negativeInfinity;
+    for (var i = 0; i < children.length; i++) {
+      for (var j = i + 1; j < children.length; j++) {
+        final combined = RTreeBBox(
+          math.min(children[i].bbox.minLat, children[j].bbox.minLat),
+          math.min(children[i].bbox.minLng, children[j].bbox.minLng),
+          math.max(children[i].bbox.maxLat, children[j].bbox.maxLat),
+          math.max(children[i].bbox.maxLng, children[j].bbox.maxLng),
+        );
+        final waste =
+            combined.area - children[i].bbox.area - children[j].bbox.area;
+        if (waste > maxWaste) {
+          maxWaste = waste;
+          seed1 = i;
+          seed2 = j;
+        }
+      }
+    }
+
+    node.children.add(children[seed1]);
+    sibling.children.add(children[seed2]);
+
+    for (var i = 0; i < children.length; i++) {
+      if (i == seed1 || i == seed2) continue;
+      node.recalculateBBox();
+      sibling.recalculateBBox();
+      final e1 = node.bbox.enlargement(children[i].bbox);
+      final e2 = sibling.bbox.enlargement(children[i].bbox);
+      if (e1 <= e2) {
+        node.children.add(children[i]);
+      } else {
+        sibling.children.add(children[i]);
+      }
+    }
+
     node.recalculateBBox();
+    sibling.recalculateBBox();
+
+    _insertSiblingIntoParent(node, sibling, path);
   }
 
   void _queryBBoxRecursive(

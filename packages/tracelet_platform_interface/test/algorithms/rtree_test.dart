@@ -125,28 +125,27 @@ void main() {
 
       expect(smallTree.size, 10);
 
-      // Query should find at least some entries — the simple split
-      // implementation may not propagate all nodes perfectly
+      // All 10 entries must be queryable despite frequent splits
       final results = smallTree.queryCircle(37.05, -121.95, 100000);
-      expect(results, isNotEmpty);
+      expect(results, hasLength(10));
     });
 
     test('handles large number of entries', () {
-      // Insert 100 entries in a tight cluster
-      for (var i = 0; i < 100; i++) {
+      // Insert 1000 entries in a grid
+      for (var i = 0; i < 1000; i++) {
         tree.insert(
-          37.77 + (i ~/ 10) * 0.001,
-          -122.42 + (i % 10) * 0.001,
+          37.77 + (i ~/ 32) * 0.001,
+          -122.42 + (i % 32) * 0.001,
           100,
           'point_$i',
         );
       }
 
-      expect(tree.size, 100);
+      expect(tree.size, 1000);
 
-      // Query centered on the cluster with large radius
-      final results = tree.queryCircle(37.775, -122.415, 5000);
-      expect(results, isNotEmpty);
+      // Query centered on the grid with large radius — must find all
+      final results = tree.queryCircle(37.785, -122.405, 50000);
+      expect(results, hasLength(1000));
     });
 
     test('handles duplicate locations', () {
