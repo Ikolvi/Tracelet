@@ -138,7 +138,7 @@ allowIdenticalLocations             → geo.allowIdenticalLocations (Android)
 useSignificantChangesOnly           → geo.useSignificantChangesOnly (iOS)
 showsBackgroundLocationIndicator    → geo.showsBackgroundLocationIndicator (iOS)
 pausesLocationUpdatesAutomatically  → geo.pausesLocationUpdatesAutomatically (iOS)
-locationAuthorizationRequest        → geo.locationAuthorizationRequest (default 'Always')
+locationAuthorizationRequest        → geo.locationAuthorizationRequest (default LocationAuthorizationRequest.always)
 disableLocationAuthorizationAlert   → geo.disableLocationAuthorizationAlert
 enableTimestampMeta                 → geo.enableTimestampMeta
 geofenceModeHighAccuracy            → geo.geofenceModeHighAccuracy (Android)

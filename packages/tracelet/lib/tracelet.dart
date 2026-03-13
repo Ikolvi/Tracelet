@@ -38,6 +38,7 @@ export 'package:tracelet_platform_interface/tracelet_platform_interface.dart'
         PersistMode,
         LocationFilterPolicy,
         MockDetectionLevel,
+        LocationAuthorizationRequest,
         // Shared algorithms (pure Dart — work on all platforms)
         KalmanLocationFilter,
         TripManager,

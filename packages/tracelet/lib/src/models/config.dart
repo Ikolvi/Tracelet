@@ -212,7 +212,7 @@ class GeoConfig {
     this.useSignificantChangesOnly = false,
     this.showsBackgroundLocationIndicator = false,
     this.pausesLocationUpdatesAutomatically = false,
-    this.locationAuthorizationRequest = 'Always',
+    this.locationAuthorizationRequest = LocationAuthorizationRequest.always,
     this.disableLocationAuthorizationAlert = false,
     this.enableTimestampMeta = false,
     this.enableAdaptiveMode = false,
@@ -309,9 +309,10 @@ class GeoConfig {
   /// Defaults to `false`.
   final bool pausesLocationUpdatesAutomatically;
 
-  /// The location authorization to request: `'Always'` or `'WhenInUse'`.
-  /// Defaults to `'Always'`.
-  final String locationAuthorizationRequest;
+  /// The location authorization level to request.
+  ///
+  /// Defaults to [LocationAuthorizationRequest.always] for background tracking.
+  final LocationAuthorizationRequest locationAuthorizationRequest;
 
   /// Disable the automatic alert shown when the user has disabled required
   /// location authorization. Defaults to `false`.
@@ -509,8 +510,9 @@ class GeoConfig {
         map['pausesLocationUpdatesAutomatically'],
         fallback: false,
       ),
-      locationAuthorizationRequest:
-          map['locationAuthorizationRequest'] as String? ?? 'Always',
+      locationAuthorizationRequest: _parseLocationAuthorizationRequest(
+        map['locationAuthorizationRequest'],
+      ),
       disableLocationAuthorizationAlert: ensureBool(
         map['disableLocationAuthorizationAlert'],
         fallback: false,
@@ -592,7 +594,10 @@ class GeoConfig {
       'useSignificantChangesOnly': useSignificantChangesOnly,
       'showsBackgroundLocationIndicator': showsBackgroundLocationIndicator,
       'pausesLocationUpdatesAutomatically': pausesLocationUpdatesAutomatically,
-      'locationAuthorizationRequest': locationAuthorizationRequest,
+      'locationAuthorizationRequest':
+          locationAuthorizationRequest == LocationAuthorizationRequest.always
+          ? 'Always'
+          : 'WhenInUse',
       'disableLocationAuthorizationAlert': disableLocationAuthorizationAlert,
       'enableTimestampMeta': enableTimestampMeta,
       'enableAdaptiveMode': enableAdaptiveMode,
@@ -1989,4 +1994,22 @@ class PermissionRationale {
 
   @override
   int get hashCode => Object.hash(title, message);
+}
+
+/// Parse a location authorization request value from a native map.
+///
+/// Accepts both the string form (`'Always'`, `'WhenInUse'`) sent over
+/// platform channels and the enum itself.
+LocationAuthorizationRequest _parseLocationAuthorizationRequest(Object? value) {
+  if (value is LocationAuthorizationRequest) return value;
+  if (value is String) {
+    switch (value) {
+      case 'WhenInUse':
+        return LocationAuthorizationRequest.whenInUse;
+      case 'Always':
+      default:
+        return LocationAuthorizationRequest.always;
+    }
+  }
+  return LocationAuthorizationRequest.always;
 }

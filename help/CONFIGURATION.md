@@ -24,7 +24,7 @@ Config(
     locationTimeout: 60,             // Timeout for location request (s)
     activityType: LocationActivityType.other, // iOS: activity type hint
     deferTime: 0,                    // Android: defer updates for N ms
-    locationAuthorizationRequest: 'Always', // Authorization level to request
+    locationAuthorizationRequest: LocationAuthorizationRequest.always, // Authorization level
     disableLocationAuthorizationAlert: false, // Suppress system auth prompt
     // Battery budget:
     batteryBudgetPerHour: 3.0,       // Target max %/hr drain (0 = disabled)
@@ -129,7 +129,7 @@ Location accuracy, sampling, and filtering.
 | `locationTimeout` | `int` | `60` | Timeout for individual location request in seconds |
 | `activityType` | `LocationActivityType` | `other` | **iOS**: hint for CLLocationManager (`other`, `automotiveNavigation`, `fitness`, `airborne`) |
 | `deferTime` | `int` | `0` | **Android**: defer location updates for N ms (batching) |
-| `locationAuthorizationRequest` | `String` | `'Always'` | Authorization level to request: `'Always'` or `'WhenInUse'` |
+| `locationAuthorizationRequest` | `LocationAuthorizationRequest` | `always` | Authorization level: `always` or `whenInUse` |
 | `disableLocationAuthorizationAlert` | `bool` | `false` | Suppress system authorization prompt |
 | **Battery Budget** | | | |
 | `batteryBudgetPerHour` | `double` | `0.0` | Target max battery drain %/hr. `0` = disabled. Adjusts distanceFilter, accuracy, and periodic interval automatically ([details](BATTERY-BUDGET.md)) |

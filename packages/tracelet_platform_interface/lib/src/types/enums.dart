@@ -233,3 +233,23 @@ enum MockDetectionLevel {
   /// changes, NTP corrections).
   heuristic,
 }
+
+/// The location authorization level to request from the user.
+///
+/// On iOS this maps directly to the `CLLocationManager` authorization level:
+/// - [always] requests "Always" authorization (background tracking).
+/// - [whenInUse] requests "When In Use" authorization only.
+///
+/// On Android this is used to decide whether to request
+/// `ACCESS_BACKGROUND_LOCATION` in addition to `ACCESS_FINE_LOCATION`.
+enum LocationAuthorizationRequest {
+  /// Request "Always" (background) location authorization.
+  ///
+  /// This is the default and is required for background tracking.
+  always,
+
+  /// Request "When In Use" location authorization only.
+  ///
+  /// Background tracking will not work with this setting on iOS.
+  whenInUse,
+}
