@@ -176,6 +176,13 @@ Polygon containment uses the ray-casting algorithm for efficient point-in-polygo
 | [iOS Background Hardening](https://github.com/Ikolvi/Tracelet/blob/main/help/IOS-BACKGROUND-HARDENING.md) | Background task protection, session APIs, prevent suspend |
 | [Privacy Zones](https://github.com/Ikolvi/Tracelet/blob/main/help/PRIVACY-ZONES.md) | Location exclusion zones for sensitive areas |
 | [Audit Trail](https://github.com/Ikolvi/Tracelet/blob/main/help/AUDIT-TRAIL.md) | Cryptographic hash-chain audit trail for compliance |
+| [Battery Budget](https://github.com/Ikolvi/Tracelet/blob/main/help/BATTERY-BUDGET.md) | Feedback loop — auto-tune tracking to stay within battery drain target |
+| [Delta Encoding](https://github.com/Ikolvi/Tracelet/blob/main/help/DELTA-ENCODING.md) | 60–80% HTTP payload compression via differential location encoding |
+| [Carbon Estimator](https://github.com/Ikolvi/Tracelet/blob/main/help/CARBON-ESTIMATOR.md) | Real-time CO₂ estimation by transport mode (EU EEA 2024 factors) |
+| [Compliance Report](https://github.com/Ikolvi/Tracelet/blob/main/help/COMPLIANCE-REPORT.md) | Auto-generated GDPR Article 30 / CCPA compliance reports |
+| [Dead Reckoning](https://github.com/Ikolvi/Tracelet/blob/main/help/DEAD-RECKONING.md) | IMU-based inertial navigation during GPS signal loss |
+| [Sparse Updates](https://github.com/Ikolvi/Tracelet/blob/main/help/SPARSE-UPDATES.md) | App-level location deduplication — reduce DB writes and sync volume |
+| [Periodic Mode](https://github.com/Ikolvi/Tracelet/blob/main/help/PERIODIC-MODE.md) | Timed one-shot GPS fixes — WorkManager, foreground service, exact alarms |
 
 ## Architecture
 

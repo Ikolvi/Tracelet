@@ -229,6 +229,13 @@ await tl.Tracelet.start();
 | [Audit Trail](help/AUDIT-TRAIL.md) | Cryptographic hash-chain audit trail for compliance |
 | [Mock Detection](help/MOCK-DETECTION.md) | Detect spoofed locations, mock provider flags, trust scoring |
 | [OEM Compatibility](help/OEM-COMPATIBILITY.md) | OEM-specific battery kill issues, manufacturer workarounds |
+| [Battery Budget](help/BATTERY-BUDGET.md) | Feedback loop — auto-tune tracking to stay within battery drain target |
+| [Delta Encoding](help/DELTA-ENCODING.md) | 60–80% HTTP payload compression via differential location encoding |
+| [Carbon Estimator](help/CARBON-ESTIMATOR.md) | Real-time CO₂ estimation by transport mode (EU EEA 2024 factors) |
+| [Compliance Report](help/COMPLIANCE-REPORT.md) | Auto-generated GDPR Article 30 / CCPA compliance reports |
+| [Dead Reckoning](help/DEAD-RECKONING.md) | IMU-based inertial navigation during GPS signal loss |
+| [Sparse Updates](help/SPARSE-UPDATES.md) | App-level location deduplication — reduce DB writes and sync volume |
+| [Periodic Mode](help/PERIODIC-MODE.md) | Timed one-shot GPS fixes — WorkManager, foreground service, exact alarms |
 
 ## Requirements
 
