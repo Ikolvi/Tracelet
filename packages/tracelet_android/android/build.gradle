@@ -62,7 +62,7 @@ android {
         implementation("com.squareup.okhttp3:okhttp:5.3.2")
 
         // Core KTX
-        implementation("androidx.core:core-ktx:1.13.1")
+        implementation("androidx.core:core-ktx:1.18.0")
 
         // Lifecycle
         implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
