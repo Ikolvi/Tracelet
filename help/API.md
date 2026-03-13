@@ -27,6 +27,7 @@
 | `Tracelet.changePace(isMoving)` | `bool` | Force motion state |
 | `Tracelet.getOdometer()` | `double` | Odometer in meters |
 | `Tracelet.setOdometer(value)` | `Location` | Reset odometer |
+| `Tracelet.getLastKnownLocation()` | `Location?` | Cached location without GPS — zero battery cost |
 
 ---
 
@@ -44,6 +45,18 @@
 
 ---
 
+## Privacy Zones
+
+| Method | Returns | Description |
+|---|---|---|
+| `Tracelet.addPrivacyZone(zone)` | `bool` | Add a privacy zone ([details](PRIVACY-ZONES.md)) |
+| `Tracelet.addPrivacyZones(zones)` | `bool` | Add multiple privacy zones |
+| `Tracelet.removePrivacyZone(id)` | `bool` | Remove by identifier |
+| `Tracelet.removePrivacyZones()` | `bool` | Remove all privacy zones |
+| `Tracelet.getPrivacyZones()` | `List<PrivacyZone>` | List all registered zones |
+
+---
+
 ## Persistence & Sync
 
 | Method | Returns | Description |
@@ -54,6 +67,23 @@
 | `Tracelet.destroyLocation(uuid)` | `bool` | Delete one |
 | `Tracelet.insertLocation(params)` | `String` | Insert custom |
 | `Tracelet.sync()` | `List<Location>` | Manual HTTP sync |
+
+---
+
+## Audit Trail
+
+| Method | Returns | Description |
+|---|---|---|
+| `Tracelet.verifyAuditTrail()` | `AuditVerification` | Verify tamper-proof hash chain integrity ([details](AUDIT-TRAIL.md)) |
+| `Tracelet.getAuditProof(uuid)` | `AuditProof?` | Get SHA-256 hash proof for a single location |
+
+---
+
+## Compliance
+
+| Method | Returns | Description |
+|---|---|---|
+| `Tracelet.generateComplianceReport()` | `ComplianceReport` | Auto-generated GDPR/CCPA compliance report ([details](COMPLIANCE-REPORT.md)) |
 
 ---
 
@@ -72,7 +102,13 @@
 | `Tracelet.openBatterySettings()` | `bool` | Open battery optimization (Android) |
 | `Tracelet.requestTemporaryFullAccuracy(purpose)` | `int` | Temp full accuracy (iOS 14+) |
 | `Tracelet.isPowerSaveMode` | `bool` | Battery saver active? |
+| `Tracelet.hasBackgroundPermission` | `bool` | Has "Always" location authorization? |
 | `Tracelet.isIgnoringBatteryOptimizations()` | `bool` | Battery exempt? (Android) |
+| `Tracelet.canScheduleExactAlarms()` | `bool` | Has `SCHEDULE_EXACT_ALARM` permission? (Android 12+) |
+| `Tracelet.openExactAlarmSettings()` | `bool` | Open exact alarms settings page (Android 12+) |
+| `Tracelet.getProviderState()` | `ProviderChangeEvent` | Current GPS/network provider state |
+| `Tracelet.requestSettings(action)` | `bool` | Open system settings by action string |
+| `Tracelet.showSettings(action)` | `bool` | Alias for `requestSettings()` |
 
 ---
 
@@ -89,6 +125,13 @@
 | `Tracelet.emailLog(email)` | `bool` | Email log export |
 | `Tracelet.log(level, message)` | `bool` | Write custom log entry |
 | `Tracelet.registerHeadlessTask(callback)` | `void` | Register headless Dart callback |
+| `Tracelet.getSettingsHealth()` | `Map<String, Object?>` | OEM-specific device settings health ([details](OEM-COMPATIBILITY.md)) |
+| `Tracelet.openOemSettings(label)` | `bool` | Open OEM-specific settings page (Android) |
+| `Tracelet.startBackgroundTask()` | `int` | Start a long-running background task, returns task ID |
+| `Tracelet.stopBackgroundTask(taskId)` | `int` | Stop a background task by ID |
+| `Tracelet.startSchedule()` | `State` | Start time-based schedule |
+| `Tracelet.stopSchedule()` | `State` | Stop time-based schedule |
+| `Tracelet.removeListeners()` | `void` | Cancel all active event subscriptions |
 
 ---
 
@@ -110,6 +153,8 @@
 | `Tracelet.onEnabledChange(cb)` | `bool` | Tracking on/off |
 | `Tracelet.onNotificationAction(cb)` | `String` | Notification tap (Android) |
 | `Tracelet.onAuthorization(cb)` | `AuthorizationEvent` | Auth token refresh |
+| `Tracelet.onTrip(cb)` | `TripEvent` | Trip start/end with waypoints, distance, duration |
+| `Tracelet.onBudgetAdjustment(cb)` | `BudgetAdjustmentEvent` | Battery budget engine auto-adjusted tracking params |
 
 ---
 
@@ -142,6 +187,95 @@
 | `hasBackgroundPermission` | `bool` | Has "Always" + services enabled |
 
 > See [Health Check Guide](HEALTH-CHECK.md) for full field list and warning types.
+
+### TripEvent
+
+| Property | Type | Description |
+|---|---|---|
+| `isMoving` | `bool` | Whether device just started (`true`) or stopped (`false`) moving |
+| `distance` | `double` | Total trip distance in meters |
+| `duration` | `int` | Trip duration in seconds |
+| `startLocation` | `Location` | Location where trip started |
+| `stopLocation` | `Location` | Location where trip ended |
+| `waypoints` | `List<Location>` | All recorded waypoints during trip |
+| `averageSpeed` | `double` | Average speed in m/s |
+
+> See [Trip Detection Guide](TRIP-DETECTION.md) for full usage details.
+
+### BudgetAdjustmentEvent
+
+| Property | Type | Description |
+|---|---|---|
+| `currentBatteryDrain` | `double` | Measured battery drain (%/hr) |
+| `targetBudget` | `double` | Configured target budget (%/hr) |
+| `newDistanceFilter` | `double` | Adjusted distance filter in meters |
+| `newDesiredAccuracy` | `String` | Adjusted accuracy level name |
+| `newPeriodicInterval` | `int?` | Adjusted periodic interval in seconds (null if not periodic mode) |
+
+> See [Battery Budget Guide](BATTERY-BUDGET.md) for target values and tuning.
+
+### ComplianceReport
+
+| Property | Type | Description |
+|---|---|---|
+| `generatedAt` | `DateTime` | Report generation timestamp |
+| `totalLocationsStored` | `int` | Locations in local database |
+| `totalLocationsSynced` | `int` | Approximate locations synced to server |
+| `oldestRecord` | `String?` | Timestamp of oldest record |
+| `newestRecord` | `String?` | Timestamp of newest record |
+| `maxDaysToPersist` | `int` | Retention policy — days (-1 = unlimited) |
+| `maxRecordsToPersist` | `int` | Retention policy — records (-1 = unlimited) |
+| `databaseEncrypted` | `bool` | Database encrypted at rest |
+| `activePrivacyZones` | `int` | Number of active privacy zones |
+| `privacyZoneIdentifiers` | `List<String>` | Identifiers of all active zones |
+| `httpSyncUrl` | `String?` | Server URL (null if disabled) |
+| `autoSyncEnabled` | `bool` | Auto-sync on new location |
+| `auditTrailEnabled` | `bool` | Hash chain enabled |
+| `auditTrailValid` | `bool?` | Chain validation status |
+| `locationPermissionStatus` | `int` | Location permission code |
+| `motionPermissionStatus` | `int` | Motion permission code |
+| `trackingEnabled` | `bool` | Tracking currently active |
+| `trackingMode` | `String` | Current mode |
+
+Export methods: `toJson()` → structured JSON, `toMarkdown()` → human-readable report.
+
+> See [Compliance Report Guide](COMPLIANCE-REPORT.md) for GDPR mapping and usage.
+
+### AuditVerification
+
+| Property | Type | Description |
+|---|---|---|
+| `isValid` | `bool` | Whether the entire hash chain is intact |
+| `totalRecords` | `int` | Total records verified |
+| `verifiedRecords` | `int` | Number of records successfully verified |
+| `brokenAtIndex` | `int?` | Index where chain was broken (null if valid) |
+| `brokenAtUuid` | `String?` | UUID of the broken record |
+| `error` | `String?` | Error message if verification failed |
+
+### AuditProof
+
+| Property | Type | Description |
+|---|---|---|
+| `uuid` | `String` | Location record UUID |
+| `hash` | `String` | SHA-256 hash of this record |
+| `previousHash` | `String` | Hash of preceding record in chain |
+| `chainIndex` | `int` | Position in the audit chain |
+| `timestamp` | `String` | Record timestamp |
+
+> See [Audit Trail Guide](AUDIT-TRAIL.md) for chain verification details.
+
+### PrivacyZone
+
+| Property | Type | Description |
+|---|---|---|
+| `identifier` | `String` | Unique zone identifier |
+| `latitude` | `double` | Zone center latitude |
+| `longitude` | `double` | Zone center longitude |
+| `radius` | `double` | Zone radius in meters |
+| `action` | `PrivacyZoneAction` | `exclude`, `degrade`, or `eventOnly` |
+| `degradedAccuracyMeters` | `double?` | Degraded accuracy when action is `degrade` |
+
+> See [Privacy Zones Guide](PRIVACY-ZONES.md) for zone actions and usage.
 
 ### startPeriodic()
 
@@ -181,3 +315,23 @@ await Tracelet.stop();
 > **Exact Alarms:** `periodicUseExactAlarms: true` uses `AlarmManager.setExactAndAllowWhileIdle()` on Android. Requires `SCHEDULE_EXACT_ALARM` permission (granted by default on Android 12–12L, must be manually enabled in Settings on Android 13+). Falls back silently to inexact alarms if not granted.
 
 > See [Background Tracking Guide](BACKGROUND-TRACKING.md#periodic-mode) and [Configuration Guide](CONFIGURATION.md) for full details.
+
+---
+
+## Algorithm Classes
+
+The following classes are exported from `package:tracelet/tracelet.dart` and
+available for direct use:
+
+| Class | Purpose | Guide |
+|---|---|---|
+| `CarbonEstimator` | CO₂ emission tracking per trip/transport mode | [Carbon Estimator](CARBON-ESTIMATOR.md) |
+| `BatteryBudgetEngine` | Auto-adjust tracking to stay within battery budget | [Battery Budget](BATTERY-BUDGET.md) |
+| `DeltaEncoder` | Location delta compression for HTTP sync | [Delta Encoding](DELTA-ENCODING.md) |
+| `KalmanLocationFilter` | GPS coordinate smoothing (Extended Kalman Filter) | [Kalman Filter](KALMAN-FILTER.md) |
+| `TripManager` | Trip detection and waypoint collection | [Trip Detection](TRIP-DETECTION.md) |
+| `RTree` | R-Tree spatial indexing for geofence proximity queries | — |
+| `GeoUtils` | Geographic utilities (Haversine distance, bearing) | — |
+| `LocationProcessor` | Distance/accuracy/speed filtering, adaptive sampling | [Adaptive Sampling](ADAPTIVE-SAMPLING.md) |
+| `GeofenceEvaluator` | Geofence containment checks (circles + polygons) | [Polygon Geofences](POLYGON-GEOFENCES.md) |
+| `ScheduleParser` | Parse and evaluate time-based schedule rules | — |
