@@ -467,6 +467,9 @@ class _DashboardPageState extends State<DashboardPage>
             distanceFilter: 10,
             stationaryRadius: 25,
             locationTimeout: 60,
+            // ── Authorization ──
+            locationAuthorizationRequest:
+                tl.LocationAuthorizationRequest.always,
             // ── New features ──
             disableElasticity: false,
             elasticityMultiplier: 1.0,
@@ -499,6 +502,8 @@ class _DashboardPageState extends State<DashboardPage>
                 ? const tl.ForegroundServiceConfig(
                     notificationTitle: 'Tracelet Demo',
                     notificationText: 'Tracking in background',
+                    notificationPriority:
+                        tl.NotificationPriority.defaultPriority,
                   )
                 : const tl.ForegroundServiceConfig(enabled: false),
             // ── New features ──
@@ -514,8 +519,14 @@ class _DashboardPageState extends State<DashboardPage>
             stopOnStationary: false,
           ),
           http: const tl.HttpConfig(
+            method: tl.HttpMethod.post,
+            locationsOrderDirection: tl.LocationOrder.asc,
             // ── New feature ──
             disableAutoSyncOnCellular: true,
+          ),
+          audit: const tl.AuditConfig(
+            enabled: true,
+            hashAlgorithm: tl.HashAlgorithm.sha256,
           ),
           persistence: const tl.PersistenceConfig(
             // ── New features ──
