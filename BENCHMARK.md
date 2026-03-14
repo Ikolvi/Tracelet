@@ -60,6 +60,43 @@ Critical operations that run on **every GPS fix** (1 Hz) must complete in < 1ms 
 
 ## Results History
 
+### 2026-03-14 — Commit d13fa1b
+
+**Environment:** Dart 3.11.1, ubuntu-latest (CI)
+
+| Benchmark | ops/sec | µs/op |
+|---|---:|---:|
+| kalman_process_single | 4989620 | 0.20 |
+| kalman_process_100_fixes | 85197 | 11.74 |
+| kalman_process_1k_fixes | 9209 | 108.59 |
+| kalman_reset | 5504272 | 0.18 |
+| haversine_single | 8620635 | 0.12 |
+| haversine_1k_pairs | 17534 | 57.03 |
+| pip_4v | 13594179 | 0.07 |
+| pip_10v | 10287184 | 0.10 |
+| pip_50v | 4054128 | 0.25 |
+| pip_100v | 2202634 | 0.45 |
+| pip_500v | 441035 | 2.27 |
+| geofence_eval_10_circular | 647384 | 1.54 |
+| geofence_eval_100_circular | 73795 | 13.55 |
+| geofence_eval_500_circular | 13896 | 71.96 |
+| geofence_eval_10_polygon_6v | 381775 | 2.62 |
+| geofence_eval_50_polygon_6v | 77999 | 12.82 |
+| processor_1k_fixes | 9829 | 101.74 |
+| processor_1k_adaptive | 9767 | 102.39 |
+| trip_manager_5k_waypoints | 136 | 7355.33 |
+| schedule_parse | 2962725 | 0.34 |
+| schedule_matches | 257324 | 3.89 |
+| schedule_isWithin_5_entries | 227161 | 4.40 |
+| adaptive_compute | 12861022 | 0.08 |
+| location_fromMap | 1640100 | 0.61 |
+| location_toMap | 491820 | 2.03 |
+| location_fromMap_toMap_roundtrip | 405139 | 2.47 |
+| location_copyWithCoords | 11588754 | 0.09 |
+| geofence_fromMap_circular | 4024551 | 0.25 |
+| geofence_fromMap_polygon | 1415267 | 0.71 |
+
+
 ### 2026-03-14 — Commit 42a4aa1
 
 **Environment:** Dart 3.11.1, ubuntu-latest (CI)
