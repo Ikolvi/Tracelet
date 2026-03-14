@@ -4,8 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import com.tracelet.tracelet_android.ConfigManager
-import com.tracelet.tracelet_android.StateManager
+import com.tracelet.core.ConfigManager
+import com.tracelet.core.StateManager
 import org.mockito.Mockito
 import org.mockito.Mockito.`when`
 import org.mockito.Mockito.never

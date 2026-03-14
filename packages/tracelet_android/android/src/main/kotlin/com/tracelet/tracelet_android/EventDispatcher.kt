@@ -2,11 +2,12 @@ package com.tracelet.tracelet_android
 
 import android.os.Handler
 import android.os.Looper
+import com.tracelet.core.TraceletEventSender
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 
 /**
- * Centralized EventChannel sink manager for all Tracelet event streams.
+ * Flutter-specific [TraceletEventSender] implementation using EventChannels.
  *
  * Manages 15 EventChannels and their EventSinks. All event dispatch
  * is marshalled to the main thread for Flutter platform channel safety.
@@ -15,7 +16,7 @@ import io.flutter.plugin.common.EventChannel
  * falls back to [headlessFallback] (if set) so that events can be routed
  * to a background Dart isolate via HeadlessTaskService.
  */
-class EventDispatcher {
+class EventDispatcher : TraceletEventSender {
 
     companion object {
         private const val BASE = "com.tracelet/events"
@@ -82,41 +83,41 @@ class EventDispatcher {
     }
 
     // ---------------------------------------------------------------------------
-    // Type-safe dispatch methods (all marshal to main thread)
+    // TraceletEventSender implementation (all marshal to main thread)
     // ---------------------------------------------------------------------------
 
-    fun sendLocation(data: Map<String, Any?>) = send("location", data)
+    override fun sendLocation(data: Map<String, Any?>) = send("location", data)
 
-    fun sendMotionChange(data: Map<String, Any?>) = send("motionchange", data)
+    override fun sendMotionChange(data: Map<String, Any?>) = send("motionchange", data)
 
-    fun sendActivityChange(data: Map<String, Any?>) = send("activitychange", data)
+    override fun sendActivityChange(data: Map<String, Any?>) = send("activitychange", data)
 
-    fun sendProviderChange(data: Map<String, Any?>) = send("providerchange", data)
+    override fun sendProviderChange(data: Map<String, Any?>) = send("providerchange", data)
 
-    fun sendGeofence(data: Map<String, Any?>) = send("geofence", data)
+    override fun sendGeofence(data: Map<String, Any?>) = send("geofence", data)
 
-    fun sendGeofencesChange(data: Map<String, Any?>) = send("geofenceschange", data)
+    override fun sendGeofencesChange(data: Map<String, Any?>) = send("geofenceschange", data)
 
-    fun sendHeartbeat(data: Map<String, Any?>) = send("heartbeat", data)
+    override fun sendHeartbeat(data: Map<String, Any?>) = send("heartbeat", data)
 
-    fun sendHttp(data: Map<String, Any?>) = send("http", data)
+    override fun sendHttp(data: Map<String, Any?>) = send("http", data)
 
-    fun sendSchedule(data: Map<String, Any?>) = send("schedule", data)
+    override fun sendSchedule(data: Map<String, Any?>) = send("schedule", data)
 
-    fun sendPowerSaveChange(isPowerSaveMode: Boolean) = send("powersavechange", isPowerSaveMode)
+    override fun sendPowerSaveChange(isPowerSaveMode: Boolean) = send("powersavechange", isPowerSaveMode)
 
-    fun sendConnectivityChange(data: Map<String, Any?>) = send("connectivitychange", data)
+    override fun sendConnectivityChange(data: Map<String, Any?>) = send("connectivitychange", data)
 
-    fun sendEnabledChange(enabled: Boolean) = send("enabledchange", enabled)
+    override fun sendEnabledChange(enabled: Boolean) = send("enabledchange", enabled)
 
-    fun sendNotificationAction(action: String) = send("notificationaction", action)
+    override fun sendNotificationAction(action: String) = send("notificationaction", action)
 
-    fun sendAuthorization(data: Map<String, Any?>) = send("authorization", data)
+    override fun sendAuthorization(data: Map<String, Any?>) = send("authorization", data)
 
-    fun sendWatchPosition(data: Map<String, Any?>) = send("watchposition", data)
+    override fun sendWatchPosition(data: Map<String, Any?>) = send("watchposition", data)
 
     /** Returns true if a listener is attached for the given event name. */
-    fun hasListener(eventName: String): Boolean = sinks[eventName] != null
+    override fun hasListener(eventName: String): Boolean = sinks[eventName] != null
 
     // ---------------------------------------------------------------------------
     // Private

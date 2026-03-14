@@ -1,6 +1,6 @@
 package com.tracelet.tracelet_android.location
 
-import com.tracelet.tracelet_android.EventDispatcher
+import com.tracelet.core.TraceletEventSender
 import org.mockito.Mockito
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -31,42 +31,42 @@ internal class PeriodicLocationWorkerTest {
     // ── EventDispatcher static reference ─────────────────────────────────
 
     @Test
-    fun eventDispatcher_defaultsToNull() {
-        PeriodicLocationWorker.eventDispatcher = null
-        assertNull(PeriodicLocationWorker.eventDispatcher)
+    fun eventSender_defaultsToNull() {
+        PeriodicLocationWorker.eventSender = null
+        assertNull(PeriodicLocationWorker.eventSender)
     }
 
     @Test
-    fun eventDispatcher_canBeSetAndRead() {
+    fun eventSender_canBeSetAndRead() {
         val dispatcher = Mockito.mock(EventDispatcher::class.java)
         try {
-            PeriodicLocationWorker.eventDispatcher = dispatcher
-            assertEquals(dispatcher, PeriodicLocationWorker.eventDispatcher)
+            PeriodicLocationWorker.eventSender = dispatcher
+            assertEquals(dispatcher, PeriodicLocationWorker.eventSender)
         } finally {
-            PeriodicLocationWorker.eventDispatcher = null
+            PeriodicLocationWorker.eventSender = null
         }
     }
 
     @Test
-    fun eventDispatcher_canBeResetToNull() {
+    fun eventSender_canBeResetToNull() {
         val dispatcher = Mockito.mock(EventDispatcher::class.java)
-        PeriodicLocationWorker.eventDispatcher = dispatcher
-        PeriodicLocationWorker.eventDispatcher = null
-        assertNull(PeriodicLocationWorker.eventDispatcher)
+        PeriodicLocationWorker.eventSender = dispatcher
+        PeriodicLocationWorker.eventSender = null
+        assertNull(PeriodicLocationWorker.eventSender)
     }
 
     @Test
-    fun eventDispatcher_multipleAssignments() {
+    fun eventSender_multipleAssignments() {
         val d1 = Mockito.mock(EventDispatcher::class.java)
         val d2 = Mockito.mock(EventDispatcher::class.java)
         try {
-            PeriodicLocationWorker.eventDispatcher = d1
-            assertEquals(d1, PeriodicLocationWorker.eventDispatcher)
+            PeriodicLocationWorker.eventSender = d1
+            assertEquals(d1, PeriodicLocationWorker.eventSender)
 
-            PeriodicLocationWorker.eventDispatcher = d2
-            assertEquals(d2, PeriodicLocationWorker.eventDispatcher)
+            PeriodicLocationWorker.eventSender = d2
+            assertEquals(d2, PeriodicLocationWorker.eventSender)
         } finally {
-            PeriodicLocationWorker.eventDispatcher = null
+            PeriodicLocationWorker.eventSender = null
         }
     }
 

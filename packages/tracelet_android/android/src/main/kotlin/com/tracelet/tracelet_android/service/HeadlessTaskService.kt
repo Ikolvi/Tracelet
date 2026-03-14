@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.tracelet.core.HeadlessDispatcher
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.embedding.engine.loader.FlutterLoader
@@ -28,7 +29,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 5. Sends HeadlessEvent via MethodChannel
  * 6. Disposes engine when done
  */
-class HeadlessTaskService(private val context: Context) {
+class HeadlessTaskService(private val context: Context) : HeadlessDispatcher {
 
     companion object {
         private const val TAG = "HeadlessTaskService"
@@ -55,7 +56,7 @@ class HeadlessTaskService(private val context: Context) {
     }
 
     /** Returns whether headless task is registered. */
-    fun isRegistered(): Boolean {
+    override fun isRegistered(): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return prefs.contains(KEY_REGISTRATION_CALLBACK) && prefs.contains(KEY_DISPATCH_CALLBACK)
     }
@@ -68,7 +69,7 @@ class HeadlessTaskService(private val context: Context) {
      * Dart-side dispatcher ([_headlessCallbackDispatcher]) can look up
      * the user's callback via [PluginUtilities.getCallbackFromHandle].
      */
-    fun dispatchEvent(eventName: String, eventData: Map<String, Any?>) {
+    override fun dispatchEvent(eventName: String, eventData: Map<String, Any?>) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val dispatchId = prefs.getLong(KEY_DISPATCH_CALLBACK, -1L)
 

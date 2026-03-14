@@ -3,10 +3,10 @@ package com.tracelet.tracelet_android.location
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import com.tracelet.tracelet_android.ConfigManager
-import com.tracelet.tracelet_android.EventDispatcher
-import com.tracelet.tracelet_android.StateManager
-import com.tracelet.tracelet_android.db.TraceletDatabase
+import com.tracelet.core.ConfigManager
+import com.tracelet.core.TraceletEventSender
+import com.tracelet.core.StateManager
+import com.tracelet.core.db.TraceletDatabase
 import org.mockito.Mockito
 import org.mockito.Mockito.`when`
 import kotlin.test.Test
@@ -174,7 +174,7 @@ internal class LocationEnginePeriodicTest {
     // ── EventDispatcher mock wiring ───────────────────────────────────────
 
     @Test
-    fun eventDispatcher_sendLocation_canBeMocked() {
+    fun eventSender_sendLocation_canBeMocked() {
         val events = Mockito.mock(EventDispatcher::class.java)
         val locationMap = mapOf<String, Any?>(
             "latitude" to 37.7749,

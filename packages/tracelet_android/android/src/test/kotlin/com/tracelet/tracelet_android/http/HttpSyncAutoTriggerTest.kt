@@ -1,6 +1,6 @@
 package com.tracelet.tracelet_android.http
 
-import com.tracelet.tracelet_android.location.PeriodicLocationWorker
+import com.tracelet.core.location.PeriodicLocationWorker
 import org.mockito.Mockito
 import kotlin.test.Test
 import kotlin.test.assertEquals

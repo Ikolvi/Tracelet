@@ -30,6 +30,9 @@ flutter_ios_podfile_setup
 target 'Runner' do
   use_frameworks!
 
+  # TraceletCore: shared native engines (framework-agnostic)
+  pod 'TraceletCore', :path => '../../native/ios/TraceletCore'
+
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do
     inherit! :search_paths

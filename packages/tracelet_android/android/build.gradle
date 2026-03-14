@@ -40,6 +40,8 @@ android {
 
     sourceSets {
         main.java.srcDirs += "src/main/kotlin"
+        // Shared core engines (framework-agnostic, used by both Flutter and React Native)
+        main.java.srcDirs += "../../../native/android/tracelet-core/src/main/kotlin"
         test.java.srcDirs += "src/test/kotlin"
     }
 

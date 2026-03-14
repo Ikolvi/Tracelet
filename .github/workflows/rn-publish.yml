@@ -1,0 +1,47 @@
+name: Publish React Native Package
+
+on:
+  push:
+    tags:
+      - 'rn-v*'
+
+defaults:
+  run:
+    working-directory: packages/tracelet_react_native
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm run build
+      - run: npm test -- --ci
+      - run: npm run typecheck
+
+      - name: Determine npm tag
+        id: tag
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ "$VERSION" == *"-alpha"* ]]; then
+            echo "tag=alpha" >> "$GITHUB_OUTPUT"
+          elif [[ "$VERSION" == *"-beta"* ]]; then
+            echo "tag=beta" >> "$GITHUB_OUTPUT"
+          elif [[ "$VERSION" == *"-rc"* ]]; then
+            echo "tag=next" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish
+        run: npm publish --provenance --access public --tag ${{ steps.tag.outputs.tag }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

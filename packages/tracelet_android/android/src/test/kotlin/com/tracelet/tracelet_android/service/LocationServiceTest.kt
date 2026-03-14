@@ -2,8 +2,8 @@ package com.tracelet.tracelet_android.service
 
 import android.content.Context
 import android.content.SharedPreferences
-import com.tracelet.tracelet_android.ConfigManager
-import com.tracelet.tracelet_android.StateManager
+import com.tracelet.core.ConfigManager
+import com.tracelet.core.StateManager
 import org.mockito.Mockito
 import org.mockito.Mockito.`when`
 import kotlin.test.Test

@@ -10,20 +10,23 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import androidx.core.content.ContextCompat
-import com.tracelet.tracelet_android.audit.AuditTrailManager
-import com.tracelet.tracelet_android.privacy.PrivacyZoneManager
-import com.tracelet.tracelet_android.db.TraceletDatabase
-import com.tracelet.tracelet_android.geofence.GeofenceManager
-import com.tracelet.tracelet_android.http.HttpSyncManager
-import com.tracelet.tracelet_android.location.LocationEngine
-import com.tracelet.tracelet_android.location.PeriodicLocationWorker
-import com.tracelet.tracelet_android.motion.MotionDetector
-import com.tracelet.tracelet_android.receiver.BootReceiver
-import com.tracelet.tracelet_android.receiver.GeofenceBroadcastReceiver
-import com.tracelet.tracelet_android.schedule.ScheduleManager
+import com.tracelet.core.ConfigManager
+import com.tracelet.core.StateManager
+import com.tracelet.core.TraceletBootstrap
+import com.tracelet.core.audit.AuditTrailManager
+import com.tracelet.core.privacy.PrivacyZoneManager
+import com.tracelet.core.db.TraceletDatabase
+import com.tracelet.core.geofence.GeofenceManager
+import com.tracelet.core.http.HttpSyncManager
+import com.tracelet.core.location.LocationEngine
+import com.tracelet.core.location.PeriodicLocationWorker
+import com.tracelet.core.motion.MotionDetector
+import com.tracelet.core.receiver.BootReceiver
+import com.tracelet.core.receiver.GeofenceBroadcastReceiver
+import com.tracelet.core.schedule.ScheduleManager
+import com.tracelet.core.service.LocationService
+import com.tracelet.core.util.*
 import com.tracelet.tracelet_android.service.HeadlessTaskService
-import com.tracelet.tracelet_android.service.LocationService
-import com.tracelet.tracelet_android.util.*
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -89,6 +92,14 @@ class TraceletAndroidPlugin :
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
+
+        // Register bootstrap factories for headless/boot-restart scenarios
+        TraceletBootstrap.eventSenderFactory = { ctx ->
+            EventDispatcher() // Flutter EventDispatcher (no messenger — headless shell)
+        }
+        TraceletBootstrap.headlessDispatcherFactory = { ctx ->
+            HeadlessTaskService(ctx)
+        }
 
         // MethodChannel
         channel = MethodChannel(binding.binaryMessenger, "com.tracelet/methods")
@@ -177,7 +188,7 @@ class TraceletAndroidPlugin :
         // Re-wire EventDispatcher for periodic mode if it was already active
         // (e.g., app returns to foreground after process restart by AlarmManager).
         if (stateManager.enabled && stateManager.trackingMode == 2) {
-            PeriodicLocationWorker.eventDispatcher = eventDispatcher
+            PeriodicLocationWorker.eventSender = eventDispatcher
             PeriodicLocationWorker.httpSyncManager = httpSyncManager
         }
     }
@@ -436,7 +447,7 @@ class TraceletAndroidPlugin :
         // Stop any active periodic tracking before switching to continuous mode.
         locationEngine.stopPeriodic()
         PeriodicLocationWorker.cancel(context)
-        PeriodicLocationWorker.eventDispatcher = null
+        PeriodicLocationWorker.eventSender = null
         PeriodicLocationWorker.httpSyncManager = null
 
         stateManager.enabled = true
@@ -523,7 +534,7 @@ class TraceletAndroidPlugin :
         stateManager.isMoving = false
 
         // Wire the shared EventDispatcher so WorkManager workers can dispatch
-        PeriodicLocationWorker.eventDispatcher = eventDispatcher
+        PeriodicLocationWorker.eventSender = eventDispatcher
         PeriodicLocationWorker.httpSyncManager = httpSyncManager
 
         // Determine scheduling strategy:
@@ -603,7 +614,7 @@ class TraceletAndroidPlugin :
 
         // Cancel WorkManager periodic work if it was scheduled
         PeriodicLocationWorker.cancel(context)
-        PeriodicLocationWorker.eventDispatcher = null
+        PeriodicLocationWorker.eventSender = null
         PeriodicLocationWorker.httpSyncManager = null
 
         // Stop foreground service if it was running
@@ -1255,7 +1266,7 @@ class TraceletAndroidPlugin :
         if (!keepPeriodicAlive) {
             PeriodicLocationWorker.cancel(context)
         }
-        PeriodicLocationWorker.eventDispatcher = null
+        PeriodicLocationWorker.eventSender = null
         PeriodicLocationWorker.httpSyncManager = null
         if (!keepGeofencesAlive) {
             GeofenceBroadcastReceiver.geofenceManager = null
