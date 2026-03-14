@@ -18,6 +18,15 @@ yarn add @ikolvi/tracelet
 
 ### 1. Install Pods
 
+Add TraceletCore to your Podfile (bundled with the npm package):
+
+```ruby
+# ios/Podfile
+pod 'TraceletCore', :path => '../node_modules/@ikolvi/tracelet/native/ios/TraceletCore'
+```
+
+Then install:
+
 ```bash
 cd ios && pod install
 ```

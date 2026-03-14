@@ -23,8 +23,8 @@ android {
     sourceSets {
         named("main") {
             java.srcDirs("src/main/kotlin")
-            // Shared core engines (framework-agnostic)
-            java.srcDirs("../../../../native/android/tracelet-core/src/main/kotlin")
+            // Shared core engines (bundled with npm package)
+            java.srcDirs("../native/android/tracelet-core/src/main/kotlin")
         }
     }
 }

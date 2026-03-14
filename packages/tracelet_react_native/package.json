@@ -29,6 +29,7 @@
     "lib",
     "android",
     "ios",
+    "native",
     "react-native.config.js",
     "*.podspec",
     "!**/__tests__",

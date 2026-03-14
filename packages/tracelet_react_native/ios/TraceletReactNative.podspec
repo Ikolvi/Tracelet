@@ -8,12 +8,13 @@ motion-detection, geofencing, SQLite persistence, HTTP sync, and headless
 execution. Powered by TraceletCore shared native engines.
                        DESC
   s.homepage         = 'https://github.com/Ikolvi/Tracelet'
-  s.license          = { :type => 'Apache-2.0', :file => '../../../../LICENSE' }
+  s.license          = { :type => 'Apache-2.0', :file => '../../../LICENSE' }
   s.author           = { 'Tracelet Contributors' => 'tracelet@example.com' }
   s.source           = { :path => '.' }
   s.source_files     = 'Sources/**/*.{swift,m,mm}'
   s.dependency       'React-Core'
-  s.dependency       'TraceletCore', '~> 0.2.4'
+  # TraceletCore is bundled — use subspec to compile sources inline
+  s.dependency       'TraceletCore'
   s.platform         = :ios, '14.0'
   s.frameworks       = 'CoreLocation', 'CoreMotion', 'UIKit', 'BackgroundTasks'
   s.pod_target_xcconfig = {
