@@ -1,4 +1,5 @@
 import Flutter
+import TraceletCore
 import UIKit
 
 /// TraceletIosPlugin — Full iOS implementation of the Tracelet plugin.
@@ -60,6 +61,11 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
         // EventChannels
         instance.eventDispatcher = EventDispatcher()
         instance.eventDispatcher.register(messenger: registrar.messenger())
+
+        // Register bootstrap factories so core engines can construct
+        // event senders and headless dispatchers after killed-state relaunch.
+        TraceletBootstrapIOS.eventSenderFactory = { EventDispatcher() }
+        TraceletBootstrapIOS.headlessDispatcherFactory = { HeadlessRunner() }
 
         // Persistence
         instance.configManager = ConfigManager()

@@ -1,5 +1,6 @@
 import XCTest
 @testable import tracelet_ios
+import TraceletCore
 
 /// Unit tests for the pure helper functions extracted from `PrivacyZoneManager`.
 ///

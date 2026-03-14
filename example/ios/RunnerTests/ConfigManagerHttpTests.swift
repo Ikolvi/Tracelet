@@ -1,5 +1,6 @@
 import XCTest
 @testable import tracelet_ios
+import TraceletCore
 
 /// Unit tests for `ConfigManager` HTTP-related getters.
 ///

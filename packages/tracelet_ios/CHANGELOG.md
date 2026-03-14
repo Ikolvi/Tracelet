@@ -1,3 +1,14 @@
+## 1.2.1
+
+### iOS↔Android Parity Fixes
+
+- **FEAT**: Add `ConfigManager.hasConfig()` — returns `true` if a config has been persisted at least once (checks UserDefaults for stored config data). Matches existing Android `ConfigManager.hasConfig()`.
+- **FEAT**: Add `StateManager.lastPeriodicLatitude` / `lastPeriodicLongitude` — persisted coordinates for odometer computation across periodic tracking restarts. Returns `NaN` when no fix has been recorded; setting `NaN` removes the persisted value. Matches Android `StateManager.lastPeriodicLatitude/Longitude`.
+- **FEAT**: Add `StateManager.addOdometer(distance:)` — incremental odometer accumulation method. Matches Android `StateManager.addOdometer(distance)`.
+- **FEAT**: Add `LocationEngine.stopAllWatchers()` — clears all active watch-position subscriptions. Called automatically from `destroy()`. Matches Android `LocationEngine.stopAllWatchers()`.
+- **FEAT**: Add `TraceletEventSending.hasListener(eventName:)` protocol method and `EventDispatcher.hasListener(eventName:)` implementation — checks if a Dart listener is attached for a given event channel. Accepts both full path (`com.tracelet/events/location`) and short name (`location`). Matches Android `EventSender.hasListener()`.
+- **REFACTOR**: All TraceletCore members made `public` for cross-module access with `use_frameworks!` CocoaPods integration.
+
 ## 1.2.0
 
 - **CHORE**: Version bump for federation consistency with `tracelet_platform_interface` 1.2.0 (new `NotificationPriority` and `HashAlgorithm` enums).

@@ -1,5 +1,6 @@
 import Flutter
 import Foundation
+import TraceletCore
 
 /// Manages all 15 EventChannels, registering stream handlers and dispatching
 /// events to Dart on the main thread.
@@ -7,7 +8,7 @@ import Foundation
 /// When no Dart UI listener is attached for a given event, the dispatcher
 /// falls back to `headlessFallback` (if set) so that events can be routed
 /// to a background Dart isolate via HeadlessRunner.
-final class EventDispatcher: NSObject {
+final class EventDispatcher: NSObject, TraceletEventSending {
     private var sinks: [String: FlutterEventSink] = [:]
     private var channels: [FlutterEventChannel] = []
 
@@ -111,6 +112,13 @@ final class EventDispatcher: NSObject {
 
     func sendWatchPosition(_ data: [String: Any]) {
         send("com.tracelet/events/watchposition", data: data)
+    }
+
+    func hasListener(eventName: String) -> Bool {
+        // Accept both full path ("com.tracelet/events/location") and
+        // short name ("location").
+        let path = eventName.contains("/") ? eventName : "com.tracelet/events/\(eventName)"
+        return sinks[path] != nil
     }
 
     // MARK: - Core dispatch

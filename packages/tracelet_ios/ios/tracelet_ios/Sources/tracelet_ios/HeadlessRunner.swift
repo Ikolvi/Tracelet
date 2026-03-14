@@ -1,11 +1,12 @@
 import Flutter
 import Foundation
+import TraceletCore
 
 /// Manages headless Dart execution for processing events in the background.
 ///
 /// Stores callback IDs in UserDefaults. Creates a FlutterEngine on demand
 /// and invokes the registered Dart callback.
-final class HeadlessRunner {
+final class HeadlessRunner: HeadlessDispatching {
     private static let registrationKey = "com.tracelet.headless.registrationId"
     private static let dispatchKey = "com.tracelet.headless.dispatchId"
     private static let channelName = "com.tracelet/headless"
@@ -22,6 +23,11 @@ final class HeadlessRunner {
         let defaults = UserDefaults.standard
         defaults.set(registrationId, forKey: HeadlessRunner.registrationKey)
         defaults.set(dispatchId, forKey: HeadlessRunner.dispatchKey)
+    }
+
+    func isRegistered() -> Bool {
+        let defaults = UserDefaults.standard
+        return defaults.integer(forKey: HeadlessRunner.registrationKey) != 0
     }
 
     func dispatchEvent(_ event: [String: Any]) {
