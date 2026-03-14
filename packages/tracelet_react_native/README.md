@@ -1,4 +1,4 @@
-# @tracelet/react-native
+# @ikolvi/tracelet
 
 Production-grade background geolocation for React Native. Battery-conscious motion-detection, geofencing, SQLite persistence, HTTP sync, and headless execution.
 
@@ -20,9 +20,9 @@ Production-grade background geolocation for React Native. Battery-conscious moti
 ## Installation
 
 ```bash
-npm install @tracelet/react-native
+npm install @ikolvi/tracelet
 # or
-yarn add @tracelet/react-native
+yarn add @ikolvi/tracelet
 ```
 
 ### iOS
@@ -58,7 +58,7 @@ Add to `android/app/src/main/AndroidManifest.xml`:
 ## Quick Start
 
 ```typescript
-import { Tracelet, DesiredAccuracy } from '@tracelet/react-native';
+import { Tracelet, DesiredAccuracy } from '@ikolvi/tracelet';
 
 // 1. Configure
 const state = await Tracelet.ready({
@@ -88,7 +88,7 @@ sub.remove();
 ## React Hooks
 
 ```typescript
-import { useLocation, useTraceletState, useGeofences } from '@tracelet/react-native';
+import { useLocation, useTraceletState, useGeofences } from '@ikolvi/tracelet';
 
 function LocationView() {
   const location = useLocation();

@@ -1,4 +1,4 @@
-// @tracelet/react-native — Production-grade background geolocation.
+// @ikolvi/tracelet — Production-grade background geolocation.
 
 export { Tracelet } from './Tracelet';
 export type { Subscription } from './Tracelet';

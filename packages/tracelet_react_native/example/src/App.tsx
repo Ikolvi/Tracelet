@@ -15,7 +15,7 @@ import {
   type State,
   type Subscription,
   DesiredAccuracy,
-} from '@tracelet/react-native';
+} from '@ikolvi/tracelet';
 
 // Register headless task for background events (Android)
 AppRegistry.registerHeadlessTask('TraceletHeadlessTask', () => async (event) => {

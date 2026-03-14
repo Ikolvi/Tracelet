@@ -3,7 +3,7 @@
   "compilerOptions": {
     "rootDir": ".",
     "paths": {
-      "@tracelet/react-native": ["../src/index.tsx"]
+      "@ikolvi/tracelet": ["../src/index.tsx"]
     }
   }
 }

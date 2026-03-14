@@ -7,7 +7,7 @@ const config = {
   watchFolders: [root],
   resolver: {
     extraNodeModules: {
-      '@tracelet/react-native': root,
+      '@ikolvi/tracelet': root,
       react: path.resolve(__dirname, 'node_modules/react'),
       'react-native': path.resolve(__dirname, 'node_modules/react-native'),
     },

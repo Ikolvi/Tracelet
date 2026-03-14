@@ -9,9 +9,9 @@
 ## Install
 
 ```bash
-npm install @tracelet/react-native
+npm install @ikolvi/tracelet
 # or
-yarn add @tracelet/react-native
+yarn add @ikolvi/tracelet
 ```
 
 ## iOS Setup
@@ -126,7 +126,7 @@ If minification is enabled, add to `android/app/proguard-rules.pro`:
 ## Quick Start
 
 ```typescript
-import { Tracelet, DesiredAccuracy } from '@tracelet/react-native';
+import { Tracelet, DesiredAccuracy } from '@ikolvi/tracelet';
 
 // 1. Configure
 const state = await Tracelet.ready({
