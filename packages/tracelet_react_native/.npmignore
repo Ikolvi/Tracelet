@@ -1,0 +1,11 @@
+node_modules/
+lib/
+coverage/
+.changeset/
+example/
+__tests__/
+__fixtures__/
+__mocks__/
+*.tgz
+.eslintcache
+tsconfig.tsbuildinfo

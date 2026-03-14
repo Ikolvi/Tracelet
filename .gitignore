@@ -97,6 +97,17 @@ app.*.map.json
 !**/ios/**/default.pbxuser
 !**/ios/**/default.perspectivev3
 
+# Node.js / React Native
+**/node_modules/
+*.tgz
+.turbo/
+tsconfig.tsbuildinfo
+
+# Swift Package Manager
+**/.build/
+**/.swiftpm/
+**/Package.resolved
+
 # Melos
 .melos/
 

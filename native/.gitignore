@@ -1,0 +1,17 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+DerivedData/
+
+# Xcode
+xcuserdata/
+*.pbxuser
+*.perspectivev3
+*.mode1v3
+*.mode2v3
+build/
+*.ipa
+
+# macOS
+.DS_Store

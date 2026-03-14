@@ -1,0 +1,38 @@
+# Node.js
+node_modules/
+.npm/
+npm-debug.log*
+yarn-error.log*
+
+# Build output (react-native-builder-bob)
+lib/
+dist/
+
+# TypeScript
+tsconfig.tsbuildinfo
+
+# Lockfiles (use workspace root lockfile)
+package-lock.json
+
+# Testing
+coverage/
+
+# Linting
+.eslintcache
+
+# Turbo
+.turbo/
+
+# React Native
+.metro/
+*.tgz
+
+# Example app generated dirs
+example/android/
+example/ios/
+example/node_modules/
+example/.gradle/
+
+# OS
+.DS_Store
+Thumbs.db
