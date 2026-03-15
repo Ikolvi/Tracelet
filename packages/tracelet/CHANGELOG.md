@@ -1,3 +1,9 @@
+## 1.3.3
+
+- **FIX**: Android — bundle native core Kotlin source (`com.tracelet.core.*`) directly inside the plugin package, fixing "Unresolved reference" build errors when installed from pub.dev.
+- **FIX**: iOS — bundle TraceletCore Swift source directly inside the plugin package instead of depending on an unpublished local CocoaPod.
+- **CHORE**: Remove React Native support to simplify the monorepo.
+
 ## 1.3.2
 
 - **PERF**: Android — streaming `JsonWriter` replaces per-location `JSONObject` allocations in batch sync (A-L5).
