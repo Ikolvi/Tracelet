@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.5
+
+- **CHORE**: Update cross-package dependency constraints to `^1.3.5`.
+
 ## 1.3.4
 
 - **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.3.3`.

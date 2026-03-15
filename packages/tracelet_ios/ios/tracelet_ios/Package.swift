@@ -16,8 +16,9 @@ let package = Package(
         .target(
             name: "tracelet_ios",
             dependencies: [],
+            path: "Sources",
             resources: [
-                .process("PrivacyInfo.xcprivacy")
+                .process("tracelet_ios/PrivacyInfo.xcprivacy")
             ],
             linkerSettings: [
                 .linkedLibrary("sqlite3"),
@@ -25,6 +26,9 @@ let package = Package(
                 .linkedFramework("CoreMotion"),
                 .linkedFramework("UIKit"),
                 .linkedFramework("BackgroundTasks"),
+                .linkedFramework("AVFoundation"),
+                .linkedFramework("AudioToolbox"),
+                .linkedFramework("Network"),
             ]
         )
     ]

@@ -1,3 +1,8 @@
+## 1.3.5
+
+- **FIX**: Fix `Unable to find module dependency: 'TraceletCore'` Swift compiler error by consolidating SPM targets into a single module and removing invalid cross-module imports.
+- **FIX**: Add missing `AVFoundation`, `AudioToolbox`, and `Network` framework linker settings in `Package.swift`.
+
 ## 1.3.4
 
 - **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.3.3`.

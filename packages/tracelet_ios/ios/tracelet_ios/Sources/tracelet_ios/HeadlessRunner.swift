@@ -1,6 +1,5 @@
 import Flutter
 import Foundation
-import TraceletCore
 
 /// Manages headless Dart execution for processing events in the background.
 ///

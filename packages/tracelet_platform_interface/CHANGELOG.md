@@ -1,3 +1,7 @@
+## 1.3.5
+
+- **CHORE**: Update cross-package dependency constraints to `^1.3.5`.
+
 ## 1.3.4
 
 - **CHORE**: Patch bump for federation consistency with `tracelet` 1.3.4.

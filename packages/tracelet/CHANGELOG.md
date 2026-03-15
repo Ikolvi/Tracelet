@@ -1,3 +1,8 @@
+## 1.3.5
+
+- **FIX**: iOS — fix `Unable to find module dependency: 'TraceletCore'` build error.
+- **CHORE**: Update cross-package dependency constraints to `^1.3.5`.
+
 ## 1.3.4
 
 - **CHORE**: Update cross-package dependency constraints to `^1.3.3`.

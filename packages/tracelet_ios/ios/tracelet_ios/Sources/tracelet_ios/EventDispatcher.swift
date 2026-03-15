@@ -1,6 +1,5 @@
 import Flutter
 import Foundation
-import TraceletCore
 
 /// Manages all 15 EventChannels, registering stream handlers and dispatching
 /// events to Dart on the main thread.

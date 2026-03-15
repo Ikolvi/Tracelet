@@ -1,5 +1,4 @@
 import Flutter
-import TraceletCore
 import UIKit
 
 /// TraceletIosPlugin — Full iOS implementation of the Tracelet plugin.
