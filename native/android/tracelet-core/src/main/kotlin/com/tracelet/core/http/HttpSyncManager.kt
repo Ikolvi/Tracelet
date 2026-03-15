@@ -7,6 +7,7 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Handler
 import android.os.Looper
+import android.util.JsonWriter
 import android.util.Log
 import com.tracelet.core.ConfigManager
 import com.tracelet.core.TraceletEventSender
@@ -17,6 +18,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.io.StringWriter
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.math.min
@@ -163,7 +165,8 @@ class HttpSyncManager(
         val baseRetryMs = config.getRetryBackoffBase().toLong()
         val maxRetryMs = config.getRetryBackoffCap().toLong()
 
-        // Build JSON body
+        // Build JSON body using streaming JsonWriter (avoids N intermediate
+        // JSONObject allocations per location in batch — A-L5).
         val useDelta = config.getEnableDeltaCompression() && config.getBatchSync() && locations.size > 1
         val body: String
         if (config.getBatchSync() && locations.size > 1) {
@@ -172,21 +175,9 @@ class HttpSyncManager(
             } else {
                 locations
             }
-            val jsonArray = JSONArray()
-            for (loc in payload) {
-                jsonArray.put(JSONObject(loc))
-            }
-            val wrapper = JSONObject()
-            wrapper.put(rootProp, jsonArray)
-            for ((k, v) in params) wrapper.put(k, v)
-            body = wrapper.toString()
+            body = buildJsonBody(rootProp, payload, params, batch = true)
         } else {
-            // Single location per request
-            val loc = locations.first()
-            val wrapper = JSONObject()
-            wrapper.put(rootProp, JSONObject(loc))
-            for ((k, v) in params) wrapper.put(k, v)
-            body = wrapper.toString()
+            body = buildJsonBody(rootProp, listOf(locations.first()), params, batch = false)
         }
 
         var retryCount = 0
@@ -258,6 +249,67 @@ class HttpSyncManager(
 
         Log.e(TAG, "HTTP sync failed after $maxRetries retries")
         return false
+    }
+
+    /** Streams a JSON body using JsonWriter — avoids intermediate JSONObject allocations. */
+    private fun buildJsonBody(
+        rootProp: String,
+        payload: List<Map<String, Any?>>,
+        params: Map<String, Any?>,
+        batch: Boolean,
+    ): String {
+        val sw = StringWriter()
+        JsonWriter(sw).use { w ->
+            w.beginObject()
+            w.name(rootProp)
+            if (batch) {
+                w.beginArray()
+                for (loc in payload) writeMap(w, loc)
+                w.endArray()
+            } else {
+                writeMap(w, payload.first())
+            }
+            for ((k, v) in params) {
+                w.name(k)
+                writeValue(w, v)
+            }
+            w.endObject()
+        }
+        return sw.toString()
+    }
+
+    private fun writeMap(w: JsonWriter, map: Map<*, *>) {
+        w.beginObject()
+        for ((k, v) in map) {
+            w.name(k.toString())
+            writeValue(w, v)
+        }
+        w.endObject()
+    }
+
+    private fun writeValue(w: JsonWriter, value: Any?) {
+        when (value) {
+            null -> w.nullValue()
+            is String -> w.value(value)
+            is Boolean -> w.value(value)
+            is Int -> w.value(value.toLong())
+            is Long -> w.value(value)
+            is Float -> w.value(value.toDouble())
+            is Double -> w.value(value)
+            is Number -> w.value(value.toDouble())
+            is Map<*, *> -> writeMap(w, value)
+            is Collection<*> -> {
+                w.beginArray()
+                for (item in value) writeValue(w, item)
+                w.endArray()
+            }
+            is Array<*> -> {
+                w.beginArray()
+                for (item in value) writeValue(w, item)
+                w.endArray()
+            }
+            else -> w.value(value.toString())
+        }
     }
 
     /** Returns true for transient HTTP errors that should be retried. */

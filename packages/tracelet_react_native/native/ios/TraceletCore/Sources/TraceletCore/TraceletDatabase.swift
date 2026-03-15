@@ -177,7 +177,7 @@ public final class TraceletDatabase {
     // MARK: - Location CRUD
 
     public func insertLocation(_ data: [String: Any]) -> String {
-        let uuid = data["uuid"] as? String ?? UUID().uuidString
+        let uuid = data["uuid"] as? String ?? Self.generateUUID()
 
         // Pre-compute JSON serialization outside the DB queue to avoid blocking
         // the serial queue during potentially slow encoding (I-H5).
@@ -291,6 +291,24 @@ public final class TraceletDatabase {
             }
         }
         return count
+    }
+
+    /// Generates a UUID string using C-level functions directly.
+    /// Avoids Foundation UUID struct + uppercase formatting overhead.
+    private static func generateUUID() -> String {
+        var uuid: uuid_t = (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
+        withUnsafeMutablePointer(to: &uuid) {
+            $0.withMemoryRebound(to: UInt8.self, capacity: 16) {
+                uuid_generate_random($0)
+            }
+        }
+        var cString = [CChar](repeating: 0, count: 37)
+        withUnsafePointer(to: uuid) {
+            $0.withMemoryRebound(to: UInt8.self, capacity: 16) {
+                uuid_unparse_lower($0, &cString)
+            }
+        }
+        return String(cString: cString)
     }
 
     /// Max placeholders per chunked SQL statement. Keeps statement cache hits

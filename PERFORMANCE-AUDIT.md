@@ -3,7 +3,7 @@
 **Date:** 4 March 2026  
 **Scope:** Full codebase — Dart (51 files), Android/Kotlin (23 files), iOS/Swift (22 files)  
 **Focus:** Battery efficiency, hot-path allocations, SQLite performance, thread safety, memory leaks  
-**Status:** ✅ **75 of 77 issues resolved** (2 deliberately skipped)
+**Status:** ✅ **77 of 77 issues resolved — ALL FIXED**
 
 ---
 
@@ -12,13 +12,9 @@
 | Layer | CRITICAL | HIGH | MEDIUM | LOW | Total | Fixed |
 |-------|----------|------|--------|-----|-------|-------|
 | Dart  | 3 ✅     | 7 ✅ | 8 ✅   | 5 ✅| 23    | 23/23 |
-| Android (Kotlin) | 5 ✅ | 9 ✅ | 10 ✅ | 5/6 | 30 | 29/30 |
-| iOS (Swift) | 5 ✅ | 6 ✅ | 7/8  | 5/5 | 24    | 23/24 |
-| **Total** | **13 ✅** | **22 ✅** | **25/26** | **15/16** | **77** | **75/77** |
-
-**Skipped (2):**
-- **I-M6** — UUID generation overhead (~1µs per call) — risk/reward doesn't justify custom scheme
-- **A-L5** — JSONObject batch construction in HTTP sync — cold path, I/O-bound, minimal CPU impact
+| Android (Kotlin) | 5 ✅ | 9 ✅ | 10 ✅ | 6 ✅| 30 | 30/30 |
+| iOS (Swift) | 5 ✅ | 6 ✅ | 8 ✅  | 5 ✅| 24    | 24/24 |
+| **Total** | **13 ✅** | **22 ✅** | **26 ✅** | **16 ✅** | **77** | **77/77** |
 
 ---
 
@@ -125,7 +121,7 @@
 | A-M9 | `deferTime` config exists but never applied to `LocationRequest` | ✅ Fixed |
 | A-M10 | `consecutiveStillSamples` written from sensor thread, read from main thread | ✅ Fixed |
 
-### iOS Layer (8) — 7/8 Fixed
+### iOS Layer (8) — ✅ All Fixed
 
 | # | Issue | Status |
 |---|-------|--------|
@@ -134,13 +130,13 @@
 | I-M3 | `URLSession.invalidateAndCancel()` makes session permanently unusable | ✅ Fixed |
 | I-M4 | `BGAppRefreshTask` marked complete before async location fix returns | ✅ Fixed |
 | I-M5 | `removeGeofence` creates dummy region instead of finding existing one | ✅ Fixed |
-| I-M6 | UUID generation via `/dev/urandom` syscall on every location (minor) | ⏭️ Skipped |
+| I-M6 | UUID generation via `/dev/urandom` syscall on every location (minor) | ✅ Fixed |
 | I-M7 | Privacy zone DB query on every location (same pattern as Android) | ✅ Fixed |
 | I-M8 | Geofence DB query on every proximity update (same pattern as Android) | ✅ Fixed |
 
 ---
 
-## LOW Issues (16) — 14/16 Fixed
+## LOW Issues (16) — ✅ All Fixed
 
 ### Dart Layer (5) — ✅ All Fixed
 
@@ -152,7 +148,7 @@
 | D-L4 | Unnecessary `MapEntry` allocation in `Location.fromMap()` extras conversion | ✅ Fixed |
 | D-L5 | Duplicated LocationProcessor parameter list in `setConfig()` — deduplicated | ✅ Fixed |
 
-### Android Layer (6) — 5/6 Fixed
+### Android Layer (6) — ✅ All Fixed
 
 | # | Issue | Status |
 |---|-------|--------|
@@ -160,7 +156,7 @@
 | A-L2 | `level.uppercase()` allocates new String on every `log()` — uses `equals(ignoreCase)` | ✅ Fixed |
 | A-L3 | Unnecessary `toMutableMap()` in `watchPosition()` — `enrichLocation` already returns mutable | ✅ Fixed |
 | A-L4 | Duplicate schedule parsing in `matchesSchedule()`/`calculateNextAlarms()` — extracted `ParsedSchedule` | ✅ Fixed |
-| A-L5 | Per-location `JSONObject(Map)` in batch sync loop | ⏭️ Skipped |
+| A-L5 | Per-location `JSONObject(Map)` in batch sync loop | ✅ Fixed |
 | A-L6 | Eager `listOf()` in OEM manufacturer detection — changed to `setOf()` | ✅ Fixed |
 
 ### iOS Layer (5) — ✅ All Fixed

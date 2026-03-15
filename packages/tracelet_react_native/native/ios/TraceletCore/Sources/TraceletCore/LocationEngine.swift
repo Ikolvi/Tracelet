@@ -822,7 +822,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         }
 
         var result: [String: Any] = [
-            "uuid": UUID().uuidString,
+            "uuid": Self.generateUUID(),
             "timestamp": iso8601String(from: location.timestamp),
             "coords": coords,
             "is_moving": stateManager.isMoving,
@@ -848,6 +848,24 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         }
 
         return result
+    }
+
+    /// Generates a UUID string using C-level functions directly.
+    /// Avoids Foundation UUID struct + uppercase formatting overhead.
+    private static func generateUUID() -> String {
+        var uuid: uuid_t = (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
+        withUnsafeMutablePointer(to: &uuid) {
+            $0.withMemoryRebound(to: UInt8.self, capacity: 16) {
+                uuid_generate_random($0)
+            }
+        }
+        var cString = [CChar](repeating: 0, count: 37)
+        withUnsafePointer(to: uuid) {
+            $0.withMemoryRebound(to: UInt8.self, capacity: 16) {
+                uuid_unparse_lower($0, &cString)
+            }
+        }
+        return String(cString: cString)
     }
 
     /// Cached ISO 8601 formatter — creating one per call is expensive.
