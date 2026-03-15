@@ -49,10 +49,10 @@ void main() {
     test('toMap produces expected keys', () {
       const config = AuditConfig(enabled: true);
       final map = config.toMap();
-      expect(map.containsKey('enabled'), true);
+      expect(map.containsKey('auditEnabled'), true);
       expect(map.containsKey('hashAlgorithm'), true);
       expect(map.containsKey('includeExtrasInHash'), true);
-      expect(map['enabled'], true);
+      expect(map['auditEnabled'], true);
     });
 
     test('equality', () {
@@ -311,7 +311,7 @@ void main() {
       final map = config.toMap();
       expect(map.containsKey('audit'), true);
       final auditMap = map['audit'] as Map<String, Object?>;
-      expect(auditMap['enabled'], true);
+      expect(auditMap['auditEnabled'], true);
     });
   });
 

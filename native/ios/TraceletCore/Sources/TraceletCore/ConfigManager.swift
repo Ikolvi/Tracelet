@@ -202,7 +202,7 @@ public final class ConfigManager {
     public func getLogMaxDays() -> Int { cache["logMaxDays"] as? Int ?? 3 }
 
     // AuditConfig (Enterprise)
-    public func getAuditEnabled() -> Bool { cache["enabled"] as? Bool ?? false }
+    public func getAuditEnabled() -> Bool { cache["auditEnabled"] as? Bool ?? cache["enabled"] as? Bool ?? false }
     public func getAuditHashAlgorithm() -> String { cache["hashAlgorithm"] as? String ?? "SHA-256" }
     public func getAuditIncludeExtrasInHash() -> Bool { cache["includeExtrasInHash"] as? Bool ?? false }
 

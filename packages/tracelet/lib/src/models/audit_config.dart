@@ -88,7 +88,10 @@ class AuditConfig {
   /// Creates an [AuditConfig] from a map.
   factory AuditConfig.fromMap(Map<String, Object?> map) {
     return AuditConfig(
-      enabled: ensureBool(map['enabled'], fallback: false),
+      enabled: ensureBool(
+        map['auditEnabled'] ?? map['enabled'],
+        fallback: false,
+      ),
       hashAlgorithm: _parseHashAlgorithm(map['hashAlgorithm']),
       includeExtrasInHash: ensureBool(
         map['includeExtrasInHash'],
@@ -100,7 +103,7 @@ class AuditConfig {
   /// Serializes to a map.
   Map<String, Object?> toMap() {
     return <String, Object?>{
-      'enabled': enabled,
+      'auditEnabled': enabled,
       'hashAlgorithm': _hashAlgorithmToString(hashAlgorithm),
       'includeExtrasInHash': includeExtrasInHash,
     };

@@ -266,8 +266,11 @@ class ConfigManager internal constructor(context: Context) {
     // Typed Getters (AuditConfig — Enterprise)
     // ---------------------------------------------------------------------------
 
-    fun getAuditEnabled(): Boolean =
-        getBool("enabled", DEFAULT_AUDIT_ENABLED)
+    fun getAuditEnabled(): Boolean {
+        val v = configCache["auditEnabled"]
+        if (v is Boolean) return v
+        return getBool("enabled", DEFAULT_AUDIT_ENABLED)
+    }
 
     fun getAuditHashAlgorithm(): String =
         getString("hashAlgorithm", DEFAULT_AUDIT_HASH_ALGORITHM)
