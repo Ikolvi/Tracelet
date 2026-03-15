@@ -388,7 +388,7 @@ class ConfigManager internal constructor(context: Context) {
         getInt("locationsOrderDirection", 0)
 
     fun getHttpExtras(): Map<String, Any?> {
-        val raw = configCache["extras"]
+        val raw = configCache["httpExtras"] ?: configCache["extras"]
         if (raw is Map<*, *>) {
             @Suppress("UNCHECKED_CAST")
             return raw as Map<String, Any?>
@@ -502,7 +502,7 @@ class ConfigManager internal constructor(context: Context) {
         getBool("disableProviderChangeRecord", DEFAULT_DISABLE_PROVIDER_CHANGE_RECORD)
 
     fun getPersistenceExtras(): Map<String, Any?> {
-        val raw = configCache["extras"]
+        val raw = configCache["persistenceExtras"] ?: configCache["extras"]
         if (raw is Map<*, *>) {
             @Suppress("UNCHECKED_CAST")
             return raw as Map<String, Any?>

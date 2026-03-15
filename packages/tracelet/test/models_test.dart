@@ -108,8 +108,8 @@ void main() {
       // Each sub-config extras should be independent
       final httpMap = map['http'] as Map<String, Object?>;
       final persistenceMap = map['persistence'] as Map<String, Object?>;
-      expect(httpMap['extras'], {'apiKey': 'abc'});
-      expect(persistenceMap['extras'], {'device': 'test'});
+      expect(httpMap['httpExtras'], {'apiKey': 'abc'});
+      expect(persistenceMap['persistenceExtras'], {'device': 'test'});
     });
 
     test('round-trip preserves both http and persistence extras', () {

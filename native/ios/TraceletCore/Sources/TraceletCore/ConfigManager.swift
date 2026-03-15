@@ -196,7 +196,7 @@ public final class ConfigManager {
     public func getLocationTemplate() -> String? { cache["locationTemplate"] as? String }
     public func getGeofenceTemplate() -> String? { cache["geofenceTemplate"] as? String }
     public func getDisableProviderChangeRecord() -> Bool { cache["disableProviderChangeRecord"] as? Bool ?? false }
-    public func getPersistenceExtras() -> [String: Any] { cache["extras"] as? [String: Any] ?? [:] }
+    public func getPersistenceExtras() -> [String: Any] { cache["persistenceExtras"] as? [String: Any] ?? cache["extras"] as? [String: Any] ?? [:] }
 
     // LoggerConfig
     public func getLogMaxDays() -> Int { cache["logMaxDays"] as? Int ?? 3 }

@@ -1343,7 +1343,7 @@ class HttpConfig {
             map['locationsOrderDirection'],
             fallback: 0,
           ).clamp(0, LocationOrder.values.length - 1)],
-      extras: castObjectMap(map['extras']),
+      extras: castObjectMap(map['httpExtras'] ?? map['extras']),
       disableAutoSyncOnCellular: ensureBool(
         map['disableAutoSyncOnCellular'],
         fallback: false,
@@ -1376,7 +1376,7 @@ class HttpConfig {
       'httpTimeout': httpTimeout,
       'params': params,
       'locationsOrderDirection': locationsOrderDirection.index,
-      'extras': extras,
+      'httpExtras': extras,
       'disableAutoSyncOnCellular': disableAutoSyncOnCellular,
       'maxRetries': maxRetries,
       'retryBackoffBase': retryBackoffBase,
@@ -1880,7 +1880,7 @@ class PersistenceConfig {
         map['disableProviderChangeRecord'],
         fallback: false,
       ),
-      extras: castObjectMap(map['extras']),
+      extras: castObjectMap(map['persistenceExtras'] ?? map['extras']),
     );
   }
 
@@ -1893,7 +1893,7 @@ class PersistenceConfig {
       'locationTemplate': locationTemplate,
       'geofenceTemplate': geofenceTemplate,
       'disableProviderChangeRecord': disableProviderChangeRecord,
-      'extras': extras,
+      'persistenceExtras': extras,
     };
   }
 
