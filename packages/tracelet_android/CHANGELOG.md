@@ -1,3 +1,7 @@
+## 1.3.1
+
+- **FIX**: `getHttpExtras()` and `getPersistenceExtras()` now read distinct config keys (`httpExtras`, `persistenceExtras`) with backward-compatible fallback.
+
 ## 1.3.0
 
 - **CHORE**: Version bump for federation consistency with `tracelet` 1.3.0.

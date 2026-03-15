@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.1
+
+- **CHORE**: Patch bump for federation consistency with `tracelet` 1.3.1.
+
 ## 1.3.0
 
 - **CHORE**: Version bump for federation consistency with `tracelet` 1.3.0.
