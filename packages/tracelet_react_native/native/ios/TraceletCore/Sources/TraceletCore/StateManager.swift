@@ -98,8 +98,8 @@ public final class StateManager {
         lastPeriodicLongitude = .nan
     }
 
-    public func toMap(_ config: [String: Any]) -> [String: Any] {
-        var map: [String: Any] = [
+    public func toMap(_ config: [String: Any]?) -> [String: Any] {
+        return [
             "enabled": enabled,
             "trackingMode": trackingMode,
             "schedulerEnabled": schedulerEnabled,
@@ -107,11 +107,7 @@ public final class StateManager {
             "odometer": odometer,
             "didLaunchInBackground": didLaunchInBackground,
             "lastLocationTime": lastLocationTime,
+            "config": config as Any,
         ]
-        // Merge config into state for the Dart side
-        for (k, v) in config {
-            map[k] = v
-        }
-        return map
     }
 }

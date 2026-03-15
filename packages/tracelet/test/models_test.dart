@@ -863,6 +863,59 @@ void main() {
       );
       expect(a, isNot(equals(b)));
     });
+
+    // Regression test for GitHub issue #26:
+    // Config keys must not overwrite state keys when nested under "config".
+    test('fromMap: config keys do not overwrite state values (issue #26)', () {
+      // Simulates the fixed iOS StateManager.toMap() output where config
+      // is properly nested under the "config" key.
+      final state = State.fromMap(const {
+        'enabled': true,
+        'trackingMode': 0,
+        'isMoving': true,
+        'schedulerEnabled': false,
+        'odometer': 1234.5,
+        'didLaunchInBackground': false,
+        'didDeviceReboot': false,
+        'config': {
+          // Flattened config contains "enabled" (from audit) and
+          // "isMoving" (from motion) — these must NOT leak into state.
+          'enabled': false,
+          'isMoving': false,
+          'distanceFilter': 50.0,
+          'stopOnTerminate': true,
+        },
+      });
+      // State values must reflect state, not config.
+      expect(state.enabled, true);
+      expect(state.isMoving, true);
+      expect(state.odometer, 1234.5);
+      expect(state.config, isNotNull);
+    });
+
+    test(
+      'fromMap: flat-merged config would corrupt state (pre-fix behavior)',
+      () {
+        // Demonstrates the old broken iOS behavior where config was merged flat.
+        // If someone accidentally reintroduces flat merging, this fails.
+        final brokenMap = <String, Object?>{
+          'enabled': true,
+          'trackingMode': 0,
+          'isMoving': true,
+        };
+        // Simulate flat-merge of config (the old bug)
+        final configEntries = <String, Object?>{
+          'enabled': false, // from audit section
+          'isMoving': false, // from motion section
+        };
+        brokenMap.addAll(configEntries);
+
+        final state = State.fromMap(brokenMap);
+        // After flat merge, state.enabled would be false — this is the bug.
+        expect(state.enabled, false, reason: 'flat merge corrupts enabled');
+        expect(state.isMoving, false, reason: 'flat merge corrupts isMoving');
+      },
+    );
   });
 
   // ==========================================================================

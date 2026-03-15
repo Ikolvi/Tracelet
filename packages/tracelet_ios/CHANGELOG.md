@@ -1,3 +1,7 @@
+## 1.3.0
+
+- **FIX**: `getState()` always returned `enabled: false` on iOS — `StateManager.toMap()` flat-merged the config dictionary into the state dictionary, causing config keys (`enabled` from audit section, `isMoving` from motion section) to overwrite runtime state values. Config is now correctly nested under a `"config"` key, matching the Android implementation and the Dart `State.fromMap()` contract ([#26](https://github.com/Ikolvi/Tracelet/issues/26)).
+
 ## 1.2.1
 
 ### iOS↔Android Parity Fixes
