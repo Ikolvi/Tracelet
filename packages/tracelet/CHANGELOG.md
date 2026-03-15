@@ -1,3 +1,7 @@
+## 1.3.0
+
+- **FIX**: `getState()` always returned `enabled: false` on iOS — the iOS `StateManager.toMap()` flat-merged config keys into the state dictionary, overwriting `enabled` and `isMoving` with config defaults. Fixed by nesting config under a `"config"` key, matching Android behavior ([#26](https://github.com/Ikolvi/Tracelet/issues/26)).
+
 ## 1.2.0
 
 ### Breaking Changes

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.0
+
+- **CHORE**: Version bump for federation consistency with `tracelet` 1.3.0.
+
 ## 1.2.0
 
 - **CHORE**: Version bump for federation consistency with `tracelet_platform_interface` 1.2.0 (new `NotificationPriority` and `HashAlgorithm` enums).
