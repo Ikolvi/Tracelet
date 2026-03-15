@@ -1,6 +1,6 @@
 {
   "name": "@ikolvi/tracelet",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "description": "Production-grade background geolocation for React Native. Battery-conscious motion-detection, geofencing, SQLite persistence, HTTP sync, and headless execution.",
   "main": "lib/commonjs/index.js",
   "module": "lib/module/index.js",
