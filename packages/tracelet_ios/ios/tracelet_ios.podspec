@@ -15,9 +15,8 @@ execution for iOS.
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'Tracelet Contributors' => 'tracelet@example.com' }
   s.source           = { :path => '.' }
-  s.source_files = 'tracelet_ios/Sources/tracelet_ios/**/*.swift'
+  s.source_files = 'tracelet_ios/Sources/**/*.swift'
   s.dependency 'Flutter'
-  s.dependency 'TraceletCore', '~> 0.2.4'
   s.platform = :ios, '14.0'
   s.frameworks = 'CoreLocation', 'CoreMotion', 'UIKit', 'BackgroundTasks', 'AVFoundation', 'AudioToolbox', 'Network'
   s.libraries = 'sqlite3'

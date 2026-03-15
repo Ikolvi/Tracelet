@@ -1,3 +1,7 @@
+## 1.3.3
+
+- **FIX**: Bundle TraceletCore Swift source files directly inside the plugin package instead of depending on an unpublished local CocoaPod. Fixes unresolved `import TraceletCore` when installed from pub.dev.
+
 ## 1.3.2
 
 - **PERF**: Replace `Foundation UUID()` with C-level `uuid_generate_random`/`uuid_unparse_lower` in `LocationEngine` and `TraceletDatabase` (I-M6).

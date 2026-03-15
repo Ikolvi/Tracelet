@@ -1,9 +1,0 @@
-{
-  "extends": "@react-native/typescript-config/tsconfig.json",
-  "compilerOptions": {
-    "rootDir": ".",
-    "paths": {
-      "@ikolvi/tracelet": ["../src/index.tsx"]
-    }
-  }
-}

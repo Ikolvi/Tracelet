@@ -1,3 +1,7 @@
+## 1.3.3
+
+- **FIX**: Bundle native core Kotlin source files (`com.tracelet.core.*`) directly inside the plugin package so they are included when published to pub.dev. Previously, the build.gradle referenced sources via a relative monorepo path that was inaccessible to pub.dev consumers.
+
 ## 1.3.2
 
 - **PERF**: Replace per-location `JSONObject` allocations with streaming `android.util.JsonWriter` in `HttpSyncManager.buildJsonBody()` (A-L5).
