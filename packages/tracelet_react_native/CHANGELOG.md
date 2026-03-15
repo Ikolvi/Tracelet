@@ -2,6 +2,11 @@
 
 All notable changes to `@ikolvi/tracelet` will be documented in this file.
 
+## 0.1.0-alpha.3
+
+- **FIX**: Resolve `extras` config key collision between HTTP and persistence configs (Android + iOS).
+- **PERF**: iOS `markSynced()` uses chunked SQL statements (500 UUIDs/chunk).
+
 ## 0.1.0-alpha.0
 
 **Initial alpha release** — full API surface with shared native engines.
