@@ -1,3 +1,9 @@
+## 1.3.1
+
+- **FIX**: Resolve `extras` key collision between `HttpConfig` and `PersistenceConfig` — serialization keys renamed to `httpExtras` and `persistenceExtras` to prevent native ConfigManager flat-merge from overwriting one with the other. Backward-compatible via `fromMap` fallback.
+- **PERF**: Add 22 new benchmarks covering DeltaEncoder, BatteryBudgetEngine, CarbonEstimator, PersistDecider, Config/State serialization.
+- **PERF**: iOS `markSynced()` now uses chunked prepared statements (500 UUIDs/chunk) to avoid SQLite variable limit and improve sync performance.
+
 ## 1.3.0
 
 - **FIX**: `getState()` always returned `enabled: false` on iOS — the iOS `StateManager.toMap()` flat-merged config keys into the state dictionary, overwriting `enabled` and `isMoving` with config defaults. Fixed by nesting config under a `"config"` key, matching Android behavior ([#26](https://github.com/Ikolvi/Tracelet/issues/26)).
