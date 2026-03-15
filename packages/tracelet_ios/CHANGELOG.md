@@ -1,3 +1,7 @@
+## 1.3.2
+
+- **PERF**: Replace `Foundation UUID()` with C-level `uuid_generate_random`/`uuid_unparse_lower` in `LocationEngine` and `TraceletDatabase` (I-M6).
+
 ## 1.3.1
 
 - **FIX**: `getPersistenceExtras()` now reads distinct `persistenceExtras` config key with backward-compatible fallback.

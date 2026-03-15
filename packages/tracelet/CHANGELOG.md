@@ -1,3 +1,9 @@
+## 1.3.2
+
+- **PERF**: Android — streaming `JsonWriter` replaces per-location `JSONObject` allocations in batch sync (A-L5).
+- **PERF**: iOS — C-level UUID generation replaces Foundation `UUID()` in `LocationEngine` and `TraceletDatabase` (I-M6).
+- **PERF**: Performance audit now 77/77 items resolved (100%).
+
 ## 1.3.1
 
 - **FIX**: Resolve `extras` key collision between `HttpConfig` and `PersistenceConfig` — serialization keys renamed to `httpExtras` and `persistenceExtras` to prevent native ConfigManager flat-merge from overwriting one with the other. Backward-compatible via `fromMap` fallback.
