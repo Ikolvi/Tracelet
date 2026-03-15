@@ -42,6 +42,27 @@ cd benchmark && flutter pub get && flutter test test/tracelet_benchmark_test.dar
 | `location_copyWithCoords` | Copy Location with new coords (optimized) | Kalman output |
 | `geofence_fromMap_circular` | Deserialize circular geofence | Geofence loading |
 | `geofence_fromMap_polygon` | Deserialize polygon geofence with vertices | Polygon loading |
+| `delta_encode_10` | Delta-encode batch of 10 locations | HTTP sync |
+| `delta_encode_100` | Delta-encode batch of 100 locations | HTTP sync |
+| `delta_encode_500` | Delta-encode batch of 500 locations | Bulk sync |
+| `delta_decode_10` | Delta-decode batch of 10 locations | Server restore |
+| `delta_decode_100` | Delta-decode batch of 100 locations | Server restore |
+| `delta_decode_500` | Delta-decode batch of 500 locations | Bulk restore |
+| `delta_roundtrip_100` | Full encode→decode round-trip, 100 locations | Correctness path |
+| `battery_budget_single_sample` | Single battery sample processing | Every battery read |
+| `battery_budget_60_samples` | 60 samples (1-hour simulation) | Sustained tracking |
+| `battery_budget_heavy_drain` | 120 samples with aggressive drain | Worst-case budget |
+| `carbon_trip_100_locations` | Full trip with 100 GPS fixes | Trip completion |
+| `carbon_onLocation` | Per-location carbon accounting | Every GPS fix |
+| `carbon_setActivity` | Activity type switching | Activity change |
+| `carbon_cumulative_report` | Generate cumulative report (10 trips) | Report request |
+| `persist_decider_location` | Location persist decision (all modes) | Every GPS fix |
+| `persist_decider_geofence` | Geofence persist decision (all modes) | Geofence event |
+| `config_fromMap` | Deserialize full Config from map | Config restore |
+| `config_toMap` | Serialize full Config to map | Config persist |
+| `config_roundtrip` | Full Config serialization round-trip | Config update |
+| `state_fromMap` | Deserialize State from map | State restore |
+| `state_toMap` | Serialize State to map | State persist |
 
 ## Performance Thresholds
 

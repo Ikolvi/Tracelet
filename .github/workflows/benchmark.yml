@@ -142,6 +142,13 @@ jobs:
               'location_fromMap': 10.0,
               'location_copyWithCoords': 5.0,
               'adaptive_compute': 5.0,
+              'battery_budget_single_sample': 5.0,
+              'carbon_onLocation': 5.0,
+              'persist_decider_location': 5.0,
+              'config_fromMap': 20.0,
+              'state_fromMap': 20.0,
+              'delta_encode_100': 1000.0,
+              'delta_decode_100': 500.0,
           }
 
           failed = False

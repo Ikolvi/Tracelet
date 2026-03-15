@@ -293,17 +293,31 @@ public final class TraceletDatabase {
         return count
     }
 
+    /// Max placeholders per chunked SQL statement. Keeps statement cache hits
+    /// high and avoids SQLite's variable limit (default 999).
+    private static let markSyncedChunkSize = 500
+
     public func markSynced(uuids: [String]) {
+        guard !uuids.isEmpty else { return }
         queue.sync {
-            let placeholders = uuids.map { _ in "?" }.joined(separator: ",")
-            let sql = "UPDATE locations SET synced = 1 WHERE uuid IN (\(placeholders))"
-            var stmt: OpaquePointer?
-            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
-            defer { sqlite3_finalize(stmt) }
-            for (i, uuid) in uuids.enumerated() {
-                sqlite3_bind_text(stmt, Int32(i + 1), nsString(uuid), -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+            var offset = 0
+            while offset < uuids.count {
+                let end = min(offset + Self.markSyncedChunkSize, uuids.count)
+                let chunk = uuids[offset..<end]
+                let placeholders = chunk.map { _ in "?" }.joined(separator: ",")
+                let sql = "UPDATE locations SET synced = 1 WHERE uuid IN (\(placeholders))"
+                var stmt: OpaquePointer?
+                guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+                    offset = end
+                    continue
+                }
+                for (i, uuid) in chunk.enumerated() {
+                    sqlite3_bind_text(stmt, Int32(i + 1), nsString(uuid), -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+                }
+                sqlite3_step(stmt)
+                sqlite3_finalize(stmt)
+                offset = end
             }
-            sqlite3_step(stmt)
         }
     }
 

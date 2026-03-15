@@ -3,7 +3,7 @@
 **Date:** 4 March 2026  
 **Scope:** Full codebase — Dart (51 files), Android/Kotlin (23 files), iOS/Swift (22 files)  
 **Focus:** Battery efficiency, hot-path allocations, SQLite performance, thread safety, memory leaks  
-**Status:** ✅ **74 of 77 issues resolved** (3 deliberately skipped)
+**Status:** ✅ **75 of 77 issues resolved** (2 deliberately skipped)
 
 ---
 
@@ -13,13 +13,12 @@
 |-------|----------|------|--------|-----|-------|-------|
 | Dart  | 3 ✅     | 7 ✅ | 8 ✅   | 5 ✅| 23    | 23/23 |
 | Android (Kotlin) | 5 ✅ | 9 ✅ | 10 ✅ | 5/6 | 30 | 29/30 |
-| iOS (Swift) | 5 ✅ | 6 ✅ | 7/8  | 4/5 | 24    | 22/24 |
-| **Total** | **13 ✅** | **22 ✅** | **25/26** | **14/16** | **77** | **74/77** |
+| iOS (Swift) | 5 ✅ | 6 ✅ | 7/8  | 5/5 | 24    | 23/24 |
+| **Total** | **13 ✅** | **22 ✅** | **25/26** | **15/16** | **77** | **75/77** |
 
-**Skipped (3):**
+**Skipped (2):**
 - **I-M6** — UUID generation overhead (~1µs per call) — risk/reward doesn't justify custom scheme
 - **A-L5** — JSONObject batch construction in HTTP sync — cold path, I/O-bound, minimal CPU impact
-- **I-L2** — Chunked markSynced prepared statement — complexity risk outweighs negligible savings
 
 ---
 
@@ -164,12 +163,12 @@
 | A-L5 | Per-location `JSONObject(Map)` in batch sync loop | ⏭️ Skipped |
 | A-L6 | Eager `listOf()` in OEM manufacturer detection — changed to `setOf()` | ✅ Fixed |
 
-### iOS Layer (5) — 4/5 Fixed
+### iOS Layer (5) — ✅ All Fixed
 
 | # | Issue | Status |
 |---|-------|--------|
 | I-L1 | Eager `CMMotionActivityManager`/`CMPedometer` init in accelerometer-only mode — now `lazy` | ✅ Fixed |
-| I-L2 | `markSynced()` builds non-reusable dynamic SQL per call | ⏭️ Skipped |
+| I-L2 | `markSynced()` now uses chunked prepared statements (500/chunk) | ✅ Fixed |
 | I-L3 | Duplicate `haversine()` in GeofenceManager — now calls module-level function | ✅ Fixed |
 | I-L4 | Dead `@available(iOS 14)` self-assign in `configureLocationManager()` — removed | ✅ Fixed |
 | I-L5 | Trivial `isMoreRestrictive()` wrapper — inlined to `isActionMoreRestrictive()` (both platforms) | ✅ Fixed |

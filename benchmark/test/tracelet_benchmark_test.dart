@@ -452,6 +452,208 @@ void _benchGeofenceSerialization() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Benchmark: Delta Encoder
+// ─────────────────────────────────────────────────────────────────────────────
+
+void _benchDeltaEncoder() {
+  // Generate realistic location batches
+  List<Map<String, Object?>> generateBatch(int n) {
+    final batch = <Map<String, Object?>>[];
+    var lat = 37.4220;
+    var lng = -122.0841;
+    var ts = 1700000000000;
+    for (var i = 0; i < n; i++) {
+      lat += (_rng.nextDouble() - 0.5) * 0.0002;
+      lng += (_rng.nextDouble() - 0.5) * 0.0002;
+      batch.add(<String, Object?>{
+        'coords': <String, Object?>{
+          'latitude': lat,
+          'longitude': lng,
+          'accuracy': 10.0 + _rng.nextDouble() * 20,
+          'speed': 1.0 + _rng.nextDouble() * 5,
+          'heading': _rng.nextDouble() * 360,
+          'altitude': 30.0 + _rng.nextDouble() * 5,
+          'speed_accuracy': 0.5,
+          'heading_accuracy': 5.0,
+          'altitude_accuracy': 10.0,
+        },
+        'timestamp': '2024-11-01T12:34:${(56 + i) % 60}.000Z',
+        'battery': <String, Object?>{'level': 0.75, 'is_charging': false},
+      });
+      ts += 1000;
+    }
+    return batch;
+  }
+
+  for (final size in [10, 100, 500]) {
+    final batch = generateBatch(size);
+    _bench('delta_encode_$size', () {
+      DeltaEncoder.encode(batch);
+    });
+
+    final encoded = DeltaEncoder.encode(batch);
+    _bench('delta_decode_$size', () {
+      DeltaEncoder.decode(encoded);
+    });
+  }
+
+  // Round-trip
+  final batch100 = generateBatch(100);
+  _bench('delta_roundtrip_100', () {
+    DeltaEncoder.decode(DeltaEncoder.encode(batch100));
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Benchmark: Battery Budget Engine
+// ─────────────────────────────────────────────────────────────────────────────
+
+void _benchBatteryBudget() {
+  // Single sample processing
+  _bench('battery_budget_single_sample', () {
+    final engine = BatteryBudgetEngine(targetBudgetPerHour: 5.0);
+    engine.processSample(0.75);
+  });
+
+  // Simulate 1-hour drain: 60 samples (1 per minute) with decreasing battery
+  _bench('battery_budget_60_samples', () {
+    final engine = BatteryBudgetEngine(targetBudgetPerHour: 5.0);
+    for (var i = 0; i < 60; i++) {
+      engine.processSample(1.0 - i * 0.01);
+    }
+  });
+
+  // Heavy drain scenario — engine must adjust aggressively
+  _bench('battery_budget_heavy_drain', () {
+    final engine = BatteryBudgetEngine(
+      targetBudgetPerHour: 3.0,
+      initialDistanceFilter: 10.0,
+    );
+    for (var i = 0; i < 120; i++) {
+      engine.processSample(1.0 - i * 0.005);
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Benchmark: Carbon Estimator
+// ─────────────────────────────────────────────────────────────────────────────
+
+void _benchCarbonEstimator() {
+  final track = _generateTrack(100);
+
+  // Single trip with 100 locations
+  _bench('carbon_trip_100_locations', () {
+    final est = CarbonEstimator();
+    est.startTrip();
+    est.setActivity('in_vehicle');
+    for (final p in track) {
+      est.onLocationReceived(p.lat, p.lng);
+    }
+    est.endTrip();
+  });
+
+  // Per-location cost (hot path)
+  _bench('carbon_onLocation', () {
+    final est = CarbonEstimator();
+    est.startTrip();
+    est.setActivity('walking');
+    est.onLocationReceived(37.422, -122.084);
+    est.onLocationReceived(37.4221, -122.0841);
+  });
+
+  // Activity switching
+  _bench('carbon_setActivity', () {
+    final est = CarbonEstimator();
+    est.startTrip();
+    est.setActivity('walking');
+    est.setActivity('in_vehicle');
+    est.setActivity('on_bicycle');
+  });
+
+  // Cumulative report generation
+  final est = CarbonEstimator();
+  for (var trip = 0; trip < 10; trip++) {
+    est.startTrip();
+    est.setActivity('in_vehicle');
+    for (final p in track) {
+      est.onLocationReceived(p.lat, p.lng);
+    }
+    est.endTrip();
+  }
+  _bench('carbon_cumulative_report', () {
+    est.getCumulativeReport();
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Benchmark: Persist Decider
+// ─────────────────────────────────────────────────────────────────────────────
+
+void _benchPersistDecider() {
+  _bench('persist_decider_location', () {
+    PersistDecider.shouldPersistLocation(0, event: 'motionchange');
+    PersistDecider.shouldPersistLocation(1, event: 'motionchange');
+    PersistDecider.shouldPersistLocation(2, event: 'geofence');
+    PersistDecider.shouldPersistLocation(3, event: 'heartbeat');
+  });
+
+  _bench('persist_decider_geofence', () {
+    PersistDecider.shouldPersistGeofence(0);
+    PersistDecider.shouldPersistGeofence(1);
+    PersistDecider.shouldPersistGeofence(2);
+    PersistDecider.shouldPersistGeofence(3);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Benchmark: Config Serialization
+// ─────────────────────────────────────────────────────────────────────────────
+
+void _benchConfigSerialization() {
+  final configMap = const Config().toMap();
+
+  _bench('config_fromMap', () {
+    Config.fromMap(configMap);
+  });
+
+  final config = const Config();
+  _bench('config_toMap', () {
+    config.toMap();
+  });
+
+  _bench('config_roundtrip', () {
+    Config.fromMap(const Config().toMap());
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Benchmark: State Serialization
+// ─────────────────────────────────────────────────────────────────────────────
+
+void _benchStateSerialization() {
+  final stateMap = <String, Object?>{
+    'enabled': true,
+    'trackingMode': 1,
+    'isMoving': true,
+    'schedulerEnabled': false,
+    'odometer': 12345.6,
+    'didLaunchInBackground': false,
+    'didDeviceReboot': false,
+    'config': const Config().toMap(),
+  };
+
+  _bench('state_fromMap', () {
+    State.fromMap(stateMap);
+  });
+
+  final state = State.fromMap(stateMap);
+  _bench('state_toMap', () {
+    state.toMap();
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -474,6 +676,12 @@ void main() {
     _benchAdaptiveSampling();
     _benchLocationSerialization();
     _benchGeofenceSerialization();
+    _benchDeltaEncoder();
+    _benchBatteryBudget();
+    _benchCarbonEstimator();
+    _benchPersistDecider();
+    _benchConfigSerialization();
+    _benchStateSerialization();
 
     // Print results table
     print('');
@@ -497,7 +705,7 @@ void main() {
     print('}');
 
     // Verify all benchmarks produced results
-    expect(_results.length, greaterThanOrEqualTo(20));
+    expect(_results.length, greaterThanOrEqualTo(40));
     for (final r in _results) {
       expect(
         r.opsPerSec,

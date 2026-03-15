@@ -115,3 +115,95 @@ jobs:
       - name: Build example Web
         working-directory: example
         run: flutter build web
+
+  coverage:
+    name: Coverage Report
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+          merge-multiple: false
+          path: coverage-artifacts
+
+      - name: Install lcov
+        run: sudo apt-get install -y lcov
+
+      - name: Merge coverage
+        run: |
+          mkdir -p coverage
+          LCOV_FILES=""
+          for pkg in tracelet tracelet_platform_interface tracelet_android tracelet_ios tracelet_web; do
+            FILE="coverage-artifacts/coverage-${pkg}/lcov.info"
+            if [ -f "$FILE" ]; then
+              LCOV_FILES="$LCOV_FILES -a $FILE"
+            fi
+          done
+          if [ -n "$LCOV_FILES" ]; then
+            lcov $LCOV_FILES -o coverage/merged.lcov.info
+            lcov --summary coverage/merged.lcov.info
+          else
+            echo "No coverage files found"
+            exit 0
+          fi
+
+      - name: Upload merged coverage
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-merged
+          path: coverage/merged.lcov.info
+          if-no-files-found: ignore
+
+  validate:
+    name: Validate Monorepo
+    runs-on: ubuntu-latest
+    needs: analyze
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check version consistency
+        run: |
+          echo "Checking version consistency across packages..."
+          VERSIONS=""
+          for pkg in tracelet tracelet_platform_interface tracelet_android tracelet_ios tracelet_web; do
+            VER=$(grep '^version:' "packages/$pkg/pubspec.yaml" | awk '{print $2}')
+            echo "  $pkg: $VER"
+            VERSIONS="$VERSIONS $VER"
+          done
+          # All versions should be identical
+          UNIQUE=$(echo $VERSIONS | tr ' ' '\n' | sort -u | wc -l | tr -d ' ')
+          if [ "$UNIQUE" -ne 1 ]; then
+            echo "❌ Version mismatch detected!"
+            exit 1
+          fi
+          echo "✅ All packages at version$(echo $VERSIONS | awk '{print $1}')"
+
+      - name: Check CHANGELOG entries
+        run: |
+          echo "Checking CHANGELOG.md files exist and have entries..."
+          for pkg in tracelet tracelet_platform_interface tracelet_android tracelet_ios tracelet_web; do
+            FILE="packages/$pkg/CHANGELOG.md"
+            if [ ! -f "$FILE" ]; then
+              echo "❌ Missing $FILE"
+              exit 1
+            fi
+            LINES=$(wc -l < "$FILE" | tr -d ' ')
+            if [ "$LINES" -lt 3 ]; then
+              echo "❌ $FILE appears empty ($LINES lines)"
+              exit 1
+            fi
+            echo "  ✅ $FILE ($LINES lines)"
+          done
+
+      - name: Check dependency constraints
+        run: |
+          echo "Checking cross-package dependency constraints..."
+          IFACE_VER=$(grep '^version:' packages/tracelet_platform_interface/pubspec.yaml | awk '{print $2}')
+          for pkg in tracelet tracelet_android tracelet_ios tracelet_web; do
+            CONSTRAINT=$(grep 'tracelet_platform_interface:' "packages/$pkg/pubspec.yaml" | head -1 | awk '{print $2}')
+            echo "  $pkg depends on tracelet_platform_interface: $CONSTRAINT (interface is $IFACE_VER)"
+          done
+          echo "✅ Dependency constraints checked"
