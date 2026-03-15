@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.4
+
+- **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.3.3`.
+
 ## 1.3.3
 
 - **CHORE**: Patch bump for federation consistency with `tracelet` 1.3.3.

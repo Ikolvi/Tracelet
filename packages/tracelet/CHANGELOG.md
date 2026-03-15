@@ -1,3 +1,7 @@
+## 1.3.4
+
+- **CHORE**: Update cross-package dependency constraints to `^1.3.3`.
+
 ## 1.3.3
 
 - **FIX**: Android — bundle native core Kotlin source (`com.tracelet.core.*`) directly inside the plugin package, fixing "Unresolved reference" build errors when installed from pub.dev.

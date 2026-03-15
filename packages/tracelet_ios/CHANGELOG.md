@@ -1,3 +1,7 @@
+## 1.3.4
+
+- **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.3.3`.
+
 ## 1.3.3
 
 - **FIX**: Bundle TraceletCore Swift source files directly inside the plugin package instead of depending on an unpublished local CocoaPod. Fixes unresolved `import TraceletCore` when installed from pub.dev.

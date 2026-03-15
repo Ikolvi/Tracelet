@@ -1,3 +1,7 @@
+## 1.3.4
+
+- **CHORE**: Patch bump for federation consistency with `tracelet` 1.3.4.
+
 ## 1.3.3
 
 - **CHORE**: Patch bump for federation consistency with `tracelet` 1.3.3.

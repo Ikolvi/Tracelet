@@ -1,3 +1,7 @@
+## 1.3.4
+
+- **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.3.3`.
+
 ## 1.3.3
 
 - **FIX**: Bundle native core Kotlin source files (`com.tracelet.core.*`) directly inside the plugin package so they are included when published to pub.dev. Previously, the build.gradle referenced sources via a relative monorepo path that was inaccessible to pub.dev consumers.
