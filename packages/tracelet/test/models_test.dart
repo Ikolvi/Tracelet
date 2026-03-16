@@ -1218,6 +1218,80 @@ void main() {
       expect(map['start'], now.millisecondsSinceEpoch);
       expect(map['limit'], 100);
     });
+
+    test('toMap includes both start and end as milliseconds', () {
+      final start = DateTime(2024, 1, 1);
+      final end = DateTime(2024, 12, 31);
+      final query = SQLQuery(start: start, end: end);
+      final map = query.toMap();
+      expect(map['start'], start.millisecondsSinceEpoch);
+      expect(map['end'], end.millisecondsSinceEpoch);
+      expect(map['limit'], -1);
+      expect(map['order'], LocationOrder.asc.index);
+    });
+
+    test('toMap omits null start and end', () {
+      const query = SQLQuery(limit: 50);
+      final map = query.toMap();
+      expect(map['start'], isNull);
+      expect(map['end'], isNull);
+      expect(map['limit'], 50);
+    });
+
+    test('fromMap round-trips start and end', () {
+      final start = DateTime(2024, 3, 15, 8, 30);
+      final end = DateTime(2024, 3, 15, 17, 0);
+      final original = SQLQuery(
+        start: start,
+        end: end,
+        limit: 200,
+        order: LocationOrder.desc,
+      );
+      final restored = SQLQuery.fromMap(original.toMap());
+      expect(restored.start, start);
+      expect(restored.end, end);
+      expect(restored.limit, 200);
+      expect(restored.order, LocationOrder.desc);
+    });
+
+    test('fromMap handles null start and end', () {
+      final query = SQLQuery.fromMap(const {'limit': 10, 'order': 0});
+      expect(query.start, isNull);
+      expect(query.end, isNull);
+    });
+
+    test('fromMap with only start set', () {
+      final start = DateTime(2024, 6, 1);
+      final query = SQLQuery.fromMap({
+        'start': start.millisecondsSinceEpoch,
+        'limit': -1,
+        'order': 0,
+      });
+      expect(query.start, start);
+      expect(query.end, isNull);
+    });
+
+    test('fromMap with only end set', () {
+      final end = DateTime(2024, 6, 30);
+      final query = SQLQuery.fromMap({
+        'end': end.millisecondsSinceEpoch,
+        'limit': -1,
+        'order': 0,
+      });
+      expect(query.start, isNull);
+      expect(query.end, end);
+    });
+
+    test('toString includes start and end', () {
+      final query = SQLQuery(
+        start: DateTime(2024, 1, 1),
+        end: DateTime(2024, 12, 31),
+      );
+      final str = query.toString();
+      expect(str, contains('start:'));
+      expect(str, contains('end:'));
+      expect(str, contains('SQLQuery'));
+    });
   });
 
   // ==========================================================================

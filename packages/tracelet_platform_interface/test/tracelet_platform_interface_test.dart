@@ -54,6 +54,38 @@ void main() {
         throwsA(isA<UnimplementedError>()),
       );
     });
+
+    test('getLocations throws UnimplementedError by default', () {
+      final platform = _TestPlatform();
+      expect(
+        () => platform.getLocations(),
+        throwsA(isA<UnimplementedError>()),
+      );
+    });
+
+    test('getLocations accepts optional query map', () {
+      final platform = _TestPlatform();
+      expect(
+        () => platform.getLocations({'start': 1000, 'end': 2000, 'limit': 10}),
+        throwsA(isA<UnimplementedError>()),
+      );
+    });
+
+    test('getCount throws UnimplementedError by default', () {
+      final platform = _TestPlatform();
+      expect(
+        () => platform.getCount(),
+        throwsA(isA<UnimplementedError>()),
+      );
+    });
+
+    test('getCount accepts optional query map', () {
+      final platform = _TestPlatform();
+      expect(
+        () => platform.getCount({'start': 1000, 'end': 2000}),
+        throwsA(isA<UnimplementedError>()),
+      );
+    });
   });
 }
 

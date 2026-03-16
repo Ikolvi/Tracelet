@@ -291,16 +291,29 @@ class TraceletDatabase private constructor(context: Context) :
         }
     }
 
-    /** Retrieves locations with optional pagination and ordering. Includes audit fields. */
-    fun getLocations(limit: Int = -1, offset: Int = 0, orderAsc: Boolean = true): List<Map<String, Any?>> {
+    /** Retrieves locations with optional time range, pagination and ordering. Includes audit fields. */
+    fun getLocations(limit: Int = -1, offset: Int = 0, orderAsc: Boolean = true, startTime: Long? = null, endTime: Long? = null): List<Map<String, Any?>> {
         val order = if (orderAsc) "ASC" else "DESC"
+        val conditions = mutableListOf<String>()
+        val args = mutableListOf<String>()
+
+        startTime?.let {
+            conditions.add("l.$COL_TIMESTAMP >= ?")
+            args.add(it.toString())
+        }
+        endTime?.let {
+            conditions.add("l.$COL_TIMESTAMP <= ?")
+            args.add(it.toString())
+        }
+
+        val where = if (conditions.isNotEmpty()) "WHERE ${conditions.joinToString(" AND ")}" else ""
         val limitClause = if (limit > 0) "LIMIT $limit OFFSET $offset" else ""
         val cursor = readableDatabase.rawQuery(
             "SELECT l.*, a.$COL_AUDIT_HASH, a.$COL_AUDIT_PREVIOUS_HASH, a.$COL_AUDIT_CHAIN_INDEX " +
             "FROM $TABLE_LOCATIONS l " +
             "LEFT JOIN $TABLE_AUDIT_TRAIL a ON l.$COL_UUID = a.$COL_UUID " +
-            "ORDER BY l.$COL_TIMESTAMP $order $limitClause",
-            null
+            "$where ORDER BY l.$COL_TIMESTAMP $order $limitClause",
+            args.toTypedArray()
         )
         return cursorToLocationList(cursor)
     }
@@ -319,8 +332,21 @@ class TraceletDatabase private constructor(context: Context) :
     }
 
     /** Returns total count of stored locations. */
-    fun getLocationCount(): Int {
-        val cursor = readableDatabase.rawQuery("SELECT COUNT(*) FROM $TABLE_LOCATIONS", null)
+    fun getLocationCount(startTime: Long? = null, endTime: Long? = null): Int {
+        val conditions = mutableListOf<String>()
+        val args = mutableListOf<String>()
+
+        startTime?.let {
+            conditions.add("$COL_TIMESTAMP >= ?")
+            args.add(it.toString())
+        }
+        endTime?.let {
+            conditions.add("$COL_TIMESTAMP <= ?")
+            args.add(it.toString())
+        }
+
+        val where = if (conditions.isNotEmpty()) "WHERE ${conditions.joinToString(" AND ")}" else ""
+        val cursor = readableDatabase.rawQuery("SELECT COUNT(*) FROM $TABLE_LOCATIONS $where", args.toTypedArray())
         cursor.use {
             return if (it.moveToFirst()) it.getInt(0) else 0
         }
