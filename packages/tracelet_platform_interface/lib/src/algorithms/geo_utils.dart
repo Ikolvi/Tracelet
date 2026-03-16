@@ -67,16 +67,18 @@ class GeoUtils {
   /// ```
   static double haversine(double lat1, double lon1, double lat2, double lon2) {
     const r = 6371000.0;
-    final dLat = _toRad(lat2 - lat1);
-    final dLon = _toRad(lon2 - lon1);
+    final dLat = (lat2 - lat1) * _deg2rad;
+    final dLon = (lon2 - lon1) * _deg2rad;
+    final sinDLat = math.sin(dLat * 0.5);
+    final sinDLon = math.sin(dLon * 0.5);
     final a =
-        math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(_toRad(lat1)) *
-            math.cos(_toRad(lat2)) *
-            math.sin(dLon / 2) *
-            math.sin(dLon / 2);
-    return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+        sinDLat * sinDLat +
+        math.cos(lat1 * _deg2rad) *
+            math.cos(lat2 * _deg2rad) *
+            sinDLon *
+            sinDLon;
+    return r * 2.0 * math.asin(math.sqrt(a.clamp(0.0, 1.0)));
   }
 
-  static double _toRad(double deg) => deg * (math.pi / 180.0);
+  static const double _deg2rad = math.pi / 180.0;
 }
