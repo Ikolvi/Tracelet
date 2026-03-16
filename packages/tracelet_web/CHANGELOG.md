@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.6
+
+- **FIX**: `getCount()` now supports time-range filtering via optional `SQLQuery` parameter.
+- **FIX**: Fix `getLocations()` timestamp filtering — `start`/`end` were incorrectly cast as `String?` instead of `int?` (millisecondsSinceEpoch).
+- **CHORE**: Update cross-package dependency constraints to `^1.3.6`.
+
 ## 1.3.5
 
 - **CHORE**: Update cross-package dependency constraints to `^1.3.5`.

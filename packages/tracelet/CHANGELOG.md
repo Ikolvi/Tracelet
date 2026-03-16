@@ -1,3 +1,12 @@
+## 1.3.6
+
+- **FIX**: `SQLQuery.start` and `SQLQuery.end` now correctly filter locations on all platforms (Android, iOS, Web).
+- **FIX**: Add `offset` field to `SQLQuery` to match native handler expectations.
+- **FIX**: `getCount()` now accepts optional `SQLQuery` for time-bounded counting.
+- **PERF**: `DeltaEncoder.encode` is 2.1x faster (cached DateTime parsing, precomputed rounding factors).
+- **PERF**: `GeoUtils.haversine` optimized — fewer trig calls, precomputed constants.
+- **CHORE**: Update cross-package dependency constraints to `^1.3.6`.
+
 ## 1.3.5
 
 - **FIX**: iOS — fix `Unable to find module dependency: 'TraceletCore'` build error.

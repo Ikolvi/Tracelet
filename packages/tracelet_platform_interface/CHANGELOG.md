@@ -1,3 +1,10 @@
+## 1.3.6
+
+- **FIX**: Add `offset` field to `SQLQuery` to match native platform handlers that read it.
+- **PERF**: Optimize `DeltaEncoder` — 2.1x faster encode via cached DateTime parsing and precomputed rounding factors.
+- **PERF**: Optimize `GeoUtils.haversine` — eliminate redundant `sqrt`, precompute `pi/180`, inline `_toRad`.
+- **DOCS**: Clarify `getCount()` ignores `limit`/`offset`/`order` from `SQLQuery`.
+
 ## 1.3.5
 
 - **CHORE**: Update cross-package dependency constraints to `^1.3.5`.

@@ -1,3 +1,9 @@
+## 1.3.6
+
+- **FIX**: `getLocations()` now honors `SQLQuery.start` and `SQLQuery.end` timestamp filtering.
+- **FIX**: `getCount()` now accepts optional `SQLQuery` for time-bounded counting.
+- **CHORE**: Update cross-package dependency constraints to `^1.3.6`.
+
 ## 1.3.5
 
 - **CHORE**: Update cross-package dependency constraints to `^1.3.5`.
