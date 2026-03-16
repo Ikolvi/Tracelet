@@ -620,6 +620,8 @@ class Tracelet {
   /// Get the count of stored locations.
   ///
   /// Optionally pass a [query] to count only locations within a time range.
+  /// Only [SQLQuery.start] and [SQLQuery.end] affect the count result;
+  /// [SQLQuery.limit], [SQLQuery.offset], and [SQLQuery.order] are ignored.
   static Future<int> getCount([SQLQuery? query]) {
     return _platform.getCount(query?.toMap());
   }

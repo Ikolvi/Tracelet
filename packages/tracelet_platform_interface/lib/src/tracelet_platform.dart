@@ -197,6 +197,9 @@ abstract class TraceletPlatform extends PlatformInterface {
   }
 
   /// Get the count of stored locations.
+  ///
+  /// Only `start` and `end` keys in [query] affect the result;
+  /// `limit`, `offset`, and `order` are ignored for counting.
   Future<int> getCount([Map<String, Object?>? query]) {
     throw UnimplementedError('getCount() has not been implemented.');
   }
