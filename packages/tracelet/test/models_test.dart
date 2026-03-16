@@ -1292,6 +1292,28 @@ void main() {
       expect(str, contains('end:'));
       expect(str, contains('SQLQuery'));
     });
+
+    test('offset defaults to 0 and is serialized', () {
+      const query = SQLQuery(limit: 50);
+      expect(query.offset, 0);
+      final map = query.toMap();
+      expect(map['offset'], 0);
+    });
+
+    test('offset is preserved through toMap/fromMap round-trip', () {
+      const query = SQLQuery(limit: 100, offset: 25);
+      expect(query.offset, 25);
+      final map = query.toMap();
+      expect(map['offset'], 25);
+      final restored = SQLQuery.fromMap(map);
+      expect(restored.offset, 25);
+      expect(restored.limit, 100);
+    });
+
+    test('toString includes offset', () {
+      const query = SQLQuery(offset: 10);
+      expect(query.toString(), contains('offset: 10'));
+    });
   });
 
   // ==========================================================================

@@ -17,6 +17,7 @@ class SQLQuery {
     this.start,
     this.end,
     this.limit = -1,
+    this.offset = 0,
     this.order = LocationOrder.asc,
   });
 
@@ -29,6 +30,9 @@ class SQLQuery {
   /// Maximum number of records to return. `-1` means no limit.
   final int limit;
 
+  /// Number of records to skip before returning results. Defaults to `0`.
+  final int offset;
+
   /// Sort order. Defaults to [LocationOrder.asc].
   final LocationOrder order;
 
@@ -38,6 +42,7 @@ class SQLQuery {
       'start': start?.millisecondsSinceEpoch,
       'end': end?.millisecondsSinceEpoch,
       'limit': limit,
+      'offset': offset,
       'order': order.index,
     };
   }
@@ -53,6 +58,7 @@ class SQLQuery {
           : null,
       end: endMs != null ? DateTime.fromMillisecondsSinceEpoch(endMs) : null,
       limit: (map['limit'] as int?) ?? -1,
+      offset: (map['offset'] as int?) ?? 0,
       order:
           LocationOrder.values[((map['order'] as int?) ?? 0).clamp(
             0,
@@ -63,5 +69,5 @@ class SQLQuery {
 
   @override
   String toString() =>
-      'SQLQuery(start: $start, end: $end, limit: $limit, order: $order)';
+      'SQLQuery(start: $start, end: $end, limit: $limit, offset: $offset, order: $order)';
 }
