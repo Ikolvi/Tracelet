@@ -315,7 +315,10 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
         case "getLocations":
             handleGetLocations(call, result: result)
         case "getCount":
-            result(database.getLocationCount())
+            let countQuery = call.arguments as? [String: Any]
+            let countStart = (countQuery?["start"] as? NSNumber)?.int64Value
+            let countEnd = (countQuery?["end"] as? NSNumber)?.int64Value
+            result(database.getLocationCount(startTime: countStart, endTime: countEnd))
         case "destroyLocations":
             result(database.deleteAllLocations())
         case "destroyLocation":
@@ -830,7 +833,9 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
         let limit = (query?["limit"] as? NSNumber)?.intValue ?? -1
         let offset = (query?["offset"] as? NSNumber)?.intValue ?? 0
         let orderAsc = (query?["order"] as? NSNumber)?.intValue != 1
-        result(database.getLocations(limit: limit, offset: offset, orderAsc: orderAsc))
+        let startTime = (query?["start"] as? NSNumber)?.int64Value
+        let endTime = (query?["end"] as? NSNumber)?.int64Value
+        result(database.getLocations(limit: limit, offset: offset, orderAsc: orderAsc, startTime: startTime, endTime: endTime))
     }
 
     // MARK: - Utility handlers

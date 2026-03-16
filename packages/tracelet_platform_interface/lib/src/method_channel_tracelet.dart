@@ -215,8 +215,8 @@ class MethodChannelTracelet extends TraceletPlatform {
   }
 
   @override
-  Future<int> getCount() async {
-    final result = await _methodChannel.invokeMethod<int>('getCount');
+  Future<int> getCount([Map<String, Object?>? query]) async {
+    final result = await _methodChannel.invokeMethod<int>('getCount', query);
     return result ?? 0;
   }
 

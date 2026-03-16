@@ -618,8 +618,10 @@ class Tracelet {
   }
 
   /// Get the count of stored locations.
-  static Future<int> getCount() {
-    return _platform.getCount();
+  ///
+  /// Optionally pass a [query] to count only locations within a time range.
+  static Future<int> getCount([SQLQuery? query]) {
+    return _platform.getCount(query?.toMap());
   }
 
   /// Destroy all stored locations.

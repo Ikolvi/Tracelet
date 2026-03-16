@@ -275,7 +275,13 @@ class TraceletAndroidPlugin :
 
             // Persistence
             "getLocations" -> handleGetLocations(call, result)
-            "getCount" -> result.success(database.getLocationCount())
+            "getCount" -> {
+                @Suppress("UNCHECKED_CAST")
+                val query = call.arguments as? Map<String, Any?>
+                val startTime = (query?.get("start") as? Number)?.toLong()
+                val endTime = (query?.get("end") as? Number)?.toLong()
+                result.success(database.getLocationCount(startTime, endTime))
+            }
             "destroyLocations" -> result.success(database.deleteAllLocations())
             "destroyLocation" -> {
                 val uuid = call.arguments as? String ?: ""
@@ -984,7 +990,9 @@ class TraceletAndroidPlugin :
         val limit = (query?.get("limit") as? Number)?.toInt() ?: -1
         val offset = (query?.get("offset") as? Number)?.toInt() ?: 0
         val orderAsc = (query?.get("order") as? Number)?.toInt() != 1
-        result.success(database.getLocations(limit, offset, orderAsc))
+        val startTime = (query?.get("start") as? Number)?.toLong()
+        val endTime = (query?.get("end") as? Number)?.toLong()
+        result.success(database.getLocations(limit, offset, orderAsc, startTime, endTime))
     }
 
     private fun handleInsertLocation(call: MethodCall, result: Result) {

@@ -197,7 +197,7 @@ abstract class TraceletPlatform extends PlatformInterface {
   }
 
   /// Get the count of stored locations.
-  Future<int> getCount() {
+  Future<int> getCount([Map<String, Object?>? query]) {
     throw UnimplementedError('getCount() has not been implemented.');
   }
 

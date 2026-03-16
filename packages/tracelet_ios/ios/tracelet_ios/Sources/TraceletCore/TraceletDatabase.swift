@@ -236,14 +236,18 @@ public final class TraceletDatabase {
         return uuid
     }
 
-    public func getLocations(limit: Int = -1, offset: Int = 0, orderAsc: Bool = true) -> [[String: Any]] {
+    public func getLocations(limit: Int = -1, offset: Int = 0, orderAsc: Bool = true, startTime: Int64? = nil, endTime: Int64? = nil) -> [[String: Any]] {
         var results: [[String: Any]] = []
         queue.sync {
             let order = orderAsc ? "ASC" : "DESC"
+            var conditions: [String] = []
+            if startTime != nil { conditions.append("l.timestamp >= ?") }
+            if endTime != nil { conditions.append("l.timestamp <= ?") }
+            let whereClause = conditions.isEmpty ? "" : "WHERE \(conditions.joined(separator: " AND "))"
             var sql = """
                 SELECT l.*, a.hash AS audit_hash, a.previous_hash AS audit_previous_hash, a.chain_index AS audit_chain_index
                 FROM locations l LEFT JOIN audit_trail a ON l.uuid = a.uuid
-                ORDER BY l.timestamp \(order)
+                \(whereClause) ORDER BY l.timestamp \(order)
             """
             if limit > 0 {
                 sql += " LIMIT \(limit) OFFSET \(offset)"
@@ -252,6 +256,16 @@ public final class TraceletDatabase {
             var stmt: OpaquePointer?
             guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
             defer { sqlite3_finalize(stmt) }
+
+            var bindIndex: Int32 = 1
+            if let start = startTime {
+                sqlite3_bind_int64(stmt, bindIndex, start)
+                bindIndex += 1
+            }
+            if let end = endTime {
+                sqlite3_bind_int64(stmt, bindIndex, end)
+                bindIndex += 1
+            }
 
             while sqlite3_step(stmt) == SQLITE_ROW {
                 results.append(locationRowToMap(stmt!))
@@ -280,12 +294,29 @@ public final class TraceletDatabase {
         return results
     }
 
-    public func getLocationCount() -> Int {
+    public func getLocationCount(startTime: Int64? = nil, endTime: Int64? = nil) -> Int {
         var count = 0
         queue.sync {
+            var conditions: [String] = []
+            if startTime != nil { conditions.append("timestamp >= ?") }
+            if endTime != nil { conditions.append("timestamp <= ?") }
+            let whereClause = conditions.isEmpty ? "" : "WHERE \(conditions.joined(separator: " AND "))"
+            let sql = "SELECT COUNT(*) FROM locations \(whereClause)"
+
             var stmt: OpaquePointer?
-            guard sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM locations", -1, &stmt, nil) == SQLITE_OK else { return }
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
             defer { sqlite3_finalize(stmt) }
+
+            var bindIndex: Int32 = 1
+            if let start = startTime {
+                sqlite3_bind_int64(stmt, bindIndex, start)
+                bindIndex += 1
+            }
+            if let end = endTime {
+                sqlite3_bind_int64(stmt, bindIndex, end)
+                bindIndex += 1
+            }
+
             if sqlite3_step(stmt) == SQLITE_ROW {
                 count = Int(sqlite3_column_int(stmt, 0))
             }
