@@ -81,6 +81,64 @@ Critical operations that run on **every GPS fix** (1 Hz) must complete in < 1ms 
 
 ## Results History
 
+### 2026-03-16 — Commit a00e88f
+
+**Environment:** Dart 3.11.1, ubuntu-latest (CI)
+
+| Benchmark | ops/sec | µs/op |
+|---|---:|---:|
+| kalman_process_single | 7367371 | 0.14 |
+| kalman_process_100_fixes | 94638 | 10.57 |
+| kalman_process_1k_fixes | 9569 | 104.50 |
+| kalman_reset | 6736581 | 0.15 |
+| haversine_single | 9058464 | 0.11 |
+| haversine_1k_pairs | 16275 | 61.45 |
+| pip_4v | 13384723 | 0.07 |
+| pip_10v | 10135259 | 0.10 |
+| pip_50v | 3775327 | 0.26 |
+| pip_100v | 1965668 | 0.51 |
+| pip_500v | 426633 | 2.34 |
+| geofence_eval_10_circular | 679648 | 1.47 |
+| geofence_eval_100_circular | 74598 | 13.41 |
+| geofence_eval_500_circular | 14243 | 70.21 |
+| geofence_eval_10_polygon_6v | 418753 | 2.39 |
+| geofence_eval_50_polygon_6v | 83991 | 11.91 |
+| processor_1k_fixes | 9893 | 101.08 |
+| processor_1k_adaptive | 9337 | 107.10 |
+| trip_manager_5k_waypoints | 66 | 15260.87 |
+| schedule_parse | 2883627 | 0.35 |
+| schedule_matches | 118969 | 8.41 |
+| schedule_isWithin_5_entries | 110312 | 9.07 |
+| adaptive_compute | 13648009 | 0.07 |
+| location_fromMap | 1764997 | 0.57 |
+| location_toMap | 685808 | 1.46 |
+| location_fromMap_toMap_roundtrip | 504428 | 1.98 |
+| location_copyWithCoords | 12383801 | 0.08 |
+| geofence_fromMap_circular | 4514324 | 0.22 |
+| geofence_fromMap_polygon | 1527488 | 0.65 |
+| delta_encode_10 | 29417 | 33.99 |
+| delta_decode_10 | 98017 | 10.20 |
+| delta_encode_100 | 3966 | 252.15 |
+| delta_decode_100 | 11053 | 90.48 |
+| delta_encode_500 | 849 | 1178.27 |
+| delta_decode_500 | 2407 | 415.46 |
+| delta_roundtrip_100 | 2901 | 344.67 |
+| battery_budget_single_sample | 9419853 | 0.11 |
+| battery_budget_60_samples | 252512 | 3.96 |
+| battery_budget_heavy_drain | 125782 | 7.95 |
+| carbon_trip_100_locations | 97064 | 10.30 |
+| carbon_onLocation | 4386739 | 0.23 |
+| carbon_setActivity | 9812423 | 0.10 |
+| carbon_cumulative_report | 2641983 | 0.38 |
+| persist_decider_location | 20151400 | 0.05 |
+| persist_decider_geofence | 20212244 | 0.05 |
+| config_fromMap | 496088 | 2.02 |
+| config_toMap | 166776 | 6.00 |
+| config_roundtrip | 123035 | 8.13 |
+| state_fromMap | 458643 | 2.18 |
+| state_toMap | 156797 | 6.38 |
+
+
 ### 2026-03-16 — Commit 8e269d9
 
 **Environment:** Dart 3.11.1, ubuntu-latest (CI)
@@ -1470,47 +1528,3 @@ Critical operations that run on **every GPS fix** (1 Hz) must complete in < 1ms 
 | geofence_fromMap_polygon | 1553494 | 0.64 |
 
 
-### 2025-06-02 — Baseline (v0.12.0, post-performance-audit)
-
-**Environment:** Dart 3.11.0, macOS arm64
-
-| Benchmark | ops/sec | µs/op |
-|---|---:|---:|
-| kalman_process_single | 9,101,629 | 0.11 |
-| kalman_process_100_fixes | 129,597 | 7.72 |
-| kalman_process_1k_fixes | 13,503 | 74.06 |
-| kalman_reset | 8,247,498 | 0.12 |
-| haversine_single | 11,307,247 | 0.09 |
-| haversine_1k_pairs | 31,066 | 32.19 |
-| pip_4v | 17,288,752 | 0.06 |
-| pip_10v | 13,799,457 | 0.07 |
-| pip_50v | 5,670,817 | 0.18 |
-| pip_100v | 2,926,690 | 0.34 |
-| pip_500v | 720,601 | 1.39 |
-| geofence_eval_10_circular | 840,408 | 1.19 |
-| geofence_eval_100_circular | 94,396 | 10.59 |
-| geofence_eval_500_circular | 18,161 | 55.06 |
-| geofence_eval_10_polygon_6v | 529,724 | 1.89 |
-| geofence_eval_50_polygon_6v | 105,278 | 9.50 |
-| processor_1k_fixes | 11,991 | 83.39 |
-| processor_1k_adaptive | 12,019 | 83.20 |
-| trip_manager_5k_waypoints | 594 | 1,684.81 |
-| schedule_parse | 3,908,346 | 0.26 |
-| schedule_matches | 1,174,266 | 0.85 |
-| schedule_isWithin_5_entries | 882,997 | 1.13 |
-| adaptive_compute | 18,353,277 | 0.05 |
-| location_fromMap | 1,905,601 | 0.52 |
-| location_toMap | 655,167 | 1.53 |
-| location_fromMap_toMap_roundtrip | 519,043 | 1.93 |
-| location_copyWithCoords | 17,705,080 | 0.06 |
-| geofence_fromMap_circular | 5,458,465 | 0.18 |
-| geofence_fromMap_polygon | 1,734,853 | 0.58 |
-
-**Key insights:**
-- Kalman filter: **0.11 µs/fix** — 9.1M ops/sec, well within 1 µs budget
-- Haversine: **0.09 µs** — 11.3M ops/sec
-- Point-in-polygon scales linearly: 0.06 µs (4v) → 1.39 µs (500v)
-- `copyWithCoords` is **32× faster** than full `fromMap→toMap` roundtrip (0.06 vs 1.93 µs)
-- Full processor pipeline: **83 µs for 1000 fixes** = 0.083 µs per fix
-- Adaptive mode adds **zero overhead** (83.20 vs 83.39 µs — within noise)
-- All critical per-fix operations complete in **< 1 µs** individually
