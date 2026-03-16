@@ -392,8 +392,7 @@ class TraceletWebPlugin extends TraceletPlatform {
 
   @override
   Future<int> getCount([Map<String, Object?>? query]) {
-    // Web storage engine does not yet support time-range filtering for count.
-    return _storage.getCount();
+    return _storage.getCount(query);
   }
 
   @override

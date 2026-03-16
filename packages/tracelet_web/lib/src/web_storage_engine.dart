@@ -49,26 +49,22 @@ class WebStorageEngine {
     // Use lazy Iterable chaining to avoid intermediate list copies (D-M3).
     Iterable<Map<String, Object?>> results = _locations;
 
-    // Filter by time range.
-    final start = query['start'] as String?;
-    final end = query['end'] as String?;
-    if (start != null) {
-      final startDt = DateTime.tryParse(start);
-      if (startDt != null) {
-        results = results.where((loc) {
-          final ts = DateTime.tryParse(loc['timestamp'] as String? ?? '');
-          return ts != null && !ts.isBefore(startDt);
-        });
-      }
+    // Filter by time range (start/end are millisecondsSinceEpoch ints).
+    final startMs = query['start'] as int?;
+    final endMs = query['end'] as int?;
+    if (startMs != null) {
+      final startDt = DateTime.fromMillisecondsSinceEpoch(startMs);
+      results = results.where((loc) {
+        final ts = _parseTimestamp(loc['timestamp']);
+        return ts != null && !ts.isBefore(startDt);
+      });
     }
-    if (end != null) {
-      final endDt = DateTime.tryParse(end);
-      if (endDt != null) {
-        results = results.where((loc) {
-          final ts = DateTime.tryParse(loc['timestamp'] as String? ?? '');
-          return ts != null && !ts.isAfter(endDt);
-        });
-      }
+    if (endMs != null) {
+      final endDt = DateTime.fromMillisecondsSinceEpoch(endMs);
+      results = results.where((loc) {
+        final ts = _parseTimestamp(loc['timestamp']);
+        return ts != null && !ts.isAfter(endDt);
+      });
     }
 
     // Materialize once for sort/limit operations.
@@ -94,7 +90,36 @@ class WebStorageEngine {
     return materialized;
   }
 
-  Future<int> getCount() async => _locations.length;
+  Future<int> getCount([Map<String, Object?>? query]) async {
+    if (query == null || query.isEmpty) {
+      return _locations.length;
+    }
+    final startMs = query['start'] as int?;
+    final endMs = query['end'] as int?;
+    if (startMs == null && endMs == null) {
+      return _locations.length;
+    }
+    final startDt = startMs != null
+        ? DateTime.fromMillisecondsSinceEpoch(startMs)
+        : null;
+    final endDt = endMs != null
+        ? DateTime.fromMillisecondsSinceEpoch(endMs)
+        : null;
+    return _locations.where((loc) {
+      final ts = _parseTimestamp(loc['timestamp']);
+      if (ts == null) return false;
+      if (startDt != null && ts.isBefore(startDt)) return false;
+      if (endDt != null && ts.isAfter(endDt)) return false;
+      return true;
+    }).length;
+  }
+
+  /// Parses a timestamp value that may be an ISO 8601 string or millis int.
+  static DateTime? _parseTimestamp(Object? value) {
+    if (value is String) return DateTime.tryParse(value);
+    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    return null;
+  }
 
   Future<bool> destroyLocations() async {
     _locations.clear();
