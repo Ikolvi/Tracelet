@@ -10,16 +10,19 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   group('CarbonEstimator — Trip Lifecycle', () {
-    testWidgets('startTrip and endTrip with no locations returns null', (
-      tester,
-    ) async {
-      final estimator = CarbonEstimator();
-      estimator.startTrip();
-      final summary = estimator.endTrip();
+    testWidgets(
+      'startTrip and endTrip with no locations returns zero summary',
+      (tester) async {
+        final estimator = CarbonEstimator();
+        estimator.startTrip();
+        final summary = estimator.endTrip();
 
-      // No locations fed — no summary
-      expect(summary, isNull);
-    });
+        // Trip was active, so endTrip returns a summary with zero values
+        expect(summary, isNotNull);
+        expect(summary!.totalDistanceMeters, 0.0);
+        expect(summary.totalCarbonGrams, 0.0);
+      },
+    );
 
     testWidgets('startTrip → locations → endTrip returns summary', (
       tester,
