@@ -96,6 +96,27 @@ jobs:
 
           bm.write_text(content)
           print(f'Updated BENCHMARK.md with entry for {date} ({commit})')
+
+          # Prune entries older than 14 days
+          from datetime import datetime, timedelta
+          cutoff = (datetime.utcnow() - timedelta(days=14)).strftime('%Y-%m-%d')
+          content = bm.read_text()
+          # Split on entry headers, keep only entries within 14 days
+          parts = re.split(r'(?=^### \d{4}-\d{2}-\d{2})', content, flags=re.MULTILINE)
+          kept = []
+          pruned = 0
+          for part in parts:
+              m = re.match(r'^### (\d{4}-\d{2}-\d{2})', part)
+              if m:
+                  if m.group(1) >= cutoff:
+                      kept.append(part)
+                  else:
+                      pruned += 1
+              else:
+                  kept.append(part)
+          if pruned > 0:
+              bm.write_text(''.join(kept))
+              print(f'Pruned {pruned} benchmark entries older than {cutoff}')
           "
 
       - name: Commit benchmark results

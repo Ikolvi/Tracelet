@@ -50,12 +50,15 @@ class DeltaEncoder {
     result.add(<String, Object?>{'ref': true, ...locations.first});
 
     var prev = locations.first;
+    var prevTs = _parseTimestamp(prev['timestamp']);
 
     for (var i = 1; i < locations.length; i++) {
       final curr = locations[i];
-      final delta = _encodeDelta(prev, curr, factor);
+      final currTs = _parseTimestamp(curr['timestamp']);
+      final delta = _encodeDelta(prev, curr, factor, prevTs, currTs);
       result.add(<String, Object?>{'d': delta});
       prev = curr;
+      prevTs = currTs;
     }
 
     return result;
@@ -79,15 +82,18 @@ class DeltaEncoder {
     result.add(ref);
 
     var prev = ref;
+    var prevTs = _parseTimestamp(prev['timestamp']);
 
     for (var i = 1; i < batch.length; i++) {
       final item = batch[i];
       final delta = item['d'] as Map<String, Object?>?;
       if (delta == null) continue;
 
-      final decoded = _decodeDelta(prev, delta, factor);
+      final decodedTs = _reconstructTimestamp(prevTs, delta['t']);
+      final decoded = _decodeDelta(prev, delta, factor, decodedTs);
       result.add(decoded);
       prev = decoded;
+      prevTs = decodedTs;
     }
 
     return result;
@@ -97,6 +103,8 @@ class DeltaEncoder {
     Map<String, Object?> prev,
     Map<String, Object?> curr,
     int factor,
+    DateTime? prevTs,
+    DateTime? currTs,
   ) {
     final delta = <String, Object?>{};
 
@@ -104,8 +112,6 @@ class DeltaEncoder {
     delta['u'] = curr['uuid'];
 
     // Δ timestamp (seconds).
-    final prevTs = _parseTimestamp(prev['timestamp']);
-    final currTs = _parseTimestamp(curr['timestamp']);
     if (prevTs != null && currTs != null) {
       delta['t'] = currTs.difference(prevTs).inSeconds;
     }
@@ -159,19 +165,15 @@ class DeltaEncoder {
     Map<String, Object?> prev,
     Map<String, Object?> delta,
     int factor,
+    DateTime? decodedTs,
   ) {
     final decoded = <String, Object?>{};
 
     decoded['uuid'] = delta['u'];
 
     // Reconstruct timestamp.
-    final prevTs = _parseTimestamp(prev['timestamp']);
-    final dt = delta['t'];
-    if (prevTs != null && dt != null) {
-      final seconds = dt is int ? dt : (dt as num).toInt();
-      decoded['timestamp'] = prevTs
-          .add(Duration(seconds: seconds))
-          .toIso8601String();
+    if (decodedTs != null) {
+      decoded['timestamp'] = decodedTs.toIso8601String();
     }
 
     // Reconstruct coordinates.
@@ -240,10 +242,23 @@ class DeltaEncoder {
     return 0.0;
   }
 
+  /// Precomputed rounding factors for common precisions.
+  static const int _factor2 = 100;
+  static const int _factor4 = 10000;
+
   /// Round to [places] decimal places.
   static double _round(double value, int places) {
-    final f = math.pow(10, places);
+    final f = places == 2
+        ? _factor2
+        : (places == 4 ? _factor4 : math.pow(10, places));
     return (value * f).roundToDouble() / f;
+  }
+
+  /// Reconstruct a DateTime from prevTs + delta seconds without re-parsing.
+  static DateTime? _reconstructTimestamp(DateTime? prevTs, Object? dt) {
+    if (prevTs == null || dt == null) return null;
+    final seconds = dt is int ? dt : (dt as num).toInt();
+    return prevTs.add(Duration(seconds: seconds));
   }
 
   /// Compute the shortest arc between two headings (0–360°).
