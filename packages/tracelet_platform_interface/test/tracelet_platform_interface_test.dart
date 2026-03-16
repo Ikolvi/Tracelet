@@ -57,10 +57,7 @@ void main() {
 
     test('getLocations throws UnimplementedError by default', () {
       final platform = _TestPlatform();
-      expect(
-        () => platform.getLocations(),
-        throwsA(isA<UnimplementedError>()),
-      );
+      expect(() => platform.getLocations(), throwsA(isA<UnimplementedError>()));
     });
 
     test('getLocations accepts optional query map', () {
@@ -73,10 +70,7 @@ void main() {
 
     test('getCount throws UnimplementedError by default', () {
       final platform = _TestPlatform();
-      expect(
-        () => platform.getCount(),
-        throwsA(isA<UnimplementedError>()),
-      );
+      expect(() => platform.getCount(), throwsA(isA<UnimplementedError>()));
     });
 
     test('getCount accepts optional query map', () {
