@@ -175,7 +175,7 @@ internal class LocationEnginePeriodicTest {
 
     @Test
     fun eventSender_sendLocation_canBeMocked() {
-        val events = Mockito.mock(EventDispatcher::class.java)
+        val events = Mockito.mock(TraceletEventSender::class.java)
         val locationMap = mapOf<String, Any?>(
             "latitude" to 37.7749,
             "longitude" to -122.4194,

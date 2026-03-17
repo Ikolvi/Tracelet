@@ -1,3 +1,11 @@
+## 1.3.7
+
+- **FIX**: Fix `ClassNotFoundException` crash for `BootReceiver`, `GeofenceBroadcastReceiver`, `PeriodicAlarmReceiver`, and `LocationService` caused by package path mismatch in `AndroidManifest.xml` (fixes #31).
+- **FIX**: Fix foreground notification not appearing due to `LocationService` not being resolved from the manifest.
+- **FIX**: Fix ProGuard/R8 consumer rules referencing wrong package paths — prevents class stripping in release builds.
+- **FIX**: Fix pre-existing test compilation errors caused by missing cross-package imports.
+- **CHORE**: Update cross-package dependency constraints to `^1.3.7`.
+
 ## 1.3.6
 
 - **FIX**: `getLocations()` now honors `SQLQuery.start` and `SQLQuery.end` timestamp filtering.

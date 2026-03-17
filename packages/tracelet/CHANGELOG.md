@@ -1,3 +1,8 @@
+## 1.3.7
+
+- **FIX**: Android — fix `ClassNotFoundException` crash on app upgrade for `BootReceiver` and other manifest-declared components (fixes #31).
+- **CHORE**: Update `tracelet_android` dependency constraint to `^1.3.7`.
+
 ## 1.3.6
 
 - **FIX**: `SQLQuery.start` and `SQLQuery.end` now correctly filter locations on all platforms (Android, iOS, Web).

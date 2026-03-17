@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.tracelet.core.ConfigManager
 import com.tracelet.core.StateManager
+import com.tracelet.core.service.LocationService
 import org.mockito.Mockito
 import org.mockito.Mockito.`when`
 import kotlin.test.Test

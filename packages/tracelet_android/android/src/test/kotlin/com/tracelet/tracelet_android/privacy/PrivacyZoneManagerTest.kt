@@ -1,5 +1,9 @@
 package com.tracelet.tracelet_android.privacy
 
+import com.tracelet.core.privacy.degradeCoordinates
+import com.tracelet.core.privacy.haversineDistanceMetres
+import com.tracelet.core.privacy.isActionMoreRestrictive
+import com.tracelet.core.privacy.PrivacyZoneManager
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals

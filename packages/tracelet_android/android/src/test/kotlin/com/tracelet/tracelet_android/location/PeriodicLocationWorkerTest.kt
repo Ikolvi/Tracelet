@@ -1,6 +1,7 @@
 package com.tracelet.tracelet_android.location
 
 import com.tracelet.core.TraceletEventSender
+import com.tracelet.core.location.PeriodicLocationWorker
 import org.mockito.Mockito
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -38,7 +39,7 @@ internal class PeriodicLocationWorkerTest {
 
     @Test
     fun eventSender_canBeSetAndRead() {
-        val dispatcher = Mockito.mock(EventDispatcher::class.java)
+        val dispatcher = Mockito.mock(TraceletEventSender::class.java)
         try {
             PeriodicLocationWorker.eventSender = dispatcher
             assertEquals(dispatcher, PeriodicLocationWorker.eventSender)
@@ -49,7 +50,7 @@ internal class PeriodicLocationWorkerTest {
 
     @Test
     fun eventSender_canBeResetToNull() {
-        val dispatcher = Mockito.mock(EventDispatcher::class.java)
+        val dispatcher = Mockito.mock(TraceletEventSender::class.java)
         PeriodicLocationWorker.eventSender = dispatcher
         PeriodicLocationWorker.eventSender = null
         assertNull(PeriodicLocationWorker.eventSender)
@@ -57,8 +58,8 @@ internal class PeriodicLocationWorkerTest {
 
     @Test
     fun eventSender_multipleAssignments() {
-        val d1 = Mockito.mock(EventDispatcher::class.java)
-        val d2 = Mockito.mock(EventDispatcher::class.java)
+        val d1 = Mockito.mock(TraceletEventSender::class.java)
+        val d2 = Mockito.mock(TraceletEventSender::class.java)
         try {
             PeriodicLocationWorker.eventSender = d1
             assertEquals(d1, PeriodicLocationWorker.eventSender)

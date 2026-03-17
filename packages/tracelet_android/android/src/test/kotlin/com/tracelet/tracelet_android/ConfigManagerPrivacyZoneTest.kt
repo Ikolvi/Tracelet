@@ -2,6 +2,7 @@ package com.tracelet.tracelet_android
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.tracelet.core.ConfigManager
 import org.mockito.Mockito
 import org.mockito.Mockito.`when`
 import kotlin.test.Test

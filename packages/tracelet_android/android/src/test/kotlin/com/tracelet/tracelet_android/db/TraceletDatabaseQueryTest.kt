@@ -1,6 +1,7 @@
 package com.tracelet.tracelet_android.db
 
 import androidx.test.core.app.ApplicationProvider
+import com.tracelet.core.db.TraceletDatabase
 import org.junit.After
 import org.junit.Before
 import org.junit.Test

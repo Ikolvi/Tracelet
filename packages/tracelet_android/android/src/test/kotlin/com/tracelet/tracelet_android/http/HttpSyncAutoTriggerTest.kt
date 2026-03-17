@@ -1,5 +1,6 @@
 package com.tracelet.tracelet_android.http
 
+import com.tracelet.core.http.HttpSyncManager
 import com.tracelet.core.location.PeriodicLocationWorker
 import org.mockito.Mockito
 import kotlin.test.Test
@@ -65,12 +66,12 @@ internal class HttpSyncAutoTriggerTest {
         val manager = Mockito.mock(HttpSyncManager::class.java)
         try {
             PeriodicLocationWorker.httpSyncManager = manager
-            PeriodicLocationWorker.eventDispatcher = null
+            PeriodicLocationWorker.eventSender = null
             // httpSyncManager should remain after clearing eventDispatcher
             assertEquals(manager, PeriodicLocationWorker.httpSyncManager)
         } finally {
             PeriodicLocationWorker.httpSyncManager = null
-            PeriodicLocationWorker.eventDispatcher = null
+            PeriodicLocationWorker.eventSender = null
         }
     }
 }

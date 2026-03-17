@@ -39,13 +39,13 @@
     <application>
         <!-- Foreground service for background location tracking -->
         <service
-            android:name=".service.LocationService"
+            android:name="com.tracelet.core.service.LocationService"
             android:exported="false"
             android:foregroundServiceType="location" />
 
         <!-- Boot receiver for startOnBoot -->
         <receiver
-            android:name=".receiver.BootReceiver"
+            android:name="com.tracelet.core.receiver.BootReceiver"
             android:exported="true"
             android:enabled="false">
             <intent-filter>
@@ -55,12 +55,12 @@
 
         <!-- Geofence transition receiver -->
         <receiver
-            android:name=".receiver.GeofenceBroadcastReceiver"
+            android:name="com.tracelet.core.receiver.GeofenceBroadcastReceiver"
             android:exported="false" />
 
         <!-- Periodic exact-alarm receiver -->
         <receiver
-            android:name=".receiver.PeriodicAlarmReceiver"
+            android:name="com.tracelet.core.receiver.PeriodicAlarmReceiver"
             android:exported="false" />
 
         <!-- Headless Dart execution service -->
