@@ -54,6 +54,19 @@ class LocationEngine(
 
         /** Retention pruning runs every N inserts instead of on every insert. */
         private const val PRUNE_EVERY_N_INSERTS = 100
+
+        /** Maximum accuracy (meters) to consider a fix as GPS-sourced. */
+        internal const val GPS_ACCURACY_THRESHOLD = 50f
+
+        /**
+         * Determines if a location fix is GPS-sourced (not network/cell).
+         * FusedLocationProvider uses "fused" as provider, so we also check
+         * accuracy as a heuristic: GPS fixes typically have accuracy ≤ 50m.
+         */
+        internal fun isGpsFix(location: Location): Boolean {
+            return location.provider == "gps" ||
+                (location.provider == "fused" && location.accuracy <= GPS_ACCURACY_THRESHOLD)
+        }
     }
 
     private val fusedClient: FusedLocationProviderClient =
@@ -555,11 +568,7 @@ class LocationEngine(
 
     private fun onLocationReceived(location: Location, event: String) {
         // Only reset DR timer on GPS-sourced fixes (not network/cell).
-        // FusedLocationProvider uses "fused" as provider, so also check accuracy
-        // as a heuristic: GPS fixes typically have accuracy ≤ 50m.
-        val isGpsFix = location.provider == "gps" ||
-            (location.provider == "fused" && location.accuracy <= 50f)
-        if (isGpsFix) {
+        if (isGpsFix(location)) {
             resetGpsLossTimer()
             if (deadReckoningEngine?.isActive == true) {
                 Log.d(TAG, "GPS signal recovered — deactivating dead reckoning")

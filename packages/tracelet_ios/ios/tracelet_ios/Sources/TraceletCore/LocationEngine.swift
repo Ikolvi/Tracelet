@@ -36,6 +36,15 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     private var insertCountSincePrune = 0
     private static let pruneEveryNInserts = 100
 
+    /// Maximum accuracy (meters) to consider a fix as GPS-sourced.
+    static let gpsAccuracyThreshold: Double = 50.0
+
+    /// Determines if a location fix is GPS-sourced (not network/cell).
+    static func isGpsFix(_ location: CLLocation) -> Bool {
+        return location.horizontalAccuracy > 0 &&
+            location.horizontalAccuracy <= gpsAccuracyThreshold
+    }
+
     /// [Enterprise] Audit trail manager — set by the plugin after initialization.
     public var auditTrailManager: AuditTrailManager?
 
@@ -488,9 +497,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         guard let location = locations.last else { return }
 
         // Only reset DR timer on GPS-quality fixes (not cell/Wi-Fi).
-        // GPS fixes typically have horizontalAccuracy ≤ 50m.
-        let isGpsFix = location.horizontalAccuracy > 0 && location.horizontalAccuracy <= 50
-        if isGpsFix {
+        if LocationEngine.isGpsFix(location) {
             resetGpsLossTimer()
             if deadReckoningEngine?.isActive == true {
                 NSLog("[Tracelet] GPS signal recovered — deactivating dead reckoning")
