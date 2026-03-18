@@ -116,6 +116,67 @@ only activates during GPS gaps, so the overall battery impact is negligible.
 
 ---
 
+## Querying Dead Reckoning State
+
+Use `getDeadReckoningState()` to check if dead reckoning is currently active
+and inspect its estimation accuracy:
+
+```dart
+final state = await Tracelet.getDeadReckoningState();
+if (state != null) {
+  final active = state['active'] as bool;       // true if currently estimating
+  final elapsed = state['elapsed'] as int;       // seconds since activation
+  final accuracy = state['estimatedAccuracy'] as double; // estimated accuracy (meters)
+
+  print('DR active: $active');
+  print('Elapsed: ${elapsed}s');
+  print('Estimated accuracy: ${accuracy.toStringAsFixed(1)}m');
+} else {
+  print('Dead reckoning is not active');
+}
+```
+
+### Return Value
+
+Returns `Map<String, Object?>?` — `null` if dead reckoning is disabled or
+GPS is available (DR engine not initialized).
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `active` | `bool` | `true` if currently estimating position via IMU |
+| `elapsed` | `int` | Seconds since dead reckoning activated |
+| `estimatedAccuracy` | `double` | Estimated position accuracy in meters |
+
+### Accuracy Degradation
+
+The `estimatedAccuracy` field reflects IMU drift accumulation over time:
+
+| Activity | Formula | Example (30s) |
+| --- | --- | --- |
+| Pedestrian | 5 + 1 × elapsed | 35 m |
+| Vehicle | 10 + 3 × elapsed | 100 m |
+
+> **Tip:** Use `estimatedAccuracy` to visually indicate confidence in your UI —
+> for example, expanding an accuracy circle on the map as drift accumulates.
+
+### Polling Example
+
+For real-time UI updates, poll the state at regular intervals:
+
+```dart
+Timer.periodic(Duration(seconds: 5), (_) async {
+  final state = await Tracelet.getDeadReckoningState();
+  if (state != null && state['active'] == true) {
+    updateDRIndicator(
+      elapsed: state['elapsed'] as int,
+      accuracy: state['estimatedAccuracy'] as double,
+    );
+  }
+});
+```
+
+---
+
 ## Location Events During Dead Reckoning
 
 Locations emitted during dead reckoning are marked so your application can

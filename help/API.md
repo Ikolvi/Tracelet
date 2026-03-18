@@ -87,6 +87,31 @@
 
 ---
 
+## Database Encryption
+
+| Method | Returns | Description |
+|---|---|---|
+| `Tracelet.isDatabaseEncrypted()` | `bool` | Check if database is encrypted at rest ([details](DATABASE-ENCRYPTION.md)) |
+| `Tracelet.encryptDatabase()` | `bool` | Encrypt the local database (migration + mark) |
+
+---
+
+## Device Attestation
+
+| Method | Returns | Description |
+|---|---|---|
+| `Tracelet.getAttestationToken()` | `AttestationToken?` | Get platform attestation token ([details](DEVICE-ATTESTATION.md)) |
+
+---
+
+## Dead Reckoning
+
+| Method | Returns | Description |
+|---|---|---|
+| `Tracelet.getDeadReckoningState()` | `Map<String, Object?>?` | Query IMU dead reckoning state ([details](DEAD-RECKONING.md)) |
+
+---
+
 ## Permissions & Settings
 
 | Method | Returns | Description |
@@ -276,6 +301,17 @@ Export methods: `toJson()` → structured JSON, `toMarkdown()` → human-readabl
 | `degradedAccuracyMeters` | `double?` | Degraded accuracy when action is `degrade` |
 
 > See [Privacy Zones Guide](PRIVACY-ZONES.md) for zone actions and usage.
+
+### AttestationToken
+
+| Property | Type | Description |
+|---|---|---|
+| `token` | `String` | Platform-specific attestation token string |
+| `timestamp` | `DateTime` | When the token was generated |
+| `provider` | `String` | Provider: `play_integrity`, `app_attest`, or `device_check` |
+| `verified` | `bool?` | Server verification result (`null` if not yet verified) |
+
+> See [Device Attestation Guide](DEVICE-ATTESTATION.md) for platform details and server verification.
 
 ### startPeriodic()
 

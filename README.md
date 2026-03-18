@@ -55,7 +55,9 @@ Battery-conscious motion-detection intelligence, geofencing, SQLite persistence,
 - **R-tree spatial index** — O(log n) geofence proximity queries supporting 10,000+ geofences with sub-millisecond lookup. `queryCircle()` and `queryBBox()` APIs with Haversine-verified results.
 - **GDPR/CCPA compliance reports** — `generateComplianceReport()` returns a structured data processing inventory covering: stored/synced counts, retention policy, privacy zones, encryption status, permissions, audit trail, and tracking config. Exports to JSON and Markdown.
 - **Sparse updates** — App-level location deduplication at the persistence layer. Drops locations within `sparseDistanceThreshold` (default 50 m) of the last recorded position, with configurable idle heartbeat interval.
-- **Dead reckoning** — Inertial navigation using accelerometer + gyroscope + compass when GPS is lost for longer than `deadReckoningActivationDelay` seconds. Auto-stops after configurable duration to prevent IMU drift.
+- **Dead reckoning** — Inertial navigation using accelerometer + gyroscope + compass when GPS is lost for longer than `deadReckoningActivationDelay` seconds. Auto-stops after configurable duration to prevent IMU drift. Query real-time state (`active`, `elapsed`, `estimatedAccuracy`) via `getDeadReckoningState()`.
+- **Database encryption** — At-rest encryption for the local SQLite database. Android uses SQLCipher (AES-256) with keys stored in Android Keystore. iOS uses `NSFileProtectionComplete` backed by the Secure Enclave. Enable via `SecurityConfig(encryptDatabase: true)` or encrypt at runtime with `encryptDatabase()`.
+- **Device attestation** — Verify device and app integrity using Google Play Integrity (Android) and App Attest (iOS). Generate cryptographic attestation tokens for server-side verification. Auto-refresh with configurable intervals.
 - **Wi-Fi-only sync** — `disableAutoSyncOnCellular` skips HTTP auto-sync on cellular networks, syncing only when connected to Wi-Fi. Supported on Android, iOS, and Web.
 - **Periodic mode** — Configurable one-shot location fixes at intervals from 60 seconds to 12 hours. Android supports sub-15-minute intervals via foreground service and exact alarms via `AlarmManager`.
 - **Live map view** — Built-in example with OpenStreetMap tiles, speed-colored route trail, geofence visualization, trip overlay, and real-time status overlay.
@@ -234,6 +236,8 @@ await tl.Tracelet.start();
 | [Carbon Estimator](help/CARBON-ESTIMATOR.md) | Real-time CO₂ estimation by transport mode (EU EEA 2024 factors) |
 | [Compliance Report](help/COMPLIANCE-REPORT.md) | Auto-generated GDPR Article 30 / CCPA compliance reports |
 | [Dead Reckoning](help/DEAD-RECKONING.md) | IMU-based inertial navigation during GPS signal loss |
+| [Database Encryption](help/DATABASE-ENCRYPTION.md) | At-rest SQLite encryption (SQLCipher / NSFileProtection) |
+| [Device Attestation](help/DEVICE-ATTESTATION.md) | Platform attestation tokens (Play Integrity / App Attest) |
 | [Sparse Updates](help/SPARSE-UPDATES.md) | App-level location deduplication — reduce DB writes and sync volume |
 | [Periodic Mode](help/PERIODIC-MODE.md) | Timed one-shot GPS fixes — WorkManager, foreground service, exact alarms |
 
