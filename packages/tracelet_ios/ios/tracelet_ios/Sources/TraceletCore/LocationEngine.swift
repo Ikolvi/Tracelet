@@ -487,11 +487,15 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
 
-        // GPS fix received — reset dead reckoning timer
-        resetGpsLossTimer()
-        if deadReckoningEngine?.isActive == true {
-            NSLog("[Tracelet] GPS signal recovered — deactivating dead reckoning")
-            deactivateDeadReckoning()
+        // Only reset DR timer on GPS-quality fixes (not cell/Wi-Fi).
+        // GPS fixes typically have horizontalAccuracy ≤ 50m.
+        let isGpsFix = location.horizontalAccuracy > 0 && location.horizontalAccuracy <= 50
+        if isGpsFix {
+            resetGpsLossTimer()
+            if deadReckoningEngine?.isActive == true {
+                NSLog("[Tracelet] GPS signal recovered — deactivating dead reckoning")
+                deactivateDeadReckoning()
+            }
         }
 
         // Request background execution time for the entire persist + dispatch

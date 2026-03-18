@@ -554,11 +554,17 @@ class LocationEngine(
     // =========================================================================
 
     private fun onLocationReceived(location: Location, event: String) {
-        // GPS fix received — reset dead reckoning timer
-        resetGpsLossTimer()
-        if (deadReckoningEngine?.isActive == true) {
-            Log.d(TAG, "GPS signal recovered — deactivating dead reckoning")
-            deactivateDeadReckoning()
+        // Only reset DR timer on GPS-sourced fixes (not network/cell).
+        // FusedLocationProvider uses "fused" as provider, so also check accuracy
+        // as a heuristic: GPS fixes typically have accuracy ≤ 50m.
+        val isGpsFix = location.provider == "gps" ||
+            (location.provider == "fused" && location.accuracy <= 50f)
+        if (isGpsFix) {
+            resetGpsLossTimer()
+            if (deadReckoningEngine?.isActive == true) {
+                Log.d(TAG, "GPS signal recovered — deactivating dead reckoning")
+                deactivateDeadReckoning()
+            }
         }
 
         // --- Mock location rejection (defense-in-depth) ---
