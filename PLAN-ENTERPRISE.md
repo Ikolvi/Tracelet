@@ -1,6 +1,6 @@
 # Tracelet — Enterprise Features Plan
 
-> **Target**: v1.1–v1.3 release timeline
+> **Target**: v1.1–v1.3 release timeline — **ALL FEATURES COMPLETE** as of v1.4.1
 > **Last updated**: July 2025
 
 ---
@@ -25,7 +25,7 @@ Five Tier-1 enterprise features that address the most common blockers for enterp
 
 ---
 
-### Feature 1: Encrypted SQLite (SQLCipher) ⏳
+### Feature 1: Encrypted SQLite (SQLCipher) ✅
 
 **Priority**: P0 — Without this, enterprise security teams will reject adoption (GDPR Art. 32, HIPAA §164.312, SOC2 CC6.1).
 
@@ -222,7 +222,7 @@ Automatic — `LocationProcessor` is shared Dart code, runs on all platforms.
 
 ---
 
-### Feature 3: Remote Config Endpoint ⏳
+### Feature 3: Remote Config Endpoint ✅
 
 **Priority**: P1 — Enables ops teams to change tracking behavior fleet-wide without deploying an app update. Critical for 1000+ device deployments.
 
@@ -316,7 +316,7 @@ Use `fetch()` API. Same merge logic (shared Dart code for merging).
 
 ---
 
-### Feature 4: Device Attestation ⏳
+### Feature 4: Device Attestation ✅
 
 **Priority**: P1 — Proves locations came from a genuine, non-rooted device. Pairs with existing mock detection (Level 1+2) to create 3-layer trust.
 
@@ -673,7 +673,7 @@ Minimal — the engine runs in shared Dart. Native only needs to:
 
 ---
 
-### Feature 7: Dead Reckoning (IMU Fusion) ⏳
+### Feature 7: Dead Reckoning (IMU Fusion) ✅
 
 **Priority**: P2 — Provides position estimates in GPS-denied areas (tunnels, underground parking, indoor). Even 50m accuracy is valuable when GPS reads zero.
 
@@ -860,7 +860,7 @@ class RTree<T> {
 
 ---
 
-### Feature 10: Transport Mode Carbon Estimator 🔧
+### Feature 10: Transport Mode Carbon Estimator ✅
 
 **Priority**: P3 — EU CSRD (Corporate Sustainability Reporting Directive) requires companies to report Scope 3 emissions from employee commuting by 2026. Growing regulatory requirement.
 
@@ -915,7 +915,7 @@ class CarbonReport {
 | Order | Feature | Status | Dependencies |
 |-------|---------|--------|-------------|
 | 1 | **Sparse Updates** | ✅ Done | None — pure Dart, smallest scope |
-| 2 | **Remote Config Endpoint** | ⏳ | Depends on OkHttp (Android) / URLSession (iOS) — already available |
+| 2 | **Remote Config Endpoint** | ✅ Done (v1.4.0) | Depends on OkHttp (Android) / URLSession (iOS) — already available |
 | 3 | **Delta Compression** | ✅ Done | Should ship after **Sparse Updates** (they compose well) |
 | 4 | **Compliance Report** | ✅ Done | Pure Dart, no native — quick win |
 
@@ -923,8 +923,8 @@ class CarbonReport {
 
 | Order | Feature | Status | Dependencies |
 |-------|---------|--------|-------------|
-| 1 | **Encrypted SQLite** | ⏳ | SQLCipher dependency, DB migration |
-| 2 | **Device Attestation** | ⏳ | Play Integrity (Android) / App Attest (iOS) |
+| 1 | **Encrypted SQLite** | ✅ Done (v1.4.0) | SQLCipher dependency, DB migration |
+| 2 | **Device Attestation** | ✅ Done (v1.4.0) | Play Integrity (Android) / App Attest (iOS) |
 
 ### v1.3.0 — "Intelligence"
 
@@ -932,8 +932,8 @@ class CarbonReport {
 |-------|---------|--------|-------------|
 | 1 | **Battery Budget Mode** | ✅ Done | Requires battery drain calibration data |
 | 2 | **Geofence Clustering** | ✅ Done | R-tree algorithm |
-| 3 | **Dead Reckoning** | ⏳ | Native sensor access, complex IMU math |
-| 4 | **Carbon Estimator** | 🔧 Algorithm exists, not wired | Depends on trip detection (already complete) |
+| 3 | **Dead Reckoning** | ✅ Done (v1.4.1) | Native sensor access, complex IMU math |
+| 4 | **Carbon Estimator** | ✅ Done (v1.4.0) | Depends on trip detection (already complete) |
 
 ---
 
@@ -951,15 +951,15 @@ For each release:
 | Feature | Tracelet | Transistor/FBG | Other OSS |
 |---------|----------|---------------|-----------|
 | Sparse Updates | ✅ v0.8 | ✅ v5.0.5 | ❌ |
-| Remote Config | 🔜 v1.1 | ⚠️ Partial | ❌ |
+| Remote Config | ✅ v1.4.0 | ⚠️ Partial | ❌ |
 | Delta Compression | ✅ v0.8 | ❌ | ❌ |
 | Compliance Report | ✅ v0.8 | ❌ | ❌ |
-| Encrypted SQLite | 🔜 v1.2 | ❌ | ❌ |
-| Device Attestation | 🔜 v1.2 | ❌ | ❌ |
+| Encrypted SQLite | ✅ v1.4.0 | ❌ | ❌ |
+| Device Attestation | ✅ v1.4.0 | ❌ | ❌ |
 | Battery Budget | ✅ v0.8 | ❌ | ❌ |
 | R-tree Geofences | ✅ v0.8 | ❌ | ❌ |
-| Dead Reckoning | 🔜 v1.3 | ❌ | ❌ |
-| Carbon Estimator | 🔧 v1.3 | ❌ | ❌ |
+| Dead Reckoning | ✅ v1.4.1 | ❌ | ❌ |
+| Carbon Estimator | ✅ v1.4.0 | ❌ | ❌ |
 | **Audit Trail** | ✅ v1.0 | ❌ | ❌ |
 | **Privacy Zones** | ✅ v1.0 | ❌ | ❌ |
 | **Mock Detection** | ✅ v1.0 | ❌ | ❌ |
@@ -967,4 +967,4 @@ For each release:
 | **Periodic Mode** | ✅ v1.0 | ❌ | ❌ |
 | **Web Support** | ✅ v1.0 | ❌ | ❌ |
 
-After v1.3, Tracelet will have **16 features that no competitor offers at any price** — making its free, open-source nature a decisive advantage for enterprise adoption.
+As of v1.4.1, Tracelet has **16 features that no competitor offers at any price** — making its free, open-source nature a decisive advantage for enterprise adoption. **All 10 planned enterprise features are now implemented.**
