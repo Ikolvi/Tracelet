@@ -1,3 +1,9 @@
+## 1.4.2
+
+- **FIX**: `activateDeadReckoning()` now retries via timer instead of silently returning when `lastLocation` is nil.
+- **FIX**: Add debug logging to GPS-loss timer and dead reckoning activation flow.
+- **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.4.2`.
+
 ## 1.4.1
 
 - **FEAT**: Dead reckoning — full IMU sensor fusion implementation (`DeadReckoningEngine`). Uses `CMDeviceMotion` (fused accelerometer + gyroscope + magnetometer) for heading and step detection. Vehicle mode with acceleration integration.

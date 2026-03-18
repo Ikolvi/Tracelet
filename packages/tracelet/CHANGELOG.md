@@ -1,3 +1,9 @@
+## 1.4.2
+
+- **FIX**: Dead reckoning activation now reliably detects GPS hardware state instead of using accuracy-based heuristic.
+- **FIX**: Mock detection heuristic no longer produces false positives for Wi-Fi/cell locations when GPS is disabled.
+- **CHORE**: Update cross-package dependency constraints to `^1.4.2`.
+
 ## 1.4.1
 
 - **FEAT**: Dead reckoning — full native IMU sensor fusion for GPS-denied environments (tunnels, parking structures, urban canyons). Activates automatically on GPS loss, deactivates on GPS recovery.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.2
+
+- **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.4.2`.
+
 ## 1.4.1
 
 - **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.4.1`.

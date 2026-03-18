@@ -1,3 +1,10 @@
+## 1.4.2
+
+- **FIX**: Dead reckoning activation now uses `LocationManager.isProviderEnabled(GPS_PROVIDER)` instead of accuracy heuristic — Wi-Fi/cell fixes no longer prevent DR from activating when GPS hardware is disabled.
+- **FIX**: Mock detection heuristic no longer false-flags Wi-Fi/cell locations as mock when GPS is disabled (satellite count 0 is expected without GPS hardware).
+- **FIX**: `activateDeadReckoning()` now retries via timer instead of silently returning when `lastLocation` is null.
+- **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.4.2`.
+
 ## 1.4.1
 
 - **FEAT**: Dead reckoning — full IMU sensor fusion implementation (`DeadReckoningEngine`). Pedestrian Dead Reckoning with step detection (Weinberg formula) and magnetic heading. Vehicle mode with high-pass-filtered acceleration integration.
