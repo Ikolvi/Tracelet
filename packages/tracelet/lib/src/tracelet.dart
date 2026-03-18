@@ -1326,11 +1326,22 @@ class Tracelet {
         : null;
 
     // Extract timestamps from oldest/newest records.
-    final oldestTs = oldestList.isNotEmpty
-        ? oldestList.first['timestamp'] as String?
+    // Android sends timestamps as int (millis), iOS sends as String (ISO8601).
+    final oldestRaw = oldestList.isNotEmpty
+        ? oldestList.first['timestamp']
         : null;
-    final newestTs = newestList.isNotEmpty
-        ? newestList.first['timestamp'] as String?
+    final newestRaw = newestList.isNotEmpty
+        ? newestList.first['timestamp']
+        : null;
+    final oldestTs = oldestRaw is String
+        ? oldestRaw
+        : oldestRaw is int
+        ? DateTime.fromMillisecondsSinceEpoch(oldestRaw).toIso8601String()
+        : null;
+    final newestTs = newestRaw is String
+        ? newestRaw
+        : newestRaw is int
+        ? DateTime.fromMillisecondsSinceEpoch(newestRaw).toIso8601String()
         : null;
 
     return ComplianceReport(
