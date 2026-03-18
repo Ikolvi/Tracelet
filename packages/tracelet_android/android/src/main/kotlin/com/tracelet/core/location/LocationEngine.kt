@@ -18,6 +18,7 @@ import com.tracelet.core.privacy.PrivacyZoneManager
 import com.tracelet.core.db.TraceletDatabase
 import com.tracelet.core.util.BatteryUtils
 import android.os.SystemClock
+import android.os.Handler
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -95,6 +96,14 @@ class LocationEngine(
     /** Whether continuous tracking is active. */
     val isTracking: Boolean get() = trackingCallback != null
 
+    // =========================================================================
+    // Dead Reckoning
+    // =========================================================================
+
+    private var deadReckoningEngine: DeadReckoningEngine? = null
+    private val drHandler = Handler(Looper.getMainLooper())
+    private var gpsLossRunnable: Runnable? = null
+
     /**
      * Starts continuous location tracking based on current config.
      */
@@ -121,6 +130,7 @@ class LocationEngine(
         try {
             fusedClient.requestLocationUpdates(request, trackingCallback!!, Looper.getMainLooper())
             state.enabled = true
+            startGpsLossTimer()
         } catch (e: SecurityException) {
             trackingCallback = null
         }
@@ -133,6 +143,8 @@ class LocationEngine(
             trackingCallback = null
         }
         stopPeriodic()
+        deactivateDeadReckoning()
+        cancelGpsLossTimer()
         state.enabled = false
     }
 
@@ -542,6 +554,13 @@ class LocationEngine(
     // =========================================================================
 
     private fun onLocationReceived(location: Location, event: String) {
+        // GPS fix received — reset dead reckoning timer
+        resetGpsLossTimer()
+        if (deadReckoningEngine?.isActive == true) {
+            Log.d(TAG, "GPS signal recovered — deactivating dead reckoning")
+            deactivateDeadReckoning()
+        }
+
         // --- Mock location rejection (defense-in-depth) ---
         if (config.getRejectMockLocations() && isLocationMock(location)) {
             // Fire a provider change event to notify Dart that mock was detected.
@@ -939,7 +958,7 @@ class LocationEngine(
     }
 
     // =========================================================================
-    // Dead Reckoning (Enterprise) — stub for future IMU fusion
+    // Dead Reckoning (Enterprise) — IMU sensor fusion
     // =========================================================================
 
     /**
@@ -952,8 +971,103 @@ class LocationEngine(
      * - "estimatedAccuracy" (Double) — estimated position accuracy in meters
      */
     fun getDeadReckoningState(): Map<String, Any?>? {
-        // Dead reckoning will be implemented with IMU sensor fusion.
-        // For now, return null indicating the feature is not yet active.
-        return null
+        return deadReckoningEngine?.getState()
+    }
+
+    /**
+     * Starts the GPS-loss timer. After [deadReckoningActivationDelay] seconds
+     * without a GPS fix, dead reckoning activates automatically.
+     */
+    private fun startGpsLossTimer() {
+        if (!config.getEnableDeadReckoning()) return
+        cancelGpsLossTimer()
+
+        val delayMs = config.getDeadReckoningActivationDelay() * 1000L
+        gpsLossRunnable = Runnable { activateDeadReckoning() }
+        drHandler.postDelayed(gpsLossRunnable!!, delayMs)
+    }
+
+    /** Resets the GPS-loss timer (called on each GPS fix). */
+    private fun resetGpsLossTimer() {
+        if (!config.getEnableDeadReckoning()) return
+        cancelGpsLossTimer()
+        startGpsLossTimer()
+    }
+
+    private fun cancelGpsLossTimer() {
+        gpsLossRunnable?.let { drHandler.removeCallbacks(it) }
+        gpsLossRunnable = null
+    }
+
+    /** Activates dead reckoning from the last known GPS position. */
+    private fun activateDeadReckoning() {
+        val last = lastLocation ?: return
+        Log.d(TAG, "GPS lost for ${config.getDeadReckoningActivationDelay()}s — activating dead reckoning")
+
+        val engine = DeadReckoningEngine(context, config)
+        engine.onEstimatedLocation = { drLocation -> onDrLocationEstimated(drLocation) }
+        engine.onDeactivated = {
+            Log.d(TAG, "Dead reckoning auto-stopped (max duration)")
+        }
+        engine.activate(
+            lat = last.latitude,
+            lng = last.longitude,
+            altitude = last.altitude,
+            heading = last.bearing.toDouble(),
+            activity = currentActivityType,
+        )
+        deadReckoningEngine = engine
+    }
+
+    /** Deactivates dead reckoning. */
+    private fun deactivateDeadReckoning() {
+        deadReckoningEngine?.deactivate()
+        deadReckoningEngine = null
+    }
+
+    /**
+     * Processes a dead-reckoned location estimate.
+     * Enriches it into the standard location format and dispatches it.
+     */
+    private fun onDrLocationEstimated(drLocation: Map<String, Any?>) {
+        val lat = drLocation["latitude"] as? Double ?: return
+        val lng = drLocation["longitude"] as? Double ?: return
+        val altitude = drLocation["altitude"] as? Double ?: 0.0
+        val heading = drLocation["heading"] as? Double ?: 0.0
+        val accuracy = drLocation["accuracy"] as? Double ?: 50.0
+        val speed = drLocation["speed"] as? Double ?: 0.0
+
+        val timestamp = isoFormatter.format(Date())
+        val battery = BatteryUtils.getBatteryInfo(context)
+
+        val enriched = mutableMapOf<String, Any?>(
+            "uuid" to UUID.randomUUID().toString(),
+            "timestamp" to timestamp,
+            "isMoving" to state.isMoving,
+            "odometer" to state.odometer,
+            "event" to "dead_reckoning",
+            "mock" to false,
+            "isDeadReckoned" to true,
+            "coords" to mapOf(
+                "latitude" to lat,
+                "longitude" to lng,
+                "altitude" to altitude,
+                "speed" to speed,
+                "heading" to heading,
+                "accuracy" to accuracy,
+                "speedAccuracy" to -1.0,
+                "headingAccuracy" to -1.0,
+                "altitudeAccuracy" to -1.0,
+            ),
+            "activity" to mapOf(
+                "type" to currentActivityType,
+                "confidence" to currentActivityConfidence,
+            ),
+            "battery" to battery,
+        )
+
+        // Persist and dispatch
+        persistLocationIfAllowed(enriched, "dead_reckoning")
+        events.sendLocation(enriched)
     }
 }

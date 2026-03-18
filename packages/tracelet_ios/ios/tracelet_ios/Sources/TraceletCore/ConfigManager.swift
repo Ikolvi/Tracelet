@@ -113,6 +113,11 @@ public final class ConfigManager {
     public func getRejectMockLocations() -> Bool { cache["rejectMockLocations"] as? Bool ?? false }
     public func getMockDetectionLevel() -> Int { cache["mockDetectionLevel"] as? Int ?? 1 }
 
+    // Dead Reckoning
+    public func getEnableDeadReckoning() -> Bool { cache["enableDeadReckoning"] as? Bool ?? false }
+    public func getDeadReckoningActivationDelay() -> Int { cache["deadReckoningActivationDelay"] as? Int ?? 10 }
+    public func getDeadReckoningMaxDuration() -> Int { cache["deadReckoningMaxDuration"] as? Int ?? 120 }
+
     // AppConfig
     public func isDebug() -> Bool { cache["debug"] as? Bool ?? false }
     public func getLogLevel() -> Int { cache["logLevel"] as? Int ?? 5 }

@@ -42,6 +42,13 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// [Enterprise] Privacy zone manager — set by the plugin after initialization.
     public var privacyZoneManager: PrivacyZoneManager?
 
+    // Dead Reckoning
+    private var deadReckoningEngine: DeadReckoningEngine?
+    private var gpsLossTimer: Timer?
+
+    /// Current activity type — set by MotionDetector for DR algorithm selection.
+    public var currentActivityType: String = "unknown"
+
     public init(configManager: ConfigManager,
          stateManager: StateManager,
          eventDispatcher: TraceletEventSending,
@@ -72,6 +79,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         if !configManager.getUseSignificantChangesOnly() {
             locationManager.startUpdatingLocation()
         }
+        startGpsLossTimer()
     }
 
     public func stop() {
@@ -80,6 +88,8 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         isPeriodicTracking = false
         locationManager.stopUpdatingLocation()
         locationManager.stopMonitoringSignificantLocationChanges()
+        deactivateDeadReckoning()
+        cancelGpsLossTimer()
         stopPeriodicTimer()
     }
 
@@ -476,6 +486,13 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
 
     public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
+
+        // GPS fix received — reset dead reckoning timer
+        resetGpsLossTimer()
+        if deadReckoningEngine?.isActive == true {
+            NSLog("[Tracelet] GPS signal recovered — deactivating dead reckoning")
+            deactivateDeadReckoning()
+        }
 
         // Request background execution time for the entire persist + dispatch
         // chain. Without this, iOS may suspend the app mid-flight when waking
@@ -947,8 +964,108 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     // MARK: - Dead Reckoning (Enterprise)
 
     /// Returns the current dead reckoning state, or nil if not active.
-    /// Dead reckoning with IMU sensor fusion will be implemented in a future release.
     func getDeadReckoningState() -> [String: Any]? {
-        return nil
+        return deadReckoningEngine?.getState()
+    }
+
+    /// Starts the GPS-loss timer. After `deadReckoningActivationDelay` seconds
+    /// without a GPS fix, dead reckoning activates automatically.
+    private func startGpsLossTimer() {
+        guard configManager.getEnableDeadReckoning() else { return }
+        cancelGpsLossTimer()
+
+        let delay = TimeInterval(configManager.getDeadReckoningActivationDelay())
+        gpsLossTimer = Timer.scheduledTimer(
+            withTimeInterval: delay,
+            repeats: false
+        ) { [weak self] _ in
+            self?.activateDeadReckoning()
+        }
+    }
+
+    /// Resets the GPS-loss timer (called on each GPS fix).
+    private func resetGpsLossTimer() {
+        guard configManager.getEnableDeadReckoning() else { return }
+        cancelGpsLossTimer()
+        startGpsLossTimer()
+    }
+
+    private func cancelGpsLossTimer() {
+        gpsLossTimer?.invalidate()
+        gpsLossTimer = nil
+    }
+
+    /// Activates dead reckoning from the last known GPS position.
+    private func activateDeadReckoning() {
+        guard let last = lastLocation else { return }
+        NSLog("[Tracelet] GPS lost for \(configManager.getDeadReckoningActivationDelay())s — activating dead reckoning")
+
+        let engine = DeadReckoningEngine(configManager: configManager)
+        engine.onEstimatedLocation = { [weak self] drLocation in
+            self?.onDrLocationEstimated(drLocation)
+        }
+        engine.onDeactivated = {
+            NSLog("[Tracelet] Dead reckoning auto-stopped (max duration)")
+        }
+        engine.activate(
+            lat: last.coordinate.latitude,
+            lng: last.coordinate.longitude,
+            altitude: last.altitude,
+            heading: last.course >= 0 ? last.course : 0,
+            activity: currentActivityType
+        )
+        deadReckoningEngine = engine
+    }
+
+    /// Deactivates dead reckoning.
+    private func deactivateDeadReckoning() {
+        deadReckoningEngine?.deactivate()
+        deadReckoningEngine = nil
+    }
+
+    /// Processes a dead-reckoned location estimate and dispatches it.
+    private func onDrLocationEstimated(_ drLocation: [String: Any]) {
+        guard let lat = drLocation["latitude"] as? Double,
+              let lng = drLocation["longitude"] as? Double else { return }
+        let altitude = drLocation["altitude"] as? Double ?? 0
+        let heading = drLocation["heading"] as? Double ?? 0
+        let accuracy = drLocation["accuracy"] as? Double ?? 50
+        let speed = drLocation["speed"] as? Double ?? 0
+
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let timestamp = isoFormatter.string(from: Date())
+
+        let enriched: [String: Any] = [
+            "uuid": UUID().uuidString,
+            "timestamp": timestamp,
+            "isMoving": stateManager.isMoving,
+            "odometer": stateManager.odometer,
+            "event": "dead_reckoning",
+            "mock": false,
+            "isDeadReckoned": true,
+            "coords": [
+                "latitude": lat,
+                "longitude": lng,
+                "altitude": altitude,
+                "speed": speed,
+                "heading": heading,
+                "accuracy": accuracy,
+                "speedAccuracy": -1.0,
+                "headingAccuracy": -1.0,
+                "altitudeAccuracy": -1.0,
+            ],
+            "activity": [
+                "type": currentActivityType,
+                "confidence": -1,
+            ],
+            "battery": [
+                "level": -1.0,
+                "isCharging": false,
+            ],
+        ]
+
+        persistLocationIfAllowed(enriched, event: "dead_reckoning")
+        eventDispatcher.sendLocation(enriched)
     }
 }

@@ -1,3 +1,7 @@
+## 1.4.1
+
+- **CHORE**: Update cross-package dependency constraints to `^1.4.1`.
+
 ## 1.4.0
 
 - **FEAT**: Add `isDatabaseEncrypted()` and `encryptDatabase()` platform methods for encrypted SQLite support.

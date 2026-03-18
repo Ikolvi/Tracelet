@@ -273,6 +273,16 @@ class ConfigManager internal constructor(context: Context) {
     fun getMockDetectionLevel(): Int =
         getInt("mockDetectionLevel", 1)
 
+    // Dead Reckoning config
+    fun getEnableDeadReckoning(): Boolean =
+        getBool("enableDeadReckoning", false)
+
+    fun getDeadReckoningActivationDelay(): Int =
+        getInt("deadReckoningActivationDelay", 10)
+
+    fun getDeadReckoningMaxDuration(): Int =
+        getInt("deadReckoningMaxDuration", 120)
+
     // ---------------------------------------------------------------------------
     // Typed Getters (AuditConfig — Enterprise)
     // ---------------------------------------------------------------------------

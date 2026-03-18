@@ -1,3 +1,10 @@
+## 1.4.1
+
+- **FEAT**: Dead reckoning — full IMU sensor fusion implementation (`DeadReckoningEngine`). Uses `CMDeviceMotion` (fused accelerometer + gyroscope + magnetometer) for heading and step detection. Vehicle mode with acceleration integration.
+- **FEAT**: Auto-activation on GPS loss after configurable delay, auto-deactivation on GPS recovery or max duration.
+- **CHORE**: Add dead reckoning config getters to `ConfigManager`.
+- **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.4.1`.
+
 ## 1.4.0
 
 - **FEAT**: Encrypted SQLite — database encryption via iOS Data Protection API (`NSFileProtectionComplete`).

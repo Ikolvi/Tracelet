@@ -1,3 +1,8 @@
+## 1.4.1
+
+- **FEAT**: Dead reckoning — full native IMU sensor fusion for GPS-denied environments (tunnels, parking structures, urban canyons). Activates automatically on GPS loss, deactivates on GPS recovery.
+- **CHORE**: Update cross-package dependency constraints to `^1.4.1`.
+
 ## 1.4.0
 
 - **FEAT**: Encrypted SQLite — `Tracelet.isDatabaseEncrypted()` and `Tracelet.encryptDatabase()` for at-rest database encryption (SQLCipher on Android, Data Protection on iOS).
