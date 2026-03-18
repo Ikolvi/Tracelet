@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, kIsWeb;
+    show TargetPlatform, debugPrint, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' as tl;
 import 'map_page.dart';
@@ -187,6 +187,7 @@ class _DashboardPageState extends State<DashboardPage>
     final now = DateTime.now();
     final ts =
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+    debugPrint('[$ts] $tag: $message');
     setState(() {
       _log.insert(0, _LogEntry(ts, tag, message));
       if (_log.length > 200) _log.removeLast();
