@@ -1,5 +1,4 @@
 @testable import tracelet_ios
-import TraceletCore
 import SQLite3
 import XCTest
 

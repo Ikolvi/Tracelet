@@ -1,6 +1,5 @@
 import XCTest
 @testable import tracelet_ios
-import TraceletCore
 
 /// Tests for iOS←Android parity gap fixes:
 /// - `ConfigManager.hasConfig()`

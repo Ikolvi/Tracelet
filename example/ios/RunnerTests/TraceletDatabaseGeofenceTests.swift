@@ -1,5 +1,4 @@
 @testable import tracelet_ios
-import TraceletCore
 import XCTest
 
 /// Tests for ``TraceletDatabase`` geofence CRUD — focusing on

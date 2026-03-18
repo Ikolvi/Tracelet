@@ -4,7 +4,6 @@ import XCTest
 
 
 @testable import tracelet_ios
-import TraceletCore
 
 // This demonstrates a simple unit test of the Swift portion of this plugin's implementation.
 //
