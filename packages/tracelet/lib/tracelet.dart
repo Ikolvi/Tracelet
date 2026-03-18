@@ -53,12 +53,14 @@ export 'package:tracelet_platform_interface/tracelet_platform_interface.dart'
         RTree;
 
 // Models
+export 'src/models/attestation_config.dart';
 export 'src/models/audit_config.dart';
 export 'src/models/audit_proof.dart';
 export 'src/models/compliance_report.dart';
 export 'src/models/config.dart';
 export 'src/models/privacy_zone.dart';
 export 'src/models/privacy_zone_config.dart';
+export 'src/models/security_config.dart';
 export 'src/models/location.dart';
 export 'src/models/state.dart';
 export 'src/models/geofence.dart';

@@ -29,6 +29,7 @@ let package = Package(
                 .linkedFramework("AVFoundation"),
                 .linkedFramework("AudioToolbox"),
                 .linkedFramework("Network"),
+                .linkedFramework("DeviceCheck"),
             ]
         )
     ]

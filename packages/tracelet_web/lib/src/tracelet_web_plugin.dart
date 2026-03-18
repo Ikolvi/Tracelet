@@ -625,6 +625,46 @@ class TraceletWebPlugin extends TraceletPlatform {
   Future<List<Map<String, Object?>>> getPrivacyZones() async => [];
 
   // ---------------------------------------------------------------------------
+  // [Enterprise] Encrypted Database (no-op on web — in-memory storage)
+  // ---------------------------------------------------------------------------
+
+  @override
+  Future<bool> isDatabaseEncrypted() async => false;
+
+  @override
+  Future<bool> encryptDatabase() async => false;
+
+  // ---------------------------------------------------------------------------
+  // [Enterprise] Device Attestation (not supported on web)
+  // ---------------------------------------------------------------------------
+
+  @override
+  Future<Map<String, Object?>?> getAttestationToken() async => null;
+
+  // ---------------------------------------------------------------------------
+  // [Enterprise] Dead Reckoning (not supported on web)
+  // ---------------------------------------------------------------------------
+
+  @override
+  Future<Map<String, Object?>?> getDeadReckoningState() async => null;
+
+  // ---------------------------------------------------------------------------
+  // [Enterprise] Carbon Estimator
+  // ---------------------------------------------------------------------------
+
+  @override
+  Future<Map<String, Object?>> getCarbonReport([
+    Map<String, Object?>? query,
+  ]) async {
+    return <String, Object?>{
+      'totalCarbonGrams': 0.0,
+      'carbonByMode': <String, Object?>{},
+      'distanceByMode': <String, Object?>{},
+      'totalTrips': 0,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
   // Internal helpers
   // ---------------------------------------------------------------------------
 

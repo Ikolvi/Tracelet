@@ -209,6 +209,26 @@ public final class ConfigManager {
     // PrivacyZoneConfig (Enterprise)
     public func getPrivacyZoneEnabled() -> Bool { cache["privacyZoneEnabled"] as? Bool ?? false }
 
+    // SecurityConfig (Enterprise)
+    public func getEncryptDatabase() -> Bool { cache["encryptDatabase"] as? Bool ?? false }
+    public func getEncryptionKey() -> String? { cache["encryptionKey"] as? String }
+
+    // AttestationConfig (Enterprise)
+    public func getAttestationEnabled() -> Bool { cache["attestationEnabled"] as? Bool ?? false }
+    public func getAttestationRefreshInterval() -> Int { cache["attestationRefreshInterval"] as? Int ?? 3600 }
+    public func getAttestationVerificationUrl() -> String? { cache["attestationVerificationUrl"] as? String }
+
+    // RemoteConfig (Enterprise)
+    public func getRemoteConfigUrl() -> String? {
+        let url = cache["remoteConfigUrl"] as? String
+        return (url?.isEmpty == false) ? url : nil
+    }
+    public func getRemoteConfigHeaders() -> [String: String] {
+        cache["remoteConfigHeaders"] as? [String: String] ?? [:]
+    }
+    public func getRemoteConfigTimeout() -> Int { cache["remoteConfigTimeout"] as? Int ?? 30000 }
+    public func getRemoteConfigRefreshInterval() -> Int { cache["remoteConfigRefreshInterval"] as? Int ?? 3600 }
+
     // MARK: - Defaults
     private func defaultConfig() -> [String: Any] {
         return [

@@ -125,6 +125,17 @@ class ConfigManager internal constructor(context: Context) {
 
         // PrivacyZoneConfig defaults
         const val DEFAULT_PRIVACY_ZONE_ENABLED = false
+
+        // SecurityConfig defaults (Enterprise)
+        const val DEFAULT_ENCRYPT_DATABASE = false
+
+        // AttestationConfig defaults (Enterprise)
+        const val DEFAULT_ATTESTATION_ENABLED = false
+        const val DEFAULT_ATTESTATION_REFRESH_INTERVAL = 3600
+
+        // Remote Config defaults
+        const val DEFAULT_REMOTE_CONFIG_TIMEOUT = 10000
+        const val DEFAULT_REMOTE_CONFIG_REFRESH_INTERVAL = 0
     }
 
     private val prefs: SharedPreferences =
@@ -284,6 +295,52 @@ class ConfigManager internal constructor(context: Context) {
 
     fun getPrivacyZoneEnabled(): Boolean =
         getBool("privacyZoneEnabled", DEFAULT_PRIVACY_ZONE_ENABLED)
+
+    // ---------------------------------------------------------------------------
+    // Typed Getters (SecurityConfig — Enterprise)
+    // ---------------------------------------------------------------------------
+
+    fun getEncryptDatabase(): Boolean =
+        getBool("encryptDatabase", DEFAULT_ENCRYPT_DATABASE)
+
+    fun getEncryptionKey(): String? =
+        configCache["encryptionKey"] as? String
+
+    // ---------------------------------------------------------------------------
+    // Typed Getters (AttestationConfig — Enterprise)
+    // ---------------------------------------------------------------------------
+
+    fun getAttestationEnabled(): Boolean =
+        getBool("attestationEnabled", DEFAULT_ATTESTATION_ENABLED)
+
+    fun getAttestationRefreshInterval(): Int =
+        getInt("attestationRefreshInterval", DEFAULT_ATTESTATION_REFRESH_INTERVAL)
+
+    fun getAttestationVerificationUrl(): String? =
+        configCache["attestationVerificationUrl"] as? String
+
+    // ---------------------------------------------------------------------------
+    // Typed Getters (Remote Config — Enterprise)
+    // ---------------------------------------------------------------------------
+
+    fun getRemoteConfigUrl(): String? =
+        configCache["remoteConfigUrl"] as? String
+
+    fun getRemoteConfigHeaders(): Map<String, String> {
+        val raw = configCache["remoteConfigHeaders"]
+        if (raw is Map<*, *>) {
+            return raw.entries
+                .filter { it.key is String && it.value is String }
+                .associate { it.key as String to it.value as String }
+        }
+        return emptyMap()
+    }
+
+    fun getRemoteConfigTimeout(): Int =
+        getInt("remoteConfigTimeout", DEFAULT_REMOTE_CONFIG_TIMEOUT)
+
+    fun getRemoteConfigRefreshInterval(): Int =
+        getInt("remoteConfigRefreshInterval", DEFAULT_REMOTE_CONFIG_REFRESH_INTERVAL)
 
     // ---------------------------------------------------------------------------
     // Typed Getters (AppConfig)

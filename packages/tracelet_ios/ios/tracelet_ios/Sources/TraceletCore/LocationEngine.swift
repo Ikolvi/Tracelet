@@ -943,4 +943,12 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
 
         return false
     }
+
+    // MARK: - Dead Reckoning (Enterprise)
+
+    /// Returns the current dead reckoning state, or nil if not active.
+    /// Dead reckoning with IMU sensor fusion will be implemented in a future release.
+    func getDeadReckoningState() -> [String: Any]? {
+        return nil
+    }
 }

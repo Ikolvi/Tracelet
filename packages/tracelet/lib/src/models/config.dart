@@ -2,8 +2,10 @@ import 'package:meta/meta.dart';
 import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 
 import '_helpers.dart';
+import 'attestation_config.dart';
 import 'audit_config.dart';
 import 'privacy_zone_config.dart';
+import 'security_config.dart';
 
 /// Top-level compound configuration for Tracelet.
 ///
@@ -17,6 +19,8 @@ import 'privacy_zone_config.dart';
 /// - [persistence] — Database retention, templates, extras
 /// - [audit] — Tamper-proof location audit trail (Enterprise)
 /// - [privacyZone] — Geographic privacy zone controls (Enterprise)
+/// - [security] — At-rest database encryption (Enterprise)
+/// - [attestation] — Device integrity attestation (Enterprise)
 ///
 /// ```dart
 /// final config = Config(
@@ -25,6 +29,8 @@ import 'privacy_zone_config.dart';
 ///   persistence: PersistenceConfig(maxDaysToPersist: 14),
 ///   audit: AuditConfig(enabled: true), // Enterprise: tamper-proof chain
 ///   privacyZone: PrivacyZoneConfig(enabled: true), // Enterprise: privacy zones
+///   security: SecurityConfig(encryptDatabase: true), // Enterprise: encryption
+///   attestation: AttestationConfig(enabled: true), // Enterprise: device attestation
 /// );
 /// ```
 @immutable
@@ -42,6 +48,8 @@ class Config {
     this.persistence = const PersistenceConfig(),
     this.audit = const AuditConfig(),
     this.privacyZone = const PrivacyZoneConfig(),
+    this.security = const SecurityConfig(),
+    this.attestation = const AttestationConfig(),
   });
 
   /// Location accuracy and sampling settings.
@@ -79,6 +87,20 @@ class Config {
   /// configured action (exclude, degrade, or event-only) is applied.
   final PrivacyZoneConfig privacyZone;
 
+  /// **Enterprise** — At-rest database encryption.
+  ///
+  /// When [SecurityConfig.encryptDatabase] is `true`, the SQLite database
+  /// is encrypted using AES-256 via SQLCipher. A secure random key is
+  /// managed by the platform (Android Keystore / iOS Keychain).
+  final SecurityConfig security;
+
+  /// **Enterprise** — Device integrity attestation.
+  ///
+  /// When [AttestationConfig.enabled] is `true`, an attestation token is
+  /// generated periodically and attached to HTTP sync payloads, proving
+  /// locations came from a genuine, non-rooted/jailbroken device.
+  final AttestationConfig attestation;
+
   /// Creates a [Config] from a flat or nested map.
   ///
   /// Supports both formats:
@@ -95,6 +117,8 @@ class Config {
     final persistenceMap = safeMap(map['persistence']);
     final auditMap = safeMap(map['audit']);
     final privacyZoneMap = safeMap(map['privacyZone'] ?? map['privacy_zone']);
+    final securityMap = safeMap(map['security']);
+    final attestationMap = safeMap(map['attestation']);
 
     return Config(
       geo: geoMap != null ? GeoConfig.fromMap(geoMap) : GeoConfig.fromMap(map),
@@ -120,6 +144,12 @@ class Config {
       privacyZone: privacyZoneMap != null
           ? PrivacyZoneConfig.fromMap(privacyZoneMap)
           : PrivacyZoneConfig.fromMap(map),
+      security: securityMap != null
+          ? SecurityConfig.fromMap(securityMap)
+          : SecurityConfig.fromMap(map),
+      attestation: attestationMap != null
+          ? AttestationConfig.fromMap(attestationMap)
+          : AttestationConfig.fromMap(map),
     );
   }
 
@@ -135,6 +165,8 @@ class Config {
       'persistence': persistence.toMap(),
       'audit': audit.toMap(),
       'privacyZone': privacyZone.toMap(),
+      'security': security.toMap(),
+      'attestation': attestation.toMap(),
     };
   }
 
@@ -142,7 +174,8 @@ class Config {
   String toString() =>
       'Config(geo: $geo, app: $app, http: $http, logger: $logger, '
       'motion: $motion, geofence: $geofence, persistence: $persistence, '
-      'audit: $audit, privacyZone: $privacyZone)';
+      'audit: $audit, privacyZone: $privacyZone, '
+      'security: $security, attestation: $attestation)';
 
   @override
   bool operator ==(Object other) =>
@@ -157,7 +190,9 @@ class Config {
           geofence == other.geofence &&
           persistence == other.persistence &&
           audit == other.audit &&
-          privacyZone == other.privacyZone;
+          privacyZone == other.privacyZone &&
+          security == other.security &&
+          attestation == other.attestation;
 
   @override
   int get hashCode => Object.hash(
@@ -170,6 +205,8 @@ class Config {
     persistence,
     audit,
     privacyZone,
+    security,
+    attestation,
   );
 }
 

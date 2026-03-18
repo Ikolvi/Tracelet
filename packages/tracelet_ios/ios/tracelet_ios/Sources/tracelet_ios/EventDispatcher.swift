@@ -33,6 +33,7 @@ final class EventDispatcher: NSObject, TraceletEventSending {
         "com.tracelet/events/notificationaction",
         "com.tracelet/events/authorization",
         "com.tracelet/events/watchposition",
+        "com.tracelet/events/remoteconfig",
     ]
 
     func register(messenger: FlutterBinaryMessenger) {
@@ -111,6 +112,10 @@ final class EventDispatcher: NSObject, TraceletEventSending {
 
     func sendWatchPosition(_ data: [String: Any]) {
         send("com.tracelet/events/watchposition", data: data)
+    }
+
+    func sendRemoteConfigEvent(_ data: [String: Any]) {
+        send("com.tracelet/events/remoteconfig", data: data)
     }
 
     func hasListener(eventName: String) -> Bool {

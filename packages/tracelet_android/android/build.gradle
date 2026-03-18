@@ -61,6 +61,16 @@ android {
         // OkHttp for HTTP sync
         implementation("com.squareup.okhttp3:okhttp:5.3.2")
 
+        // SQLCipher for database encryption (Enterprise)
+        implementation("net.zetetic:sqlcipher-android:4.6.1@aar")
+        implementation("androidx.sqlite:sqlite:2.4.0")
+
+        // EncryptedSharedPreferences for key management (Enterprise)
+        implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+        // Play Integrity for device attestation (Enterprise)
+        implementation("com.google.android.play:integrity:1.4.0")
+
         // Core KTX
         implementation("androidx.core:core-ktx:1.18.0")
 

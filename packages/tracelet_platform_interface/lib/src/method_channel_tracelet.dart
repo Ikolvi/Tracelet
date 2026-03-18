@@ -549,4 +549,63 @@ class MethodChannelTracelet extends TraceletPlatform {
             .toList(growable: false) ??
         [];
   }
+
+  // ---------------------------------------------------------------------------
+  // Encrypted Database (Enterprise)
+  // ---------------------------------------------------------------------------
+
+  @override
+  Future<bool> isDatabaseEncrypted() async {
+    final result = await _methodChannel.invokeMethod<bool>(
+      'isDatabaseEncrypted',
+    );
+    return result ?? false;
+  }
+
+  @override
+  Future<bool> encryptDatabase() async {
+    final result = await _methodChannel.invokeMethod<bool>('encryptDatabase');
+    return result ?? false;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Device Attestation (Enterprise)
+  // ---------------------------------------------------------------------------
+
+  @override
+  Future<Map<String, Object?>?> getAttestationToken() async {
+    final result = await _methodChannel.invokeMethod<Object?>(
+      'getAttestationToken',
+    );
+    if (result is Map) {
+      return Map<String, Object?>.from(result);
+    }
+    return null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Dead Reckoning (Enterprise)
+  // ---------------------------------------------------------------------------
+
+  @override
+  Future<Map<String, Object?>?> getDeadReckoningState() async {
+    final result = await _methodChannel.invokeMethod<Object?>(
+      'getDeadReckoningState',
+    );
+    if (result is Map) {
+      return Map<String, Object?>.from(result);
+    }
+    return null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Carbon Estimator (Enterprise)
+  // ---------------------------------------------------------------------------
+
+  @override
+  Future<Map<String, Object?>> getCarbonReport([
+    Map<String, Object?>? query,
+  ]) async {
+    return _invokeMap('getCarbonReport', query);
+  }
 }

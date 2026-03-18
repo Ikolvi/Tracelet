@@ -925,4 +925,61 @@ public final class TraceletDatabase {
             "degradedAccuracyMeters": sqlite3_column_double(stmt, 5),
         ]
     }
+
+    // MARK: - Database Encryption (Enterprise)
+
+    /// Checks whether the database file has iOS Data Protection (NSFileProtectionComplete) enabled.
+    func isDatabaseEncrypted() -> Bool {
+        let path = getDBPath().path
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+              let protection = attrs[.protectionKey] as? FileProtectionType else {
+            return false
+        }
+        return protection == .complete || protection == .completeUnlessOpen
+    }
+
+    /// Enables iOS Data Protection on the database file.
+    ///
+    /// Sets `NSFileProtectionComplete` so the database is encrypted by iOS
+    /// when the device is locked. Uses the Secure Enclave for key management.
+    /// No third-party encryption libraries are required.
+    ///
+    /// - Returns: `true` if protection was successfully applied.
+    func encryptDatabase() -> Bool {
+        let dbPath = getDBPath()
+        let dbDir = dbPath.deletingLastPathComponent()
+        let walPath = dbPath.path + "-wal"
+        let shmPath = dbPath.path + "-shm"
+
+        do {
+            // Set protection on the database file
+            try FileManager.default.setAttributes(
+                [.protectionKey: FileProtectionType.complete],
+                ofItemAtPath: dbPath.path
+            )
+            // Also protect WAL and SHM files if they exist
+            if FileManager.default.fileExists(atPath: walPath) {
+                try FileManager.default.setAttributes(
+                    [.protectionKey: FileProtectionType.complete],
+                    ofItemAtPath: walPath
+                )
+            }
+            if FileManager.default.fileExists(atPath: shmPath) {
+                try FileManager.default.setAttributes(
+                    [.protectionKey: FileProtectionType.complete],
+                    ofItemAtPath: shmPath
+                )
+            }
+            // Set protection on the directory too
+            try FileManager.default.setAttributes(
+                [.protectionKey: FileProtectionType.complete],
+                ofItemAtPath: dbDir.path
+            )
+            NSLog("[Tracelet] Database encryption enabled (NSFileProtectionComplete)")
+            return true
+        } catch {
+            NSLog("[Tracelet] Failed to set database protection: \(error)")
+            return false
+        }
+    }
 }

@@ -1,3 +1,13 @@
+## 1.4.0
+
+- **FEAT**: Encrypted SQLite — `Tracelet.isDatabaseEncrypted()` and `Tracelet.encryptDatabase()` for at-rest database encryption (SQLCipher on Android, Data Protection on iOS).
+- **FEAT**: Device attestation — `Tracelet.getAttestationToken()` returns a platform attestation token (Play Integrity on Android, App Attest on iOS).
+- **FEAT**: Remote config — automatic fetch of remote configuration with ETag caching and `onRemoteConfig` event stream.
+- **FEAT**: Dead reckoning — `Tracelet.getDeadReckoningState()` stub for future accelerometer/gyroscope-based position estimation.
+- **FEAT**: Carbon estimator — `Tracelet.getCarbonReport()` returns CO₂ emission estimates from tracked journeys.
+- **FEAT**: Add `SecurityConfig` and `AttestationConfig` to `Config` model for enterprise feature configuration.
+- **CHORE**: Update cross-package dependency constraints to `^1.4.0`.
+
 ## 1.3.7
 
 - **FIX**: Android — fix `ClassNotFoundException` crash on app upgrade for `BootReceiver` and other manifest-declared components (fixes #31).

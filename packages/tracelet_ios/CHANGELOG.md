@@ -1,3 +1,13 @@
+## 1.4.0
+
+- **FEAT**: Encrypted SQLite — database encryption via iOS Data Protection API (`NSFileProtectionComplete`).
+- **FEAT**: Device attestation — App Attest (DCAppAttestService) integration with challenge generation, token caching, and periodic refresh (`DeviceAttestor`).
+- **FEAT**: Remote config — fetch remote configuration via HTTPS with ETag caching and config-change event streaming.
+- **FEAT**: Dead reckoning — `getDeadReckoningState()` stub for future accelerometer/gyroscope-based position estimation.
+- **FEAT**: Carbon estimator — `getCarbonReport()` returns CO₂ estimates from tracked locations using EU average emission factors.
+- **CHORE**: Add `DeviceCheck` framework dependency.
+- **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.4.0`.
+
 ## 1.3.6
 
 - **FIX**: `getLocations()` now honors `SQLQuery.start` and `SQLQuery.end` timestamp filtering.

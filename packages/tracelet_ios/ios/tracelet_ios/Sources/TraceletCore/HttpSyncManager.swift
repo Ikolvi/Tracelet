@@ -420,4 +420,89 @@ public final class HttpSyncManager {
         let path = pathMonitor.currentPath
         return path.usesInterfaceType(.cellular) && !path.usesInterfaceType(.wifi)
     }
+
+    // MARK: - Remote Config (Enterprise)
+
+    /// Fetches remote configuration from an HTTPS URL with ETag caching.
+    ///
+    /// - Parameters:
+    ///   - url: The HTTPS URL to fetch config from.
+    ///   - headers: Additional HTTP headers.
+    ///   - timeoutMs: Request timeout in milliseconds.
+    ///   - completion: Called with the parsed config dictionary, or nil on failure.
+    func fetchRemoteConfig(
+        url: String,
+        headers: [String: String],
+        timeoutMs: Int,
+        completion: @escaping ([String: Any]?) -> Void
+    ) {
+        guard let requestUrl = URL(string: url), requestUrl.scheme == "https" else {
+            NSLog("[Tracelet] [RemoteConfig] URL must use HTTPS: %@", url)
+            completion(nil)
+            return
+        }
+
+        var request = URLRequest(url: requestUrl)
+        request.httpMethod = "GET"
+        request.timeoutInterval = TimeInterval(timeoutMs) / 1000.0
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+
+        let defaults = UserDefaults.standard
+        if let savedETag = defaults.string(forKey: "com.tracelet.remoteConfig.etag") {
+            request.setValue(savedETag, forHTTPHeaderField: "If-None-Match")
+        }
+
+        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+            guard let httpResponse = response as? HTTPURLResponse else {
+                NSLog("[Tracelet] [RemoteConfig] Request failed: %@", error?.localizedDescription ?? "unknown")
+                completion(nil)
+                return
+            }
+
+            if httpResponse.statusCode == 304 {
+                if let cachedData = defaults.data(forKey: "com.tracelet.remoteConfig.cached"),
+                   let cached = try? JSONSerialization.jsonObject(with: cachedData) as? [String: Any] {
+                    completion(cached)
+                } else {
+                    completion(nil)
+                }
+                return
+            }
+
+            guard (200...299).contains(httpResponse.statusCode) else {
+                NSLog("[Tracelet] [RemoteConfig] HTTP %d", httpResponse.statusCode)
+                completion(nil)
+                return
+            }
+
+            guard let data = data, data.count <= 100_000 else {
+                NSLog("[Tracelet] [RemoteConfig] Response too large or empty")
+                completion(nil)
+                return
+            }
+
+            let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? ""
+            guard contentType.contains("json") else {
+                NSLog("[Tracelet] [RemoteConfig] Invalid content type: %@", contentType)
+                completion(nil)
+                return
+            }
+
+            guard let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                NSLog("[Tracelet] [RemoteConfig] Failed to parse JSON")
+                completion(nil)
+                return
+            }
+
+            if let etag = httpResponse.value(forHTTPHeaderField: "ETag") {
+                defaults.set(etag, forKey: "com.tracelet.remoteConfig.etag")
+            }
+            defaults.set(data, forKey: "com.tracelet.remoteConfig.cached")
+
+            completion(parsed)
+        }
+        task.resume()
+    }
 }

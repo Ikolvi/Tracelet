@@ -39,6 +39,8 @@ interface TraceletEventSender {
 
     fun sendWatchPosition(data: Map<String, Any?>)
 
+    fun sendRemoteConfigEvent(data: Map<String, Any?>)
+
     /** Returns true if a listener is attached for the given event name. */
     fun hasListener(eventName: String): Boolean
 }

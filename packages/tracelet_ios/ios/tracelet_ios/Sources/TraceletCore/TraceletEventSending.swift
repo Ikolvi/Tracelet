@@ -37,6 +37,8 @@ public protocol TraceletEventSending: AnyObject {
 
     func sendWatchPosition(_ data: [String: Any])
 
+    func sendRemoteConfigEvent(_ data: [String: Any])
+
     /// Returns `true` if a listener is attached for the given event name.
     func hasListener(eventName: String) -> Bool
 }

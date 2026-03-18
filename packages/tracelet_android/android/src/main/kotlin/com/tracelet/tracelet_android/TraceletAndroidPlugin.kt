@@ -13,8 +13,10 @@ import androidx.core.content.ContextCompat
 import com.tracelet.core.ConfigManager
 import com.tracelet.core.StateManager
 import com.tracelet.core.TraceletBootstrap
+import com.tracelet.core.attestation.DeviceAttestor
 import com.tracelet.core.audit.AuditTrailManager
 import com.tracelet.core.privacy.PrivacyZoneManager
+import com.tracelet.core.db.DatabaseEncryptionManager
 import com.tracelet.core.db.TraceletDatabase
 import com.tracelet.core.geofence.GeofenceManager
 import com.tracelet.core.http.HttpSyncManager
@@ -77,6 +79,8 @@ class TraceletAndroidPlugin :
     private lateinit var permissionManager: PermissionManager
     private lateinit var auditTrailManager: AuditTrailManager
     private lateinit var privacyZoneManager: PrivacyZoneManager
+    private lateinit var encryptionManager: DatabaseEncryptionManager
+    private lateinit var deviceAttestor: DeviceAttestor
 
     private var activity: Activity? = null
     private var activityBinding: ActivityPluginBinding? = null
@@ -112,7 +116,9 @@ class TraceletAndroidPlugin :
         // Persistence
         configManager = ConfigManager.getInstance(context)
         stateManager = StateManager(context)
-        database = TraceletDatabase.getInstance(context)
+        encryptionManager = DatabaseEncryptionManager(context)
+        val dbPassword = encryptionManager.getDatabasePassword(null)
+        database = TraceletDatabase.getInstance(context, dbPassword)
 
         // Logger
         logger = TraceletLogger(context, configManager, database)
@@ -122,6 +128,9 @@ class TraceletAndroidPlugin :
 
         // Privacy Zones (Enterprise)
         privacyZoneManager = PrivacyZoneManager(context, database, configManager)
+
+        // Device Attestation (Enterprise)
+        deviceAttestor = DeviceAttestor(context)
 
         // Location
         locationEngine = LocationEngine(context, configManager, stateManager, eventDispatcher, database)
@@ -392,6 +401,41 @@ class TraceletAndroidPlugin :
             "removePrivacyZones" -> result.success(privacyZoneManager.removeAllZones())
             "getPrivacyZones" -> result.success(privacyZoneManager.getZones())
 
+            // Encrypted Database (Enterprise)
+            "isDatabaseEncrypted" -> result.success(encryptionManager.isDatabaseEncrypted())
+            "encryptDatabase" -> {
+                try {
+                    val customKey = configManager.getEncryptionKey()
+                    val key = encryptionManager.getOrCreateKey(customKey)
+                    val success = database.encryptDatabase(key, encryptionManager)
+                    if (success) {
+                        database = TraceletDatabase.getInstance(context, key)
+                    }
+                    result.success(success)
+                } catch (e: Exception) {
+                    result.error("ENCRYPTION_FAILED", e.message, null)
+                }
+            }
+
+            // Device Attestation (Enterprise)
+            "getAttestationToken" -> {
+                deviceAttestor.requestToken { token ->
+                    mainHandler.post { result.success(token) }
+                }
+            }
+
+            // Dead Reckoning (Enterprise)
+            "getDeadReckoningState" -> {
+                result.success(locationEngine.getDeadReckoningState())
+            }
+
+            // Carbon Estimator (Enterprise)
+            "getCarbonReport" -> {
+                @Suppress("UNCHECKED_CAST")
+                val query = call.arguments as? Map<String, Any?>
+                result.success(getCarbonReport(query))
+            }
+
             // Legacy
             "getPlatformVersion" -> result.success("Android ${Build.VERSION.RELEASE}")
 
@@ -410,6 +454,28 @@ class TraceletAndroidPlugin :
         // Merge config with defaults and persist
         val merged = configManager.setConfig(configMap)
 
+        // Handle encryption if enabled
+        if (configManager.getEncryptDatabase() && !encryptionManager.isDatabaseEncrypted()) {
+            val customKey = configManager.getEncryptionKey()
+            val key = encryptionManager.getOrCreateKey(customKey)
+            val success = database.encryptDatabase(key, encryptionManager)
+            if (success) {
+                database = TraceletDatabase.getInstance(context, key)
+            }
+        }
+
+        // Handle remote config if URL is configured
+        val remoteUrl = configManager.getRemoteConfigUrl()
+        if (!remoteUrl.isNullOrEmpty()) {
+            fetchRemoteConfig(remoteUrl, merged, result)
+            return
+        }
+
+        // Initialize subsystems
+        completeReady(merged, result)
+    }
+
+    private fun completeReady(config: Map<String, Any?>, result: Result) {
         // Initialize subsystems
         if (configManager.isDebug()) soundManager.start()
         httpSyncManager.start()
@@ -418,10 +484,15 @@ class TraceletAndroidPlugin :
         // Update boot receiver state
         updateBootReceiverState()
 
+        // Start attestation refresh if enabled
+        if (configManager.getAttestationEnabled()) {
+            deviceAttestor.startRefresh(configManager.getAttestationRefreshInterval())
+        }
+
         isReady = true
 
         // Return current state including the merged config
-        val stateMap = stateManager.toMap(merged)
+        val stateMap = stateManager.toMap(config)
         logger.info("ready() called")
         result.success(stateMap)
     }
@@ -1237,6 +1308,116 @@ class TraceletAndroidPlugin :
         } catch (e: Exception) {
             logger.warning("Failed to update BootReceiver state: ${e.message}")
         }
+    }
+
+    // =========================================================================
+    // Remote Config (Enterprise)
+    // =========================================================================
+
+    private fun fetchRemoteConfig(url: String, localConfig: Map<String, Any?>, result: Result) {
+        // Reject non-HTTPS URLs for security
+        if (!url.startsWith("https://")) {
+            logger.warning("Remote config URL rejected: only HTTPS is allowed")
+            completeReady(localConfig, result)
+            return
+        }
+
+        val timeout = configManager.getRemoteConfigTimeout()
+        val headers = configManager.getRemoteConfigHeaders()
+        httpSyncManager.fetchRemoteConfig(url, headers, timeout.toLong()) { remoteConfig ->
+            mainHandler.post {
+                if (remoteConfig != null) {
+                    // Deep merge: remote wins on leaf conflicts
+                    val merged = configManager.setConfig(remoteConfig)
+                    eventDispatcher.sendRemoteConfigEvent(mapOf(
+                        "success" to true,
+                        "statusCode" to 200,
+                        "appliedConfig" to remoteConfig,
+                    ))
+                    completeReady(merged, result)
+                } else {
+                    eventDispatcher.sendRemoteConfigEvent(mapOf(
+                        "success" to false,
+                        "error" to "Remote config fetch failed or timed out",
+                    ))
+                    completeReady(localConfig, result)
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // Carbon Report (Enterprise)
+    // =========================================================================
+
+    private fun getCarbonReport(query: Map<String, Any?>?): Map<String, Any?> {
+        // Get trip data from database and calculate emissions
+        val from = (query?.get("from") as? Number)?.toLong()
+        val to = (query?.get("to") as? Number)?.toLong()
+        val locations = database.getLocations(
+            limit = -1,
+            offset = 0,
+            orderAsc = true,
+            startTime = from,
+            endTime = to
+        )
+
+        var totalGrams = 0.0
+        val carbonByMode = mutableMapOf<String, Double>()
+        val distanceByMode = mutableMapOf<String, Double>()
+        var prevLat = 0.0
+        var prevLng = 0.0
+        var tripCount = 0
+        var wasMoving = false
+
+        for (location in locations) {
+            val coords = location["coords"] as? Map<*, *>
+            val lat = (coords?.get("latitude") as? Number)?.toDouble() ?: continue
+            val lng = (coords?.get("longitude") as? Number)?.toDouble() ?: continue
+            val activity = location["activity"] as? Map<*, *>
+            val actType = activity?.get("type") as? String ?: "unknown"
+            val isMoving = location["is_moving"] == 1 || location["is_moving"] == true
+
+            if (!wasMoving && isMoving) tripCount++
+            wasMoving = isMoving
+
+            if (prevLat != 0.0 && prevLng != 0.0) {
+                val dist = haversineDistance(prevLat, prevLng, lat, lng)
+                distanceByMode[actType] = (distanceByMode[actType] ?: 0.0) + dist
+                val factor = carbonFactorForMode(actType)
+                val grams = dist / 1000.0 * factor
+                carbonByMode[actType] = (carbonByMode[actType] ?: 0.0) + grams
+                totalGrams += grams
+            }
+            prevLat = lat
+            prevLng = lng
+        }
+
+        return mapOf(
+            "totalCarbonGrams" to totalGrams,
+            "carbonByMode" to carbonByMode,
+            "distanceByMode" to distanceByMode,
+            "totalTrips" to tripCount,
+        )
+    }
+
+    private fun carbonFactorForMode(mode: String): Double {
+        return when (mode) {
+            "in_vehicle" -> 192.0  // gCO₂/km, EU average
+            "on_bicycle", "walking", "running", "on_foot" -> 0.0
+            else -> 96.0  // Unknown mode — use half car average
+        }
+    }
+
+    private fun haversineDistance(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
+        val r = 6371000.0 // Earth radius in meters
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLng = Math.toRadians(lng2 - lng1)
+        val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                Math.sin(dLng / 2) * Math.sin(dLng / 2)
+        val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+        return r * c
     }
 
     // =========================================================================

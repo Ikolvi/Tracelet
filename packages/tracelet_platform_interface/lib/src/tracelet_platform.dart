@@ -536,4 +536,69 @@ abstract class TraceletPlatform extends PlatformInterface {
   Future<List<Map<String, Object?>>> getPrivacyZones() {
     throw UnimplementedError('getPrivacyZones() has not been implemented.');
   }
+
+  // ---------------------------------------------------------------------------
+  // Encrypted Database (Enterprise)
+  // ---------------------------------------------------------------------------
+
+  /// Check if the current database is encrypted.
+  ///
+  /// Returns `true` if the database is using AES-256 encryption via
+  /// SQLCipher, `false` otherwise.
+  Future<bool> isDatabaseEncrypted() {
+    throw UnimplementedError('isDatabaseEncrypted() has not been implemented.');
+  }
+
+  /// Migrate an existing unencrypted database to encrypted (one-time).
+  ///
+  /// Returns `true` on success. Existing data is preserved. If the
+  /// database is already encrypted, returns `true` immediately.
+  Future<bool> encryptDatabase() {
+    throw UnimplementedError('encryptDatabase() has not been implemented.');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Device Attestation (Enterprise)
+  // ---------------------------------------------------------------------------
+
+  /// Request a fresh attestation token from the platform.
+  ///
+  /// Returns a map with `token`, `timestamp`, `provider`, and optionally
+  /// `verified` fields. Returns `null` on platforms that don't support
+  /// attestation (web).
+  ///
+  /// - **Android**: Uses Google Play Integrity API.
+  /// - **iOS**: Uses App Attest (iOS 14+) with DeviceCheck fallback.
+  Future<Map<String, Object?>?> getAttestationToken() {
+    throw UnimplementedError('getAttestationToken() has not been implemented.');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Dead Reckoning (Enterprise)
+  // ---------------------------------------------------------------------------
+
+  /// Get the current dead reckoning state.
+  ///
+  /// Returns a map with `active` (bool), `elapsed` (seconds since DR
+  /// started), and `estimatedAccuracy` (meters). Returns `null` if dead
+  /// reckoning is disabled or GPS signal is available.
+  Future<Map<String, Object?>?> getDeadReckoningState() {
+    throw UnimplementedError(
+      'getDeadReckoningState() has not been implemented.',
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Carbon Estimator (Enterprise)
+  // ---------------------------------------------------------------------------
+
+  /// Get cumulative carbon emissions report.
+  ///
+  /// Returns a map with `totalCarbonGrams`, `carbonByMode`,
+  /// `distanceByMode`, and `totalTrips` fields.
+  ///
+  /// Optionally filter by [query] with `from` and `to` timestamps.
+  Future<Map<String, Object?>> getCarbonReport([Map<String, Object?>? query]) {
+    throw UnimplementedError('getCarbonReport() has not been implemented.');
+  }
 }

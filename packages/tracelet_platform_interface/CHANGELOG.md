@@ -1,3 +1,11 @@
+## 1.4.0
+
+- **FEAT**: Add `isDatabaseEncrypted()` and `encryptDatabase()` platform methods for encrypted SQLite support.
+- **FEAT**: Add `getAttestationToken()` platform method for device attestation (Play Integrity / App Attest).
+- **FEAT**: Add `getDeadReckoningState()` platform method for dead reckoning position estimation.
+- **FEAT**: Add `getCarbonReport()` platform method for carbon emission estimation from tracked journeys.
+- **CHORE**: Update cross-package dependency constraints to `^1.4.0`.
+
 ## 1.3.6
 
 - **FIX**: Add `offset` field to `SQLQuery` to match native platform handlers that read it.

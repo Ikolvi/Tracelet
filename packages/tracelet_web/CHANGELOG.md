@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.0
+
+- **FEAT**: Add stub implementations for enterprise methods: `isDatabaseEncrypted()`, `encryptDatabase()`, `getAttestationToken()`, `getDeadReckoningState()`, `getCarbonReport()`.
+- **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.4.0`.
+
 ## 1.3.6
 
 - **FIX**: `getCount()` now supports time-range filtering via optional `SQLQuery` parameter.

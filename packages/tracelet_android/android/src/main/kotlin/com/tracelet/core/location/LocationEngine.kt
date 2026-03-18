@@ -937,4 +937,23 @@ class LocationEngine(
 
         return false
     }
+
+    // =========================================================================
+    // Dead Reckoning (Enterprise) — stub for future IMU fusion
+    // =========================================================================
+
+    /**
+     * Get the current dead reckoning state.
+     *
+     * Returns null when dead reckoning is not active (GPS available or
+     * feature is disabled). When active, returns a map with:
+     * - "active" (Boolean) — true if DR is currently estimating position
+     * - "elapsed" (Int) — seconds since DR was activated
+     * - "estimatedAccuracy" (Double) — estimated position accuracy in meters
+     */
+    fun getDeadReckoningState(): Map<String, Any?>? {
+        // Dead reckoning will be implemented with IMU sensor fusion.
+        // For now, return null indicating the feature is not yet active.
+        return null
+    }
 }

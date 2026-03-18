@@ -1,3 +1,13 @@
+## 1.4.0
+
+- **FEAT**: Encrypted SQLite — database encryption via SQLCipher with Android Keystore-backed key management (`DatabaseEncryptionManager`).
+- **FEAT**: Device attestation — Play Integrity API integration with nonce generation, token caching, and periodic refresh (`DeviceAttestor`).
+- **FEAT**: Remote config — fetch remote configuration via HTTPS with ETag caching and config-change event streaming.
+- **FEAT**: Dead reckoning — `getDeadReckoningState()` stub for future accelerometer/gyroscope-based position estimation.
+- **FEAT**: Carbon estimator — `getCarbonReport()` returns CO₂ estimates from tracked locations using EU average emission factors.
+- **CHORE**: Add `net.zetetic:sqlcipher-android`, `androidx.sqlite:sqlite`, `androidx.security:security-crypto`, and `com.google.android.play:integrity` dependencies.
+- **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.4.0`.
+
 ## 1.3.7
 
 - **FIX**: Fix `ClassNotFoundException` crash for `BootReceiver`, `GeofenceBroadcastReceiver`, `PeriodicAlarmReceiver`, and `LocationService` caused by package path mismatch in `AndroidManifest.xml` (fixes #31).

@@ -18,7 +18,7 @@ execution for iOS.
   s.source_files = 'tracelet_ios/Sources/**/*.swift'
   s.dependency 'Flutter'
   s.platform = :ios, '14.0'
-  s.frameworks = 'CoreLocation', 'CoreMotion', 'UIKit', 'BackgroundTasks', 'AVFoundation', 'AudioToolbox', 'Network'
+  s.frameworks = 'CoreLocation', 'CoreMotion', 'UIKit', 'BackgroundTasks', 'AVFoundation', 'AudioToolbox', 'Network', 'DeviceCheck'
   s.libraries = 'sqlite3'
 
   # Flutter.framework does not contain a i386 slice.

@@ -54,6 +54,7 @@ class EventDispatcher : TraceletEventSender {
         "notificationaction",
         "authorization",
         "watchposition",
+        "remoteconfig",
     )
 
     /** Registers all EventChannels with the Flutter binary messenger. */
@@ -115,6 +116,8 @@ class EventDispatcher : TraceletEventSender {
     override fun sendAuthorization(data: Map<String, Any?>) = send("authorization", data)
 
     override fun sendWatchPosition(data: Map<String, Any?>) = send("watchposition", data)
+
+    override fun sendRemoteConfigEvent(data: Map<String, Any?>) = send("remoteconfig", data)
 
     /** Returns true if a listener is attached for the given event name. */
     override fun hasListener(eventName: String): Boolean = sinks[eventName] != null

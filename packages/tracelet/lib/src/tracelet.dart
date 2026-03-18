@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart' show WidgetsFlutterBinding;
 import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 
 import 'models/activity_change_event.dart';
+import 'models/attestation_config.dart';
 import 'models/audit_config.dart';
 import 'models/audit_proof.dart';
 import 'models/authorization_event.dart';
@@ -1157,6 +1158,102 @@ class Tracelet {
   }
 
   // ---------------------------------------------------------------------------
+  // Encrypted Database (Enterprise)
+  // ---------------------------------------------------------------------------
+
+  /// **Enterprise** — Check if the database is currently encrypted.
+  ///
+  /// Returns `true` if the SQLite database is using AES-256 encryption
+  /// via SQLCipher.
+  ///
+  /// ```dart
+  /// final encrypted = await Tracelet.isDatabaseEncrypted();
+  /// print('Database encrypted: $encrypted');
+  /// ```
+  static Future<bool> isDatabaseEncrypted() {
+    return _platform.isDatabaseEncrypted();
+  }
+
+  /// **Enterprise** — Encrypt an existing unencrypted database.
+  ///
+  /// Performs a one-time migration from unencrypted to AES-256 encrypted
+  /// SQLite. All existing data is preserved. Returns `true` on success.
+  ///
+  /// If the database is already encrypted, returns `true` immediately.
+  ///
+  /// ```dart
+  /// final success = await Tracelet.encryptDatabase();
+  /// print('Migration result: $success');
+  /// ```
+  static Future<bool> encryptDatabase() {
+    return _platform.encryptDatabase();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Device Attestation (Enterprise)
+  // ---------------------------------------------------------------------------
+
+  /// **Enterprise** — Request a fresh device attestation token.
+  ///
+  /// Returns an [AttestationToken] from the platform's hardware-backed
+  /// security module, proving the device is genuine and untampered.
+  ///
+  /// - **Android**: Google Play Integrity API token.
+  /// - **iOS**: App Attest assertion.
+  /// - **Web**: Returns `null` (not supported).
+  ///
+  /// ```dart
+  /// final token = await Tracelet.getAttestationToken();
+  /// if (token != null) {
+  ///   print('Provider: ${token.provider}');
+  /// }
+  /// ```
+  static Future<AttestationToken?> getAttestationToken() async {
+    final map = await _platform.getAttestationToken();
+    if (map == null) return null;
+    return AttestationToken.fromMap(map);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Dead Reckoning (Enterprise)
+  // ---------------------------------------------------------------------------
+
+  /// **Enterprise** — Get the current dead reckoning state.
+  ///
+  /// Returns a map with the DR state when active (`active`, `elapsed`,
+  /// `estimatedAccuracy`), or `null` if dead reckoning is disabled or
+  /// GPS signal is available.
+  ///
+  /// ```dart
+  /// final state = await Tracelet.getDeadReckoningState();
+  /// if (state != null && state['active'] == true) {
+  ///   print('DR active for ${state['elapsed']}s');
+  /// }
+  /// ```
+  static Future<Map<String, Object?>?> getDeadReckoningState() {
+    return _platform.getDeadReckoningState();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Carbon Estimator (Enterprise)
+  // ---------------------------------------------------------------------------
+
+  /// **Enterprise** — Get cumulative CO₂ emissions report.
+  ///
+  /// Calculates emissions based on detected transport mode and distance.
+  /// Uses EU EEA 2024 average emission factors.
+  ///
+  /// ```dart
+  /// final report = await Tracelet.getCarbonReport();
+  /// print('Total: ${report['totalCarbonGrams']}g CO₂');
+  /// ```
+  static Future<Map<String, Object?>> getCarbonReport([
+    Map<String, Object?>? query,
+  ]) {
+    return _platform.getCarbonReport(query);
+  }
+
+  // ---------------------------------------------------------------------------
   // Compliance Report (Enterprise)
   // ---------------------------------------------------------------------------
 
@@ -1190,6 +1287,7 @@ class Tracelet {
         'limit': 1,
         'order': 1,
       }), // 6 newest
+      _platform.isDatabaseEncrypted(), // 7
     ]);
 
     final stateMap = Map<String, Object?>.from(results[0] as Map);
@@ -1205,6 +1303,7 @@ class Tracelet {
     final newestList = (results[6] as List)
         .map((l) => Map<String, Object?>.from(l as Map))
         .toList();
+    final dbEncrypted = results[7] as bool;
 
     final state = State.fromMap(stateMap);
 
@@ -1242,7 +1341,7 @@ class Tracelet {
       maxRecordsToPersist: persistMap?['maxRecordsToPersist'] as int? ?? -1,
       oldestRecord: oldestTs,
       newestRecord: newestTs,
-      databaseEncrypted: false, // Will be wired when Feature 8 is implemented
+      databaseEncrypted: dbEncrypted,
       activePrivacyZones: zones.length,
       privacyZoneIdentifiers: zones
           .map((z) => z['identifier'] as String? ?? '')

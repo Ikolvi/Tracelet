@@ -47,6 +47,9 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
     /// [Enterprise] Privacy zone manager.
     private var privacyZoneManager: PrivacyZoneManager!
 
+    /// [Enterprise] Device attestation via App Attest.
+    private var deviceAttestor: DeviceAttestor!
+
     // MARK: - FlutterPlugin registration
 
     public static func register(with registrar: FlutterPluginRegistrar) {
@@ -106,6 +109,9 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
             configManager: instance.configManager
         )
         instance.locationEngine.privacyZoneManager = instance.privacyZoneManager
+
+        // [Enterprise] Device Attestation
+        instance.deviceAttestor = DeviceAttestor()
 
         // Trip detection is now handled in Dart
 
@@ -458,6 +464,27 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
         case "getPrivacyZones":
             result(privacyZoneManager.getZones())
 
+        // [Enterprise] Encrypted SQLite
+        case "isDatabaseEncrypted":
+            result(database.isDatabaseEncrypted())
+        case "encryptDatabase":
+            result(database.encryptDatabase())
+
+        // [Enterprise] Device Attestation
+        case "getAttestationToken":
+            deviceAttestor.requestToken { token in
+                DispatchQueue.main.async { result(token) }
+            }
+
+        // [Enterprise] Dead Reckoning
+        case "getDeadReckoningState":
+            result(locationEngine.getDeadReckoningState())
+
+        // [Enterprise] Carbon Estimator
+        case "getCarbonReport":
+            let query = call.arguments as? [String: Any]
+            result(getCarbonReport(query: query))
+
         // Legacy
         case "getPlatformVersion":
             result("iOS " + UIDevice.current.systemVersion)
@@ -476,6 +503,33 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
         if configManager.isDebug() { soundManager.start() }
         httpSyncManager.start()
         logger.pruneOldLogs()
+
+        // [Enterprise] Auto-encrypt database if configured
+        if configManager.getEncryptDatabase() && !database.isDatabaseEncrypted() {
+            let success = database.encryptDatabase()
+            logger.info("[Enterprise] Auto-encrypt database: \(success ? "success" : "failed")")
+        }
+
+        // [Enterprise] Start attestation refresh if configured
+        if configManager.getAttestationEnabled() {
+            deviceAttestor.startRefresh(intervalSeconds: configManager.getAttestationRefreshInterval())
+        }
+
+        // [Enterprise] Fetch remote config if configured
+        if let remoteUrl = configManager.getRemoteConfigUrl() {
+            httpSyncManager.fetchRemoteConfig(
+                url: remoteUrl,
+                headers: configManager.getRemoteConfigHeaders(),
+                timeoutMs: configManager.getRemoteConfigTimeout()
+            ) { [weak self] remoteConfig in
+                if let config = remoteConfig {
+                    self?.eventDispatcher.sendRemoteConfigEvent([
+                        "config": config,
+                        "source": "remote",
+                    ])
+                }
+            }
+        }
 
         isReady = true
         logger.info("ready() called")
@@ -1021,6 +1075,75 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
     private func cancelStopAfterElapsedTimer() {
         stopAfterElapsedTimer?.invalidate()
         stopAfterElapsedTimer = nil
+    }
+
+    // MARK: - Carbon Report (Enterprise)
+
+    private func getCarbonReport(query: [String: Any]?) -> [String: Any] {
+        let startTime = (query?["startTime"] as? NSNumber)?.int64Value
+        let endTime = (query?["endTime"] as? NSNumber)?.int64Value
+        let locations = database.getLocations(
+            limit: -1, offset: 0, orderAsc: true,
+            startTime: startTime,
+            endTime: endTime
+        )
+
+        var totalDistanceKm = 0.0
+        var previousLat: Double?
+        var previousLng: Double?
+
+        for location in locations {
+            let coords = location["coords"] as? [String: Any]
+            let lat = coords?["latitude"] as? Double ?? location["latitude"] as? Double ?? 0
+            let lng = coords?["longitude"] as? Double ?? location["longitude"] as? Double ?? 0
+
+            if let prevLat = previousLat, let prevLng = previousLng {
+                totalDistanceKm += haversineDistance(prevLat, prevLng, lat, lng) / 1000.0
+            }
+            previousLat = lat
+            previousLng = lng
+        }
+
+        // EU average emission factors (g CO₂/km)
+        let mode = query?["transportMode"] as? String ?? "car"
+        let factorGPerKm = carbonFactorForMode(mode)
+        let totalCO2Grams = totalDistanceKm * factorGPerKm
+
+        return [
+            "totalDistanceKm": totalDistanceKm,
+            "totalCO2Grams": totalCO2Grams,
+            "totalCO2Kg": totalCO2Grams / 1000.0,
+            "transportMode": mode,
+            "emissionFactorGPerKm": factorGPerKm,
+            "locationCount": locations.count,
+            "startTime": startTime as Any? ?? NSNull(),
+            "endTime": endTime as Any? ?? NSNull(),
+        ]
+    }
+
+    private func carbonFactorForMode(_ mode: String) -> Double {
+        switch mode {
+        case "car": return 192.0
+        case "bus": return 89.0
+        case "train": return 41.0
+        case "bicycle", "bike": return 0.0
+        case "walking", "walk", "on_foot": return 0.0
+        case "e-scooter", "scooter": return 35.0
+        case "motorcycle": return 113.0
+        case "plane", "flight": return 255.0
+        default: return 192.0
+        }
+    }
+
+    private func haversineDistance(_ lat1: Double, _ lon1: Double, _ lat2: Double, _ lon2: Double) -> Double {
+        let r = 6_371_000.0
+        let dLat = (lat2 - lat1) * .pi / 180.0
+        let dLon = (lon2 - lon1) * .pi / 180.0
+        let a = sin(dLat / 2) * sin(dLat / 2) +
+                cos(lat1 * .pi / 180.0) * cos(lat2 * .pi / 180.0) *
+                sin(dLon / 2) * sin(dLon / 2)
+        let c = 2 * atan2(sqrt(a), sqrt(1 - a))
+        return r * c
     }
 }
 

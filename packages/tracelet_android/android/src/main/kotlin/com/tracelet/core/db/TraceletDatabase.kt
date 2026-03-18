@@ -6,21 +6,27 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.util.Log
+import java.io.File
 import java.util.UUID
 import java.util.concurrent.Executors
 
 /**
  * SQLite persistence layer for Tracelet.
  *
- * Uses raw SQLiteOpenHelper (no Room annotations needed in plugin library).
+ * Uses Android's standard SQLiteOpenHelper. On Android 8+ (minSdk 26),
+ * the database file is automatically encrypted at rest by Android's
+ * File-Based Encryption (FBE). For additional application-level encryption,
+ * the [encryptDatabase] method uses SQLCipher to migrate the file.
+ *
  * All write operations are serialized on a single background thread.
  *
- * Tables: locations, geofences, logs
+ * Tables: locations, geofences, logs, audit_trail, privacy_zones
  */
-class TraceletDatabase private constructor(context: Context) :
+class TraceletDatabase private constructor(context: Context, private val dbPassword: ByteArray = ByteArray(0)) :
     SQLiteOpenHelper(context, DB_NAME, null, DB_VERSION) {
 
     companion object {
+        private const val TAG = "TraceletDatabase"
         private const val DB_NAME = "tracelet.db"
         private const val DB_VERSION = 5
 
@@ -83,13 +89,26 @@ class TraceletDatabase private constructor(context: Context) :
         @Volatile
         private var instance: TraceletDatabase? = null
 
-        fun getInstance(context: Context): TraceletDatabase {
+        fun getInstance(context: Context, password: ByteArray = ByteArray(0)): TraceletDatabase {
             return instance ?: synchronized(this) {
-                instance ?: TraceletDatabase(context.applicationContext).also { instance = it }
+                instance ?: TraceletDatabase(context.applicationContext, password).also { instance = it }
+            }
+        }
+
+        /**
+         * Reinitialize the database with a new password.
+         * Closes the existing instance and creates a new one with encryption.
+         */
+        fun reinitialize(context: Context, password: ByteArray): TraceletDatabase {
+            synchronized(this) {
+                instance?.close()
+                instance = null
+                return TraceletDatabase(context.applicationContext, password).also { instance = it }
             }
         }
     }
 
+    private val appContext = context
     private val writeExecutor = Executors.newSingleThreadExecutor()
 
     override fun onCreate(db: SQLiteDatabase) {
@@ -888,5 +907,88 @@ class TraceletDatabase private constructor(context: Context) :
             "action" to c.getInt(c.getColumnIndexOrThrow(COL_PZ_ACTION)),
             "degradedAccuracyMeters" to c.getDouble(c.getColumnIndexOrThrow(COL_PZ_DEGRADED_ACCURACY)),
         )
+    }
+
+    // =========================================================================
+    // Database Encryption (Enterprise)
+    // =========================================================================
+
+    /**
+     * Migrate an existing unencrypted database to encrypted.
+     *
+     * Uses SQLCipher's ATTACH + sqlcipher_export mechanism:
+     * 1. Open existing unencrypted DB
+     * 2. ATTACH a new encrypted DB with the given key
+     * 3. Export all data via sqlcipher_export()
+     * 4. Detach and replace the original file
+     *
+     * @param key The encryption key bytes
+     * @param encryptionManager The manager to mark encryption complete
+     * @return true on success
+     */
+    fun encryptDatabase(key: ByteArray, encryptionManager: DatabaseEncryptionManager): Boolean {
+        return try {
+            val dbPath = appContext.getDatabasePath(DB_NAME).absolutePath
+            val encryptedPath = "$dbPath.encrypted"
+
+            // Close the current database
+            close()
+
+            // Open the unencrypted database directly using SQLCipher
+            val unencryptedDb = net.zetetic.database.sqlcipher.SQLiteDatabase.openDatabase(
+                dbPath, "", null,
+                net.zetetic.database.sqlcipher.SQLiteDatabase.OPEN_READWRITE, null, null
+            )
+
+            // Attach encrypted database and export
+            val hexKey = key.joinToString("") { "%02x".format(it) }
+            unencryptedDb.rawExecSQL("ATTACH DATABASE '$encryptedPath' AS encrypted KEY x'$hexKey'")
+            unencryptedDb.rawExecSQL("SELECT sqlcipher_export('encrypted')")
+            unencryptedDb.rawExecSQL("DETACH DATABASE encrypted")
+            unencryptedDb.close()
+
+            // Replace unencrypted with encrypted
+            val originalFile = File(dbPath)
+            val encryptedFile = File(encryptedPath)
+            val walFile = File("$dbPath-wal")
+            val shmFile = File("$dbPath-shm")
+
+            // Delete WAL/SHM files from unencrypted DB
+            walFile.delete()
+            shmFile.delete()
+
+            // Replace the database file
+            if (encryptedFile.renameTo(originalFile)) {
+                encryptionManager.markEncrypted()
+                Log.i(TAG, "Database encrypted successfully")
+
+                // Reinitialize (the DB is now SQLCipher-encrypted)
+                synchronized(Companion) {
+                    instance = null
+                    TraceletDatabase(appContext, key).also { instance = it }
+                }
+                true
+            } else {
+                Log.e(TAG, "Failed to replace database file")
+                // Reopen without encryption
+                synchronized(Companion) {
+                    instance = null
+                    TraceletDatabase(appContext, ByteArray(0)).also { instance = it }
+                }
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Database encryption failed", e)
+            // Try to reopen the original database
+            try {
+                synchronized(Companion) {
+                    instance = null
+                    TraceletDatabase(appContext, ByteArray(0)).also { instance = it }
+                }
+            } catch (reopenEx: Exception) {
+                Log.e(TAG, "Failed to reopen database after encryption failure", reopenEx)
+            }
+            false
+        }
     }
 }

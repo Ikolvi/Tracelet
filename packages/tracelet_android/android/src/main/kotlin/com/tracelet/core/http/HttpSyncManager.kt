@@ -369,4 +369,120 @@ class HttpSyncManager(
         return caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) &&
                !caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
     }
+
+    // =========================================================================
+    // Remote Config Fetch (Enterprise)
+    // =========================================================================
+
+    /**
+     * Fetch remote config JSON from [url] and return the parsed map.
+     *
+     * HTTPS-only. Response must be `application/json` and ≤100 KB.
+     * Uses ETag caching via SharedPreferences.
+     */
+    fun fetchRemoteConfig(
+        url: String,
+        headers: Map<String, String>,
+        timeoutMs: Long,
+        callback: (Map<String, Any?>?) -> Unit
+    ) {
+        executor.execute {
+            try {
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .readTimeout(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .build()
+
+                val prefs = context.getSharedPreferences("com.tracelet.remote_config", Context.MODE_PRIVATE)
+                val savedETag = prefs.getString("etag", null)
+
+                val requestBuilder = okhttp3.Request.Builder().url(url).get()
+                for ((key, value) in headers) {
+                    requestBuilder.addHeader(key, value)
+                }
+                if (savedETag != null) {
+                    requestBuilder.addHeader("If-None-Match", savedETag)
+                }
+
+                val response = client.newCall(requestBuilder.build()).execute()
+                response.use { resp ->
+                    // 304 Not Modified — use cached config
+                    if (resp.code == 304) {
+                        val cachedJson = prefs.getString("cached_config", null)
+                        if (cachedJson != null) {
+                            @Suppress("UNCHECKED_CAST")
+                            val parsed = org.json.JSONObject(cachedJson).let { jsonToMap(it) }
+                            callback(parsed)
+                        } else {
+                            callback(null)
+                        }
+                        return@execute
+                    }
+
+                    if (!resp.isSuccessful) {
+                        Log.w(TAG, "Remote config fetch failed: HTTP ${resp.code}")
+                        callback(null)
+                        return@execute
+                    }
+
+                    val contentType = resp.header("Content-Type") ?: ""
+                    if (!contentType.contains("json", ignoreCase = true)) {
+                        Log.w(TAG, "Remote config rejected: Content-Type is $contentType")
+                        callback(null)
+                        return@execute
+                    }
+
+                    val body = resp.body?.string()
+                    if (body == null || body.length > 100_000) {
+                        Log.w(TAG, "Remote config rejected: body null or exceeds 100KB")
+                        callback(null)
+                        return@execute
+                    }
+
+                    // Cache ETag and response
+                    val newETag = resp.header("ETag")
+                    prefs.edit().apply {
+                        if (newETag != null) putString("etag", newETag)
+                        putString("cached_config", body)
+                        apply()
+                    }
+
+                    @Suppress("UNCHECKED_CAST")
+                    val parsed = org.json.JSONObject(body).let { jsonToMap(it) }
+                    callback(parsed)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Remote config fetch error: ${e.message}")
+                callback(null)
+            }
+        }
+    }
+
+    private fun jsonToMap(json: org.json.JSONObject): Map<String, Any?> {
+        val map = mutableMapOf<String, Any?>()
+        for (key in json.keys()) {
+            val value = json.opt(key)
+            map[key] = when (value) {
+                is org.json.JSONObject -> jsonToMap(value)
+                is org.json.JSONArray -> jsonArrayToList(value)
+                org.json.JSONObject.NULL -> null
+                else -> value
+            }
+        }
+        return map
+    }
+
+    private fun jsonArrayToList(array: org.json.JSONArray): List<Any?> {
+        val list = mutableListOf<Any?>()
+        for (i in 0 until array.length()) {
+            val value = array.opt(i)
+            list.add(when (value) {
+                is org.json.JSONObject -> jsonToMap(value)
+                is org.json.JSONArray -> jsonArrayToList(value)
+                org.json.JSONObject.NULL -> null
+                else -> value
+            })
+        }
+        return list
+    }
 }
