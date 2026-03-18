@@ -1,10 +1,14 @@
 package com.tracelet.tracelet_android.location
 
+import android.content.Context
 import android.location.Location
+import android.location.LocationManager
 import com.tracelet.core.location.LocationEngine
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows
 import org.robolectric.annotation.Config
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -156,5 +160,32 @@ internal class LocationEngineGpsFixTest {
     fun isGpsFix_fusedProvider_justAboveThreshold_returnsFalse() {
         val loc = buildLocation("fused", 50.1f)
         assertFalse(LocationEngine.isGpsFix(loc))
+    }
+
+    // ── isGpsProviderEnabled tests ──────────────────────────────────────────
+
+    @Test
+    fun isGpsProviderEnabled_gpsOn_returnsTrue() {
+        val context = RuntimeEnvironment.getApplication()
+        val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        Shadows.shadowOf(lm).setProviderEnabled(LocationManager.GPS_PROVIDER, true)
+        assertTrue(LocationEngine.isGpsProviderEnabled(context))
+    }
+
+    @Test
+    fun isGpsProviderEnabled_gpsOff_returnsFalse() {
+        val context = RuntimeEnvironment.getApplication()
+        val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        Shadows.shadowOf(lm).setProviderEnabled(LocationManager.GPS_PROVIDER, false)
+        assertFalse(LocationEngine.isGpsProviderEnabled(context))
+    }
+
+    @Test
+    fun isGpsProviderEnabled_networkOnGpsOff_returnsFalse() {
+        val context = RuntimeEnvironment.getApplication()
+        val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        Shadows.shadowOf(lm).setProviderEnabled(LocationManager.NETWORK_PROVIDER, true)
+        Shadows.shadowOf(lm).setProviderEnabled(LocationManager.GPS_PROVIDER, false)
+        assertFalse(LocationEngine.isGpsProviderEnabled(context))
     }
 }

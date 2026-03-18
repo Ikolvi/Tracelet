@@ -55,7 +55,7 @@ class LocationEngine(
         /** Retention pruning runs every N inserts instead of on every insert. */
         private const val PRUNE_EVERY_N_INSERTS = 100
 
-        /** Maximum accuracy (meters) to consider a fix as GPS-sourced. */
+        /** Maximum accuracy (meters) to consider a fused fix as GPS-sourced. */
         internal const val GPS_ACCURACY_THRESHOLD = 50f
 
         /**
@@ -66,6 +66,15 @@ class LocationEngine(
         internal fun isGpsFix(location: Location): Boolean {
             return location.provider == "gps" ||
                 (location.provider == "fused" && location.accuracy <= GPS_ACCURACY_THRESHOLD)
+        }
+
+        /**
+         * Checks whether the hardware GPS provider is enabled on the device.
+         * Returns false when the user has toggled GPS off in system settings.
+         */
+        internal fun isGpsProviderEnabled(context: Context): Boolean {
+            val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            return lm?.isProviderEnabled(LocationManager.GPS_PROVIDER) ?: false
         }
     }
 
@@ -567,8 +576,12 @@ class LocationEngine(
     // =========================================================================
 
     private fun onLocationReceived(location: Location, event: String) {
-        // Only reset DR timer on GPS-sourced fixes (not network/cell).
-        if (isGpsFix(location)) {
+        // Only reset DR timer when GPS hardware is enabled AND the fix
+        // is GPS-quality.  When the user has toggled GPS off,
+        // FusedLocationProvider can still deliver accurate Wi-Fi / cell
+        // fixes — those must NOT prevent DR from activating.
+        val gpsEnabled = isGpsProviderEnabled(context)
+        if (gpsEnabled && isGpsFix(location)) {
             resetGpsLossTimer()
             if (deadReckoningEngine?.isActive == true) {
                 Log.d(TAG, "GPS signal recovered — deactivating dead reckoning")
@@ -945,8 +958,11 @@ class LocationEngine(
 
         // 1. Satellite count: real GPS fixes report 4–30 satellites.
         //    Mock locations from Fake GPS apps typically report 0.
+        //    Skip this check when GPS hardware is disabled because
+        //    Wi-Fi/cell locations legitimately have 0 satellites.
+        val gpsEnabled = isGpsProviderEnabled(context)
         val extras = location.extras
-        if (extras != null) {
+        if (gpsEnabled && extras != null) {
             val satellites = extras.getInt("satellites", -1)
             // Only flag if satellites is explicitly 0 (not missing/-1) and
             // accuracy suggests an outdoor fix (< 50m).
@@ -998,6 +1014,7 @@ class LocationEngine(
         cancelGpsLossTimer()
 
         val delayMs = config.getDeadReckoningActivationDelay() * 1000L
+        Log.d(TAG, "DR: GPS-loss timer started (${delayMs}ms)")
         gpsLossRunnable = Runnable { activateDeadReckoning() }
         drHandler.postDelayed(gpsLossRunnable!!, delayMs)
     }
@@ -1016,8 +1033,14 @@ class LocationEngine(
 
     /** Activates dead reckoning from the last known GPS position. */
     private fun activateDeadReckoning() {
-        val last = lastLocation ?: return
-        Log.d(TAG, "GPS lost for ${config.getDeadReckoningActivationDelay()}s — activating dead reckoning")
+        val last = lastLocation
+        if (last == null) {
+            Log.w(TAG, "DR: Cannot activate — no last known location")
+            // Restart timer so we try again once a location arrives.
+            startGpsLossTimer()
+            return
+        }
+        Log.d(TAG, "DR: GPS lost for ${config.getDeadReckoningActivationDelay()}s — activating (last=${last.latitude},${last.longitude} acc=${last.accuracy})")
 
         val engine = DeadReckoningEngine(context, config)
         engine.onEstimatedLocation = { drLocation -> onDrLocationEstimated(drLocation) }

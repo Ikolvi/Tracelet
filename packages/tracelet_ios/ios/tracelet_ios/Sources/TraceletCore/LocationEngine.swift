@@ -986,6 +986,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         cancelGpsLossTimer()
 
         let delay = TimeInterval(configManager.getDeadReckoningActivationDelay())
+        NSLog("[Tracelet] DR: GPS-loss timer started (\(delay)s)")
         gpsLossTimer = Timer.scheduledTimer(
             withTimeInterval: delay,
             repeats: false
@@ -1008,8 +1009,13 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
 
     /// Activates dead reckoning from the last known GPS position.
     private func activateDeadReckoning() {
-        guard let last = lastLocation else { return }
-        NSLog("[Tracelet] GPS lost for \(configManager.getDeadReckoningActivationDelay())s — activating dead reckoning")
+        guard let last = lastLocation else {
+            NSLog("[Tracelet] DR: Cannot activate — no last known location")
+            // Restart timer so we try again once a location arrives.
+            startGpsLossTimer()
+            return
+        }
+        NSLog("[Tracelet] DR: GPS lost for \(configManager.getDeadReckoningActivationDelay())s — activating (last=\(last.coordinate.latitude),\(last.coordinate.longitude) acc=\(last.horizontalAccuracy))")
 
         let engine = DeadReckoningEngine(configManager: configManager)
         engine.onEstimatedLocation = { [weak self] drLocation in
