@@ -2240,6 +2240,76 @@ class _DashboardPageState extends State<DashboardPage>
     }
   }
 
+  Future<void> _getDeadReckoningState() async {
+    try {
+      final state = await tl.Tracelet.getDeadReckoningState();
+      if (state == null) {
+        _addLog('DEAD_RECKONING', 'Inactive (GPS available or DR disabled)');
+      } else {
+        final active = state['active'] == true;
+        final elapsed = state['elapsed'] ?? 0;
+        final accuracy = state['estimatedAccuracy'] ?? 0;
+        _addLog(
+          'DEAD_RECKONING',
+          'active=$active  elapsed=${elapsed}s  '
+              'accuracy=${accuracy}m',
+        );
+      }
+    } catch (e) {
+      _addLog('ERROR', 'getDeadReckoningState() failed: $e');
+    }
+  }
+
+  // ── Database Encryption ───────────────────────────────────────────────
+
+  Future<void> _checkEncryption() async {
+    try {
+      final encrypted = await tl.Tracelet.isDatabaseEncrypted();
+      _addLog(
+        'ENCRYPTION',
+        encrypted ? 'Database IS encrypted' : 'Database is NOT encrypted',
+      );
+    } catch (e) {
+      _addLog('ERROR', 'isDatabaseEncrypted() failed: $e');
+    }
+  }
+
+  Future<void> _encryptDatabase() async {
+    try {
+      _addLog('ENCRYPTION', 'Encrypting database...');
+      final ok = await tl.Tracelet.encryptDatabase();
+      _addLog(
+        'ENCRYPTION',
+        ok ? 'Database encrypted successfully' : 'Encryption failed',
+      );
+    } catch (e) {
+      _addLog('ERROR', 'encryptDatabase() failed: $e');
+    }
+  }
+
+  // ── Device Attestation ────────────────────────────────────────────────
+
+  Future<void> _getAttestationToken() async {
+    try {
+      _addLog('ATTESTATION', 'Requesting token...');
+      final token = await tl.Tracelet.getAttestationToken();
+      if (token != null) {
+        final preview = token.token.length > 40
+            ? '${token.token.substring(0, 40)}...'
+            : token.token;
+        _addLog(
+          'ATTESTATION',
+          'provider=${token.provider}  '
+              'token=$preview',
+        );
+      } else {
+        _addLog('ATTESTATION', 'No token returned (unsupported platform?)');
+      }
+    } catch (e) {
+      _addLog('ERROR', 'getAttestationToken() failed: $e');
+    }
+  }
+
   // ── Sparse Updates ────────────────────────────────────────────────────
 
   Future<void> _toggleSparseUpdates() async {
@@ -3555,6 +3625,21 @@ class _DashboardPageState extends State<DashboardPage>
                       ),
                       _Chip('Verify Trail', Icons.verified, _verifyAuditTrail),
                       _Chip('Audit Proof', Icons.receipt_long, _getAuditProof),
+                      _Chip(
+                        'Check Encrypted',
+                        Icons.lock_outline,
+                        _checkEncryption,
+                      ),
+                      _Chip(
+                        'Encrypt DB',
+                        Icons.enhanced_encryption,
+                        _encryptDatabase,
+                      ),
+                      _Chip(
+                        'Attestation Token',
+                        Icons.verified_user,
+                        _getAttestationToken,
+                      ),
                     ],
                   ),
 
@@ -3622,6 +3707,11 @@ class _DashboardPageState extends State<DashboardPage>
                             ? Icons.explore
                             : Icons.explore_off,
                         _toggleDeadReckoning,
+                      ),
+                      _Chip(
+                        'DR State',
+                        Icons.info_outline,
+                        _getDeadReckoningState,
                       ),
                       _Chip(
                         _sparseUpdatesEnabled ? 'Sparse: ON' : 'Sparse: OFF',
@@ -3980,6 +4070,9 @@ class _LogTile extends StatelessWidget {
       'READY' || 'START' || 'STOP' => Colors.green,
       'PERIODIC' => Colors.cyan.shade700,
       'CONFIG' => Colors.amber,
+      'DEAD_RECKONING' => Colors.deepPurple,
+      'ENCRYPTION' => Colors.blueGrey,
+      'ATTESTATION' => Colors.indigo,
       _ => Colors.grey,
     };
   }

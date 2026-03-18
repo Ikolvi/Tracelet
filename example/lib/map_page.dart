@@ -132,6 +132,14 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   // Historical
   List<tl.Location> _historicalLocations = [];
 
+  // Privacy Zones
+  List<tl.PrivacyZone> _privacyZones = [];
+  bool _showPrivacyZones = true;
+
+  // Dead Reckoning
+  Map<String, Object?>? _drState;
+  Timer? _drPollTimer;
+
   // Stats
   double _totalDistance = 0;
   double _maxSpeed = 0;
@@ -145,10 +153,15 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     super.initState();
     _subscribeEvents();
     _loadInitialState();
+    _drPollTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _pollDeadReckoningState(),
+    );
   }
 
   @override
   void dispose() {
+    _drPollTimer?.cancel();
     _tripTimer?.cancel();
     _posAnimController?.dispose();
     for (final s in _subs) {
@@ -185,9 +198,11 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
         _mapController.move(pos, 16);
       }
       final fences = await tl.Tracelet.getGeofences();
+      final zones = await tl.Tracelet.getPrivacyZones();
       final state = await tl.Tracelet.getState();
       setState(() {
         _geofences = fences;
+        _privacyZones = zones;
         _isMoving = state.isMoving;
         _isTracking = state.enabled;
         _trackingMode = state.trackingMode;
@@ -935,6 +950,45 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     );
   }
 
+  // ── Dead Reckoning state polling ──────────────────────────────────────
+
+  Future<void> _pollDeadReckoningState() async {
+    try {
+      final state = await tl.Tracelet.getDeadReckoningState();
+      if (mounted) setState(() => _drState = state);
+    } catch (_) {}
+  }
+
+  // ── Privacy Zones layer ───────────────────────────────────────────────
+
+  List<Widget> _buildPrivacyZoneLayers() {
+    if (!_showPrivacyZones || _privacyZones.isEmpty) return [];
+    final circles = <CircleMarker>[];
+    for (final zone in _privacyZones) {
+      final isExclude = zone.action == tl.PrivacyZoneAction.exclude;
+      circles.add(
+        CircleMarker(
+          point: LatLng(zone.latitude, zone.longitude),
+          radius: zone.radius,
+          useRadiusInMeter: true,
+          color: isExclude
+              ? Colors.purple.withAlpha(30)
+              : Colors.indigo.withAlpha(25),
+          borderColor: isExclude ? Colors.purple : Colors.indigo,
+          borderStrokeWidth: 2.0,
+        ),
+      );
+    }
+    return [CircleLayer(circles: circles)];
+  }
+
+  Future<void> _refreshPrivacyZones() async {
+    try {
+      final zones = await tl.Tracelet.getPrivacyZones();
+      setState(() => _privacyZones = zones);
+    } catch (_) {}
+  }
+
   List<Widget> _buildGeofenceLayers() {
     if (!_showGeofences) return [];
     final circles = <CircleMarker>[];
@@ -1355,6 +1409,27 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                     : _currentAccuracy <= 30
                     ? Colors.orange
                     : Colors.red,
+              ),
+            ],
+            // Dead Reckoning status
+            if (_drState != null && _drState!['active'] == true) ...[
+              const SizedBox(height: 4),
+              _StatusChip(
+                icon: Icons.explore,
+                label:
+                    'DR: ${_drState!['elapsed']}s  '
+                    '~${_drState!['estimatedAccuracy']}m',
+                color: Colors.deepPurple,
+              ),
+            ],
+            // Privacy zones count
+            if (_privacyZones.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              _StatusChip(
+                icon: Icons.shield,
+                label:
+                    '${_privacyZones.length} Privacy Zone${_privacyZones.length == 1 ? '' : 's'}',
+                color: Colors.purple,
               ),
             ],
           ],
@@ -1800,6 +1875,9 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                     } else {
                       _showHistorical = false;
                     }
+                  case 'privacyZones':
+                    _showPrivacyZones = !_showPrivacyZones;
+                    if (_showPrivacyZones) _refreshPrivacyZones();
                   case 'clearTrail':
                     _trail.clear();
                     _pointCount = 0;
@@ -1838,6 +1916,12 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                 'Stored locations',
                 Icons.history,
                 _showHistorical,
+              ),
+              _layerItem(
+                'privacyZones',
+                'Privacy zones',
+                Icons.shield,
+                _showPrivacyZones,
               ),
               const PopupMenuDivider(),
               const PopupMenuItem(
@@ -1932,6 +2016,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                     _buildTileLayer(),
                     _buildAccuracyCircle(),
                     ..._buildGeofenceLayers(),
+                    ..._buildPrivacyZoneLayers(),
                     ..._buildHistoricalLayers(),
                     _buildSpeedTrailLayer(),
                     _buildBreadcrumbs(),
