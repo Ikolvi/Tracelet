@@ -17,6 +17,7 @@ class ProviderChangeEvent {
     this.network = false,
     this.accuracyAuthorization = AccuracyAuthorization.full,
     this.mockLocationsDetected = false,
+    this.gpsFallback = false,
   });
 
   /// Whether location services are globally enabled on the device.
@@ -42,6 +43,16 @@ class ProviderChangeEvent {
   /// Always `false` on Web and iOS < 15.
   final bool mockLocationsDetected;
 
+  /// Whether the location engine has auto-downgraded to Wi-Fi/cell
+  /// positioning because the GPS hardware provider is disabled.
+  ///
+  /// When `true`, the engine is using network-based positioning instead
+  /// of the configured GPS accuracy. When GPS is re-enabled, this reverts
+  /// to `false` and the original accuracy is restored.
+  ///
+  /// Only applicable on Android. Always `false` on iOS and Web.
+  final bool gpsFallback;
+
   /// Creates a [ProviderChangeEvent] from a platform map.
   factory ProviderChangeEvent.fromMap(Map<String, Object?> map) {
     return ProviderChangeEvent(
@@ -62,6 +73,7 @@ class ProviderChangeEvent {
         map['mockLocationsDetected'],
         fallback: false,
       ),
+      gpsFallback: ensureBool(map['gpsFallback'], fallback: false),
     );
   }
 
@@ -74,6 +86,7 @@ class ProviderChangeEvent {
       'network': network,
       'accuracyAuthorization': accuracyAuthorization.index,
       'mockLocationsDetected': mockLocationsDetected,
+      'gpsFallback': gpsFallback,
     };
   }
 
@@ -81,7 +94,8 @@ class ProviderChangeEvent {
   String toString() =>
       'ProviderChangeEvent(enabled: $enabled, status: $status, '
       'accuracy: $accuracyAuthorization, '
-      'mockLocationsDetected: $mockLocationsDetected)';
+      'mockLocationsDetected: $mockLocationsDetected, '
+      'gpsFallback: $gpsFallback)';
 
   @override
   bool operator ==(Object other) =>

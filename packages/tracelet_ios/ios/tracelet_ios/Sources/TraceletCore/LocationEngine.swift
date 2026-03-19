@@ -849,12 +849,26 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             mockHeuristics = heuristics
         }
 
+        // Classify the location source based on accuracy heuristic.
+        // iOS does not expose provider names; accuracy is the best signal.
+        let locationSource: String
+        if location.horizontalAccuracy > 0 && location.horizontalAccuracy <= 50 {
+            locationSource = "gps"
+        } else if location.horizontalAccuracy <= 200 {
+            locationSource = "wifi"
+        } else if location.horizontalAccuracy > 200 {
+            locationSource = "cell"
+        } else {
+            locationSource = "unknown"
+        }
+
         var result: [String: Any] = [
             "uuid": Self.generateUUID(),
             "timestamp": iso8601String(from: location.timestamp),
             "coords": coords,
             "is_moving": stateManager.isMoving,
             "odometer": stateManager.odometer,
+            "locationSource": locationSource,
             "mock": mock,
             "mockHeuristics": mockHeuristics as Any,
             "activity": [

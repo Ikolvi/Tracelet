@@ -1,3 +1,8 @@
+## 1.4.3
+
+- **FEAT**: Add `locationSource` classification to every location fix (`gps`, `wifi`, `cell`, `unknown`) based on `horizontalAccuracy` heuristic.
+- **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.4.3`.
+
 ## 1.4.2
 
 - **FIX**: `activateDeadReckoning()` now retries via timer instead of silently returning when `lastLocation` is nil.

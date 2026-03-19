@@ -1,3 +1,9 @@
+## 1.4.3
+
+- **FEAT**: Add `locationSource` field to `Location` — classifies each fix as `gps`, `wifi`, `cell`, `network`, or `unknown`.
+- **FEAT**: Add `gpsFallback` field to `ProviderChangeEvent` — signals when the engine auto-downgrades to Wi-Fi/cell positioning because GPS is disabled.
+- **CHORE**: Update cross-package dependency constraints to `^1.4.3`.
+
 ## 1.4.2
 
 - **FIX**: Dead reckoning activation now reliably detects GPS hardware state instead of using accuracy-based heuristic.

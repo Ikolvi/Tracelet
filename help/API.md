@@ -185,6 +185,57 @@
 
 ## Key Event Types
 
+### Location
+
+| Property | Type | Description |
+|---|---|---|
+| `coords` | `Coords` | Geographic coordinates and accuracy metrics |
+| `timestamp` | `String` | ISO 8601 timestamp |
+| `isMoving` | `bool` | Whether device was moving |
+| `uuid` | `String` | Unique identifier |
+| `odometer` | `double` | Distance traveled (meters) |
+| `locationSource` | `String` | Fix source: `'gps'`, `'wifi'`, `'cell'`, `'network'`, or `'unknown'` |
+| `isMock` | `bool` | Whether location was spoofed |
+| `mockHeuristics` | `MockHeuristics?` | Detailed spoofing signals (when heuristic detection enabled) |
+| `activity` | `LocationActivity` | Detected activity type + confidence |
+| `battery` | `LocationBattery` | Battery level + charging state |
+| `event` | `String?` | Trigger event (`'motionchange'`, `'heartbeat'`, `'periodic'`, etc.) |
+| `extras` | `Map<String, Object?>` | Arbitrary app data |
+
+#### locationSource
+
+Classifies how each fix was obtained:
+
+| Value | Typical accuracy | Source |
+|---|---|---|
+| `gps` | ≤ 50m | GPS/GNSS satellite |
+| `wifi` | 50–200m | Wi-Fi access point positioning |
+| `cell` | > 200m | Cell tower triangulation |
+| `network` | varies | Android network provider (Wi-Fi or cell) |
+| `unknown` | — | Source could not be determined |
+
+On **Android**, classification uses the provider name from `FusedLocationProviderClient` combined with accuracy. On **iOS**, classification is based on `horizontalAccuracy` alone (iOS does not expose provider names).
+
+### ProviderChangeEvent
+
+| Property | Type | Description |
+|---|---|---|
+| `enabled` | `bool` | Location services globally enabled |
+| `status` | `AuthorizationStatus` | Current authorization status |
+| `gps` | `bool` | GPS provider enabled (Android) |
+| `network` | `bool` | Network provider enabled (Android) |
+| `accuracyAuthorization` | `AccuracyAuthorization` | iOS 14+ precise location auth |
+| `mockLocationsDetected` | `bool` | First mock location encountered |
+| `gpsFallback` | `bool` | Auto-downgraded to Wi-Fi/cell because GPS is off (Android) |
+
+#### GPS-Off Auto-Fallback (Android)
+
+When GPS hardware is disabled (user toggles GPS off in system settings) and the configured accuracy is `high` (GPS), the engine automatically downgrades to `PRIORITY_BALANCED_POWER_ACCURACY` to receive Wi-Fi/cell tower fixes instead of timing out. When GPS is re-enabled, the original priority is restored automatically.
+
+The `gpsFallback` field in `ProviderChangeEvent` signals this state:
+- `true` — engine is using network positioning as fallback
+- `false` — engine is using the configured accuracy (normal operation)
+
 ### HttpEvent
 
 | Property | Type | Description |

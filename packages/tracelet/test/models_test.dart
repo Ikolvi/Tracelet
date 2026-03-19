@@ -597,6 +597,73 @@ void main() {
       expect(restored.isMock, true);
     });
 
+    test('locationSource defaults to unknown', () {
+      final loc = Location.fromMap(const {
+        'uuid': 'src-default',
+        'timestamp': '2024-01-01T00:00:00Z',
+        'is_moving': false,
+        'odometer': 0.0,
+        'coords': {'latitude': 0.0, 'longitude': 0.0},
+      });
+      expect(loc.locationSource, 'unknown');
+    });
+
+    test('locationSource parsed from map', () {
+      final loc = Location.fromMap(const {
+        'uuid': 'src-gps',
+        'timestamp': '2024-01-01T00:00:00Z',
+        'is_moving': false,
+        'odometer': 0.0,
+        'locationSource': 'gps',
+        'coords': {'latitude': 37.0, 'longitude': -122.0},
+      });
+      expect(loc.locationSource, 'gps');
+    });
+
+    test('locationSource parsed from snake_case key', () {
+      final loc = Location.fromMap(const {
+        'uuid': 'src-wifi',
+        'timestamp': '2024-01-01T00:00:00Z',
+        'is_moving': false,
+        'odometer': 0.0,
+        'location_source': 'wifi',
+        'coords': {'latitude': 37.0, 'longitude': -122.0},
+      });
+      expect(loc.locationSource, 'wifi');
+    });
+
+    test('locationSource round-trips through toMap/fromMap', () {
+      final original = Location.fromMap(const {
+        'uuid': 'src-rt',
+        'timestamp': '2024-01-01T00:00:00Z',
+        'is_moving': false,
+        'odometer': 0.0,
+        'locationSource': 'cell',
+        'coords': {'latitude': 37.0, 'longitude': -122.0},
+      });
+      expect(original.locationSource, 'cell');
+
+      final map = original.toMap();
+      expect(map['locationSource'], 'cell');
+
+      final restored = Location.fromMap(map);
+      expect(restored.locationSource, 'cell');
+    });
+
+    test('locationSource preserved in copyWithCoords', () {
+      final original = Location.fromMap(const {
+        'uuid': 'src-copy',
+        'timestamp': '2024-01-01T00:00:00Z',
+        'is_moving': false,
+        'odometer': 0.0,
+        'locationSource': 'wifi',
+        'coords': {'latitude': 37.0, 'longitude': -122.0},
+      });
+      final copy = original.copyWithCoords(latitude: 38.0);
+      expect(copy.locationSource, 'wifi');
+      expect(copy.coords.latitude, 38.0);
+    });
+
     test('mockHeuristics defaults to null', () {
       final loc = Location.fromMap(const {
         'uuid': 'test-uuid',
@@ -1011,6 +1078,36 @@ void main() {
 
       final restored = ProviderChangeEvent.fromMap(map);
       expect(restored.mockLocationsDetected, true);
+    });
+
+    test('gpsFallback defaults to false', () {
+      final event = ProviderChangeEvent.fromMap(const {
+        'enabled': true,
+        'status': 3,
+      });
+      expect(event.gpsFallback, false);
+    });
+
+    test('gpsFallback parsed when true', () {
+      final event = ProviderChangeEvent.fromMap(const {
+        'enabled': true,
+        'status': 3,
+        'gpsFallback': true,
+      });
+      expect(event.gpsFallback, true);
+    });
+
+    test('gpsFallback round-trips', () {
+      final event = ProviderChangeEvent.fromMap(const {
+        'enabled': true,
+        'status': 3,
+        'gpsFallback': true,
+      });
+      final map = event.toMap();
+      expect(map['gpsFallback'], true);
+
+      final restored = ProviderChangeEvent.fromMap(map);
+      expect(restored.gpsFallback, true);
     });
   });
 

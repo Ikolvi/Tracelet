@@ -1,3 +1,10 @@
+## 1.4.3
+
+- **FEAT**: Automatic GPS-off fallback — when GPS hardware is disabled, the engine auto-downgrades to `PRIORITY_BALANCED_POWER_ACCURACY` for Wi-Fi/cell tower fixes. Restores original priority when GPS is re-enabled.
+- **FEAT**: Add `locationSource` classification to every location fix (`gps`, `wifi`, `cell`, `network`, `unknown`).
+- **FEAT**: Add `gpsFallback` flag to provider state for Dart-side awareness of fallback state.
+- **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.4.3`.
+
 ## 1.4.2
 
 - **FIX**: Dead reckoning activation now uses `LocationManager.isProviderEnabled(GPS_PROVIDER)` instead of accuracy heuristic — Wi-Fi/cell fixes no longer prevent DR from activating when GPS hardware is disabled.

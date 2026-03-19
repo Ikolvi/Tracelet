@@ -115,6 +115,17 @@ class LocationEngine(
     /** Whether a mock location warning has already been fired for this session. */
     private var mockLocationWarningFired = false
 
+    /**
+     * Whether continuous tracking priority was auto-downgraded because the
+     * GPS hardware provider is disabled (user toggled GPS off).
+     *
+     * When true, the engine is using [Priority.PRIORITY_BALANCED_POWER_ACCURACY]
+     * to obtain Wi-Fi / cell tower fixes instead of the configured priority.
+     * Once GPS is re-enabled, the engine restores the original priority and
+     * re-subscribes to location updates.
+     */
+    private var gpsFallbackActive = false
+
     /** Whether continuous tracking is active. */
     val isTracking: Boolean get() = trackingCallback != null
 
@@ -128,12 +139,19 @@ class LocationEngine(
 
     /**
      * Starts continuous location tracking based on current config.
+     *
+     * If the GPS provider is disabled (user toggled GPS off in system
+     * settings), the engine automatically downgrades to
+     * [Priority.PRIORITY_BALANCED_POWER_ACCURACY] so that
+     * Wi-Fi / cell-tower fixes are delivered instead of nothing.
+     * When GPS is re-enabled, [restoreOriginalPriority] re-subscribes
+     * with the configured accuracy.
      */
     fun start() {
         if (!hasPermission()) return
         stop() // Ensure clean state
 
-        val request = buildLocationRequest()
+        val request = buildLocationRequestWithGpsFallback()
 
         trackingCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
@@ -143,8 +161,21 @@ class LocationEngine(
             }
 
             override fun onLocationAvailability(availability: LocationAvailability) {
+                val providerState = buildProviderState()
+                val gpsNowEnabled = providerState["gps"] as? Boolean ?: false
+
+                if (gpsFallbackActive && gpsNowEnabled) {
+                    // GPS was re-enabled — restore original priority.
+                    Log.d(TAG, "GPS re-enabled — restoring original priority")
+                    restoreOriginalPriority()
+                } else if (!gpsFallbackActive && !gpsNowEnabled && isHighAccuracyConfigured()) {
+                    // GPS just disabled while we were expecting it — downgrade.
+                    Log.d(TAG, "GPS disabled during tracking — downgrading to Wi-Fi/cell")
+                    activateGpsFallback()
+                }
+
                 if (!availability.isLocationAvailable) {
-                    events.sendProviderChange(buildProviderState())
+                    events.sendProviderChange(providerState)
                 }
             }
         }
@@ -160,6 +191,7 @@ class LocationEngine(
 
     /** Stops continuous location tracking. */
     fun stop() {
+        gpsFallbackActive = false
         trackingCallback?.let {
             fusedClient.removeLocationUpdates(it)
             trackingCallback = null
@@ -720,12 +752,23 @@ class LocationEngine(
             )
         } else null
 
+        // Classify the location source based on provider and accuracy.
+        val locationSource = when {
+            location.provider == "gps" -> "gps"
+            location.provider == "fused" && location.accuracy <= GPS_ACCURACY_THRESHOLD -> "gps"
+            location.provider == "network" || gpsFallbackActive -> "network"
+            location.provider == "fused" && location.accuracy <= 200f -> "wifi"
+            location.provider == "fused" -> "cell"
+            else -> "unknown"
+        }
+
         val result = mutableMapOf<String, Any?>(
             "uuid" to UUID.randomUUID().toString(),
             "timestamp" to timestamp,
             "isMoving" to state.isMoving,
             "odometer" to state.odometer,
             "event" to event,
+            "locationSource" to locationSource,
             "mock" to mock,
             "mockHeuristics" to mockHeuristics,
             "coords" to mapOf(
@@ -859,6 +902,91 @@ class LocationEngine(
         }
 
         return builder.build()
+    }
+
+    /**
+     * Builds a [LocationRequest] with automatic GPS-off fallback.
+     *
+     * If the configured accuracy requires GPS ([Priority.PRIORITY_HIGH_ACCURACY])
+     * but the GPS provider is disabled, downgrades to
+     * [Priority.PRIORITY_BALANCED_POWER_ACCURACY] so the fused engine delivers
+     * Wi-Fi / cell-tower fixes instead of timing out.
+     */
+    private fun buildLocationRequestWithGpsFallback(): LocationRequest {
+        val configuredPriority = accuracyToPriority(config.getDesiredAccuracy())
+        val effectivePriority = if (configuredPriority == Priority.PRIORITY_HIGH_ACCURACY &&
+            !isGpsProviderEnabled(context)
+        ) {
+            gpsFallbackActive = true
+            Log.d(TAG, "GPS provider disabled — using BALANCED_POWER_ACCURACY (Wi-Fi/cell)")
+            Priority.PRIORITY_BALANCED_POWER_ACCURACY
+        } else {
+            gpsFallbackActive = false
+            configuredPriority
+        }
+
+        val builder = LocationRequest.Builder(effectivePriority, config.getLocationUpdateInterval())
+            .setMinUpdateDistanceMeters(config.getDistanceFilter().toFloat())
+            .setMinUpdateIntervalMillis(config.getFastestLocationUpdateInterval())
+
+        val deferTime = config.getDeferTime().toLong()
+        if (deferTime > 0) {
+            builder.setMaxUpdateDelayMillis(deferTime)
+        }
+
+        return builder.build()
+    }
+
+    /** Returns true if the configured desired accuracy requires GPS hardware. */
+    private fun isHighAccuracyConfigured(): Boolean {
+        return config.getDesiredAccuracy() == 0 // 0 = high accuracy (GPS)
+    }
+
+    /**
+     * Downgrades to Wi-Fi/cell priority while keeping the existing tracking
+     * callback. Re-subscribes with [PRIORITY_BALANCED_POWER_ACCURACY].
+     */
+    private fun activateGpsFallback() {
+        if (gpsFallbackActive) return
+        gpsFallbackActive = true
+
+        val callback = trackingCallback ?: return
+        val fallbackRequest = LocationRequest.Builder(
+            Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+            config.getLocationUpdateInterval(),
+        )
+            .setMinUpdateDistanceMeters(config.getDistanceFilter().toFloat())
+            .setMinUpdateIntervalMillis(config.getFastestLocationUpdateInterval())
+            .build()
+
+        try {
+            // Re-subscribe with lower priority (replaces existing request).
+            fusedClient.requestLocationUpdates(fallbackRequest, callback, Looper.getMainLooper())
+            Log.d(TAG, "GPS fallback active — now using Wi-Fi/cell positioning")
+            val providerState = buildProviderState().toMutableMap()
+            providerState["gpsFallback"] = true
+            events.sendProviderChange(providerState)
+        } catch (_: SecurityException) { /* permission lost */ }
+    }
+
+    /**
+     * Restores the original configured priority after GPS is re-enabled.
+     * Re-subscribes with the user's configured accuracy.
+     */
+    private fun restoreOriginalPriority() {
+        if (!gpsFallbackActive) return
+        gpsFallbackActive = false
+
+        val callback = trackingCallback ?: return
+        val originalRequest = buildLocationRequest()
+
+        try {
+            fusedClient.requestLocationUpdates(originalRequest, callback, Looper.getMainLooper())
+            Log.d(TAG, "GPS restored — using original priority")
+            val providerState = buildProviderState().toMutableMap()
+            providerState["gpsFallback"] = false
+            events.sendProviderChange(providerState)
+        } catch (_: SecurityException) { /* permission lost */ }
     }
 
     private fun accuracyToPriority(accuracy: Int): Int {

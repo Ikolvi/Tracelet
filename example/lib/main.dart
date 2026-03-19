@@ -230,11 +230,14 @@ class _DashboardPageState extends State<DashboardPage>
           if (parts.isNotEmpty) heuristicsInfo = '  heur=[${parts.join(', ')}]';
         }
         final tag = loc.event == 'periodic' ? 'PERIODIC' : 'LOCATION';
+        final srcTag = loc.locationSource != 'unknown'
+            ? ' [${loc.locationSource.toUpperCase()}]'
+            : '';
         _addLog(
           tag,
           '${loc.coords.latitude.toStringAsFixed(6)}, ${loc.coords.longitude.toStringAsFixed(6)}  '
           'acc=${loc.coords.accuracy.toStringAsFixed(1)}m  spd=${loc.coords.speed.toStringAsFixed(1)}m/s  '
-          'odo=${loc.odometer.toStringAsFixed(0)}m$mockTag$heuristicsInfo',
+          'odo=${loc.odometer.toStringAsFixed(0)}m$mockTag$heuristicsInfo$srcTag',
         );
       }),
     );
