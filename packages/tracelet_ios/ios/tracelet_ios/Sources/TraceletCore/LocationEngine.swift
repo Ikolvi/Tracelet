@@ -300,13 +300,21 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         locationManager.activityType = configManager.getActivityType()
     }
 
-    /// Checks for iOS 14+ reduced accuracy authorization and logs a warning.
+    /// Checks for iOS 14+ reduced accuracy authorization and auto-requests
+    /// temporary full accuracy if available. Logs a warning when reduced.
     private func checkReducedAccuracy() {
         if #available(iOS 14.0, *) {
             let current = locationManager.accuracyAuthorization == .fullAccuracy ? 0 : 1
             lastAccuracyAuthorization = current
             if current == 1 {
                 NSLog("[Tracelet] WARNING: Reduced accuracy authorization — locations will be approximate (~5 km). desiredAccuracy is ignored by iOS in this mode.")
+                // Auto-request temporary full accuracy. The purpose key must
+                // match a key in the app's Info.plist
+                // NSLocationTemporaryUsageDescriptionDictionary.
+                locationManager.requestTemporaryFullAccuracyAuthorization(
+                    withPurposeKey: "TraceletFullAccuracy"
+                )
+                NSLog("[Tracelet] Requested temporary full accuracy (purposeKey: TraceletFullAccuracy)")
             }
         }
     }

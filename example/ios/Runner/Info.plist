@@ -30,7 +30,7 @@
 	<string>Tracelet needs background location to record your route even when the app is closed.</string>
 	<key>NSLocationTemporaryUsageDescriptionDictionary</key>
 	<dict>
-		<key>TemporaryFullAccuracy</key>
+		<key>TraceletFullAccuracy</key>
 		<string>Precise location is needed for accurate route tracking.</string>
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>

@@ -1,3 +1,8 @@
+## 1.4.5
+
+- **TEST**: Add integration tests for GPS-off fallback and reduced accuracy field serialization.
+- **CHORE**: Update cross-package dependency constraints to `^1.4.5`.
+
 ## 1.4.4
 
 - **FEAT**: Add `reducedAccuracy` field to `Location` — `true` when iOS 14+ grants only approximate location authorization.
