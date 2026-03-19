@@ -769,6 +769,7 @@ class LocationEngine(
             "odometer" to state.odometer,
             "event" to event,
             "locationSource" to locationSource,
+            "reducedAccuracy" to false,  // Android has no reduced-accuracy concept like iOS 14+
             "mock" to mock,
             "mockHeuristics" to mockHeuristics,
             "coords" to mapOf(

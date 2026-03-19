@@ -1,3 +1,7 @@
+## 1.4.4
+
+- **CHORE**: Update cross-package dependency constraints to `^1.4.4`.
+
 ## 1.4.3
 
 - **CHORE**: Update cross-package dependency constraints to `^1.4.3`.

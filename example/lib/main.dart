@@ -233,11 +233,12 @@ class _DashboardPageState extends State<DashboardPage>
         final srcTag = loc.locationSource != 'unknown'
             ? ' [${loc.locationSource.toUpperCase()}]'
             : '';
+        final reducedTag = loc.reducedAccuracy ? ' [REDUCED]' : '';
         _addLog(
           tag,
           '${loc.coords.latitude.toStringAsFixed(6)}, ${loc.coords.longitude.toStringAsFixed(6)}  '
           'acc=${loc.coords.accuracy.toStringAsFixed(1)}m  spd=${loc.coords.speed.toStringAsFixed(1)}m/s  '
-          'odo=${loc.odometer.toStringAsFixed(0)}m$mockTag$heuristicsInfo$srcTag',
+          'odo=${loc.odometer.toStringAsFixed(0)}m$mockTag$heuristicsInfo$srcTag$reducedTag',
         );
       }),
     );
@@ -283,10 +284,16 @@ class _DashboardPageState extends State<DashboardPage>
             'Mock location provider detected! Spoofed locations will be rejected.',
           );
         }
+        if (evt.gpsFallback) {
+          _addLog(
+            '⚠️ GPS FALLBACK',
+            'GPS disabled — using Wi-Fi/Cell positioning (reduced accuracy)',
+          );
+        }
         if (_isAndroid) {
           _addLog(
             'PROVIDER',
-            'enabled=${evt.enabled}  status=${evt.status.name}  gps=${evt.gps}  network=${evt.network}',
+            'enabled=${evt.enabled}  status=${evt.status.name}  gps=${evt.gps}  network=${evt.network}${evt.gpsFallback ? "  gpsFallback=ON" : ""}',
           );
         } else {
           _addLog(

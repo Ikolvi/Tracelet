@@ -664,6 +664,72 @@ void main() {
       expect(copy.coords.latitude, 38.0);
     });
 
+    test('reducedAccuracy defaults to false', () {
+      final loc = Location.fromMap(const {
+        'uuid': 'ra-default',
+        'timestamp': '2024-01-01T00:00:00Z',
+        'is_moving': false,
+        'odometer': 0.0,
+        'coords': {'latitude': 0.0, 'longitude': 0.0},
+      });
+      expect(loc.reducedAccuracy, false);
+    });
+
+    test('reducedAccuracy parsed when true', () {
+      final loc = Location.fromMap(const {
+        'uuid': 'ra-true',
+        'timestamp': '2024-01-01T00:00:00Z',
+        'is_moving': false,
+        'odometer': 0.0,
+        'reducedAccuracy': true,
+        'coords': {'latitude': 37.0, 'longitude': -122.0},
+      });
+      expect(loc.reducedAccuracy, true);
+    });
+
+    test('reducedAccuracy parsed from snake_case key', () {
+      final loc = Location.fromMap(const {
+        'uuid': 'ra-snake',
+        'timestamp': '2024-01-01T00:00:00Z',
+        'is_moving': false,
+        'odometer': 0.0,
+        'reduced_accuracy': true,
+        'coords': {'latitude': 37.0, 'longitude': -122.0},
+      });
+      expect(loc.reducedAccuracy, true);
+    });
+
+    test('reducedAccuracy round-trips through toMap/fromMap', () {
+      final original = Location.fromMap(const {
+        'uuid': 'ra-rt',
+        'timestamp': '2024-01-01T00:00:00Z',
+        'is_moving': false,
+        'odometer': 0.0,
+        'reducedAccuracy': true,
+        'coords': {'latitude': 37.0, 'longitude': -122.0},
+      });
+      expect(original.reducedAccuracy, true);
+
+      final map = original.toMap();
+      expect(map['reducedAccuracy'], true);
+
+      final restored = Location.fromMap(map);
+      expect(restored.reducedAccuracy, true);
+    });
+
+    test('reducedAccuracy preserved in copyWithCoords', () {
+      final original = Location.fromMap(const {
+        'uuid': 'ra-copy',
+        'timestamp': '2024-01-01T00:00:00Z',
+        'is_moving': false,
+        'odometer': 0.0,
+        'reducedAccuracy': true,
+        'coords': {'latitude': 37.0, 'longitude': -122.0},
+      });
+      final copy = original.copyWithCoords(latitude: 38.0);
+      expect(copy.reducedAccuracy, true);
+    });
+
     test('mockHeuristics defaults to null', () {
       final loc = Location.fromMap(const {
         'uuid': 'test-uuid',

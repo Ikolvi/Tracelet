@@ -32,6 +32,9 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// Whether a mock location warning has already been fired for this session.
     private var mockLocationWarningFired = false
 
+    /// Tracks the last known accuracy authorization to detect transitions.
+    private var lastAccuracyAuthorization: Int = -1  // -1 = unknown, 0 = full, 1 = reduced
+
     /// Counter for throttling DB retention pruning (I-H6).
     private var insertCountSincePrune = 0
     private static let pruneEveryNInserts = 100
@@ -78,6 +81,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         isTracking = true
 
         configureLocationManager()
+        checkReducedAccuracy()
 
         // Register for significant-location changes as a fallback wake-up
         // mechanism. If iOS terminates the app, significant-location changes
@@ -129,6 +133,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         NSLog("[Tracelet] startPeriodic: interval=%ds, accuracy=%d", interval, configManager.getPeriodicDesiredAccuracy())
 
         configureLocationManagerForPeriodic()
+        checkReducedAccuracy()
 
         // Significant location changes as a fallback wake-up mechanism
         // (no blue arrow, wakes on cell tower changes).
@@ -293,6 +298,25 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         locationManager.distanceFilter = distanceFilter > 0 ? distanceFilter : kCLDistanceFilterNone
 
         locationManager.activityType = configManager.getActivityType()
+    }
+
+    /// Checks for iOS 14+ reduced accuracy authorization and logs a warning.
+    private func checkReducedAccuracy() {
+        if #available(iOS 14.0, *) {
+            let current = locationManager.accuracyAuthorization == .fullAccuracy ? 0 : 1
+            lastAccuracyAuthorization = current
+            if current == 1 {
+                NSLog("[Tracelet] WARNING: Reduced accuracy authorization — locations will be approximate (~5 km). desiredAccuracy is ignored by iOS in this mode.")
+            }
+        }
+    }
+
+    /// Whether the current accuracy authorization is reduced (iOS 14+).
+    private var isReducedAccuracy: Bool {
+        if #available(iOS 14.0, *) {
+            return locationManager.accuracyAuthorization == .reducedAccuracy
+        }
+        return false
     }
 
     // MARK: - One-shot position
@@ -692,6 +716,19 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     }
 
     public func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+        // Detect accuracy authorization transitions (iOS 14+).
+        if #available(iOS 14.0, *) {
+            let current = manager.accuracyAuthorization == .fullAccuracy ? 0 : 1
+            if lastAccuracyAuthorization >= 0 && current != lastAccuracyAuthorization {
+                if current == 1 {
+                    NSLog("[Tracelet] Accuracy authorization changed to REDUCED — locations will be approximate (~5 km)")
+                } else {
+                    NSLog("[Tracelet] Accuracy authorization restored to FULL")
+                }
+            }
+            lastAccuracyAuthorization = current
+        }
+
         let providerState = buildProviderState()
         eventDispatcher.sendProviderChange(providerState)
     }
@@ -851,8 +888,13 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
 
         // Classify the location source based on accuracy heuristic.
         // iOS does not expose provider names; accuracy is the best signal.
+        // When reduced accuracy is active, iOS returns ~5 km fixes regardless
+        // of desiredAccuracy, so classify accordingly.
+        let reduced = isReducedAccuracy
         let locationSource: String
-        if location.horizontalAccuracy > 0 && location.horizontalAccuracy <= 50 {
+        if reduced {
+            locationSource = "cell"  // reduced accuracy ≈ coarse cell-level
+        } else if location.horizontalAccuracy > 0 && location.horizontalAccuracy <= 50 {
             locationSource = "gps"
         } else if location.horizontalAccuracy <= 200 {
             locationSource = "wifi"
@@ -869,6 +911,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             "is_moving": stateManager.isMoving,
             "odometer": stateManager.odometer,
             "locationSource": locationSource,
+            "reducedAccuracy": reduced,
             "mock": mock,
             "mockHeuristics": mockHeuristics as Any,
             "activity": [

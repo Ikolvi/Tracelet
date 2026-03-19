@@ -1,3 +1,10 @@
+## 1.4.4
+
+- **FEAT**: Add `reducedAccuracy` field to `Location` — `true` when iOS 14+ grants only approximate location authorization.
+- **FEAT**: Example app now shows `[REDUCED]` tag and `gpsFallback=ON` indicator for reduced/fallback location states.
+- **TEST**: Add 5 unit tests for `reducedAccuracy` field (default, parse, snake_case, round-trip, copyWithCoords).
+- **CHORE**: Update cross-package dependency constraints to `^1.4.4`.
+
 ## 1.4.3
 
 - **FEAT**: Add `locationSource` field to `Location` — classifies each fix as `gps`, `wifi`, `cell`, `network`, or `unknown`.

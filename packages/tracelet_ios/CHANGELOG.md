@@ -1,3 +1,10 @@
+## 1.4.4
+
+- **FEAT**: iOS 14+ reduced accuracy detection — engine logs warnings when approximate location is active and tracks authorization transitions.
+- **FEAT**: Add `reducedAccuracy` flag to each location fix — `true` when iOS grants only approximate location (~5 km).
+- **FEAT**: Improved `locationSource` classification — under reduced accuracy, source is classified as `cell` since iOS returns coarse fixes.
+- **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.4.4`.
+
 ## 1.4.3
 
 - **FEAT**: Add `locationSource` classification to every location fix (`gps`, `wifi`, `cell`, `unknown`) based on `horizontalAccuracy` heuristic.

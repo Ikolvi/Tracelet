@@ -120,6 +120,8 @@ Map<String, Object?> _generateLocationMap() {
     'extras': <String, Object?>{},
     'is_mock': false,
     'mock_heuristics': null,
+    'locationSource': 'gps',
+    'reducedAccuracy': false,
   };
 }
 

@@ -1,3 +1,9 @@
+## 1.4.4
+
+- **FEAT**: Add `reducedAccuracy` field to location map for cross-platform API consistency with iOS 14+.
+- **TEST**: Add Robolectric unit tests for GPS fallback utilities (provider state transitions, location source classification).
+- **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.4.4`.
+
 ## 1.4.3
 
 - **FEAT**: Automatic GPS-off fallback — when GPS hardware is disabled, the engine auto-downgrades to `PRIORITY_BALANCED_POWER_ACCURACY` for Wi-Fi/cell tower fixes. Restores original priority when GPS is re-enabled.
