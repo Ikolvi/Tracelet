@@ -96,7 +96,7 @@
 - [ ] `Geofence` — `identifier`, `radius`, `latitude`, `longitude`, `notifyOnEntry`, `notifyOnExit`, `notifyOnDwell`, `loiteringDelay`, `extras`, `vertices` (polygon support placeholder)
 - [ ] `GeofenceEvent` — `identifier`, `action` (ENTER/EXIT/DWELL), `location`, `extras`
 - [ ] `GeofencesChangeEvent` — `on` (activated list), `off` (deactivated list)
-- [ ] `ProviderChangeEvent` — `enabled`, `status`, `gps`, `network`, `accuracyAuthorization`
+- [x] `ProviderChangeEvent` — `enabled`, `status`, `gps`, `network`, `accuracyAuthorization`
 - [ ] `ActivityChangeEvent` — `activity`, `confidence`
 - [ ] `HttpEvent` — `success`, `status`, `responseText`, `action` (request/response)
 - [ ] `HeartbeatEvent` — `location`
@@ -144,7 +144,7 @@
 - [ ] **Utility methods**
   - [ ] `get isPowerSaveMode` → `Future<bool>`
   - [ ] `requestPermission()` → `Future<int>`
-  - [ ] `requestTemporaryFullAccuracy(String purpose)` → `Future<int>`
+  - [x] `requestTemporaryFullAccuracy(String purpose)` → `Future<int>`
   - [ ] `getProviderState()` → `Future<ProviderChangeEvent>`
   - [ ] `getSensors()` → `Future<Sensors>`
   - [ ] `getDeviceInfo()` → `Future<DeviceInfo>`
@@ -170,7 +170,7 @@
 - [ ] `onLocation(void Function(Location))` — every recorded location
 - [ ] `onMotionChange(void Function(Location))` — stationary↔moving transitions
 - [ ] `onActivityChange(void Function(ActivityChangeEvent))` — activity type changes
-- [ ] `onProviderChange(void Function(ProviderChangeEvent))` — GPS/network/auth changes
+- [x] `onProviderChange(void Function(ProviderChangeEvent))` — GPS/network/auth changes
 - [ ] `onGeofence(void Function(GeofenceEvent))` — enter/exit/dwell events
 - [ ] `onGeofencesChange(void Function(GeofencesChangeEvent))` — activated/deactivated geofences
 - [ ] `onHeartbeat(void Function(HeartbeatEvent))` — periodic heartbeat with location
@@ -542,8 +542,8 @@
   - [ ] `emailLog()` → `MFMailComposeViewController` with log attachment
 - [ ] `PermissionManager.swift`:
   - [ ] `CLLocationManager.requestAlwaysAuthorization()`
-  - [ ] `CLAccuracyAuthorization` handling (precise vs reduced)
-  - [ ] `requestTemporaryFullAccuracyAuthorization(withPurposeKey:)` (iOS 14+)
+  - [x] `CLAccuracyAuthorization` handling (precise vs reduced)
+  - [x] `requestTemporaryFullAccuracyAuthorization(withPurposeKey:)` (iOS 14+)
   - [ ] Status codes: match Android enum (DENIED, WHEN_IN_USE, ALWAYS, DENIED_FOREVER)
 
 ### 4.11 Utility Methods
