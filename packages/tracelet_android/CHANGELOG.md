@@ -1,3 +1,7 @@
+## 1.4.5
+
+- **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.4.5`.
+
 ## 1.4.4
 
 - **FEAT**: Add `reducedAccuracy` field to location map for cross-platform API consistency with iOS 14+.

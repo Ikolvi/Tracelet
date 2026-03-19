@@ -1,3 +1,10 @@
+## 1.4.5
+
+- **FEAT**: Auto-request temporary full accuracy (iOS 14+) when tracking starts with reduced accuracy authorization.
+- **TEST**: Add XCTest unit tests for `buildLocationMap()` locationSource classification and `reducedAccuracy` field.
+- **DOCS**: Update INSTALL-IOS.md with `TraceletFullAccuracy` purpose key documentation.
+- **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.4.5`.
+
 ## 1.4.4
 
 - **FEAT**: iOS 14+ reduced accuracy detection — engine logs warnings when approximate location is active and tracks authorization transitions.

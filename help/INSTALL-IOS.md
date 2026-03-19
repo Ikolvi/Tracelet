@@ -84,20 +84,22 @@ If you use `TrackingMode.periodic`, Tracelet registers background tasks with `BG
 
 ### Temporary Full Accuracy (iOS 14+, Optional)
 
-To use `Tracelet.requestTemporaryFullAccuracy()`:
+To use `Tracelet.requestTemporaryFullAccuracy()`, or enable the **auto-request on start** feature:
 
 ```xml
 <key>NSLocationTemporaryUsageDescriptionDictionary</key>
 <dict>
-    <key>TemporaryFullAccuracy</key>
+    <key>TraceletFullAccuracy</key>
     <string>We need precise location for accurate route tracking.</string>
 </dict>
 ```
 
-The key name (`TemporaryFullAccuracy`) must match the `purpose` argument you pass:
+**Auto-request on start:** When tracking starts and iOS 14+ reduced accuracy is detected, Tracelet automatically calls `requestTemporaryFullAccuracyAuthorization(withPurposeKey: "TraceletFullAccuracy")`. Add the `TraceletFullAccuracy` key to your Info.plist to enable this.
+
+You can also request full accuracy manually with a custom purpose key:
 
 ```dart
-await Tracelet.requestTemporaryFullAccuracy('TemporaryFullAccuracy');
+await Tracelet.requestTemporaryFullAccuracy('TraceletFullAccuracy');
 ```
 
 ---
