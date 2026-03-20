@@ -1,3 +1,13 @@
+## 1.4.6
+
+- **FIX**: Rename `PermissionManager` to `TraceletPermissionManager` to avoid class name collision with `permission_handler_apple` (#32).
+- **CHORE**: Bump `kotlin-gradle-plugin` 2.3.10 → 2.3.20.
+- **CHORE**: Bump `androidx.sqlite:sqlite` 2.4.0 → 2.6.2.
+- **CHORE**: Bump `com.google.android.play:integrity` 1.4.0 → 1.6.0.
+- **CHORE**: Bump `org.mockito.kotlin:mockito-kotlin` 5.4.0 → 6.3.0.
+- **CHORE**: Bump `androidx.security:security-crypto` 1.1.0-alpha06 → 1.1.0 (stable).
+- **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.4.6`.
+
 ## 1.4.5
 
 - **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.4.5`.

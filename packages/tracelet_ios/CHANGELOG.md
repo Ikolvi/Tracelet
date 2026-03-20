@@ -1,3 +1,8 @@
+## 1.4.6
+
+- **FIX**: Rename `PermissionManager` to `TraceletPermissionManager` to avoid class name collision with `permission_handler_apple` (#32).
+- **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.4.6`.
+
 ## 1.4.5
 
 - **FEAT**: Auto-request temporary full accuracy (iOS 14+) when tracking starts with reduced accuracy authorization.

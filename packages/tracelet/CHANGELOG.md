@@ -1,3 +1,8 @@
+## 1.4.6
+
+- **FIX**: Rename native `PermissionManager` to `TraceletPermissionManager` to avoid class name collision with `permission_handler_apple` (#32).
+- **CHORE**: Update cross-package dependency constraints to `^1.4.6`.
+
 ## 1.4.5
 
 - **TEST**: Add integration tests for GPS-off fallback and reduced accuracy field serialization.
