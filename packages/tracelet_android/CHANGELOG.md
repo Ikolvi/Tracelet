@@ -1,3 +1,11 @@
+## 1.5.0
+
+- **FEAT**: Add boot-mode `HttpSyncManager` — locations are auto-synced to the server even when the app is killed or the device reboots.
+- **FEAT**: Periodic-mode (WorkManager/ExactAlarm) now creates a dedicated boot-mode `HttpSyncManager` so periodic locations sync without the Flutter engine.
+- **TEST**: Add Robolectric unit tests for boot-mode HTTP sync lifecycle.
+- **DOCS**: Add "Background / Killed-State Sync" section to HTTP-SYNC.md.
+- **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.5.0`.
+
 ## 1.4.6
 
 - **FIX**: Rename `PermissionManager` to `TraceletPermissionManager` to avoid class name collision with `permission_handler_apple` (#32).

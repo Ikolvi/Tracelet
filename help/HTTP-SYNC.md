@@ -323,6 +323,51 @@ from the same Dart `HttpConfig` — no platform-specific configuration needed.
 
 ---
 
+## Background / Killed-State Sync
+
+HTTP auto-sync works in all tracking modes even when the app is killed or
+the device reboots — locations are synced to your server without requiring
+the Flutter engine or any UI.
+
+### How It Works
+
+| Platform | Mechanism |
+|----------|-----------|
+| **Android** | `LocationService` creates a dedicated `HttpSyncManager` during boot-mode tracking. Each persisted location triggers `onLocationInserted()` which auto-syncs via OkHttp. |
+| **iOS** | `autoResumeTracking()` restores the plugin's existing `HttpSyncManager` wiring when iOS relaunches the app via significant location changes. |
+
+### Tracking Mode Support
+
+| Mode | Android | iOS |
+|------|---------|-----|
+| Continuous (0) | Auto-syncs via boot-mode `HttpSyncManager` | Auto-syncs via `autoResumeTracking()` |
+| Geofences (1) | Auto-syncs via boot-mode `HttpSyncManager` | Auto-syncs via `autoResumeTracking()` |
+| Periodic (2) — FG Service | Auto-syncs via boot-mode `HttpSyncManager` | Auto-syncs via `autoResumeTracking()` |
+| Periodic (2) — WorkManager | Auto-syncs via `PeriodicLocationWorker` | N/A (uses `BGAppRefreshTask`) |
+| Periodic (2) — Exact Alarms | Auto-syncs via `PeriodicLocationWorker` | N/A |
+
+### Requirements
+
+For killed-state sync to work, you must configure:
+
+```dart
+Config(
+  app: AppConfig(
+    stopOnTerminate: false,  // Required — keeps tracking alive
+    startOnBoot: true,       // Recommended — resumes after reboot
+  ),
+  http: HttpConfig(
+    url: 'https://api.example.com/locations',
+    autoSync: true,          // Required — enables auto-sync
+  ),
+)
+```
+
+When the app is reopened, the plugin takes over from the boot-mode sync
+manager — there is no duplication or gap in sync coverage.
+
+---
+
 ## Configuration Reference
 
 | Property                    | Type              | Default    | Description                                |

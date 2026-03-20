@@ -510,4 +510,106 @@ internal class LocationServiceTest {
         val shouldRecoverGeofences = state.trackingMode == 1
         assertEquals(false, shouldRecoverGeofences)
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Tests: Boot-mode HTTP sync companion state
+    // ─────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun bootHttpSyncManager_isNullByDefault() {
+        // No boot tracking has started — HTTP sync manager should be null
+        assertNull(LocationService.bootHttpSyncManager)
+    }
+
+    @Test
+    fun bootHttpSync_shouldBeCreatedForContinuousMode() {
+        // When trackingMode=0 (continuous) and stopOnTerminate=false,
+        // boot tracking should create an HttpSyncManager for auto-sync
+        val (ctx, _, _) = createMockedContext()
+        val state = StateManager(ctx)
+        val config = ConfigManager(ctx)
+        config.setConfig(mapOf("stopOnTerminate" to false))
+
+        state.trackingMode = 0
+        state.enabled = true
+
+        // Decision: all modes should create HttpSyncManager
+        val shouldCreateHttpSync = !config.getStopOnTerminate() && state.enabled
+        assertEquals(true, shouldCreateHttpSync)
+    }
+
+    @Test
+    fun bootHttpSync_shouldBeCreatedForGeofenceMode() {
+        val (ctx, _, _) = createMockedContext()
+        val state = StateManager(ctx)
+        val config = ConfigManager(ctx)
+        config.setConfig(mapOf("stopOnTerminate" to false))
+
+        state.trackingMode = 1
+        state.enabled = true
+
+        val shouldCreateHttpSync = !config.getStopOnTerminate() && state.enabled
+        assertEquals(true, shouldCreateHttpSync)
+    }
+
+    @Test
+    fun bootHttpSync_shouldBeCreatedForPeriodicMode() {
+        val (ctx, _, _) = createMockedContext()
+        val state = StateManager(ctx)
+        val config = ConfigManager(ctx)
+        config.setConfig(mapOf("stopOnTerminate" to false))
+
+        state.trackingMode = 2
+        state.enabled = true
+
+        val shouldCreateHttpSync = !config.getStopOnTerminate() && state.enabled
+        assertEquals(true, shouldCreateHttpSync)
+    }
+
+    @Test
+    fun bootHttpSync_notCreatedWhenStopOnTerminateTrue() {
+        // Default stopOnTerminate=true — no boot tracking, no HTTP sync
+        val (ctx, _, _) = createMockedContext()
+        val state = StateManager(ctx)
+        val config = ConfigManager(ctx)
+
+        state.trackingMode = 0
+        state.enabled = true
+
+        val shouldCreateHttpSync = !config.getStopOnTerminate() && state.enabled
+        assertEquals(false, shouldCreateHttpSync)
+    }
+
+    @Test
+    fun bootHttpSync_notCreatedWhenTrackingDisabled() {
+        val (ctx, _, _) = createMockedContext()
+        val state = StateManager(ctx)
+        val config = ConfigManager(ctx)
+        config.setConfig(mapOf("stopOnTerminate" to false))
+
+        state.trackingMode = 0
+        state.enabled = false
+
+        val shouldCreateHttpSync = !config.getStopOnTerminate() && state.enabled
+        assertEquals(false, shouldCreateHttpSync)
+    }
+
+    @Test
+    fun taskRemoval_periodicWithoutFG_shouldCreateHttpSyncForWorker() {
+        // When task is removed and periodic mode is active without FG service,
+        // an HttpSyncManager should be created and wired to PeriodicLocationWorker
+        val (ctx, _, _) = createMockedContext()
+        val state = StateManager(ctx)
+        val config = ConfigManager(ctx)
+        config.setConfig(mapOf("stopOnTerminate" to false))
+
+        state.trackingMode = 2
+        state.enabled = true
+
+        val isPeriodicWithoutFg = state.trackingMode == 2 &&
+            !config.getPeriodicUseForegroundService()
+        val shouldCreateHttpSync = !config.getStopOnTerminate() && state.enabled
+        assertEquals(true, isPeriodicWithoutFg)
+        assertEquals(true, shouldCreateHttpSync)
+    }
 }

@@ -20,6 +20,7 @@ import com.tracelet.core.TraceletEventSender
 import com.tracelet.core.StateManager
 import com.tracelet.core.db.TraceletDatabase
 import com.tracelet.core.geofence.GeofenceManager
+import com.tracelet.core.http.HttpSyncManager
 import com.tracelet.core.location.LocationEngine
 import com.tracelet.core.location.PeriodicLocationWorker
 import com.tracelet.core.receiver.GeofenceBroadcastReceiver
@@ -57,6 +58,11 @@ class LocationService : Service() {
         // Boot-mode native tracking state — accessible by the plugin.
         @Volatile
         var bootLocationEngine: LocationEngine? = null
+            private set
+
+        // Boot-mode HTTP sync manager — auto-syncs locations when app is killed.
+        @Volatile
+        var bootHttpSyncManager: HttpSyncManager? = null
             private set
 
         // Boot-mode heartbeat timer state.
@@ -113,9 +119,20 @@ class LocationService : Service() {
          */
         fun stopBootTracking() {
             stopBootHeartbeat()
+            stopBootHttpSync()
             bootLocationEngine?.destroy()
             bootLocationEngine = null
             Log.d(TAG, "Boot-mode native tracking stopped — plugin taking over")
+        }
+
+        private fun stopBootHttpSync() {
+            val manager = bootHttpSyncManager ?: return
+            // Clear periodic worker reference if it was using our boot manager
+            if (PeriodicLocationWorker.httpSyncManager === manager) {
+                PeriodicLocationWorker.httpSyncManager = null
+            }
+            manager.stop()
+            bootHttpSyncManager = null
         }
 
         private fun stopBootHeartbeat() {
@@ -206,6 +223,19 @@ class LocationService : Service() {
             if (state.trackingMode == 2 && !configManager.getPeriodicUseForegroundService()) {
                 // Ensure WorkManager/AlarmManager is scheduled (may already be)
                 PeriodicLocationWorker.eventSender = null // No UI
+
+                // Create a boot-mode HttpSyncManager so periodic locations
+                // are auto-synced even though the service is about to stop.
+                val database = TraceletDatabase.getInstance(applicationContext)
+                val bootEventSender = TraceletBootstrap.eventSenderFactory?.invoke(applicationContext)
+                if (bootEventSender != null) {
+                    val httpSync = HttpSyncManager(applicationContext, configManager, bootEventSender, database)
+                    httpSync.start()
+                    bootHttpSyncManager = httpSync
+                    PeriodicLocationWorker.httpSyncManager = httpSync
+                    Log.d(TAG, "Boot-mode HTTP sync manager started for periodic worker")
+                }
+
                 if (configManager.getPeriodicUseExactAlarms()) {
                     PeriodicLocationWorker.scheduleOneTime(applicationContext)
                     PeriodicLocationWorker.scheduleExactAlarm(
@@ -323,6 +353,14 @@ class LocationService : Service() {
             Log.d(TAG, "Headless dispatcher registered for boot tracking")
         }
 
+        // Create HTTP sync manager for boot-mode auto-sync.
+        // This ensures locations are synced to the server even when the
+        // Flutter engine is not running (app killed / device rebooted).
+        val httpSync = HttpSyncManager(ctx, config, eventSender, database)
+        httpSync.start()
+        bootHttpSyncManager = httpSync
+        Log.d(TAG, "Boot-mode HTTP sync manager started")
+
         val trackingMode = state.trackingMode
         Log.d(TAG, "Bootstrapping native tracking after boot/task-removal (trackingMode=$trackingMode)")
 
@@ -331,10 +369,12 @@ class LocationService : Service() {
                 // Periodic mode — restart the correct scheduling strategy.
                 // Wire the shared event sender so WorkManager workers can dispatch.
                 PeriodicLocationWorker.eventSender = eventSender
+                PeriodicLocationWorker.httpSyncManager = httpSync
 
                 if (config.getPeriodicUseForegroundService()) {
                     // Foreground service + timer strategy — needs a LocationEngine
                     val engine = LocationEngine(ctx, config, state, eventSender, database)
+                    engine.onLocationPersisted = { httpSync.onLocationInserted() }
                     engine.startPeriodic()
                     bootLocationEngine = engine
                     Log.d(TAG, "Periodic mode restored with foreground-service timer")
@@ -364,6 +404,7 @@ class LocationService : Service() {
             else -> {
                 // Continuous (0) or geofences (1) — start full LocationEngine
                 val engine = LocationEngine(ctx, config, state, eventSender, database)
+                engine.onLocationPersisted = { httpSync.onLocationInserted() }
                 engine.start()
                 bootLocationEngine = engine
                 Log.d(TAG, "Boot-mode native tracking started (trackingMode=$trackingMode)")
@@ -421,6 +462,8 @@ class LocationService : Service() {
 
     private fun stopBootTrackingInternal() {
         stopBootHeartbeat()
+        bootHttpSyncManager?.stop()
+        bootHttpSyncManager = null
         bootLocationEngine?.destroy()
         bootLocationEngine = null
     }

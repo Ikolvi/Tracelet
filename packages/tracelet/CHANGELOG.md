@@ -1,3 +1,9 @@
+## 1.5.0
+
+- **FEAT**: Boot-mode HTTP auto-sync — locations sync to your server even when the app is killed or the device reboots (Android).
+- **FIX**: Test server now correctly reads `latitude`/`longitude` from nested `coords` object.
+- **CHORE**: Update cross-package dependency constraints to `^1.5.0`.
+
 ## 1.4.6
 
 - **FIX**: Rename native `PermissionManager` to `TraceletPermissionManager` to avoid class name collision with `permission_handler_apple` (#32).
