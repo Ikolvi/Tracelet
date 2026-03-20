@@ -81,6 +81,64 @@ Critical operations that run on **every GPS fix** (1 Hz) must complete in < 1ms 
 
 ## Results History
 
+### 2026-03-20 — Commit 5bafff4
+
+**Environment:** Dart 3.11.3, ubuntu-latest (CI)
+
+| Benchmark | ops/sec | µs/op |
+|---|---:|---:|
+| kalman_process_single | 6607244 | 0.15 |
+| kalman_process_100_fixes | 95887 | 10.43 |
+| kalman_process_1k_fixes | 9632 | 103.82 |
+| kalman_reset | 6580477 | 0.15 |
+| haversine_single | 7775317 | 0.13 |
+| haversine_1k_pairs | 13658 | 73.22 |
+| pip_4v | 11537819 | 0.09 |
+| pip_10v | 8941798 | 0.11 |
+| pip_50v | 3745146 | 0.27 |
+| pip_100v | 2011480 | 0.50 |
+| pip_500v | 424589 | 2.36 |
+| geofence_eval_10_circular | 628831 | 1.59 |
+| geofence_eval_100_circular | 69168 | 14.46 |
+| geofence_eval_500_circular | 13188 | 75.82 |
+| geofence_eval_10_polygon_6v | 405355 | 2.47 |
+| geofence_eval_50_polygon_6v | 82391 | 12.14 |
+| processor_1k_fixes | 8794 | 113.71 |
+| processor_1k_adaptive | 8384 | 119.28 |
+| trip_manager_5k_waypoints | 65 | 15420.82 |
+| schedule_parse | 2861087 | 0.35 |
+| schedule_matches | 118666 | 8.43 |
+| schedule_isWithin_5_entries | 109664 | 9.12 |
+| adaptive_compute | 13456204 | 0.07 |
+| location_fromMap | 1653913 | 0.60 |
+| location_toMap | 675076 | 1.48 |
+| location_fromMap_toMap_roundtrip | 480549 | 2.08 |
+| location_copyWithCoords | 12114273 | 0.08 |
+| geofence_fromMap_circular | 4236450 | 0.24 |
+| geofence_fromMap_polygon | 1555504 | 0.64 |
+| delta_encode_10 | 29993 | 33.34 |
+| delta_decode_10 | 90941 | 11.00 |
+| delta_encode_100 | 4059 | 246.36 |
+| delta_decode_100 | 10397 | 96.18 |
+| delta_encode_500 | 823 | 1214.51 |
+| delta_decode_500 | 1929 | 518.45 |
+| delta_roundtrip_100 | 2863 | 349.26 |
+| battery_budget_single_sample | 9333387 | 0.11 |
+| battery_budget_60_samples | 253029 | 3.95 |
+| battery_budget_heavy_drain | 127117 | 7.87 |
+| carbon_trip_100_locations | 88570 | 11.29 |
+| carbon_onLocation | 4156276 | 0.24 |
+| carbon_setActivity | 9735905 | 0.10 |
+| carbon_cumulative_report | 2713693 | 0.37 |
+| persist_decider_location | 19609393 | 0.05 |
+| persist_decider_geofence | 19597373 | 0.05 |
+| config_fromMap | 425489 | 2.35 |
+| config_toMap | 159829 | 6.26 |
+| config_roundtrip | 116710 | 8.57 |
+| state_fromMap | 406768 | 2.46 |
+| state_toMap | 147234 | 6.79 |
+
+
 ### 2026-03-20 — Commit 1ac9b87
 
 **Environment:** Dart 3.11.3, ubuntu-latest (CI)
