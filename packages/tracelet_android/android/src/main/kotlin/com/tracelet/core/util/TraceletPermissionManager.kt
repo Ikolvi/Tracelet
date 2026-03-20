@@ -25,7 +25,7 @@ import androidx.core.content.ContextCompat
  * | 3    | always           | Background granted |
  * | 4    | deniedForever    | Permanently denied — must open Settings |
  */
-class PermissionManager(private val context: Context) {
+class TraceletPermissionManager(private val context: Context) {
 
     companion object {
         const val REQUEST_CODE_LOCATION = 1001

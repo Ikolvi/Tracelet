@@ -51,7 +51,7 @@ import io.flutter.plugin.common.PluginRegistry
  * - HttpSyncManager (OkHttp)
  * - HeadlessTaskService (background Dart execution)
  * - ScheduleManager (AlarmManager scheduling)
- * - TraceletLogger / SoundManager / PermissionManager
+ * - TraceletLogger / SoundManager / TraceletPermissionManager
  * - EventDispatcher (15 EventChannels → Dart)
  */
 class TraceletAndroidPlugin :
@@ -76,7 +76,7 @@ class TraceletAndroidPlugin :
     private lateinit var scheduleManager: ScheduleManager
     private lateinit var logger: TraceletLogger
     private lateinit var soundManager: SoundManager
-    private lateinit var permissionManager: PermissionManager
+    private lateinit var permissionManager: TraceletPermissionManager
     private lateinit var auditTrailManager: AuditTrailManager
     private lateinit var privacyZoneManager: PrivacyZoneManager
     private lateinit var encryptionManager: DatabaseEncryptionManager
@@ -192,7 +192,7 @@ class TraceletAndroidPlugin :
         soundManager = SoundManager(context, configManager)
 
         // Permissions
-        permissionManager = PermissionManager(context)
+        permissionManager = TraceletPermissionManager(context)
 
         // Re-wire EventDispatcher for periodic mode if it was already active
         // (e.g., app returns to foreground after process restart by AlarmManager).
@@ -506,8 +506,8 @@ class TraceletAndroidPlugin :
         // Android 14+ requires runtime location permission BEFORE starting
         // a foreground service with FOREGROUND_SERVICE_TYPE_LOCATION.
         val authStatus = permissionManager.getAuthorizationStatus(activity)
-        if (authStatus != PermissionManager.STATUS_WHEN_IN_USE &&
-            authStatus != PermissionManager.STATUS_ALWAYS) {
+        if (authStatus != TraceletPermissionManager.STATUS_WHEN_IN_USE &&
+            authStatus != TraceletPermissionManager.STATUS_ALWAYS) {
             result.error(
                 "PERMISSION_DENIED",
                 "Location permission is required before starting tracking. " +
@@ -584,8 +584,8 @@ class TraceletAndroidPlugin :
         }
 
         val authStatus = permissionManager.getAuthorizationStatus(activity)
-        if (authStatus != PermissionManager.STATUS_WHEN_IN_USE &&
-            authStatus != PermissionManager.STATUS_ALWAYS) {
+        if (authStatus != TraceletPermissionManager.STATUS_WHEN_IN_USE &&
+            authStatus != TraceletPermissionManager.STATUS_ALWAYS) {
             result.error(
                 "PERMISSION_DENIED",
                 "Location permission is required before starting tracking. " +
@@ -727,20 +727,20 @@ class TraceletAndroidPlugin :
         val status = permissionManager.getAuthorizationStatus(act)
 
         when (status) {
-            PermissionManager.STATUS_NOT_DETERMINED,
-            PermissionManager.STATUS_DENIED -> {
+            TraceletPermissionManager.STATUS_NOT_DETERMINED,
+            TraceletPermissionManager.STATUS_DENIED -> {
                 // Request foreground permission
                 pendingPermissionResult = result
                 permissionManager.requestForegroundPermission(act)
             }
-            PermissionManager.STATUS_WHEN_IN_USE -> {
+            TraceletPermissionManager.STATUS_WHEN_IN_USE -> {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     // Upgrade to background permission
                     pendingPermissionResult = result
                     permissionManager.requestBackgroundPermission(act)
                 } else {
                     // Pre-Q: foreground = always
-                    result.success(PermissionManager.STATUS_ALWAYS)
+                    result.success(TraceletPermissionManager.STATUS_ALWAYS)
                 }
             }
             else -> {
@@ -759,7 +759,7 @@ class TraceletAndroidPlugin :
     private fun handleRequestNotificationPermission(result: Result) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             // Pre-13: notifications always allowed
-            result.success(PermissionManager.STATUS_ALWAYS)
+            result.success(TraceletPermissionManager.STATUS_ALWAYS)
             return
         }
 
@@ -770,8 +770,8 @@ class TraceletAndroidPlugin :
         }
 
         val status = permissionManager.getNotificationPermissionStatus(act)
-        if (status == PermissionManager.STATUS_ALWAYS ||
-            status == PermissionManager.STATUS_DENIED_FOREVER) {
+        if (status == TraceletPermissionManager.STATUS_ALWAYS ||
+            status == TraceletPermissionManager.STATUS_DENIED_FOREVER) {
             // Already granted or permanently denied — no dialog will show
             result.success(status)
             return
@@ -816,7 +816,7 @@ class TraceletAndroidPlugin :
      */
     private fun handleRequestMotionPermission(result: Result) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            result.success(PermissionManager.STATUS_ALWAYS)
+            result.success(TraceletPermissionManager.STATUS_ALWAYS)
             return
         }
 
@@ -827,8 +827,8 @@ class TraceletAndroidPlugin :
         }
 
         val status = permissionManager.getMotionPermissionStatus(act)
-        if (status == PermissionManager.STATUS_ALWAYS ||
-            status == PermissionManager.STATUS_DENIED_FOREVER) {
+        if (status == TraceletPermissionManager.STATUS_ALWAYS ||
+            status == TraceletPermissionManager.STATUS_DENIED_FOREVER) {
             result.success(status)
             return
         }
@@ -846,10 +846,10 @@ class TraceletAndroidPlugin :
         permissions: Array<out String>,
         grantResults: IntArray
     ): Boolean {
-        if (requestCode != PermissionManager.REQUEST_CODE_LOCATION &&
-            requestCode != PermissionManager.REQUEST_CODE_BACKGROUND_LOCATION &&
-            requestCode != PermissionManager.REQUEST_CODE_ACTIVITY_RECOGNITION &&
-            requestCode != PermissionManager.REQUEST_CODE_NOTIFICATION
+        if (requestCode != TraceletPermissionManager.REQUEST_CODE_LOCATION &&
+            requestCode != TraceletPermissionManager.REQUEST_CODE_BACKGROUND_LOCATION &&
+            requestCode != TraceletPermissionManager.REQUEST_CODE_ACTIVITY_RECOGNITION &&
+            requestCode != TraceletPermissionManager.REQUEST_CODE_NOTIFICATION
         ) {
             return false // Not ours
         }
@@ -858,16 +858,16 @@ class TraceletAndroidPlugin :
         pendingPermissionResult = null
 
         val act = activity
-        if (requestCode == PermissionManager.REQUEST_CODE_NOTIFICATION) {
+        if (requestCode == TraceletPermissionManager.REQUEST_CODE_NOTIFICATION) {
             // For notification permission, return the notification status
             pending.success(
                 permissionManager.getNotificationPermissionStatus(act)
             )
-        } else if (requestCode == PermissionManager.REQUEST_CODE_ACTIVITY_RECOGNITION) {
+        } else if (requestCode == TraceletPermissionManager.REQUEST_CODE_ACTIVITY_RECOGNITION) {
             // Activity recognition permission result
             val motionStatus = permissionManager.getMotionPermissionStatus(act)
             // If granted and tracking is active, start the motion detector now
-            if (motionStatus == PermissionManager.STATUS_ALWAYS && stateManager.enabled) {
+            if (motionStatus == TraceletPermissionManager.STATUS_ALWAYS && stateManager.enabled) {
                 motionDetector.start()
             }
             pending.success(motionStatus)

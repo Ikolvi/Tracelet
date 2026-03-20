@@ -13,7 +13,7 @@ import UIKit
 /// | 2    | whenInUse        | Foreground granted |
 /// | 3    | always           | Background granted |
 /// | 4    | deniedForever    | Permanently denied — must open Settings |
-public final class PermissionManager: NSObject, CLLocationManagerDelegate {
+public final class TraceletPermissionManager: NSObject, CLLocationManagerDelegate {
     private let locationManager = CLLocationManager()
     /// Generic callback type matching FlutterResult / RCTResponseSenderBlock.
     public typealias PermissionCallback = (Any?) -> Void

@@ -12,7 +12,7 @@ import UIKit
 /// - HttpSyncManager (URLSession)
 /// - HeadlessRunner (background Dart execution)
 /// - ScheduleManager (BGTaskScheduler)
-/// - TraceletLogger / SoundManager / PermissionManager
+/// - TraceletLogger / SoundManager / TraceletPermissionManager
 /// - EventDispatcher (15 EventChannels → Dart)
 public class TraceletIosPlugin: NSObject, FlutterPlugin {
 
@@ -31,7 +31,7 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
     private var scheduleManager: ScheduleManager!
     private var logger: TraceletLogger!
     private var soundManager: SoundManager!
-    private var permissionManager: PermissionManager!
+    private var permissionManager: TraceletPermissionManager!
     private var preventSuspendManager: PreventSuspendManager!
     private var backgroundActivitySessionManager: BackgroundActivitySessionManager!
     private var serviceSessionManager: ServiceSessionManager!
@@ -210,7 +210,7 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
         }
 
         // Permissions
-        instance.permissionManager = PermissionManager()
+        instance.permissionManager = TraceletPermissionManager()
 
         registrar.addMethodCallDelegate(instance, channel: channel)
 
