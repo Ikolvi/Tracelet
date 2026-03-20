@@ -103,6 +103,96 @@ final state = await tl.Tracelet.ready(tl.Config(
 await tl.Tracelet.start();
 ```
 
+## Removing Permissions
+
+Tracelet declares all permissions it *can* use in its `AndroidManifest.xml`. If your app doesn't need a specific feature, you can remove the corresponding permission using Android's manifest merger `tools:node="remove"` directive in your **app-level** `AndroidManifest.xml` (`android/app/src/main/AndroidManifest.xml`).
+
+**Tracelet will not crash.** All native code guards permissions with `checkSelfPermission()` and catches `SecurityException`. Missing permissions trigger graceful fallbacks, not crashes.
+
+### Safe to remove
+
+| Permission | `tools:node="remove"` | Effect when removed |
+|---|---|---|
+| `ACCESS_BACKGROUND_LOCATION` | Yes | `requestPermission()` stops at `whenInUse` (code `2`). Background tracking will not receive updates on Android 10+. |
+| `ACTIVITY_RECOGNITION` | Yes | Falls back to accelerometer-only motion detection. No activity classification (`onActivityChange` won't fire). |
+| `POST_NOTIFICATIONS` | Yes | Foreground service notification hidden on Android 13+. Service still runs. |
+| `SCHEDULE_EXACT_ALARM` | Yes | Periodic mode uses inexact alarms. Timing becomes approximate. |
+| `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | Yes | Cannot request battery optimization exemption. |
+
+### Not safe to remove
+
+| Permission | Why |
+|---|---|
+| `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` | Without any location permission, Tracelet can't obtain positions. |
+| `FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_LOCATION` | Required for background tracking. Removing these causes an OS-level crash when starting the foreground service. |
+
+### Example: Remove background location
+
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission
+        android:name="android.permission.ACCESS_BACKGROUND_LOCATION"
+        tools:node="remove" />
+</manifest>
+```
+
+### Example: Remove activity recognition
+
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission
+        android:name="android.permission.ACTIVITY_RECOGNITION"
+        tools:node="remove" />
+</manifest>
+```
+
+When removing `ACTIVITY_RECOGNITION`, set `disableMotionActivityUpdates: true` in your config so the motion permission API returns `3` (granted) immediately instead of trying to prompt:
+
+```dart
+final state = await tl.Tracelet.ready(tl.Config(
+  motion: tl.MotionConfig(
+    disableMotionActivityUpdates: true, // Accelerometer-only, no permission needed
+  ),
+));
+```
+
+### Verify your merged manifest
+
+```bash
+# Check the merged manifest after build
+cat android/app/build/intermediates/merged_manifests/release/AndroidManifest.xml \
+  | grep "BACKGROUND_LOCATION\|ACTIVITY_RECOGNITION"
+
+# Or inspect the APK directly
+aapt dump permissions build/app/outputs/flutter-apk/app-release.apk
+```
+
+See the [Permissions Guide](https://github.com/Ikolvi/Tracelet/blob/main/help/PERMISSIONS.md) and [Play Store Declaration Guide](https://github.com/Ikolvi/Tracelet/blob/main/help/PLAY-STORE-DECLARATION.md) for more details.
+
+### iOS: Removing Optional Info.plist Keys
+
+iOS permissions are declared in `Info.plist`, not merged from plugin manifests. You control exactly what's included. Here's what's optional:
+
+| Info.plist Key / Mode | Required? | Effect when removed |
+|---|---|---|
+| `NSMotionUsageDescription` | No | Motion & Fitness permission dialog never shown. Use `disableMotionActivityUpdates: true` for accelerometer-only fallback. |
+| `NSLocationTemporaryUsageDescriptionDictionary` | No | `requestTemporaryFullAccuracy()` becomes a no-op. Reduced accuracy stays active on iOS 14+. |
+| `UIBackgroundModes` → `fetch` | No | Background fetch disabled. Headless Dart execution won't fire from fetch events. |
+| `UIBackgroundModes` → `processing` | No | `BGTaskScheduler` tasks won't run. Periodic mode and scheduled tracking unavailable. |
+| `BGTaskSchedulerPermittedIdentifiers` | No | Same as removing `processing` — periodic/scheduled features disabled. |
+
+**Not safe to remove:**
+
+| Key | Why |
+|---|---|
+| `NSLocationWhenInUseUsageDescription` | iOS **rejects** the app without it. |
+| `NSLocationAlwaysAndWhenInUseUsageDescription` | Required for background location. Without it, the OS won't show the "Always" option. |
+| `UIBackgroundModes` → `location` | Without this, iOS suspends location updates immediately when backgrounded. |
+
 ## Documentation
 
 ### Kalman Filter GPS Smoothing

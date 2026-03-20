@@ -287,6 +287,13 @@ When `disableMotionActivityUpdates` is `true`, both `getMotionPermissionStatus()
 and `requestMotionPermission()` return `3` (granted) immediately without
 triggering any OS dialog.
 
+> **Removing the permission entirely:** On Android, you can also remove
+> `ACTIVITY_RECOGNITION` from the merged manifest using `tools:node="remove"`.
+> Tracelet catches the `SecurityException` and falls back to accelerometer-only
+> mode automatically. See
+> [Removing Permissions](PLAY-STORE-DECLARATION.md#removing-other-optional-permissions)
+> for all removable permissions.
+
 ### Recommended Flow (Full Mode)
 
 ```dart

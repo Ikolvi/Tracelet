@@ -56,6 +56,13 @@ Tracelet's plugin AndroidManifest automatically merges the following permissions
 > short video. See [Play Store Declaration Guide](PLAY-STORE-DECLARATION.md)
 > for step-by-step instructions.
 
+> **Don't need all permissions?** You can remove optional permissions like
+> `ACCESS_BACKGROUND_LOCATION`, `ACTIVITY_RECOGNITION`, `POST_NOTIFICATIONS`,
+> and `SCHEDULE_EXACT_ALARM` using Android's manifest merger `tools:node="remove"`
+> directive. Tracelet degrades gracefully — no crashes. See
+> [Removing Permissions](PLAY-STORE-DECLARATION.md#removing-other-optional-permissions)
+> for examples.
+
 ### Runtime Permissions
 
 The plugin requests permissions at runtime when you call `Tracelet.requestPermission()`. The flow is:

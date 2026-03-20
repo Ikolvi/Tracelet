@@ -173,6 +173,132 @@ require a background location declaration.
 
 ---
 
+## Removing Other Optional Permissions
+
+Tracelet declares several permissions that your app may not need. All of these
+can be safely removed — Tracelet's native code guards every permission with
+`checkSelfPermission()` and catches `SecurityException`, so **removing a
+permission will never crash the app**.
+
+### Remove Activity Recognition
+
+If your app doesn't need activity classification (walking/driving/cycling),
+remove `ACTIVITY_RECOGNITION` and use accelerometer-only motion detection:
+
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission
+        android:name="android.permission.ACTIVITY_RECOGNITION"
+        tools:node="remove" />
+</manifest>
+```
+
+Set `disableMotionActivityUpdates: true` in your Dart config so Tracelet
+doesn't try to prompt for the permission:
+
+```dart
+await Tracelet.ready(Config(
+  motion: MotionConfig(disableMotionActivityUpdates: true),
+));
+```
+
+**Effect:** Stationary ↔ moving detection still works via raw accelerometer.
+`onActivityChange` events will not fire. No `ACTIVITY_RECOGNITION` permission
+prompt shown. No Play Store activity recognition declaration needed.
+
+### Remove Notification Permission (Android 13+)
+
+If your app doesn't need a visible foreground service notification:
+
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission
+        android:name="android.permission.POST_NOTIFICATIONS"
+        tools:node="remove" />
+</manifest>
+```
+
+**Effect:** On Android 13+, the foreground service notification will be hidden
+(the OS suppresses it without the permission). The foreground service itself
+**still runs** — only the notification is affected. On Android 12 and below,
+this has no effect since `POST_NOTIFICATIONS` didn't exist.
+
+### Remove Exact Alarm Permission
+
+If your app doesn't need precise periodic timing:
+
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        tools:node="remove" />
+</manifest>
+```
+
+**Effect:** Periodic mode (`startPeriodic()`) will use the OS's inexact alarm
+scheduling — intervals become approximate (±several minutes, depending on
+Doze state). For intervals ≥ 15 minutes, this is usually fine. For shorter
+intervals, timing accuracy degrades.
+
+### Remove Battery Optimization Override
+
+If you don't want Tracelet to offer `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`:
+
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission
+        android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+        tools:node="remove" />
+</manifest>
+```
+
+**Effect:** The app cannot programmatically request battery optimization
+exemption. On aggressive OEMs (Huawei, Xiaomi, etc.), the OS may kill the
+background service more aggressively. Users can still manually exempt the app
+via device Settings.
+
+### Remove Multiple Permissions at Once
+
+You can combine all removals in a single manifest block:
+
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"
+        tools:node="remove" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"
+        tools:node="remove" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"
+        tools:node="remove" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        tools:node="remove" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+        tools:node="remove" />
+</manifest>
+```
+
+### Permissions You Must NOT Remove
+
+| Permission | Why |
+|---|---|
+| `ACCESS_FINE_LOCATION` | Core functionality — cannot obtain GPS positions without it. |
+| `ACCESS_COARSE_LOCATION` | Fallback for approximate location. |
+| `FOREGROUND_SERVICE` | Required by the OS to run a foreground service. Removing causes a runtime crash. |
+| `FOREGROUND_SERVICE_LOCATION` | Required on Android 14+ for foreground services with location type. |
+| `RECEIVE_BOOT_COMPLETED` | Required for `startOnBoot`. Safe to remove only if you never use boot restart. |
+| `WAKE_LOCK` | Required for background processing. Safe to remove only if you never use background tracking. |
+
+---
+
 ## Verifying Your Merged Manifest
 
 After building your app, verify which permissions are in the final APK:
