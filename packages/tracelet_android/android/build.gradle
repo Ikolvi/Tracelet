@@ -63,7 +63,7 @@ android {
 
         // SQLCipher for database encryption (Enterprise)
         implementation("net.zetetic:sqlcipher-android:4.6.1@aar")
-        implementation("androidx.sqlite:sqlite:2.4.0")
+        implementation("androidx.sqlite:sqlite:2.6.2")
 
         // EncryptedSharedPreferences for key management (Enterprise)
         implementation("androidx.security:security-crypto:1.1.0")
