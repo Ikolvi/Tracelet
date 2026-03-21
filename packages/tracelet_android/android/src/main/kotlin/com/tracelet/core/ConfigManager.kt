@@ -546,6 +546,56 @@ class ConfigManager internal constructor(context: Context) {
     fun getDeltaCoordinatePrecision(): Int =
         getInt("deltaCoordinatePrecision", 6)
 
+    fun getSslPinningCertificates(): List<String> {
+        val raw = configCache["sslPinningCertificates"]
+        if (raw is List<*>) return raw.filterIsInstance<String>()
+        return emptyList()
+    }
+
+    fun getSslPinningFingerprints(): List<String> {
+        val raw = configCache["sslPinningFingerprints"]
+        if (raw is List<*>) return raw.filterIsInstance<String>()
+        return emptyList()
+    }
+
+    // ---------------------------------------------------------------------------
+    // Dynamic Headers (mutable — updated via setDynamicHeaders)
+    // ---------------------------------------------------------------------------
+
+    @Volatile
+    private var dynamicHeaders: Map<String, String> = emptyMap()
+
+    fun setDynamicHeaders(headers: Map<String, String>) {
+        dynamicHeaders = headers
+    }
+
+    fun getDynamicHeaders(): Map<String, String> = dynamicHeaders
+
+    /** Merged headers: static config headers + dynamic headers (dynamic wins). */
+    fun getMergedHttpHeaders(): Map<String, String> {
+        val static = getHttpHeaders()
+        val dynamic = dynamicHeaders
+        if (dynamic.isEmpty()) return static
+        return static + dynamic
+    }
+
+    // ---------------------------------------------------------------------------
+    // Route Context (mutable — set via setRouteContext / clearRouteContext)
+    // ---------------------------------------------------------------------------
+
+    @Volatile
+    private var routeContext: Map<String, Any?> = emptyMap()
+
+    fun setRouteContext(context: Map<String, Any?>) {
+        routeContext = context
+    }
+
+    fun clearRouteContext() {
+        routeContext = emptyMap()
+    }
+
+    fun getRouteContext(): Map<String, Any?> = routeContext
+
     // ---------------------------------------------------------------------------
     // Typed Getters (PersistenceConfig)
     // ---------------------------------------------------------------------------

@@ -223,6 +223,8 @@ Server sync configuration.
 | `enableDeltaCompression` | `bool` | `false` | Delta-encode batch payloads for 60–80% size reduction. Requires `batchSync: true` ([details](DELTA-ENCODING.md)) |
 | `deltaCoordinatePrecision` | `int` | `6` | Decimal places for coordinate deltas: `5` ≈ 1.1m, `6` ≈ 0.11m, `7` ≈ 0.011m |
 | `authorization` | `Authorization?` | `null` | Token refresh config |
+| `sslPinningCertificates` | `List<String>` | `[]` | Base64-encoded X.509 certificates for SSL pinning. Server must present one of these certificates. See [SSL Pinning](HTTP-SYNC.md#ssl-pinning) |
+| `sslPinningFingerprints` | `List<String>` | `[]` | SHA-256 fingerprints for certificate pinning (format: `sha256/...`). See [SSL Pinning](HTTP-SYNC.md#ssl-pinning) |
 
 ---
 

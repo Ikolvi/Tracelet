@@ -300,6 +300,30 @@ class TraceletAndroidPlugin :
 
             // HTTP Sync
             "sync" -> handleSync(result)
+            "setDynamicHeaders" -> {
+                @Suppress("UNCHECKED_CAST")
+                val headers = (call.arguments as? Map<String, Any?>)
+                    ?.mapValues { it.value?.toString() ?: "" }
+                    ?: emptyMap()
+                configManager.setDynamicHeaders(headers)
+                result.success(true)
+            }
+
+            // Route Context
+            "setRouteContext" -> {
+                @Suppress("UNCHECKED_CAST")
+                val ctx = call.arguments as? Map<String, Any?> ?: emptyMap()
+                configManager.setRouteContext(ctx)
+                result.success(true)
+            }
+            "clearRouteContext" -> {
+                configManager.clearRouteContext()
+                result.success(true)
+            }
+
+            // Headless Callbacks
+            "registerHeadlessHeadersCallback" -> handleRegisterHeadlessCallback(call, result, "headlessHeaders")
+            "registerHeadlessSyncBodyBuilder" -> handleRegisterHeadlessCallback(call, result, "headlessSyncBody")
 
             // Utility
             "isPowerSaveMode" -> result.success(permissionManager.isPowerSaveMode())
@@ -1161,6 +1185,23 @@ class TraceletAndroidPlugin :
         val dispatchId = (callbackIds.getOrNull(1) as? Number)?.toLong() ?: -1L
 
         headlessService.registerCallbacks(registrationId, dispatchId)
+        result.success(true)
+    }
+
+    private fun handleRegisterHeadlessCallback(call: MethodCall, result: Result, key: String) {
+        val callbackIds = call.arguments as? List<*> ?: run {
+            result.error("INVALID_ARGS", "Expected list of callback IDs", null)
+            return
+        }
+        val registrationId = (callbackIds.getOrNull(0) as? Number)?.toLong() ?: -1L
+        val dispatchId = (callbackIds.getOrNull(1) as? Number)?.toLong() ?: -1L
+
+        val prefs = context.getSharedPreferences("com.tracelet.headless", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putLong("${key}_registrationId", registrationId)
+            .putLong("${key}_dispatchId", dispatchId)
+            .apply()
+
         result.success(true)
     }
 

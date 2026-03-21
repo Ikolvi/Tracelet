@@ -388,3 +388,252 @@ manager — there is no duplication or gap in sync coverage.
 | `maxRetries`                | `int`             | `10`       | Max retry attempts for transient failures  |
 | `retryBackoffBase`          | `int`             | `1000`     | Base backoff delay in ms                   |
 | `retryBackoffCap`           | `int`             | `300000`   | Max backoff delay in ms (5 min)            |
+| `sslPinningCertificates`    | `List<String>`    | `[]`       | Base64 X.509 certificates for SSL pinning  |
+| `sslPinningFingerprints`    | `List<String>`    | `[]`       | SHA-256 fingerprints (`sha256/...`)        |
+
+---
+
+## Dynamic Headers
+
+Static headers defined in `HttpConfig.headers` are set at initialization time
+and don't change. **Dynamic headers** let you update HTTP headers at runtime
+without reconfiguring the plugin — perfect for OAuth token refresh.
+
+### Basic Usage
+
+```dart
+// Set headers that change at runtime (e.g., after token refresh)
+await Tracelet.setDynamicHeaders({
+  'Authorization': 'Bearer $freshToken',
+  'X-Session-Id': sessionId,
+});
+```
+
+Dynamic headers are merged with static `HttpConfig.headers` before each
+request. When keys overlap, **dynamic headers win**.
+
+### Automatic Refresh via Callback
+
+For seamless OAuth integration, register a callback that provides fresh
+headers on demand:
+
+```dart
+Tracelet.setHeadersCallback(() async {
+  final token = await authService.getFreshToken();
+  return {'Authorization': 'Bearer $token'};
+});
+```
+
+The callback is invoked before each foreground sync request. Call
+`Tracelet.refreshHeaders()` to force a manual refresh.
+
+### Platform Behavior
+
+| | Android | iOS |
+|---|---|---|
+| Storage | `@Volatile` field in `ConfigManager` | Volatile property in `ConfigManager` |
+| Merge point | `getMergedHttpHeaders()` in `HttpSyncManager.sendRequest()` | `getMergedHttpHeaders()` in `HttpSyncManager.sendRequest()` |
+| Thread safety | Volatile read on sync thread | Main-thread access |
+
+---
+
+## Route Context
+
+Route context lets you tag locations with business-level metadata — task IDs,
+driver IDs, session IDs — that travels with each location through the sync
+queue.
+
+### Setting Context
+
+```dart
+await Tracelet.setRouteContext(RouteContext(
+  taskId: 'delivery-42',
+  driverId: 'driver-7',
+  trackingSessionId: uuid.v4(),
+  startedAt: DateTime.now().toIso8601String(),
+  custom: {'region': 'eu-west'},
+));
+```
+
+### Clearing Context
+
+```dart
+await Tracelet.clearRouteContext();
+```
+
+### RouteContext Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `ownerId` | `String?` | Business owner identifier |
+| `driverId` | `String?` | Driver or user identifier |
+| `taskId` | `String?` | Task, order, or delivery identifier |
+| `trackingSessionId` | `String?` | Unique session ID |
+| `startedAt` | `String?` | ISO 8601 session start time |
+| `custom` | `Map<String, String>` | Arbitrary key-value metadata |
+
+### How It Works
+
+Route context is **volatile** on the native side — it is not persisted to
+UserDefaults/SharedPreferences or the SQLite database. The Dart layer captures
+the context at the time each location is recorded and attaches it to the
+location data before persistence. This means:
+
+- Changing context mid-session only affects **future** locations
+- Previously recorded locations retain their original context
+- Context survives across sync retries (it's part of the location payload)
+
+---
+
+## SSL Pinning
+
+SSL pinning ensures your app only communicates with servers presenting known
+certificates, preventing man-in-the-middle attacks even if the device's
+certificate store is compromised.
+
+### Fingerprint Pinning (recommended)
+
+Pin by SHA-256 certificate fingerprint — easy to rotate and doesn't require
+embedding full certificates:
+
+```dart
+Config(
+  http: HttpConfig(
+    url: 'https://api.example.com/locations',
+    sslPinningFingerprints: [
+      'sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+      'sha256/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=', // backup
+    ],
+  ),
+)
+```
+
+**To get your server's fingerprint:**
+
+```bash
+openssl s_client -connect api.example.com:443 < /dev/null 2>/dev/null \
+  | openssl x509 -noout -fingerprint -sha256 \
+  | sed 's/://g' \
+  | awk -F= '{print "sha256/" $2}' \
+  | base64
+```
+
+### Certificate Pinning
+
+Pin by embedding the full Base64-encoded X.509 certificate:
+
+```dart
+Config(
+  http: HttpConfig(
+    url: 'https://api.example.com/locations',
+    sslPinningCertificates: [
+      'MIIBkTCB+wIJAL...base64...==',
+    ],
+  ),
+)
+```
+
+### Platform Implementation
+
+| | Android | iOS |
+|---|---|---|
+| Fingerprint pinning | OkHttp `CertificatePinner` | `URLSessionDelegate` with `SecTrust` + `CC_SHA256` |
+| Certificate pinning | OkHttp `HandshakeCertificates` (okhttp-tls) | `URLSessionDelegate` with `SecCertificate` comparison |
+| Failure behavior | Connection refused, logged as error | Connection refused, logged as error |
+
+### Best Practices
+
+- Always include a **backup fingerprint** for certificate rotation
+- Test with `openssl` before deploying
+- Pin leaf certificates, not root CAs (more secure, less fragile)
+- When rotating certificates, deploy the new fingerprint to the app **before** rotating the server certificate
+
+---
+
+## Custom Sync Body Builder
+
+By default, Tracelet sends locations in a standard JSON format. The sync body
+builder lets you **fully control** the HTTP request body.
+
+### Foreground Usage
+
+```dart
+Tracelet.setSyncBodyBuilder((SyncBodyContext context) async {
+  return {
+    'deviceId': myDeviceId,
+    'taskId': currentTaskId,
+    'points': context.locations,
+    'sentAt': DateTime.now().toIso8601String(),
+    'metadata': {'appVersion': '2.1.0'},
+  };
+});
+```
+
+The callback receives a `SyncBodyContext` containing the batch of locations.
+The returned map becomes the full HTTP request body.
+
+Pass `null` to clear the builder and revert to the default format:
+
+```dart
+Tracelet.setSyncBodyBuilder(null);
+```
+
+### SyncBodyContext Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `locations` | `List<Map<String, Object?>>` | Batch of location maps about to be synced |
+
+---
+
+## Headless (Background) Callbacks
+
+When the app is terminated (killed state), the native sync engine runs without
+the Flutter engine. To support token refresh and custom payloads in this state,
+register headless callbacks.
+
+### Headless Headers Callback
+
+Handles 401 responses in the background by refreshing auth tokens:
+
+```dart
+@pragma('vm:entry-point')
+static void myHeadlessHeadersCallback(HeadlessEvent event) async {
+  // Read refresh token from secure storage
+  final refreshToken = await secureStorage.read('refreshToken');
+  final newToken = await authApi.refresh(refreshToken);
+
+  // Update headers — native side retries the failed request
+  await Tracelet.setDynamicHeaders({
+    'Authorization': 'Bearer $newToken',
+  });
+}
+
+// Register during app startup:
+await Tracelet.registerHeadlessHeadersCallback(myHeadlessHeadersCallback);
+```
+
+### Headless Sync Body Builder
+
+Produces custom request bodies in the background:
+
+```dart
+@pragma('vm:entry-point')
+static void myHeadlessSyncBody(HeadlessEvent event) async {
+  final locations = event.event['locations'] as List;
+  return {
+    'deviceId': await getDeviceId(),
+    'points': locations,
+  };
+}
+
+// Register during app startup:
+await Tracelet.registerHeadlessSyncBodyBuilder(myHeadlessSyncBody);
+```
+
+### Requirements
+
+- Callbacks must be **top-level or static** functions
+- Annotate with `@pragma('vm:entry-point')` to prevent tree-shaking
+- Register during `Tracelet.ready()` initialization
+- The native side stores callback handles in UserDefaults (iOS) / SharedPreferences (Android)

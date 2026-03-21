@@ -1280,6 +1280,8 @@ class HttpConfig {
     this.retryBackoffCap = 300000,
     this.enableDeltaCompression = false,
     this.deltaCoordinatePrecision = 6,
+    this.sslPinningCertificates = const <String>[],
+    this.sslPinningFingerprints = const <String>[],
   });
 
   /// The server URL to sync locations to. `null` disables HTTP sync.
@@ -1358,6 +1360,33 @@ class HttpConfig {
   /// Defaults to `6`.
   final int deltaCoordinatePrecision;
 
+  /// PEM-encoded certificates for SSL/TLS certificate pinning.
+  ///
+  /// When non-empty, HTTP sync requests will only succeed if the server
+  /// presents a certificate chain including one of these certificates.
+  /// This prevents man-in-the-middle attacks even if the device's CA store
+  /// is compromised.
+  ///
+  /// Each entry should be the Base64-encoded body of a PEM certificate
+  /// (without the `-----BEGIN CERTIFICATE-----` / `-----END CERTIFICATE-----`
+  /// markers).
+  ///
+  /// Defaults to empty (no pinning — system CA store is used).
+  final List<String> sslPinningCertificates;
+
+  /// SHA-256 fingerprints of public keys for SSL/TLS public key pinning.
+  ///
+  /// When non-empty, HTTP sync requests will only succeed if the server's
+  /// certificate chain includes a public key matching one of these
+  /// fingerprints. Format: `"sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="`.
+  ///
+  /// Public key pinning is more resilient to certificate rotation than
+  /// certificate pinning — the server can renew its certificate as long as
+  /// the same key pair is reused.
+  ///
+  /// Defaults to empty (no pinning — system CA store is used).
+  final List<String> sslPinningFingerprints;
+
   /// Creates an [HttpConfig] from a map.
   factory HttpConfig.fromMap(Map<String, Object?> map) {
     return HttpConfig(
@@ -1396,7 +1425,14 @@ class HttpConfig {
         map['deltaCoordinatePrecision'],
         fallback: 6,
       ),
+      sslPinningCertificates: _castStringList(map['sslPinningCertificates']),
+      sslPinningFingerprints: _castStringList(map['sslPinningFingerprints']),
     );
+  }
+
+  static List<String> _castStringList(Object? value) {
+    if (value is List) return value.whereType<String>().toList();
+    return const <String>[];
   }
 
   /// Serializes to a map.
@@ -1420,6 +1456,8 @@ class HttpConfig {
       'retryBackoffCap': retryBackoffCap,
       'enableDeltaCompression': enableDeltaCompression,
       'deltaCoordinatePrecision': deltaCoordinatePrecision,
+      'sslPinningCertificates': sslPinningCertificates,
+      'sslPinningFingerprints': sslPinningFingerprints,
     };
   }
 
@@ -1446,7 +1484,9 @@ class HttpConfig {
           retryBackoffBase == other.retryBackoffBase &&
           retryBackoffCap == other.retryBackoffCap &&
           enableDeltaCompression == other.enableDeltaCompression &&
-          deltaCoordinatePrecision == other.deltaCoordinatePrecision;
+          deltaCoordinatePrecision == other.deltaCoordinatePrecision &&
+          _listEquals(sslPinningCertificates, other.sslPinningCertificates) &&
+          _listEquals(sslPinningFingerprints, other.sslPinningFingerprints);
 
   @override
   int get hashCode => Object.hash(
@@ -1465,7 +1505,17 @@ class HttpConfig {
     retryBackoffCap,
     enableDeltaCompression,
     deltaCoordinatePrecision,
+    Object.hashAll(sslPinningCertificates),
+    Object.hashAll(sslPinningFingerprints),
   );
+
+  static bool _listEquals(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
 }
 
 // ---------------------------------------------------------------------------

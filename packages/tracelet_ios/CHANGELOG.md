@@ -1,3 +1,11 @@
+## 1.6.0
+
+- **FEAT**: Add SSL certificate pinning — `URLSessionDelegate`-based validation with SHA-256 fingerprint matching via CommonCrypto.
+- **FEAT**: Add dynamic HTTP headers with runtime callback support and headless background execution.
+- **FEAT**: Add route context — attach arbitrary metadata to synced locations.
+- **FEAT**: Add custom sync body builder with headless callback support.
+- **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.6.0`.
+
 ## 1.5.0
 
 - **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.5.0`.

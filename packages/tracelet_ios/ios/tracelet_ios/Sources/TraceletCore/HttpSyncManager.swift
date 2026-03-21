@@ -1,18 +1,24 @@
 import Foundation
 import Network
+import CommonCrypto
 
 /// HTTP sync manager using URLSession.
 ///
 /// Syncs unsynced locations from SQLite to the configured URL. Supports
 /// batch/single mode, configurable headers/method, exponential backoff
 /// with jitter, connectivity-based deferred sync, and batch continuation.
-public final class HttpSyncManager {
+public final class HttpSyncManager: NSObject, URLSessionDelegate {
     private let configManager: ConfigManager
     private let eventDispatcher: TraceletEventSending
     private let database: TraceletDatabase
 
-    private var session: URLSession
+    private var session: URLSession!
     private var retryCount = 0
+
+    /// Cached DER-encoded trusted certificates for SSL pinning.
+    private var pinnedCertificates: [Data] = []
+    /// Cached SHA-256 fingerprints for SSL pinning.
+    private var pinnedFingerprints: [String] = []
 
     /// Serial queue protecting `_isSyncing`, `_isConnected`, `_pendingSyncOnConnect`.
     private let stateQueue = DispatchQueue(label: "com.tracelet.httpSync.state")
@@ -41,13 +47,17 @@ public final class HttpSyncManager {
         self.configManager = configManager
         self.eventDispatcher = eventDispatcher
         self.database = database
+        super.init()
 
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 60
-        self.session = URLSession(configuration: config)
+        let sessionConfig = URLSessionConfiguration.default
+        sessionConfig.timeoutIntervalForRequest = 60
+        self.session = URLSession(configuration: sessionConfig, delegate: self, delegateQueue: nil)
     }
 
     public func start() {
+        // Configure SSL pinning from config
+        configureSslPinning()
+
         // Start network path monitor for cellular detection and connectivity
         pathMonitor.pathUpdateHandler = { [weak self] path in
             guard let self = self else { return }
@@ -304,8 +314,8 @@ public final class HttpSyncManager {
         var request = URLRequest(url: url)
         request.httpMethod = configManager.getHttpMethod()
 
-        // Headers
-        let headers = configManager.getHttpHeaders()
+        // Headers (merged: static config + dynamic)
+        let headers = configManager.getMergedHttpHeaders()
         for (key, value) in headers {
             request.setValue(value, forHTTPHeaderField: key)
         }
@@ -419,6 +429,104 @@ public final class HttpSyncManager {
     private func isCellular() -> Bool {
         let path = pathMonitor.currentPath
         return path.usesInterfaceType(.cellular) && !path.usesInterfaceType(.wifi)
+    }
+
+    // MARK: - SSL Pinning
+
+    /// Loads SSL pinning certificates and fingerprints from config.
+    private func configureSslPinning() {
+        // Load base64-encoded DER certificates
+        let certStrings = configManager.getSslPinningCertificates()
+        pinnedCertificates = certStrings.compactMap { Data(base64Encoded: $0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+
+        // Load SHA-256 fingerprints (format: "sha256/BASE64HASH")
+        pinnedFingerprints = configManager.getSslPinningFingerprints()
+
+        if !pinnedCertificates.isEmpty || !pinnedFingerprints.isEmpty {
+            NSLog("[Tracelet] SSL pinning configured: %d certificates, %d fingerprints",
+                  pinnedCertificates.count, pinnedFingerprints.count)
+        }
+    }
+
+    /// URLSessionDelegate — validates server trust against pinned certificates/fingerprints.
+    public func urlSession(
+        _ session: URLSession,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+              let serverTrust = challenge.protectionSpace.serverTrust else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+
+        // If no pinning is configured, use default system validation
+        guard !pinnedCertificates.isEmpty || !pinnedFingerprints.isEmpty else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+
+        // Evaluate server trust first
+        var error: CFError?
+        let isValid = SecTrustEvaluateWithError(serverTrust, &error)
+        guard isValid else {
+            NSLog("[Tracelet] SSL pinning: server trust evaluation failed")
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+
+        // Check certificate pinning
+        if !pinnedCertificates.isEmpty {
+            let certCount = SecTrustGetCertificateCount(serverTrust)
+            var matched = false
+            for i in 0..<certCount {
+                if let serverCert = SecTrustGetCertificateAtIndex(serverTrust, i) {
+                    let serverCertData = SecCertificateCopyData(serverCert) as Data
+                    if pinnedCertificates.contains(serverCertData) {
+                        matched = true
+                        break
+                    }
+                }
+            }
+            if !matched {
+                NSLog("[Tracelet] SSL pinning: certificate mismatch")
+                completionHandler(.cancelAuthenticationChallenge, nil)
+                return
+            }
+        }
+
+        // Check fingerprint pinning
+        if !pinnedFingerprints.isEmpty {
+            let certCount = SecTrustGetCertificateCount(serverTrust)
+            var matched = false
+            for i in 0..<certCount {
+                if let serverCert = SecTrustGetCertificateAtIndex(serverTrust, i) {
+                    let serverCertData = SecCertificateCopyData(serverCert) as Data
+                    let hash = sha256(serverCertData)
+                    let fingerprint = "sha256/" + hash.base64EncodedString()
+                    if pinnedFingerprints.contains(fingerprint) {
+                        matched = true
+                        break
+                    }
+                }
+            }
+            if !matched {
+                NSLog("[Tracelet] SSL pinning: fingerprint mismatch")
+                completionHandler(.cancelAuthenticationChallenge, nil)
+                return
+            }
+        }
+
+        completionHandler(.useCredential, URLCredential(trust: serverTrust))
+    }
+
+    /// Computes SHA-256 hash of data using CommonCrypto.
+    private func sha256(_ data: Data) -> Data {
+        var hash = [UInt8](repeating: 0, count: 32)
+        data.withUnsafeBytes { bytes in
+            _ = CC_SHA256(bytes.baseAddress, CC_LONG(data.count), &hash)
+        }
+        return Data(hash)
     }
 
     // MARK: - Remote Config (Enterprise)

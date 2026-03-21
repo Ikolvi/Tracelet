@@ -67,6 +67,14 @@
 | `Tracelet.destroyLocation(uuid)` | `bool` | Delete one |
 | `Tracelet.insertLocation(params)` | `String` | Insert custom |
 | `Tracelet.sync()` | `List<Location>` | Manual HTTP sync |
+| `Tracelet.setDynamicHeaders(headers)` | `bool` | Set dynamic HTTP headers merged at sync time ([details](HTTP-SYNC.md#dynamic-headers)) |
+| `Tracelet.setHeadersCallback(callback)` | `void` | Register foreground callback for on-demand header refresh ([details](HTTP-SYNC.md#dynamic-headers)) |
+| `Tracelet.refreshHeaders()` | `bool` | Force-invoke the headers callback and send to native |
+| `Tracelet.setRouteContext(context)` | `bool` | Attach route context to subsequent locations ([details](HTTP-SYNC.md#route-context)) |
+| `Tracelet.clearRouteContext()` | `bool` | Remove route context from subsequent locations |
+| `Tracelet.setSyncBodyBuilder(builder)` | `void` | Register custom sync body builder for foreground sync ([details](HTTP-SYNC.md#custom-sync-body-builder)) |
+| `Tracelet.registerHeadlessSyncBodyBuilder(cb)` | `bool` | Register headless sync body builder for background sync ([details](HTTP-SYNC.md#custom-sync-body-builder)) |
+| `Tracelet.registerHeadlessHeadersCallback(cb)` | `bool` | Register headless headers callback for background token recovery ([details](HTTP-SYNC.md#headless-background-callbacks)) |
 
 ---
 

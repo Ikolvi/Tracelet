@@ -1,3 +1,13 @@
+## 1.6.0
+
+- **FEAT**: Add SSL certificate pinning — support for PEM certificates (`CertificatePinner`) and SHA-256 fingerprints (`HandshakeCertificates`) via OkHttp TLS.
+- **FEAT**: Add dynamic HTTP headers with runtime callback support and headless background execution.
+- **FEAT**: Add route context — attach arbitrary metadata to synced locations.
+- **FEAT**: Add custom sync body builder with headless callback support.
+- **TEST**: Add `ConfigManagerSyncFeaturesTest` — 12 Robolectric unit tests for sync features.
+- **CHORE**: Add `okhttp-tls:5.3.2` dependency.
+- **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.6.0`.
+
 ## 1.5.0
 
 - **FEAT**: Add boot-mode `HttpSyncManager` — locations are auto-synced to the server even when the app is killed or the device reboots.

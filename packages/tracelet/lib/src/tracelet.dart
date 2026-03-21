@@ -26,9 +26,11 @@ import 'models/location.dart';
 import 'models/privacy_zone.dart';
 import 'models/privacy_zone_config.dart';
 import 'models/provider_change_event.dart';
+import 'models/route_context.dart';
 import 'models/sensors.dart';
 import 'models/sql_query.dart';
 import 'models/state.dart';
+import 'models/sync_body_context.dart';
 import 'models/trip_event.dart';
 
 /// Production-grade background geolocation for Flutter.
@@ -654,6 +656,221 @@ class Tracelet {
   static Future<List<Location>> sync() async {
     final result = await _platform.sync();
     return result.map(Location.fromMap).toList();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Dynamic Headers
+  // ---------------------------------------------------------------------------
+
+  /// Callback registered via [setHeadersCallback].
+  static Future<Map<String, String>> Function()? _headersCallback;
+
+  /// Update dynamic HTTP headers on the native side.
+  ///
+  /// Dynamic headers are merged with the static [HttpConfig.headers] at sync
+  /// time. Dynamic headers take precedence when keys overlap.
+  ///
+  /// Call this whenever your auth token is refreshed:
+  ///
+  /// ```dart
+  /// await Tracelet.setDynamicHeaders({
+  ///   'Authorization': 'Bearer \$newToken',
+  /// });
+  /// ```
+  static Future<bool> setDynamicHeaders(Map<String, String> headers) {
+    return _platform.setDynamicHeaders(headers);
+  }
+
+  /// Register a callback that provides fresh HTTP headers on demand.
+  ///
+  /// When set, Tracelet will invoke this callback before each sync request
+  /// (foreground only) to obtain fresh headers. The returned headers are
+  /// sent to the native side via [setDynamicHeaders].
+  ///
+  /// Ideal for OAuth flows where tokens expire and need silent renewal:
+  ///
+  /// ```dart
+  /// Tracelet.setHeadersCallback(() async {
+  ///   final token = await authService.getFreshToken();
+  ///   return {'Authorization': 'Bearer \$token'};
+  /// });
+  /// ```
+  ///
+  /// For background (headless) header recovery, also register
+  /// [registerHeadlessHeadersCallback].
+  static void setHeadersCallback(
+    Future<Map<String, String>> Function()? callback,
+  ) {
+    _headersCallback = callback;
+  }
+
+  /// Force a refresh of dynamic headers.
+  ///
+  /// Invokes the callback registered with [setHeadersCallback] and sends
+  /// the resulting headers to the native side. If [force] is `true`,
+  /// the refresh runs even if one was recently completed.
+  ///
+  /// Returns `true` if headers were refreshed, `false` if no callback
+  /// is registered.
+  static Future<bool> refreshHeaders({bool force = false}) async {
+    final callback = _headersCallback;
+    if (callback == null) return false;
+    final headers = await callback();
+    return _platform.setDynamicHeaders(headers);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Route Context
+  // ---------------------------------------------------------------------------
+
+  /// Set the route context that will be persisted with every subsequently
+  /// recorded location.
+  ///
+  /// Route context is captured **immutably at insert time** — it travels
+  /// with the location row through the sync queue, even if the app changes
+  /// context before the batch is drained.
+  ///
+  /// This is critical for multi-task or multi-driver apps:
+  ///
+  /// ```dart
+  /// await Tracelet.setRouteContext(RouteContext(
+  ///   taskId: 'delivery-42',
+  ///   driverId: 'driver-7',
+  ///   trackingSessionId: uuid.v4(),
+  /// ));
+  /// ```
+  static Future<bool> setRouteContext(RouteContext context) {
+    return _platform.setRouteContext(context.toMap());
+  }
+
+  /// Clear the current route context.
+  ///
+  /// Subsequent locations will have no route context attached.
+  static Future<bool> clearRouteContext() {
+    return _platform.clearRouteContext();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Custom Sync Body Builder
+  // ---------------------------------------------------------------------------
+
+  /// Callback registered via [setSyncBodyBuilder].
+  static Future<Map<String, Object?>> Function(SyncBodyContext)?
+  // ignore: unused_field
+  _syncBodyBuilder;
+
+  /// Register a custom sync body builder for foreground sync.
+  ///
+  /// When set, each sync request will invoke this callback with the batch
+  /// of locations about to be sent. The returned map becomes the full HTTP
+  /// request body, giving you full control over the JSON structure.
+  ///
+  /// ```dart
+  /// Tracelet.setSyncBodyBuilder((context) async {
+  ///   return {
+  ///     'deviceId': myDeviceId,
+  ///     'taskId': currentTaskId,
+  ///     'points': context.locations,
+  ///     'sentAt': DateTime.now().toIso8601String(),
+  ///   };
+  /// });
+  /// ```
+  ///
+  /// Pass `null` to clear the custom builder and revert to the default
+  /// JSON structure.
+  ///
+  /// For background (headless) body building, also register
+  /// [registerHeadlessSyncBodyBuilder].
+  static void setSyncBodyBuilder(
+    Future<Map<String, Object?>> Function(SyncBodyContext)? builder,
+  ) {
+    _syncBodyBuilder = builder;
+  }
+
+  /// Register a headless sync body builder for background custom payloads.
+  ///
+  /// The [callback] must be a top-level or static function. It receives a
+  /// [HeadlessEvent] with `name == 'syncBodyBuild'` containing the locations
+  /// batch, and must return the custom request body.
+  ///
+  /// ```dart
+  /// @pragma('vm:entry-point')
+  /// static Future<Map<String, Object?>> myHeadlessSyncBody(
+  ///   HeadlessEvent event,
+  /// ) async {
+  ///   final locations = event.event['locations'] as List;
+  ///   return {
+  ///     'deviceId': getDeviceId(),
+  ///     'points': locations,
+  ///   };
+  /// }
+  /// ```
+  static Future<bool> registerHeadlessSyncBodyBuilder(
+    void Function(HeadlessEvent) callback,
+  ) {
+    if (kIsWeb) return Future<bool>.value(false);
+
+    final registrationHandle = ui.PluginUtilities.getCallbackHandle(
+      _headlessCallbackDispatcher,
+    );
+    if (registrationHandle == null) {
+      throw StateError('Could not look up _headlessCallbackDispatcher handle.');
+    }
+
+    final dispatchHandle = ui.PluginUtilities.getCallbackHandle(callback);
+    if (dispatchHandle == null) {
+      throw ArgumentError(
+        'registerHeadlessSyncBodyBuilder callback must be a top-level or '
+        'static function.',
+      );
+    }
+
+    return _platform.registerHeadlessSyncBodyBuilder(<int>[
+      registrationHandle.toRawHandle(),
+      dispatchHandle.toRawHandle(),
+    ]);
+  }
+
+  /// Register a headless headers callback for background token recovery.
+  ///
+  /// When the app is terminated and native sync receives a 401 response,
+  /// the native side spawns a headless Dart isolate, invokes this callback
+  /// to obtain fresh authorization headers, and retries the request once.
+  ///
+  /// The [callback] must be a top-level or static function.
+  ///
+  /// ```dart
+  /// @pragma('vm:entry-point')
+  /// static void myHeadlessHeadersCallback(HeadlessEvent event) {
+  ///   // Refresh token and update headers
+  ///   final token = await secureStorage.read('refreshToken');
+  ///   Tracelet.setDynamicHeaders({'Authorization': 'Bearer \$token'});
+  /// }
+  /// ```
+  static Future<bool> registerHeadlessHeadersCallback(
+    void Function(HeadlessEvent) callback,
+  ) {
+    if (kIsWeb) return Future<bool>.value(false);
+
+    final registrationHandle = ui.PluginUtilities.getCallbackHandle(
+      _headlessCallbackDispatcher,
+    );
+    if (registrationHandle == null) {
+      throw StateError('Could not look up _headlessCallbackDispatcher handle.');
+    }
+
+    final dispatchHandle = ui.PluginUtilities.getCallbackHandle(callback);
+    if (dispatchHandle == null) {
+      throw ArgumentError(
+        'registerHeadlessHeadersCallback callback must be a top-level or '
+        'static function.',
+      );
+    }
+
+    return _platform.registerHeadlessHeadersCallback(<int>[
+      registrationHandle.toRawHandle(),
+      dispatchHandle.toRawHandle(),
+    ]);
   }
 
   // ---------------------------------------------------------------------------

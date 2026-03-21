@@ -257,6 +257,48 @@ class MethodChannelTracelet extends TraceletPlatform {
         [];
   }
 
+  @override
+  Future<bool> setDynamicHeaders(Map<String, String> headers) async {
+    final result = await _methodChannel.invokeMethod<bool>(
+      'setDynamicHeaders',
+      headers,
+    );
+    return result ?? false;
+  }
+
+  @override
+  Future<bool> setRouteContext(Map<String, Object?> context) async {
+    final result = await _methodChannel.invokeMethod<bool>(
+      'setRouteContext',
+      context,
+    );
+    return result ?? false;
+  }
+
+  @override
+  Future<bool> clearRouteContext() async {
+    final result = await _methodChannel.invokeMethod<bool>('clearRouteContext');
+    return result ?? false;
+  }
+
+  @override
+  Future<bool> registerHeadlessHeadersCallback(List<int> callbackIds) async {
+    final result = await _methodChannel.invokeMethod<bool>(
+      'registerHeadlessHeadersCallback',
+      callbackIds,
+    );
+    return result ?? false;
+  }
+
+  @override
+  Future<bool> registerHeadlessSyncBodyBuilder(List<int> callbackIds) async {
+    final result = await _methodChannel.invokeMethod<bool>(
+      'registerHeadlessSyncBodyBuilder',
+      callbackIds,
+    );
+    return result ?? false;
+  }
+
   // ---------------------------------------------------------------------------
   // Utility
   // ---------------------------------------------------------------------------

@@ -1,3 +1,14 @@
+## 1.6.0
+
+- **FEAT**: Add SSL certificate pinning via `HttpConfig.sslPinningCertificates` and `HttpConfig.sslPinningFingerprints`.
+- **FEAT**: Add dynamic HTTP headers — `setDynamicHeaders()`, `setHeadersCallback()`, `refreshHeaders()`, and headless `registerHeadlessHeadersCallback()`.
+- **FEAT**: Add route context — `setRouteContext()` / `clearRouteContext()` to attach metadata to every synced location.
+- **FEAT**: Add custom sync body builder — `setSyncBodyBuilder()` and headless `registerHeadlessSyncBodyBuilder()`.
+- **TEST**: Add 19 Dart unit tests for `RouteContext`, `SyncBodyContext`, and `HttpConfig` SSL fields.
+- **TEST**: Add 6 MethodChannel mock tests for new platform methods.
+- **DOCS**: Update API.md, CONFIGURATION.md, HTTP-SYNC.md with new sync feature documentation.
+- **CHORE**: Update cross-package dependency constraints to `^1.6.0`.
+
 ## 1.5.0
 
 - **FEAT**: Boot-mode HTTP auto-sync — locations sync to your server even when the app is killed or the device reboots (Android).

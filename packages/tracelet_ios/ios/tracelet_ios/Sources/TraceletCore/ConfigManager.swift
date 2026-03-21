@@ -234,6 +234,53 @@ public final class ConfigManager {
     public func getRemoteConfigTimeout() -> Int { cache["remoteConfigTimeout"] as? Int ?? 30000 }
     public func getRemoteConfigRefreshInterval() -> Int { cache["remoteConfigRefreshInterval"] as? Int ?? 3600 }
 
+    // MARK: - SSL Pinning
+
+    public func getSslPinningCertificates() -> [String] {
+        if let certs = cache["sslPinningCertificates"] as? [String] {
+            return certs
+        }
+        return []
+    }
+
+    public func getSslPinningFingerprints() -> [String] {
+        if let fps = cache["sslPinningFingerprints"] as? [String] {
+            return fps
+        }
+        return []
+    }
+
+    // MARK: - Dynamic Headers (volatile — not persisted)
+
+    private var dynamicHeaders: [String: String] = [:]
+
+    public func setDynamicHeaders(_ headers: [String: String]) {
+        dynamicHeaders = headers
+    }
+
+    public func getDynamicHeaders() -> [String: String] { return dynamicHeaders }
+
+    /// Merged headers: static config headers + dynamic headers (dynamic wins).
+    public func getMergedHttpHeaders() -> [String: String] {
+        let staticHeaders = getHttpHeaders()
+        if dynamicHeaders.isEmpty { return staticHeaders }
+        return staticHeaders.merging(dynamicHeaders) { _, new in new }
+    }
+
+    // MARK: - Route Context (volatile — not persisted)
+
+    private var routeContext: [String: Any]? = nil
+
+    public func setRouteContext(_ context: [String: Any]) {
+        routeContext = context
+    }
+
+    public func clearRouteContext() {
+        routeContext = nil
+    }
+
+    public func getRouteContext() -> [String: Any]? { return routeContext }
+
     // MARK: - Defaults
     private func defaultConfig() -> [String: Any] {
         return [

@@ -228,6 +228,52 @@ abstract class TraceletPlatform extends PlatformInterface {
     throw UnimplementedError('sync() has not been implemented.');
   }
 
+  /// Update dynamic HTTP headers that are merged with static config headers
+  /// at sync time.
+  ///
+  /// Unlike [HttpConfig.headers] (set once in config), dynamic headers can
+  /// be refreshed at any time — ideal for rotating OAuth/JWT tokens.
+  Future<bool> setDynamicHeaders(Map<String, String> headers) {
+    throw UnimplementedError('setDynamicHeaders() has not been implemented.');
+  }
+
+  /// Set the current route context that will be persisted with every
+  /// subsequently recorded location.
+  ///
+  /// Unlike [HttpConfig.extras], route context is captured immutably at
+  /// location insert time, not at sync time.
+  Future<bool> setRouteContext(Map<String, Object?> context) {
+    throw UnimplementedError('setRouteContext() has not been implemented.');
+  }
+
+  /// Clear the current route context. Subsequent locations will have
+  /// no route context attached.
+  Future<bool> clearRouteContext() {
+    throw UnimplementedError('clearRouteContext() has not been implemented.');
+  }
+
+  /// Register a headless headers callback for background token recovery.
+  ///
+  /// When the app is terminated and native sync receives a 401 response,
+  /// it spawns a headless Dart isolate and invokes this callback to obtain
+  /// fresh authorization headers, then retries the failed request once.
+  Future<bool> registerHeadlessHeadersCallback(List<int> callbackIds) {
+    throw UnimplementedError(
+      'registerHeadlessHeadersCallback() has not been implemented.',
+    );
+  }
+
+  /// Register a headless sync body builder for background custom payloads.
+  ///
+  /// When the app is terminated and native sync fires, it spawns a headless
+  /// Dart isolate and invokes this callback with the location batch, allowing
+  /// the app to build a custom HTTP request body even in the background.
+  Future<bool> registerHeadlessSyncBodyBuilder(List<int> callbackIds) {
+    throw UnimplementedError(
+      'registerHeadlessSyncBodyBuilder() has not been implemented.',
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // Utility
   // ---------------------------------------------------------------------------

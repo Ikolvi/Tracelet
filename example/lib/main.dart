@@ -32,6 +32,27 @@ void headlessTask(tl.HeadlessEvent event) {
   }
 }
 
+/// Headless headers callback — refreshes auth tokens when the app is killed
+/// and the native sync engine receives a 401 Unauthorized response.
+@pragma('vm:entry-point')
+void headlessHeadersCallback(tl.HeadlessEvent event) {
+  debugPrint('[Headless] Headers callback invoked — refreshing token');
+  // In production, you'd read a refresh token from secure storage
+  // and call your auth API here. For demo purposes we just set a dummy.
+  tl.Tracelet.setDynamicHeaders({
+    'Authorization': 'Bearer headless-refreshed-token',
+  });
+}
+
+/// Headless sync body builder — produces a custom HTTP body when the app
+/// is killed and the native sync engine uploads locations in the background.
+@pragma('vm:entry-point')
+void headlessSyncBodyBuilder(tl.HeadlessEvent event) {
+  debugPrint('[Headless] Sync body builder invoked');
+  // In production, return your custom JSON structure.
+  // The native side will use this as the request body.
+}
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -41,6 +62,11 @@ void main() {
   // On web, headless isolates are not supported — skip registration.
   if (!kIsWeb) {
     tl.Tracelet.registerHeadlessTask(headlessTask);
+    // Register headless callbacks for background token refresh and custom
+    // sync body building. These handle the killed-app state where the Flutter
+    // engine isn't running.
+    tl.Tracelet.registerHeadlessHeadersCallback(headlessHeadersCallback);
+    tl.Tracelet.registerHeadlessSyncBodyBuilder(headlessSyncBodyBuilder);
   }
 
   runApp(const TraceletApp());
@@ -534,6 +560,12 @@ class _DashboardPageState extends State<DashboardPage>
             locationsOrderDirection: tl.LocationOrder.asc,
             // ── New feature ──
             disableAutoSyncOnCellular: true,
+            // ── SSL Pinning (uncomment to enable) ──
+            // sslPinningFingerprints: [
+            //   'sha256/YOUR_CERT_SHA256_FINGERPRINT_HERE',
+            //   'sha256/BACKUP_FINGERPRINT_HERE',
+            // ],
+            // sslPinningCertificates: ['BASE64_ENCODED_CERT_HERE'],
           ),
           audit: const tl.AuditConfig(
             enabled: true,
@@ -569,6 +601,42 @@ class _DashboardPageState extends State<DashboardPage>
         'READY',
         'enabled=${state.enabled}  mode=${state.trackingMode.name}  odometer=${state.odometer.toStringAsFixed(0)}m',
       );
+
+      // ── Dynamic Headers ──
+      // Register a callback that provides fresh auth headers before each
+      // foreground sync request. Ideal for OAuth token refresh.
+      tl.Tracelet.setHeadersCallback(() async {
+        // In production: final token = await authService.getFreshToken();
+        return {
+          'Authorization':
+              'Bearer demo-token-${DateTime.now().millisecondsSinceEpoch}',
+        };
+      });
+      _addLog('SYNC', 'Dynamic headers callback registered');
+
+      // ── Route Context ──
+      // Tag all subsequent locations with business metadata.
+      await tl.Tracelet.setRouteContext(
+        const tl.RouteContext(
+          taskId: 'demo-task-1',
+          driverId: 'demo-driver',
+          trackingSessionId: 'session-001',
+          custom: {'app': 'tracelet-example'},
+        ),
+      );
+      _addLog('SYNC', 'Route context set: taskId=demo-task-1');
+
+      // ── Custom Sync Body Builder ──
+      // Fully control the HTTP request body structure for foreground sync.
+      tl.Tracelet.setSyncBodyBuilder((tl.SyncBodyContext context) async {
+        return {
+          'device': 'tracelet-example',
+          'sentAt': DateTime.now().toUtc().toIso8601String(),
+          'locationCount': context.locations.length,
+          'locations': context.locations,
+        };
+      });
+      _addLog('SYNC', 'Custom sync body builder registered');
 
       // If periodic mode was active (e.g. after app kill + reopen), load
       // any locations captured in the background via headless dispatch.
@@ -2412,6 +2480,43 @@ class _DashboardPageState extends State<DashboardPage>
     }
   }
 
+  Future<void> _refreshHeaders() async {
+    try {
+      final ok = await tl.Tracelet.refreshHeaders();
+      _addLog('HTTP', ok ? 'Headers refreshed' : 'No headers callback set');
+    } catch (e) {
+      _addLog('ERROR', 'refreshHeaders() failed: $e');
+    }
+  }
+
+  Future<void> _setRouteContextDemo() async {
+    try {
+      final sessionId =
+          'session-${DateTime.now().millisecondsSinceEpoch ~/ 1000}';
+      await tl.Tracelet.setRouteContext(
+        tl.RouteContext(
+          taskId: 'demo-delivery',
+          driverId: 'demo-driver',
+          trackingSessionId: sessionId,
+          startedAt: DateTime.now().toUtc().toIso8601String(),
+          custom: const {'region': 'demo'},
+        ),
+      );
+      _addLog('ROUTE', 'Context set: session=$sessionId');
+    } catch (e) {
+      _addLog('ERROR', 'setRouteContext() failed: $e');
+    }
+  }
+
+  Future<void> _clearRouteContextDemo() async {
+    try {
+      await tl.Tracelet.clearRouteContext();
+      _addLog('ROUTE', 'Context cleared');
+    } catch (e) {
+      _addLog('ERROR', 'clearRouteContext() failed: $e');
+    }
+  }
+
   // ── R-Tree Demo ───────────────────────────────────────────────────────
 
   Future<void> _showRTreeDemo() async {
@@ -3761,6 +3866,17 @@ class _DashboardPageState extends State<DashboardPage>
                         _toggleCellularSync,
                       ),
                       _Chip('Manual Sync', Icons.cloud_sync, _manualSync),
+                      _Chip('Refresh Headers', Icons.vpn_key, _refreshHeaders),
+                      _Chip(
+                        'Set Route Context',
+                        Icons.route,
+                        _setRouteContextDemo,
+                      ),
+                      _Chip(
+                        'Clear Route Context',
+                        Icons.clear_all,
+                        _clearRouteContextDemo,
+                      ),
                     ],
                   ),
 

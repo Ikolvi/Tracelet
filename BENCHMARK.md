@@ -63,6 +63,14 @@ cd benchmark && flutter pub get && flutter test test/tracelet_benchmark_test.dar
 | `config_roundtrip` | Full Config serialization round-trip | Config update |
 | `state_fromMap` | Deserialize State from map | State restore |
 | `state_toMap` | Serialize State to map | State persist |
+| `route_context_toMap` | Serialize RouteContext to map | Route context attach |
+| `route_context_fromMap` | Deserialize RouteContext from map | Route context restore |
+| `route_context_roundtrip` | Full RouteContext serialization round-trip | Route context update |
+| `sync_body_context_toMap_50` | Serialize SyncBodyContext with 50 locations | Sync body build |
+| `sync_body_context_fromMap_50` | Deserialize SyncBodyContext with 50 locations | Sync body restore |
+| `http_config_ssl_toMap` | Serialize HttpConfig with SSL pinning fields | Config persist |
+| `http_config_ssl_fromMap` | Deserialize HttpConfig with SSL pinning fields | Config restore |
+| `http_config_ssl_roundtrip` | Full HttpConfig+SSL serialization round-trip | Config update |
 
 ## Performance Thresholds
 

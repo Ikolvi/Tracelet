@@ -656,6 +656,83 @@ void _benchStateSerialization() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Benchmark: RouteContext Serialization
+// ─────────────────────────────────────────────────────────────────────────────
+
+void _benchRouteContext() {
+  const ctx = RouteContext(
+    ownerId: 'owner-1',
+    driverId: 'driver-7',
+    taskId: 'delivery-42',
+    trackingSessionId: 'sess-abc',
+    startedAt: '2025-01-01T00:00:00Z',
+    custom: {'region': 'eu-west', 'zone': 'A1'},
+  );
+
+  _bench('route_context_toMap', () {
+    ctx.toMap();
+  });
+
+  final map = ctx.toMap();
+  _bench('route_context_fromMap', () {
+    RouteContext.fromMap(map);
+  });
+
+  _bench('route_context_roundtrip', () {
+    RouteContext.fromMap(ctx.toMap());
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Benchmark: SyncBodyContext Serialization
+// ─────────────────────────────────────────────────────────────────────────────
+
+void _benchSyncBodyContext() {
+  // 50-location batch (realistic sync payload)
+  final locations = <Map<String, Object?>>[];
+  for (var i = 0; i < 50; i++) {
+    locations.add(_generateLocationMap());
+  }
+  final ctx = SyncBodyContext(locations: locations);
+
+  _bench('sync_body_context_toMap_50', () {
+    ctx.toMap();
+  });
+
+  final map = ctx.toMap();
+  _bench('sync_body_context_fromMap_50', () {
+    SyncBodyContext.fromMap(map);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Benchmark: HttpConfig with SSL Pinning
+// ─────────────────────────────────────────────────────────────────────────────
+
+void _benchHttpConfigSsl() {
+  const http = HttpConfig(
+    url: 'https://api.example.com/locations',
+    method: HttpMethod.post,
+    headers: {'Authorization': 'Bearer tok', 'X-Device': 'abc'},
+    sslPinningCertificates: ['MIIBcert1base64==', 'MIIBcert2base64=='],
+    sslPinningFingerprints: ['sha256/AAAA', 'sha256/BBBB'],
+  );
+
+  _bench('http_config_ssl_toMap', () {
+    http.toMap();
+  });
+
+  final map = http.toMap();
+  _bench('http_config_ssl_fromMap', () {
+    HttpConfig.fromMap(map);
+  });
+
+  _bench('http_config_ssl_roundtrip', () {
+    HttpConfig.fromMap(http.toMap());
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -684,6 +761,9 @@ void main() {
     _benchPersistDecider();
     _benchConfigSerialization();
     _benchStateSerialization();
+    _benchRouteContext();
+    _benchSyncBodyContext();
+    _benchHttpConfigSsl();
 
     // Print results table
     print('');
@@ -707,7 +787,7 @@ void main() {
     print('}');
 
     // Verify all benchmarks produced results
-    expect(_results.length, greaterThanOrEqualTo(40));
+    expect(_results.length, greaterThanOrEqualTo(48));
     for (final r in _results) {
       expect(
         r.opsPerSec,

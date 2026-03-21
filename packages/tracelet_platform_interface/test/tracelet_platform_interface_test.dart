@@ -80,6 +80,52 @@ void main() {
         throwsA(isA<UnimplementedError>()),
       );
     });
+
+    test('setDynamicHeaders throws UnimplementedError by default', () {
+      final platform = _TestPlatform();
+      expect(
+        () => platform.setDynamicHeaders({'X-Token': 'abc'}),
+        throwsA(isA<UnimplementedError>()),
+      );
+    });
+
+    test('setRouteContext throws UnimplementedError by default', () {
+      final platform = _TestPlatform();
+      expect(
+        () => platform.setRouteContext({'taskId': 'task-1'}),
+        throwsA(isA<UnimplementedError>()),
+      );
+    });
+
+    test('clearRouteContext throws UnimplementedError by default', () {
+      final platform = _TestPlatform();
+      expect(
+        () => platform.clearRouteContext(),
+        throwsA(isA<UnimplementedError>()),
+      );
+    });
+
+    test(
+      'registerHeadlessHeadersCallback throws UnimplementedError by default',
+      () {
+        final platform = _TestPlatform();
+        expect(
+          () => platform.registerHeadlessHeadersCallback([1, 2]),
+          throwsA(isA<UnimplementedError>()),
+        );
+      },
+    );
+
+    test(
+      'registerHeadlessSyncBodyBuilder throws UnimplementedError by default',
+      () {
+        final platform = _TestPlatform();
+        expect(
+          () => platform.registerHeadlessSyncBodyBuilder([1, 2]),
+          throwsA(isA<UnimplementedError>()),
+        );
+      },
+    );
   });
 }
 

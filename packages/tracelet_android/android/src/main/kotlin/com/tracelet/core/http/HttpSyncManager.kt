@@ -15,10 +15,16 @@ import com.tracelet.core.db.TraceletDatabase
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.tls.HandshakeCertificates
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.io.StringWriter
+import java.security.cert.CertificateFactory
+import java.security.cert.X509Certificate
+import java.security.MessageDigest
+import java.io.ByteArrayInputStream
+import java.util.Base64
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.math.min
@@ -63,11 +69,52 @@ class HttpSyncManager(
     /** Initialize the HTTP client. */
     fun start() {
         val timeout = config.getHttpTimeout().toLong()
-        httpClient = OkHttpClient.Builder()
+        val builder = OkHttpClient.Builder()
             .connectTimeout(timeout, TimeUnit.MILLISECONDS)
             .readTimeout(timeout, TimeUnit.MILLISECONDS)
             .writeTimeout(timeout, TimeUnit.MILLISECONDS)
-            .build()
+
+        // Configure SSL pinning if fingerprints are provided
+        val fingerprints = config.getSslPinningFingerprints()
+        if (fingerprints.isNotEmpty()) {
+            val url = config.getHttpUrl()
+            if (url != null) {
+                val hostname = try { java.net.URL(url).host } catch (_: Exception) { null }
+                if (hostname != null) {
+                    val pinBuilder = CertificatePinner.Builder()
+                    for (fp in fingerprints) {
+                        pinBuilder.add(hostname, fp)
+                    }
+                    builder.certificatePinner(pinBuilder.build())
+                }
+            }
+        }
+
+        // Configure SSL certificate pinning if certificates are provided
+        val certificates = config.getSslPinningCertificates()
+        if (certificates.isNotEmpty()) {
+            try {
+                val certFactory = CertificateFactory.getInstance("X.509")
+                val trustManagerBuilder = HandshakeCertificates.Builder()
+
+                for (certBase64 in certificates) {
+                    val decoded = Base64.getDecoder().decode(certBase64.trim())
+                    val cert = certFactory.generateCertificate(ByteArrayInputStream(decoded))
+                        as X509Certificate
+                    trustManagerBuilder.addTrustedCertificate(cert)
+                }
+
+                val handshakeCertificates = trustManagerBuilder.build()
+                builder.sslSocketFactory(
+                    handshakeCertificates.sslSocketFactory(),
+                    handshakeCertificates.trustManager
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "SSL certificate pinning configuration failed: ${e.message}")
+            }
+        }
+
+        httpClient = builder.build()
         registerConnectivityCallback()
     }
 
@@ -157,7 +204,7 @@ class HttpSyncManager(
         val rootProp = config.getHttpRootProperty()
         val extras = config.getHttpExtras()
         val params = config.getHttpParams()
-        val headers = config.getHttpHeaders()
+        val headers = config.getMergedHttpHeaders()
         val method = if (config.getHttpMethod() == 0) "POST" else "PUT"
 
         // Retry parameters from config

@@ -1,3 +1,8 @@
+## 1.6.0
+
+- **FEAT**: Add `setDynamicHeaders`, `setRouteContext`, `clearRouteContext`, `registerHeadlessHeadersCallback`, and `registerHeadlessSyncBodyBuilder` platform methods.
+- **CHORE**: Update cross-package dependency constraints to `^1.6.0`.
+
 ## 1.5.0
 
 - **CHORE**: Update cross-package dependency constraints to `^1.5.0`.

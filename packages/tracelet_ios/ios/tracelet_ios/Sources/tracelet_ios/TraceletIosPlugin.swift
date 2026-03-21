@@ -341,6 +341,26 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
             httpSyncManager.sync { synced in
                 result(synced)
             }
+        case "setDynamicHeaders":
+            let headers = (call.arguments as? [String: Any])?
+                .mapValues { "\($0)" } ?? [:]
+            configManager.setDynamicHeaders(headers)
+            result(true)
+
+        // Route Context
+        case "setRouteContext":
+            let ctx = call.arguments as? [String: Any] ?? [:]
+            configManager.setRouteContext(ctx)
+            result(true)
+        case "clearRouteContext":
+            configManager.clearRouteContext()
+            result(true)
+
+        // Headless Callbacks
+        case "registerHeadlessHeadersCallback":
+            handleRegisterHeadlessCallback(call, result: result, key: "headlessHeaders")
+        case "registerHeadlessSyncBodyBuilder":
+            handleRegisterHeadlessCallback(call, result: result, key: "headlessSyncBody")
 
         // Utility
         case "isPowerSaveMode":
@@ -953,6 +973,20 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
             return
         }
         headlessRunner.registerCallbacks(registrationId, dispatchId)
+        result(true)
+    }
+
+    private func handleRegisterHeadlessCallback(_ call: FlutterMethodCall, result: FlutterResult, key: String) {
+        guard let callbackIds = call.arguments as? [Any] else {
+            result(FlutterError(code: "INVALID_ARGS", message: "Expected list of callback IDs", details: nil))
+            return
+        }
+        let registrationId = (callbackIds.first as? NSNumber)?.int64Value ?? -1
+        let dispatchId = (callbackIds.last as? NSNumber)?.int64Value ?? -1
+
+        let defaults = UserDefaults.standard
+        defaults.set(registrationId, forKey: "com.tracelet.headless.\(key)_registrationId")
+        defaults.set(dispatchId, forKey: "com.tracelet.headless.\(key)_dispatchId")
         result(true)
     }
 
