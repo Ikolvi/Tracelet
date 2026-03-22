@@ -66,6 +66,16 @@ class HttpSyncManager(
     private var connectivityCallback: ConnectivityManager.NetworkCallback? = null
     @Volatile private var pendingSyncOnConnect = false
 
+    /**
+     * Called when a 401 Unauthorized response is received during sync.
+     *
+     * The callback should attempt to refresh authorization headers
+     * (e.g., by invoking a headless Dart callback that calls
+     * [ConfigManager.setDynamicHeaders]). Returns `true` if headers
+     * were successfully refreshed and the request should be retried.
+     */
+    var onAuthorizationRequired: (() -> Boolean)? = null
+
     /** Initialize the HTTP client. */
     fun start() {
         val timeout = config.getHttpTimeout().toLong()
@@ -204,7 +214,7 @@ class HttpSyncManager(
         val rootProp = config.getHttpRootProperty()
         val extras = config.getHttpExtras()
         val params = config.getHttpParams()
-        val headers = config.getMergedHttpHeaders()
+        var headers = config.getMergedHttpHeaders()
         val method = if (config.getHttpMethod() == 0) "POST" else "PUT"
 
         // Retry parameters from config
@@ -227,6 +237,7 @@ class HttpSyncManager(
             body = buildJsonBody(rootProp, listOf(locations.first()), params, batch = false)
         }
 
+        var authRetried = false
         var retryCount = 0
         while (retryCount <= maxRetries) {
             try {
@@ -251,7 +262,7 @@ class HttpSyncManager(
                     "success" to response.isSuccessful,
                     "status" to statusCode,
                     "responseText" to responseBody,
-                    "isRetry" to (retryCount > 0),
+                    "isRetry" to (retryCount > 0 || authRetried),
                     "retryCount" to retryCount,
                 )
                 events.sendHttp(httpEvent)
@@ -260,6 +271,21 @@ class HttpSyncManager(
 
                 if (response.isSuccessful) {
                     return true
+                }
+
+                // 401 Unauthorized — attempt to refresh authorization headers once.
+                if (statusCode == 401 && !authRetried) {
+                    authRetried = true
+                    Log.w(TAG, "HTTP sync 401 Unauthorized — requesting headers refresh")
+                    val refreshed = onAuthorizationRequired?.invoke() ?: false
+                    if (refreshed) {
+                        // Re-read merged headers (dynamic headers updated by callback)
+                        headers = config.getMergedHttpHeaders()
+                        Log.d(TAG, "Headers refreshed, retrying request")
+                        continue // Retry immediately with fresh headers
+                    }
+                    Log.w(TAG, "Headers refresh failed or unavailable — treating 401 as permanent failure")
+                    return false
                 }
 
                 // Transient errors: 429 (rate-limit), 408 (timeout), 5xx
@@ -277,7 +303,7 @@ class HttpSyncManager(
                     "success" to false,
                     "status" to 0,
                     "responseText" to (e.message ?: "IO Error"),
-                    "isRetry" to (retryCount > 0),
+                    "isRetry" to (retryCount > 0 || authRetried),
                     "retryCount" to retryCount,
                 )
                 events.sendHttp(httpEvent)

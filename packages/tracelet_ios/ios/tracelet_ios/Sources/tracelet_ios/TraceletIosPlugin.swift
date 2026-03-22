@@ -159,6 +159,13 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
 
         // Headless
         instance.headlessRunner = HeadlessRunner()
+        instance.headlessRunner.configManager = instance.configManager
+
+        // Wire 401 authorization refresh — when sync receives a 401,
+        // invoke the headless headers callback to refresh the token.
+        instance.httpSyncManager.onAuthorizationRequired = { [weak instance] in
+            instance?.headlessRunner.requestHeadersRefresh(timeout: 10.0) ?? false
+        }
 
         // Wire headless fallback — when no Dart UI listener exists for an event,
         // EventDispatcher routes it to HeadlessRunner.

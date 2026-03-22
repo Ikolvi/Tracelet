@@ -5,13 +5,16 @@ import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.tracelet.core.ConfigManager
 import com.tracelet.core.HeadlessDispatcher
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.embedding.engine.loader.FlutterLoader
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.view.FlutterCallbackInformation
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -29,7 +32,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 5. Sends HeadlessEvent via MethodChannel
  * 6. Disposes engine when done
  */
-class HeadlessTaskService(private val context: Context) : HeadlessDispatcher {
+class HeadlessTaskService(
+    private val context: Context,
+    private val configManager: ConfigManager? = null,
+) : HeadlessDispatcher {
 
     companion object {
         private const val TAG = "HeadlessTaskService"
@@ -37,6 +43,7 @@ class HeadlessTaskService(private val context: Context) : HeadlessDispatcher {
         private const val KEY_REGISTRATION_CALLBACK = "registration_callback_id"
         private const val KEY_DISPATCH_CALLBACK = "dispatch_callback_id"
         private const val CHANNEL_NAME = "com.tracelet/headless"
+        private const val METHODS_CHANNEL_NAME = "com.tracelet/methods"
     }
 
     private var flutterEngine: FlutterEngine? = null
@@ -44,6 +51,10 @@ class HeadlessTaskService(private val context: Context) : HeadlessDispatcher {
     private val isEngineReady = AtomicBoolean(false)
     private val pendingEvents = LinkedBlockingQueue<Map<String, Any?>>()
     private var headlessMethodChannel: MethodChannel? = null
+
+    /** Latch signaled when headless Dart callback calls setDynamicHeaders. */
+    @Volatile
+    private var headersRefreshLatch: CountDownLatch? = null
 
     /** Register the headless callback IDs (called from Dart side). */
     fun registerCallbacks(registrationCallbackId: Long, dispatchCallbackId: Long) {
@@ -97,6 +108,56 @@ class HeadlessTaskService(private val context: Context) : HeadlessDispatcher {
         pendingEvents.clear()
     }
 
+    /**
+     * Request a headers refresh from the headless Dart callback.
+     *
+     * Dispatches a `headersRefresh` event to the Dart headless callback
+     * registered via `registerHeadlessHeadersCallback`. The Dart callback
+     * is expected to refresh the token and call `Tracelet.setDynamicHeaders()`,
+     * which routes back to the native side and signals this method to return.
+     *
+     * @param timeoutMs Maximum time to wait for the Dart callback to respond.
+     * @return `true` if headers were refreshed within the timeout.
+     */
+    fun requestHeadersRefresh(timeoutMs: Long): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val dispatchId = prefs.getLong("headlessHeaders_dispatchId", -1L)
+        val registrationId = prefs.getLong("headlessHeaders_registrationId", -1L)
+        if (dispatchId == -1L || registrationId == -1L) {
+            Log.w(TAG, "No headless headers callback registered")
+            return false
+        }
+
+        val latch = CountDownLatch(1)
+        headersRefreshLatch = latch
+
+        // Dispatch the headersRefresh event using the headers-specific dispatch ID
+        val event = mapOf(
+            "name" to "headersRefresh",
+            "event" to emptyMap<String, Any?>(),
+            "dispatchId" to dispatchId,
+        )
+
+        if (isEngineReady.get() && headlessMethodChannel != null) {
+            sendEvent(event)
+        } else {
+            pendingEvents.add(event)
+            ensureEngine()
+        }
+
+        return try {
+            val result = latch.await(timeoutMs, TimeUnit.MILLISECONDS)
+            if (result) {
+                Log.d(TAG, "Headers refresh completed by headless callback")
+            } else {
+                Log.w(TAG, "Headers refresh timed out after ${timeoutMs}ms")
+            }
+            result
+        } finally {
+            headersRefreshLatch = null
+        }
+    }
+
     // =========================================================================
     // Private
     // =========================================================================
@@ -105,10 +166,15 @@ class HeadlessTaskService(private val context: Context) : HeadlessDispatcher {
         if (flutterEngine != null) return
 
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val registrationCallbackId = prefs.getLong(KEY_REGISTRATION_CALLBACK, -1)
+        // Try main headless callback first, fall back to headlessHeaders callback
+        var registrationCallbackId = prefs.getLong(KEY_REGISTRATION_CALLBACK, -1)
         val dispatchCallbackId = prefs.getLong(KEY_DISPATCH_CALLBACK, -1)
 
-        if (registrationCallbackId == -1L || dispatchCallbackId == -1L) {
+        if (registrationCallbackId == -1L) {
+            registrationCallbackId = prefs.getLong("headlessHeaders_registrationId", -1)
+        }
+
+        if (registrationCallbackId == -1L) {
             Log.w(TAG, "No headless callbacks registered")
             pendingEvents.clear()
             return
@@ -129,6 +195,26 @@ class HeadlessTaskService(private val context: Context) : HeadlessDispatcher {
                             "initialized" -> {
                                 isEngineReady.set(true)
                                 drainPendingEvents()
+                                result.success(true)
+                            }
+                            else -> result.notImplemented()
+                        }
+                    }
+
+                    // Handle setDynamicHeaders from headless Dart callback.
+                    // When the Dart headless callback calls Tracelet.setDynamicHeaders(),
+                    // it goes through com.tracelet/methods. We handle it here so the
+                    // headless engine can update headers and signal the refresh latch.
+                    val methodsChannel = MethodChannel(engine.dartExecutor.binaryMessenger, METHODS_CHANNEL_NAME)
+                    methodsChannel.setMethodCallHandler { call, result ->
+                        when (call.method) {
+                            "setDynamicHeaders" -> {
+                                @Suppress("UNCHECKED_CAST")
+                                val headers = (call.arguments as? Map<String, Any?>)
+                                    ?.mapValues { it.value?.toString() ?: "" }
+                                    ?: emptyMap()
+                                configManager?.setDynamicHeaders(headers)
+                                headersRefreshLatch?.countDown()
                                 result.success(true)
                             }
                             else -> result.notImplemented()

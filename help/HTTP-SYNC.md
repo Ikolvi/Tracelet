@@ -81,7 +81,7 @@ delay = min(retryBackoffCap, retryBackoffBase × 2^(attempt-1)) ± jitter
 | Status Code | Meaning                | Retried? |
 |-------------|------------------------|----------|
 | `400`       | Bad Request             | ❌ No    |
-| `401`       | Unauthorized            | ❌ No    |
+| `401`       | Unauthorized            | 🔄 Special (see [401 Authorization Retry](#401-authorization-retry)) |
 | `403`       | Forbidden               | ❌ No    |
 | `404`       | Not Found               | ❌ No    |
 | Other 4xx   | Client error            | ❌ No    |
@@ -320,6 +320,70 @@ HttpConfig(
 
 Both platforms read `maxRetries`, `retryBackoffBase`, and `retryBackoffCap`
 from the same Dart `HttpConfig` — no platform-specific configuration needed.
+
+---
+
+## 401 Authorization Retry
+
+When the server returns **401 Unauthorized**, Tracelet can automatically
+refresh your authorization token and retry the request — even when the app
+is killed (headless mode).
+
+### How It Works
+
+1. HTTP sync receives a `401` response
+2. Tracelet invokes the headless headers callback registered via
+   `registerHeadlessHeadersCallback()`
+3. Your Dart callback refreshes the token and calls
+   `Tracelet.setDynamicHeaders()` with updated headers
+4. The original request is retried **once** with the refreshed headers
+5. If the retry also fails, it's treated as a permanent failure
+
+This works in both **foreground** (app is open) and **killed-state**
+(headless) modes. In headless mode, Tracelet spins up a temporary Dart
+isolate to execute your callback.
+
+### Setup
+
+```dart
+// 1. Register the headless headers callback (top-level or static function)
+@pragma('vm:entry-point')
+static void onHeadersRefresh(HeadlessEvent event) async {
+  final refreshToken = await secureStorage.read(key: 'refreshToken');
+  final response = await http.post(
+    Uri.parse('https://auth.example.com/token'),
+    body: {'refresh_token': refreshToken},
+  );
+  final newToken = jsonDecode(response.body)['access_token'];
+  await Tracelet.setDynamicHeaders({
+    'Authorization': 'Bearer $newToken',
+  });
+}
+
+// 2. Register during app initialization
+await Tracelet.registerHeadlessHeadersCallback(onHeadersRefresh);
+
+// 3. Also set a foreground callback for proactive refresh
+Tracelet.setHeadersCallback(() async {
+  final token = await authService.getFreshToken();
+  return {'Authorization': 'Bearer $token'};
+});
+```
+
+### Timeout
+
+The native side waits up to **10 seconds** for the Dart callback to call
+`setDynamicHeaders()`. If the callback doesn't respond in time (e.g.,
+network timeout during token refresh), the 401 is treated as a permanent
+failure and sync stops for that batch.
+
+### Platform Details
+
+| | Android | iOS |
+|---|---|---|
+| Synchronization | `CountDownLatch` | `DispatchSemaphore` |
+| Headless channel | `com.tracelet/methods` on headless engine | `com.tracelet/methods` on headless engine |
+| Timeout | 10 seconds | 10 seconds |
 
 ---
 

@@ -173,7 +173,13 @@ class TraceletAndroidPlugin :
         httpSyncManager = HttpSyncManager(context, configManager, eventDispatcher, database)
 
         // Headless
-        headlessService = HeadlessTaskService(context)
+        headlessService = HeadlessTaskService(context, configManager)
+
+        // Wire 401 authorization refresh — when sync receives a 401,
+        // invoke the headless headers callback to refresh the token.
+        httpSyncManager.onAuthorizationRequired = {
+            headlessService.requestHeadersRefresh(10_000L)
+        }
 
         // Wire headless fallback — when no Dart UI listener exists for an event,
         // EventDispatcher routes it to HeadlessTaskService.

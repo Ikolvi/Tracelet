@@ -41,6 +41,14 @@ public final class HttpSyncManager: NSObject, URLSessionDelegate {
         set { stateQueue.sync { _pendingSyncOnConnect = newValue } }
     }
 
+    /// Called when a 401 Unauthorized response is received during sync.
+    ///
+    /// The closure should attempt to refresh authorization headers
+    /// (e.g., by invoking a headless Dart callback that calls
+    /// `ConfigManager.setDynamicHeaders`). Returns `true` if headers
+    /// were successfully refreshed and the request should be retried.
+    public var onAuthorizationRequired: (() -> Bool)?
+
     public init(configManager: ConfigManager,
          eventDispatcher: TraceletEventSending,
          database: TraceletDatabase) {
@@ -356,6 +364,7 @@ public final class HttpSyncManager: NSObject, URLSessionDelegate {
                                responseBody: String,
                                locations: [[String: Any]],
                                isBatch: Bool,
+                               authRetried: Bool = false,
                                completion: @escaping ([[String: Any]]) -> Void) {
         let maxRetries = configManager.getMaxRetries()
         let baseMs = Double(configManager.getRetryBackoffBase()) / 1000.0
@@ -367,9 +376,60 @@ public final class HttpSyncManager: NSObject, URLSessionDelegate {
             "success": false,
             "status": statusCode,
             "responseText": responseBody,
-            "isRetry": retryCount > 1,
+            "isRetry": retryCount > 1 || authRetried,
             "retryCount": retryCount - 1,
         ])
+
+        // 401 Unauthorized — attempt to refresh authorization headers once.
+        if statusCode == 401 && !authRetried {
+            NSLog("[Tracelet] HTTP sync 401 Unauthorized — requesting headers refresh")
+            let refreshed = onAuthorizationRequired?() ?? false
+            if refreshed {
+                NSLog("[Tracelet] Headers refreshed, retrying request")
+                retryCount = 0
+                // Re-send with updated headers
+                let body: [String: Any]
+                if isBatch {
+                    let rootProperty = configManager.getHttpRootProperty()
+                    body = rootProperty.isEmpty
+                        ? ["locations": locations]
+                        : [rootProperty: locations]
+                } else {
+                    let rootProperty = configManager.getHttpRootProperty()
+                    body = rootProperty.isEmpty
+                        ? locations[0]
+                        : [rootProperty: locations[0]]
+                }
+
+                sendRequest(body: body) { success, code, response in
+                    if success {
+                        self.retryCount = 0
+                        self.eventDispatcher.sendHttp([
+                            "success": true,
+                            "status": code,
+                            "responseText": response,
+                            "isRetry": true,
+                            "retryCount": 0,
+                        ])
+                        completion(locations)
+                    } else {
+                        self.handleFailure(
+                            statusCode: code,
+                            responseBody: response,
+                            locations: locations,
+                            isBatch: isBatch,
+                            authRetried: true,
+                            completion: completion
+                        )
+                    }
+                }
+                return
+            }
+            NSLog("[Tracelet] Headers refresh failed or unavailable — treating 401 as permanent failure")
+            retryCount = 0
+            completion([])
+            return
+        }
 
         // Transient error: 0 (network), 408 (timeout), 429 (rate-limit), 5xx
         if isTransientError(statusCode) && retryCount <= maxRetries {
@@ -408,6 +468,7 @@ public final class HttpSyncManager: NSObject, URLSessionDelegate {
                             responseBody: response,
                             locations: locations,
                             isBatch: isBatch,
+                            authRetried: authRetried,
                             completion: completion
                         )
                     }

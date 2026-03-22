@@ -357,6 +357,15 @@ class LocationService : Service() {
         // This ensures locations are synced to the server even when the
         // Flutter engine is not running (app killed / device rebooted).
         val httpSync = HttpSyncManager(ctx, config, eventSender, database)
+
+        // Wire 401 authorization refresh for boot-mode sync.
+        if (headless != null && headless.isRegistered()) {
+            httpSync.onAuthorizationRequired = {
+                (headless as? com.tracelet.tracelet_android.service.HeadlessTaskService)
+                    ?.requestHeadersRefresh(10_000L) ?: false
+            }
+        }
+
         httpSync.start()
         bootHttpSyncManager = httpSync
         Log.d(TAG, "Boot-mode HTTP sync manager started")

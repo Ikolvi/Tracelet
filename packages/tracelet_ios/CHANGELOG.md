@@ -1,3 +1,7 @@
+## 1.6.1
+
+- **FEAT**: Add 401-aware retry — on HTTP 401 Unauthorized, invoke headless headers callback to refresh token, then retry once with updated dynamic headers.
+
 ## 1.6.0
 
 - **FEAT**: Add SSL certificate pinning — `URLSessionDelegate`-based validation with SHA-256 fingerprint matching via CommonCrypto.

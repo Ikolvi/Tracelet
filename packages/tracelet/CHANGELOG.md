@@ -1,3 +1,7 @@
+## 1.6.1
+
+- **FEAT**: Add 401-aware retry — native HTTP sync now detects 401 responses, invokes the headless headers callback (`registerHeadlessHeadersCallback`) to refresh authorization tokens, and retries the request once with updated dynamic headers. Works in both foreground and killed-state (headless) modes.
+
 ## 1.6.0
 
 - **FEAT**: Add SSL certificate pinning via `HttpConfig.sslPinningCertificates` and `HttpConfig.sslPinningFingerprints`.
