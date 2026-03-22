@@ -62,6 +62,19 @@ public final class HttpSyncManager: NSObject, URLSessionDelegate {
         self.session = URLSession(configuration: sessionConfig, delegate: self, delegateQueue: nil)
     }
 
+    /// Testing initializer — allows injecting a custom `URLSessionConfiguration`
+    /// (e.g. with `protocolClasses` set to a mock `URLProtocol` subclass).
+    public init(configManager: ConfigManager,
+         eventDispatcher: TraceletEventSending,
+         database: TraceletDatabase,
+         sessionConfiguration: URLSessionConfiguration) {
+        self.configManager = configManager
+        self.eventDispatcher = eventDispatcher
+        self.database = database
+        super.init()
+        self.session = URLSession(configuration: sessionConfiguration, delegate: self, delegateQueue: nil)
+    }
+
     public func start() {
         // Configure SSL pinning from config
         configureSslPinning()
