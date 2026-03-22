@@ -24,7 +24,7 @@ Battery-conscious motion-detection intelligence, geofencing, SQLite persistence,
 - **Motion-detection intelligence** — accelerometer + activity recognition automatically toggle GPS to save battery
 - **Geofencing** — circular and polygon geofences with enter/exit/dwell events. **Unlimited geofences** via proximity-based auto-load/unload
 - **SQLite persistence** — all locations stored locally, queryable, with configurable retention limits
-- **HTTP auto-sync** — batch upload with retry, exponential backoff, offline queue, Wi-Fi-only option
+- **HTTP auto-sync** — batch upload with retry, exponential backoff, offline queue, Wi-Fi-only option. 401-aware retry with headless JWT refresh via `registerHeadlessHeadersCallback()`
 - **Headless execution** — run Dart code in response to background events
 - **Scheduling** — time-based tracking windows (e.g., "Mon–Fri 9am–5pm") with optional AlarmManager (Android)
 - **Start on boot** — resume after device reboot
