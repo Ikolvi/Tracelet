@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.1
+
+- **FIX**: Add 5 missing HTTP Sync method overrides (`setDynamicHeaders`, `setRouteContext`, `clearRouteContext`, `registerHeadlessHeadersCallback`, `registerHeadlessSyncBodyBuilder`) that previously threw `UnimplementedError` at runtime.
+- **FEAT**: `WebHttpEngine` now supports dynamic headers and route context in HTTP requests.
+- **TEST**: Add platform interface coverage test to prevent future method stub regressions.
+
 ## 1.6.0
 
 - **CHORE**: Update `tracelet_platform_interface` dependency constraint to `^1.6.0`.

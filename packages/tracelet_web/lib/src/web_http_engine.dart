@@ -31,6 +31,20 @@ class WebHttpEngine {
   bool _disableAutoSyncOnCellular = false;
   bool _enableDeltaCompression = false;
   int _deltaCoordinatePrecision = 6;
+  Map<String, String> _dynamicHeaders = <String, String>{};
+  Map<String, Object?>? _routeContext;
+
+  void setDynamicHeaders(Map<String, String> headers) {
+    _dynamicHeaders = headers;
+  }
+
+  void setRouteContext(Map<String, Object?> context) {
+    _routeContext = context;
+  }
+
+  void clearRouteContext() {
+    _routeContext = null;
+  }
 
   void applyConfig(Map<String, Object?> config) {
     final http = config['http'];
@@ -142,6 +156,9 @@ class WebHttpEngine {
   Future<bool> _sendSingle(Map<String, Object?> location) async {
     try {
       final body = <String, Object?>{_httpRootProperty: location};
+      if (_routeContext != null) {
+        body['route_context'] = _routeContext;
+      }
       final response = await _doFetch(jsonEncode(body));
 
       final status = response.status;
@@ -181,6 +198,9 @@ class WebHttpEngine {
           ? DeltaEncoder.encode(locations, precision: _deltaCoordinatePrecision)
           : locations;
       final body = <String, Object?>{_httpRootProperty: payload};
+      if (_routeContext != null) {
+        body['route_context'] = _routeContext;
+      }
       final response = await _doFetch(jsonEncode(body));
 
       final status = response.status;
@@ -217,6 +237,7 @@ class WebHttpEngine {
     final headers = <String, String>{
       'Content-Type': 'application/json',
       ..._headers,
+      ..._dynamicHeaders,
     };
 
     final webHeaders = web.Headers();

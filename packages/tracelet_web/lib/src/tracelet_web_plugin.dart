@@ -421,6 +421,42 @@ class TraceletWebPlugin extends TraceletPlatform {
     return _httpEngine.sync();
   }
 
+  @override
+  Future<bool> setDynamicHeaders(Map<String, String> headers) async {
+    _httpEngine.setDynamicHeaders(headers);
+    return true;
+  }
+
+  @override
+  Future<bool> setRouteContext(Map<String, Object?> context) async {
+    _httpEngine.setRouteContext(context);
+    return true;
+  }
+
+  @override
+  Future<bool> clearRouteContext() async {
+    _httpEngine.clearRouteContext();
+    return true;
+  }
+
+  @override
+  Future<bool> registerHeadlessHeadersCallback(List<int> callbackIds) async {
+    _events.log(
+      'warning',
+      '[Tracelet Web] registerHeadlessHeadersCallback() is not supported on web',
+    );
+    return false;
+  }
+
+  @override
+  Future<bool> registerHeadlessSyncBodyBuilder(List<int> callbackIds) async {
+    _events.log(
+      'warning',
+      '[Tracelet Web] registerHeadlessSyncBodyBuilder() is not supported on web',
+    );
+    return false;
+  }
+
   // ---------------------------------------------------------------------------
   // Utility
   // ---------------------------------------------------------------------------

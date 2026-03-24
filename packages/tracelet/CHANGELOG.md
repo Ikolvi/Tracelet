@@ -1,3 +1,7 @@
+## 1.6.2
+
+- **FIX**: Update `tracelet_web` dependency to `^1.6.1` — fixes 5 missing HTTP Sync method stubs that caused `UnimplementedError` on web.
+
 ## 1.6.1
 
 - **FEAT**: Add 401-aware retry — native HTTP sync now detects 401 responses, invokes the headless headers callback (`registerHeadlessHeadersCallback`) to refresh authorization tokens, and retries the request once with updated dynamic headers. Works in both foreground and killed-state (headless) modes.
