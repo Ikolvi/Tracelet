@@ -1,3 +1,5 @@
+import 'package:meta/meta.dart';
+
 import '../types/enums.dart';
 
 /// Event emitted when the battery budget engine adjusts tracking parameters.
@@ -61,9 +63,11 @@ class BatteryBudgetEngine {
     double initialDistanceFilter = 10.0,
     int initialAccuracyIndex = 0,
     int? initialPeriodicInterval,
+    @visibleForTesting DateTime Function()? clock,
   }) : _distanceFilter = initialDistanceFilter,
        _accuracyIndex = initialAccuracyIndex.clamp(0, 4),
-       _periodicInterval = initialPeriodicInterval;
+       _periodicInterval = initialPeriodicInterval,
+       _clock = clock ?? DateTime.now;
 
   /// Target maximum battery drain per hour (% points).
   final double targetBudgetPerHour;
@@ -82,6 +86,9 @@ class BatteryBudgetEngine {
 
   /// Boost factor when under budget.
   static const double _boostFactor = 0.8;
+
+  // Clock function for testability.
+  final DateTime Function() _clock;
 
   // Internal state.
   double _distanceFilter;
@@ -107,7 +114,7 @@ class BatteryBudgetEngine {
   ///
   /// [batteryLevel] is 0.0–1.0 (percentage as fraction).
   BudgetAdjustmentEvent? processSample(double batteryLevel) {
-    final now = DateTime.now();
+    final now = _clock();
 
     if (_prevBatteryLevel == null || _prevSampleTime == null) {
       _prevBatteryLevel = batteryLevel;

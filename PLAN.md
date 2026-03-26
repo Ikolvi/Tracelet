@@ -8,7 +8,7 @@
 | **License** | Apache 2.0 (fully open-source, no proprietary native SDKs) |
 | **Languages** | Dart · Kotlin (Android) · Swift (iOS) |
 | **Architecture** | Federated Flutter Plugin (4 packages) |
-| **Platform Comms** | Pigeon (type-safe) + EventChannel (streams) |
+| **Platform Comms** | Pigeon (type-safe HostApi + FlutterApi) |
 | **Min Android** | API 26 (Android 8.0) |
 | **Min iOS** | 14.0 |
 | **Target pub.dev name** | `tracelet` |
@@ -44,36 +44,46 @@
 - [ ] Verify `melos bootstrap` links all local packages
 
 ### 0.3 Pigeon Code Generation Setup
-- [ ] Create `packages/tracelet_platform_interface/pigeons/tracelet_api.dart`
-  - [ ] Define `@ConfigurePigeon` with Kotlin + Swift output paths
-  - [ ] Define all Pigeon data classes (messages) mirroring Dart models
-  - [ ] Define `@HostApi()` — Dart-calls-Native interface (≈40 methods)
-  - [ ] Define `@FlutterApi()` — Native-calls-Dart interface (headless dispatch)
-- [ ] Add `pigeon` to `dev_dependencies`
-- [ ] Add `melos run pigeon` script target
-- [ ] Run code generation → verify Kotlin output compiles
-- [ ] Run code generation → verify Swift output compiles
+- [x] Create `packages/tracelet_platform_interface/pigeons/tracelet_api.dart`
+  - [x] Define `@ConfigurePigeon` with Kotlin + Swift output paths
+  - [x] Define all Pigeon data classes (messages) mirroring Dart models
+  - [x] Define `@HostApi()` — Dart-calls-Native interface (≈45 methods)
+  - [x] Define `@FlutterApi()` — Native-calls-Dart interface (headless dispatch)
+- [x] Add `pigeon` to `dev_dependencies`
+- [x] Add `melos run pigeon` script target
+- [x] Run code generation → verify Kotlin output compiles
+- [x] Run code generation → verify Swift output compiles
 - [ ] Commit generated code (not `.gitignore`'d — reproducible builds)
 
-### 0.4 EventChannel Wiring
-- [ ] Define 14 EventChannel path constants in platform interface:
-  - [ ] `events/location`
-  - [ ] `events/motionchange`
-  - [ ] `events/activitychange`
-  - [ ] `events/providerchange`
-  - [ ] `events/geofence`
-  - [ ] `events/geofenceschange`
-  - [ ] `events/heartbeat`
-  - [ ] `events/http`
-  - [ ] `events/schedule`
-  - [ ] `events/powersavechange`
-  - [ ] `events/connectivitychange`
-  - [ ] `events/enabledchange`
-  - [ ] `events/notificationaction`
-  - [ ] `events/authorization`
-- [ ] Create base `StreamHandler` registration pattern for Android (Kotlin)
-- [ ] Create base `StreamHandler` registration pattern for iOS (Swift)
-- [ ] Wire up a smoke-test EventChannel (location) end-to-end and verify data flows
+### 0.3.1 Pigeon Migration (Complete)
+- [x] Create `PigeonTracelet` Dart implementation (59 methods, all converters)
+- [x] Create `TraceletHostApiImpl.kt` Kotlin implementation (59 methods)
+- [x] Create `TraceletHostApiImpl.swift` Swift implementation (59 methods)
+- [x] Wire Pigeon API in Android plugin (`onAttachedToEngine` / `onDetachedFromEngine`)
+- [x] Wire Pigeon API in iOS plugin (`register(with:)`)
+- [x] Switch default `TraceletPlatform._instance` from `MethodChannelTracelet` to `PigeonTracelet`
+- [x] Remove legacy `onMethodCall` MethodChannel dispatch (Android)
+- [x] Remove legacy `handle(_:result:)` MethodChannel dispatch (iOS)
+- [x] Verify Android APK builds successfully
+- [x] Verify iOS builds successfully
+- [x] All 670 tests pass
+
+### 0.4 Event Streaming (Pigeon FlutterApi)
+- [x] Define `TraceletEventApi` in Pigeon schema with 15 typed event methods
+- [x] Define 6 new Pigeon event data classes (`TlActivityChangeEvent`, `TlGeofencesChangeEvent`, `TlHeartbeatEvent`, `TlAuthorizationEvent`, `TlConnectivityChangeEvent`)
+- [x] Run Pigeon codegen for all 3 platforms (Dart, Kotlin, Swift)
+- [x] Create `PigeonEventReceiver` — implements `TraceletEventApi`, routes to 15 broadcast `StreamController`s
+- [x] Add 15 abstract event stream getters to `TraceletPlatform`
+- [x] Wire `PigeonTracelet` to `PigeonEventReceiver` (lazy `setUp` on first stream access)
+- [x] Migrate all `Tracelet` event subscription methods to use platform streams
+- [x] Add `Location.fromTl(TlLocation)` / `LocationActivity.fromTl(TlActivity)` factory constructors
+- [x] Remove dead EventChannel code from `Tracelet` (`_eventChannels`, `_eventStreams`, `_getEventStream`, `_castToMap`)
+- [x] Replace Android `EventDispatcher.kt` — EventChannel/EventSink → `TraceletEventApi` + map→Pigeon converters
+- [x] Replace iOS `EventDispatcher.swift` — FlutterEventChannel/FlutterEventSink → `TraceletEventApi` + map→Pigeon converters
+- [x] Create `EmptyEventStreamsMixin` for test mock platforms
+- [x] Android build verified (`flutter build apk --debug`)
+- [x] iOS build verified (`flutter build ios --no-codesign`)
+- [x] All 746 tests pass, analysis + formatting clean
 
 ---
 
@@ -195,18 +205,18 @@
 - [ ] Write unit test asserting all methods throw `UnimplementedError` by default
 
 ### 2.2 Method Channel Implementation (Default)
-- [ ] Create `MethodChannelTracelet extends TraceletPlatform`
-- [ ] Implement all methods using `MethodChannel` invocations
-- [ ] Implement all EventChannel stream subscriptions
+- [x] Create `MethodChannelTracelet extends TraceletPlatform` *(replaced by PigeonTracelet)*
+- [x] Implement all methods using Pigeon type-safe channels
+- [x] Implement all event stream subscriptions (via Pigeon FlutterApi)
 - [ ] Register as default platform instance
 
 ### 2.3 Pigeon API Definition & Generation
-- [ ] Define all `@HostApi()` methods with Pigeon-typed parameters and return types
-- [ ] Define `@FlutterApi()` for headless event dispatch
-- [ ] Define all Pigeon message classes (mirrors of Dart models — simpler/flat)
-- [ ] Generate Kotlin output → `tracelet_android/android/src/main/kotlin/.../generated/`
-- [ ] Generate Swift output → `tracelet_ios/ios/Classes/generated/`
-- [ ] Verify compilation on both platforms
+- [x] Define all `@HostApi()` methods with Pigeon-typed parameters and return types
+- [x] Define `@FlutterApi()` for headless event dispatch
+- [x] Define all Pigeon message classes (mirrors of Dart models — simpler/flat)
+- [x] Generate Kotlin output → `tracelet_android/android/src/main/kotlin/.../generated/`
+- [x] Generate Swift output → `tracelet_ios/ios/Classes/generated/`
+- [x] Verify compilation on both platforms
 
 ---
 
@@ -214,7 +224,7 @@
 
 ### 3.1 Plugin Entry Point & Channel Registration
 - [ ] `TraceletPlugin.kt` implementing `FlutterPlugin`, `ActivityAware`
-- [ ] `onAttachedToEngine()` → register Pigeon HostApi + 14 EventChannel StreamHandlers
+- [x] `onAttachedToEngine()` → register Pigeon HostApi + EventDispatcher (Pigeon FlutterApi)
 - [ ] `onDetachedFromEngine()` → tear down channels and handlers
 - [ ] `onAttachedToActivity()` → store Activity reference, init location manager
 - [ ] `onDetachedFromActivity()` → release Activity reference
@@ -264,7 +274,7 @@
   - [ ] Attach activity type and battery state
   - [ ] Check `distanceFilter` threshold before recording
   - [ ] Persist to SQLite
-  - [ ] Dispatch to EventChannel (`events/location`)
+  - [ ] Dispatch via Pigeon FlutterApi (`TraceletEventApi.onLocation`)
 
 ### 3.5 Foreground Service
 - [ ] `TraceletForegroundService.kt` extending `Service`
@@ -283,11 +293,11 @@
   - [ ] `BroadcastReceiver` for `ActivityTransitionResult`
   - [ ] On STILL detected → start `stopTimeout` countdown (configurable minutes)
   - [ ] On `stopTimeout` elapsed → declare STATIONARY:
-    - [ ] Fire `onMotionChange(location, isMoving=false)` via EventChannel
+    - [ ] Fire `onMotionChange(location, isMoving=false)` via Pigeon FlutterApi
     - [ ] Stop `LocationEngine` updates (conserve battery)
     - [ ] Start low-power accelerometer monitoring via `SensorManager`
   - [ ] On accelerometer motion threshold exceeded → declare MOVING:
-    - [ ] Fire `onMotionChange(location, isMoving=true)` via EventChannel
+    - [ ] Fire `onMotionChange(location, isMoving=true)` via Pigeon FlutterApi
     - [ ] Restart `LocationEngine` updates
   - [ ] Fire `onActivityChange(ActivityChangeEvent)` on every activity transition
 - [ ] `SensorFusionManager.kt` — accelerometer/gyroscope shake detection for stationary→moving
@@ -306,7 +316,7 @@
   - [ ] Receive `GeofencingEvent.fromIntent(intent)`
   - [ ] Extract transition type (ENTER/EXIT/DWELL), geofence identifiers
   - [ ] Get current location from event
-  - [ ] Fire `onGeofence(GeofenceEvent)` via EventChannel
+  - [ ] Fire `onGeofence(GeofenceEvent)` via Pigeon FlutterApi
   - [ ] Fire `onGeofencesChange(on, off)` with activated/deactivated lists
 - [ ] `GeofenceStore.kt` — SQLite CRUD for geofence definitions
   - [ ] Persist all registered geofences (survive process kill)
@@ -438,7 +448,7 @@
 
 ### 4.1 Plugin Entry Point & Channel Registration
 - [ ] `TraceletPlugin.swift` conforming to `FlutterPlugin`
-  - [ ] `register(with registrar:)` → register Pigeon HostApi + 14 EventChannel StreamHandlers
+  - [x] `register(with registrar:)` → register Pigeon HostApi + EventDispatcher (Pigeon FlutterApi)
   - [ ] Store `FlutterPluginRegistrar` reference
   - [ ] Create `TSLocationManager` (our internal manager) singleton
 - [ ] `StreamHandler.swift` base class with `onListen` / `onCancel` overrides
@@ -474,7 +484,7 @@
   - [ ] Create `CLBackgroundActivitySession` for reliable background execution
   - [ ] Fallback: `startMonitoringSignificantLocationChanges()` for app relaunch after termination
 - [ ] `CLLocationManagerDelegate` handling:
-  - [ ] `didUpdateLocations` → process, persist, dispatch via EventChannel
+  - [ ] `didUpdateLocations` → process, persist, dispatch via Pigeon FlutterApi
   - [ ] `didFailWithError` → log and dispatch error
   - [ ] `locationManagerDidChangeAuthorization` → dispatch `onProviderChange`
 

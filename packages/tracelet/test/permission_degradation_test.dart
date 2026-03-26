@@ -1,14 +1,55 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tracelet/tracelet.dart';
 import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
+
+/// Mixin that provides dummy empty event streams for test platforms.
+mixin EmptyEventStreamsMixin on TraceletPlatform {
+  @override
+  Stream<TlLocation> get locationEvents => const Stream.empty();
+  @override
+  Stream<TlLocation> get motionChangeEvents => const Stream.empty();
+  @override
+  Stream<TlActivityChangeEvent> get activityChangeEvents =>
+      const Stream.empty();
+  @override
+  Stream<TlProviderChangeEvent> get providerChangeEvents =>
+      const Stream.empty();
+  @override
+  Stream<TlGeofenceEvent> get geofenceEvents => const Stream.empty();
+  @override
+  Stream<TlGeofencesChangeEvent> get geofencesChangeEvents =>
+      const Stream.empty();
+  @override
+  Stream<TlHeartbeatEvent> get heartbeatEvents => const Stream.empty();
+  @override
+  Stream<TlHttpEvent> get httpEvents => const Stream.empty();
+  @override
+  Stream<TlState> get scheduleEvents => const Stream.empty();
+  @override
+  Stream<bool> get powerSaveChangeEvents => const Stream.empty();
+  @override
+  Stream<TlConnectivityChangeEvent> get connectivityChangeEvents =>
+      const Stream.empty();
+  @override
+  Stream<bool> get enabledChangeEvents => const Stream.empty();
+  @override
+  Stream<String> get notificationActionEvents => const Stream.empty();
+  @override
+  Stream<TlAuthorizationEvent> get authorizationEvents => const Stream.empty();
+  @override
+  Stream<TlLocation> get watchPositionEvents => const Stream.empty();
+}
 
 /// Mock platform that simulates various permission states.
 ///
 /// Each permission method returns a configurable status code, allowing tests
 /// to verify that the Tracelet API surfaces the correct values when
 /// permissions are denied, partially granted, or fully granted.
-class MockPermissionPlatform extends TraceletPlatform {
+class MockPermissionPlatform extends TraceletPlatform
+    with EmptyEventStreamsMixin {
   /// Tracks all method calls for assertion.
   final List<({String method, Object? args})> calls = [];
 

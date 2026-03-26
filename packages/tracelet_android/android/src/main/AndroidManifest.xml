@@ -1,69 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.tracelet.tracelet_android">
+    package="com.ikolvi.tracelet.flutter">
 
-    <!-- Required for foreground service (TYPE_LOCATION) on Android 14+ -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-
-    <!-- Location permissions (requested at runtime by the plugin) -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-
-    <!-- Activity recognition -->
-    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
-
-    <!-- Boot completed (for startOnBoot) -->
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-
-    <!-- Wake lock for background processing -->
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-
-    <!-- Network state for connectivity monitoring -->
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-
-    <!-- Internet for HTTP sync -->
-    <uses-permission android:name="android.permission.INTERNET" />
-
-    <!-- POST_NOTIFICATIONS for Android 13+ -->
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-
-    <!-- Battery optimization exemption dialog -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-
-    <!-- Exact alarms for periodicUseExactAlarms / scheduleUseAlarmManager (Android 12+).
-         Not granted by default on Android 14+; user must enable in Settings.
-         The plugin falls back to inexact alarms if not granted. -->
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!--
+      Permissions and SDK components (LocationService, BootReceiver,
+      GeofenceBroadcastReceiver, PeriodicAlarmReceiver) are declared in the
+      tracelet-sdk library manifest and merged automatically by the Android
+      manifest merger.
+    -->
 
     <application>
-        <!-- Foreground service for background location tracking -->
-        <service
-            android:name="com.tracelet.core.service.LocationService"
-            android:exported="false"
-            android:foregroundServiceType="location" />
-
-        <!-- Boot receiver for startOnBoot -->
-        <receiver
-            android:name="com.tracelet.core.receiver.BootReceiver"
-            android:exported="true"
-            android:enabled="false">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-            </intent-filter>
-        </receiver>
-
-        <!-- Geofence transition receiver -->
-        <receiver
-            android:name="com.tracelet.core.receiver.GeofenceBroadcastReceiver"
-            android:exported="false" />
-
-        <!-- Periodic exact-alarm receiver -->
-        <receiver
-            android:name="com.tracelet.core.receiver.PeriodicAlarmReceiver"
-            android:exported="false" />
-
-        <!-- Headless Dart execution service -->
+        <!-- Headless Dart execution service (Flutter-specific) -->
         <service
             android:name=".service.HeadlessTaskService"
             android:exported="false"

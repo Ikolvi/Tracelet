@@ -1,0 +1,252 @@
+{
+  "$schema": "Shared test vectors for GeofenceEvaluator — proximity + polygon evaluation",
+  "version": "1.0.0",
+  "tolerance": {
+    "distance_meters": 1.0,
+    "description": "Distance comparisons within ±1 meter"
+  },
+
+  "circular_geofences": [
+    {
+      "description": "Enter a circular geofence",
+      "geofences": [
+        { "identifier": "office", "latitude": 37.422, "longitude": -122.084, "radius": 200 }
+      ],
+      "steps": [
+        {
+          "latitude": 37.425,
+          "longitude": -122.084,
+          "expected_transitions": [],
+          "note": "Outside — ~333m from center, radius=200m"
+        },
+        {
+          "latitude": 37.4225,
+          "longitude": -122.084,
+          "expected_transitions": [
+            { "identifier": "office", "action": "ENTER" }
+          ],
+          "note": "Inside — ~55m from center"
+        }
+      ]
+    },
+    {
+      "description": "Enter then exit a circular geofence",
+      "geofences": [
+        { "identifier": "home", "latitude": 37.7749, "longitude": -122.4194, "radius": 100 }
+      ],
+      "steps": [
+        {
+          "latitude": 37.7749,
+          "longitude": -122.4194,
+          "expected_transitions": [
+            { "identifier": "home", "action": "ENTER" }
+          ],
+          "note": "At center — distance=0"
+        },
+        {
+          "latitude": 37.7749,
+          "longitude": -122.4195,
+          "expected_transitions": [],
+          "note": "Still inside — ~8m from center"
+        },
+        {
+          "latitude": 37.7770,
+          "longitude": -122.4194,
+          "expected_transitions": [
+            { "identifier": "home", "action": "EXIT" }
+          ],
+          "note": "Outside — ~233m from center"
+        }
+      ]
+    },
+    {
+      "description": "Multiple geofences — enter one, not the other",
+      "geofences": [
+        { "identifier": "A", "latitude": 37.422, "longitude": -122.084, "radius": 100 },
+        { "identifier": "B", "latitude": 37.430, "longitude": -122.084, "radius": 100 }
+      ],
+      "steps": [
+        {
+          "latitude": 37.422,
+          "longitude": -122.084,
+          "expected_transitions": [
+            { "identifier": "A", "action": "ENTER" }
+          ],
+          "note": "At A center — inside A but ~890m from B"
+        }
+      ]
+    },
+    {
+      "description": "Geofence on equator with default radius",
+      "geofences": [
+        { "identifier": "equator", "latitude": 0.0, "longitude": 0.0, "radius": 100 }
+      ],
+      "steps": [
+        {
+          "latitude": 0.0005,
+          "longitude": 0.0,
+          "expected_transitions": [
+            { "identifier": "equator", "action": "ENTER" }
+          ],
+          "note": "~55m from center — inside 100m radius"
+        }
+      ]
+    }
+  ],
+
+  "polygon_geofences": [
+    {
+      "description": "Enter a rectangular polygon geofence",
+      "geofences": [
+        {
+          "identifier": "campus",
+          "latitude": 37.422,
+          "longitude": -122.084,
+          "radius": 200,
+          "vertices": [
+            [37.421, -122.085],
+            [37.423, -122.085],
+            [37.423, -122.083],
+            [37.421, -122.083]
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "latitude": 37.420,
+          "longitude": -122.084,
+          "expected_transitions": [],
+          "note": "South of polygon — outside"
+        },
+        {
+          "latitude": 37.422,
+          "longitude": -122.084,
+          "expected_transitions": [
+            { "identifier": "campus", "action": "ENTER" }
+          ],
+          "note": "Center of polygon — inside"
+        }
+      ]
+    },
+    {
+      "description": "Exit a polygon geofence",
+      "geofences": [
+        {
+          "identifier": "park",
+          "latitude": 37.422,
+          "longitude": -122.084,
+          "radius": 200,
+          "vertices": [
+            [37.421, -122.085],
+            [37.423, -122.085],
+            [37.423, -122.083],
+            [37.421, -122.083]
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "latitude": 37.422,
+          "longitude": -122.084,
+          "expected_transitions": [
+            { "identifier": "park", "action": "ENTER" }
+          ],
+          "note": "Inside polygon"
+        },
+        {
+          "latitude": 37.420,
+          "longitude": -122.084,
+          "expected_transitions": [
+            { "identifier": "park", "action": "EXIT" }
+          ],
+          "note": "Outside polygon"
+        }
+      ]
+    },
+    {
+      "description": "Triangular polygon — inside and outside",
+      "geofences": [
+        {
+          "identifier": "triangle",
+          "latitude": 37.422,
+          "longitude": -122.084,
+          "radius": 200,
+          "vertices": [
+            [37.420, -122.086],
+            [37.424, -122.084],
+            [37.420, -122.082]
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "latitude": 37.422,
+          "longitude": -122.084,
+          "expected_transitions": [
+            { "identifier": "triangle", "action": "ENTER" }
+          ],
+          "note": "Inside triangle"
+        },
+        {
+          "latitude": 37.419,
+          "longitude": -122.087,
+          "expected_transitions": [
+            { "identifier": "triangle", "action": "EXIT" }
+          ],
+          "note": "Well outside triangle"
+        }
+      ]
+    }
+  ],
+
+  "persist_decider": [
+    {
+      "description": "Mode 0 (all) — persist location",
+      "persistMode": 0,
+      "event": "",
+      "disableProviderChangeRecord": false,
+      "expected_persist_location": true,
+      "expected_persist_geofence": true
+    },
+    {
+      "description": "Mode 1 (location only) — persist location, not geofence",
+      "persistMode": 1,
+      "event": "",
+      "disableProviderChangeRecord": false,
+      "expected_persist_location": true,
+      "expected_persist_geofence": false
+    },
+    {
+      "description": "Mode 2 (geofence only) — persist geofence, not location",
+      "persistMode": 2,
+      "event": "",
+      "disableProviderChangeRecord": false,
+      "expected_persist_location": false,
+      "expected_persist_geofence": true
+    },
+    {
+      "description": "Mode 3 (none) — persist nothing",
+      "persistMode": 3,
+      "event": "",
+      "disableProviderChangeRecord": false,
+      "expected_persist_location": false,
+      "expected_persist_geofence": false
+    },
+    {
+      "description": "Mode 0 with providerchange disabled — skip providerchange event",
+      "persistMode": 0,
+      "event": "providerchange",
+      "disableProviderChangeRecord": true,
+      "expected_persist_location": false,
+      "expected_persist_geofence": true
+    },
+    {
+      "description": "Mode 0 with providerchange enabled — persist providerchange",
+      "persistMode": 0,
+      "event": "providerchange",
+      "disableProviderChangeRecord": false,
+      "expected_persist_location": true,
+      "expected_persist_geofence": true
+    }
+  ]
+}

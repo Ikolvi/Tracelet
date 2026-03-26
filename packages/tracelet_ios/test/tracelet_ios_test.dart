@@ -10,8 +10,8 @@ void main() {
     expect(TraceletPlatform.instance, isA<TraceletIos>());
   });
 
-  test('TraceletIos extends MethodChannelTracelet', () {
+  test('TraceletIos extends PigeonTracelet', () {
     final ios = TraceletIos();
-    expect(ios, isA<MethodChannelTracelet>());
+    expect(ios, isA<PigeonTracelet>());
   });
 }

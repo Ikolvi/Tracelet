@@ -1,0 +1,76 @@
+{
+  "$schema": "Shared test vectors for DeltaEncoder — location array compression",
+  "version": "1.0.0",
+  "tolerance": {
+    "position_degrees": 0.000001,
+    "description": "Round-trip decode must match original within ε"
+  },
+
+  "round_trip": [
+    {
+      "description": "Single location — no delta encoding possible",
+      "input": [
+        {
+          "latitude": 37.7749,
+          "longitude": -122.4194,
+          "accuracy": 10.0,
+          "speed": 0.0,
+          "timestamp": "2025-03-20T10:00:00.000Z"
+        }
+      ],
+      "expected_encoded_count": 1,
+      "note": "First location is always full (reference frame)"
+    },
+    {
+      "description": "Two nearby locations — second is delta-encoded",
+      "input": [
+        {
+          "latitude": 37.7749,
+          "longitude": -122.4194,
+          "accuracy": 10.0,
+          "speed": 1.0,
+          "timestamp": "2025-03-20T10:00:00.000Z"
+        },
+        {
+          "latitude": 37.77500,
+          "longitude": -122.41930,
+          "accuracy": 12.0,
+          "speed": 1.5,
+          "timestamp": "2025-03-20T10:00:10.000Z"
+        }
+      ],
+      "expected_encoded_count": 2,
+      "round_trip_must_match": true,
+      "note": "Decode(Encode(input)) must equal input within tolerance"
+    },
+    {
+      "description": "Five-point trajectory — all deltas relative to first",
+      "input": [
+        { "latitude": 37.7749, "longitude": -122.4194, "accuracy": 5.0, "speed": 5.0, "timestamp": "2025-03-20T10:00:00.000Z" },
+        { "latitude": 37.7750, "longitude": -122.4193, "accuracy": 5.0, "speed": 5.0, "timestamp": "2025-03-20T10:00:01.000Z" },
+        { "latitude": 37.7751, "longitude": -122.4192, "accuracy": 5.0, "speed": 5.5, "timestamp": "2025-03-20T10:00:02.000Z" },
+        { "latitude": 37.7752, "longitude": -122.4191, "accuracy": 6.0, "speed": 5.0, "timestamp": "2025-03-20T10:00:03.000Z" },
+        { "latitude": 37.7753, "longitude": -122.4190, "accuracy": 5.0, "speed": 4.5, "timestamp": "2025-03-20T10:00:04.000Z" }
+      ],
+      "expected_encoded_count": 5,
+      "round_trip_must_match": true,
+      "note": "Each subsequent location stores only differences from previous"
+    },
+    {
+      "description": "Empty array — no-op",
+      "input": [],
+      "expected_encoded_count": 0,
+      "round_trip_must_match": true
+    },
+    {
+      "description": "Identical locations — deltas are zero",
+      "input": [
+        { "latitude": 37.7749, "longitude": -122.4194, "accuracy": 10.0, "speed": 0.0, "timestamp": "2025-03-20T10:00:00.000Z" },
+        { "latitude": 37.7749, "longitude": -122.4194, "accuracy": 10.0, "speed": 0.0, "timestamp": "2025-03-20T10:00:10.000Z" }
+      ],
+      "expected_encoded_count": 2,
+      "round_trip_must_match": true,
+      "note": "Delta values should all be zero (except timestamp)"
+    }
+  ]
+}

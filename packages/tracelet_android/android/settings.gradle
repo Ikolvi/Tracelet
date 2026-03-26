@@ -1,1 +1,13 @@
 rootProject.name = 'tracelet_android'
+
+// Composite build: use local SDK module during development.
+// When the plugin is consumed from pub.dev, this path won't exist
+// and Gradle will resolve com.ikolvi:tracelet-sdk from Maven Central.
+def localSdkDir = file("../../../sdk/android")
+if (localSdkDir.exists()) {
+    includeBuild(localSdkDir) {
+        dependencySubstitution {
+            substitute module("com.ikolvi:tracelet-sdk") using project(":tracelet-sdk")
+        }
+    }
+}

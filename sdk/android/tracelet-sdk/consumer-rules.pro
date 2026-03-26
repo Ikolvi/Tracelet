@@ -1,0 +1,6 @@
+-keepclassmembers class com.ikolvi.tracelet.sdk.** { *; }
+-keep class com.ikolvi.tracelet.sdk.TraceletSdk { *; }
+-keep class com.ikolvi.tracelet.sdk.TraceletListener { *; }
+-keep class com.ikolvi.tracelet.sdk.TraceletEventSender { *; }
+-keep class com.ikolvi.tracelet.sdk.service.LocationService { *; }
+-keep class com.ikolvi.tracelet.sdk.receiver.** { *; }

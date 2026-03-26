@@ -1,0 +1,226 @@
+{
+  "$schema": "Shared test vectors for AdaptiveSamplingEngine",
+  "version": "1.0.0",
+  "tolerance": {
+    "distance_meters": 1.0,
+    "description": "Recommended distance filter within ±1 meter"
+  },
+  "constants": {
+    "activity_distances": {
+      "still": 500,
+      "walking": 50,
+      "on_foot": 50,
+      "running": 30,
+      "on_bicycle": 25,
+      "in_vehicle": 10,
+      "unknown": null
+    },
+    "battery_thresholds": {
+      "high": 0.50,
+      "medium": 0.20,
+      "low": 0.10
+    },
+    "battery_scaling_factors": {
+      "above_50": 1.0,
+      "20_to_50": 1.5,
+      "10_to_20": 2.5,
+      "below_10": 5.0,
+      "charging": 1.0,
+      "unknown": 1.0
+    }
+  },
+
+  "cases": [
+    {
+      "description": "Walking at 75% battery — activity-based with normal battery",
+      "input": {
+        "baseDistanceFilter": 10.0,
+        "elasticityMultiplier": 1.0,
+        "activity": "walking",
+        "activityConfidence": 75,
+        "speed": 1.5,
+        "batteryLevel": 0.75,
+        "isCharging": false
+      },
+      "expected": {
+        "recommended_distance": 50.0,
+        "battery_factor": 1.0,
+        "note": "walking=50m × batteryFactor(1.0) = 50m"
+      }
+    },
+    {
+      "description": "Walking at 15% battery — activity-based with medium-low battery",
+      "input": {
+        "baseDistanceFilter": 10.0,
+        "elasticityMultiplier": 1.0,
+        "activity": "walking",
+        "activityConfidence": 75,
+        "speed": 1.5,
+        "batteryLevel": 0.15,
+        "isCharging": false
+      },
+      "expected": {
+        "recommended_distance": 125.0,
+        "battery_factor": 2.5,
+        "note": "walking=50m × batteryFactor(2.5) = 125m"
+      }
+    },
+    {
+      "description": "In vehicle at 80% battery — tight sampling",
+      "input": {
+        "baseDistanceFilter": 10.0,
+        "elasticityMultiplier": 1.0,
+        "activity": "in_vehicle",
+        "activityConfidence": 90,
+        "speed": 20.0,
+        "batteryLevel": 0.80,
+        "isCharging": false
+      },
+      "expected": {
+        "recommended_distance": 10.0,
+        "battery_factor": 1.0,
+        "note": "in_vehicle=10m × batteryFactor(1.0) = 10m"
+      }
+    },
+    {
+      "description": "In vehicle at 5% battery — critical battery scaling",
+      "input": {
+        "baseDistanceFilter": 10.0,
+        "elasticityMultiplier": 1.0,
+        "activity": "in_vehicle",
+        "activityConfidence": 90,
+        "speed": 20.0,
+        "batteryLevel": 0.05,
+        "isCharging": false
+      },
+      "expected": {
+        "recommended_distance": 50.0,
+        "battery_factor": 5.0,
+        "note": "in_vehicle=10m × batteryFactor(5.0) = 50m"
+      }
+    },
+    {
+      "description": "Still at 40% battery — max distance, moderate battery",
+      "input": {
+        "baseDistanceFilter": 10.0,
+        "elasticityMultiplier": 1.0,
+        "activity": "still",
+        "activityConfidence": 100,
+        "speed": 0.0,
+        "batteryLevel": 0.40,
+        "isCharging": false
+      },
+      "expected": {
+        "recommended_distance": 750.0,
+        "battery_factor": 1.5,
+        "note": "still=500m × batteryFactor(1.5) = 750m"
+      }
+    },
+    {
+      "description": "Unknown activity — fall back to speed-based with elasticity",
+      "input": {
+        "baseDistanceFilter": 10.0,
+        "elasticityMultiplier": 1.0,
+        "activity": "unknown",
+        "activityConfidence": 0,
+        "speed": 30.0,
+        "batteryLevel": 0.60,
+        "isCharging": false
+      },
+      "expected": {
+        "speed_factor": 3.0,
+        "battery_factor": 1.0,
+        "recommended_distance": 30.0,
+        "note": "speedFactor=clamp(30/10,1,10)=3.0 → 10 × 3.0 × 1.0 = 30m"
+      }
+    },
+    {
+      "description": "Unknown activity at high speed — capped speed factor",
+      "input": {
+        "baseDistanceFilter": 10.0,
+        "elasticityMultiplier": 1.0,
+        "activity": "unknown",
+        "activityConfidence": 0,
+        "speed": 200.0,
+        "batteryLevel": 0.60,
+        "isCharging": false
+      },
+      "expected": {
+        "speed_factor": 10.0,
+        "battery_factor": 1.0,
+        "recommended_distance": 100.0,
+        "note": "speedFactor=clamp(200/10,1,10)=10.0 → 10 × 10.0 × 1.0 = 100m"
+      }
+    },
+    {
+      "description": "Charging — battery factor always 1.0 regardless of level",
+      "input": {
+        "baseDistanceFilter": 10.0,
+        "elasticityMultiplier": 1.0,
+        "activity": "walking",
+        "activityConfidence": 75,
+        "speed": 1.5,
+        "batteryLevel": 0.05,
+        "isCharging": true
+      },
+      "expected": {
+        "recommended_distance": 50.0,
+        "battery_factor": 1.0,
+        "note": "Charging overrides battery level — factor = 1.0"
+      }
+    },
+    {
+      "description": "Low confidence activity — falls back to speed-based",
+      "input": {
+        "baseDistanceFilter": 10.0,
+        "elasticityMultiplier": 1.0,
+        "activity": "walking",
+        "activityConfidence": 20,
+        "speed": 5.0,
+        "batteryLevel": 0.60,
+        "isCharging": false
+      },
+      "expected": {
+        "speed_factor": 1.0,
+        "battery_factor": 1.0,
+        "recommended_distance": 10.0,
+        "note": "Low confidence → speed-based: clamp(5/10,1,10)=1.0 → 10 × 1.0 = 10m"
+      }
+    },
+    {
+      "description": "Custom elasticity multiplier",
+      "input": {
+        "baseDistanceFilter": 10.0,
+        "elasticityMultiplier": 2.0,
+        "activity": "unknown",
+        "activityConfidence": 0,
+        "speed": 20.0,
+        "batteryLevel": 0.60,
+        "isCharging": false
+      },
+      "expected": {
+        "speed_factor": 4.0,
+        "battery_factor": 1.0,
+        "recommended_distance": 40.0,
+        "note": "speedFactor=clamp(20/10,1,10)=2.0 × elasticity(2.0) = 4.0 → 10 × 4.0 = 40m"
+      }
+    },
+    {
+      "description": "On bicycle at exactly 50% battery (boundary — above threshold)",
+      "input": {
+        "baseDistanceFilter": 10.0,
+        "elasticityMultiplier": 1.0,
+        "activity": "on_bicycle",
+        "activityConfidence": 80,
+        "speed": 7.0,
+        "batteryLevel": 0.50,
+        "isCharging": false
+      },
+      "expected": {
+        "recommended_distance": 25.0,
+        "battery_factor": 1.0,
+        "note": "50% is at threshold boundary — factor=1.0, bicycle=25m"
+      }
+    }
+  ]
+}

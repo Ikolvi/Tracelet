@@ -23,4 +23,12 @@ plugins {
     id("org.jetbrains.kotlin.android") version "2.2.20" apply false
 }
 
+// Composite build: resolve tracelet-sdk from local module during development.
+// In production, end-user apps get it transitively via Maven Central.
+includeBuild("../../sdk/android") {
+    dependencySubstitution {
+        substitute(module("com.ikolvi:tracelet-sdk")).using(project(":tracelet-sdk"))
+    }
+}
+
 include(":app")

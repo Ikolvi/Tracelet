@@ -1,0 +1,63 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Required for foreground service (TYPE_LOCATION) on Android 14+ -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
+    <!-- Location permissions (requested at runtime) -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
+    <!-- Activity recognition -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+
+    <!-- Boot completed (for startOnBoot) -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Wake lock for background processing -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Network state for connectivity monitoring -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Internet for HTTP sync -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- POST_NOTIFICATIONS for Android 13+ -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Battery optimization exemption dialog -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- Exact alarms for periodicUseExactAlarms / scheduleUseAlarmManager (Android 12+) -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <application>
+        <!-- Foreground service for background location tracking -->
+        <service
+            android:name="com.ikolvi.tracelet.sdk.service.LocationService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
+        <!-- Boot receiver for startOnBoot -->
+        <receiver
+            android:name="com.ikolvi.tracelet.sdk.receiver.BootReceiver"
+            android:exported="true"
+            android:enabled="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Geofence transition receiver -->
+        <receiver
+            android:name="com.ikolvi.tracelet.sdk.receiver.GeofenceBroadcastReceiver"
+            android:exported="false" />
+
+        <!-- Periodic exact-alarm receiver -->
+        <receiver
+            android:name="com.ikolvi.tracelet.sdk.receiver.PeriodicAlarmReceiver"
+            android:exported="false" />
+    </application>
+</manifest>

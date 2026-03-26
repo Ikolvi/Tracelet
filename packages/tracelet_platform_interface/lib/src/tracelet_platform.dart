@@ -1,23 +1,24 @@
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
-import 'method_channel_tracelet.dart';
+import 'generated/tracelet_api.g.dart';
+import 'pigeon_tracelet.dart';
 
 /// The interface that platform implementations of Tracelet must extend.
 ///
 /// Platform implementations should override all methods and provide
 /// concrete native implementations. The default implementation is
-/// [MethodChannelTracelet], which uses MethodChannel for communication.
+/// [PigeonTracelet], which uses Pigeon-generated type-safe channels.
 abstract class TraceletPlatform extends PlatformInterface {
   /// Constructs a [TraceletPlatform].
   TraceletPlatform() : super(token: _token);
 
   static final Object _token = Object();
 
-  static TraceletPlatform _instance = MethodChannelTracelet();
+  static TraceletPlatform _instance = PigeonTracelet();
 
   /// The current platform implementation.
   ///
-  /// Defaults to [MethodChannelTracelet].
+  /// Defaults to [PigeonTracelet].
   static TraceletPlatform get instance => _instance;
 
   /// Platform-specific implementations should set this with their own
@@ -646,5 +647,91 @@ abstract class TraceletPlatform extends PlatformInterface {
   /// Optionally filter by [query] with `from` and `to` timestamps.
   Future<Map<String, Object?>> getCarbonReport([Map<String, Object?>? query]) {
     throw UnimplementedError('getCarbonReport() has not been implemented.');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Event Streams
+  //
+  // Type-safe streams that receive events from the native platform via
+  // Pigeon FlutterApi streams (native → Dart via TraceletEventApi).
+  // ---------------------------------------------------------------------------
+
+  /// Stream of location events.
+  Stream<TlLocation> get locationEvents {
+    throw UnimplementedError('locationEvents has not been implemented.');
+  }
+
+  /// Stream of motion change events (stationary ↔ moving).
+  Stream<TlLocation> get motionChangeEvents {
+    throw UnimplementedError('motionChangeEvents has not been implemented.');
+  }
+
+  /// Stream of activity change events.
+  Stream<TlActivityChangeEvent> get activityChangeEvents {
+    throw UnimplementedError('activityChangeEvents has not been implemented.');
+  }
+
+  /// Stream of provider change events.
+  Stream<TlProviderChangeEvent> get providerChangeEvents {
+    throw UnimplementedError('providerChangeEvents has not been implemented.');
+  }
+
+  /// Stream of geofence transition events.
+  Stream<TlGeofenceEvent> get geofenceEvents {
+    throw UnimplementedError('geofenceEvents has not been implemented.');
+  }
+
+  /// Stream of geofences change events (monitor set changed).
+  Stream<TlGeofencesChangeEvent> get geofencesChangeEvents {
+    throw UnimplementedError('geofencesChangeEvents has not been implemented.');
+  }
+
+  /// Stream of heartbeat events.
+  Stream<TlHeartbeatEvent> get heartbeatEvents {
+    throw UnimplementedError('heartbeatEvents has not been implemented.');
+  }
+
+  /// Stream of HTTP sync events.
+  Stream<TlHttpEvent> get httpEvents {
+    throw UnimplementedError('httpEvents has not been implemented.');
+  }
+
+  /// Stream of schedule events (start/stop transitions).
+  Stream<TlState> get scheduleEvents {
+    throw UnimplementedError('scheduleEvents has not been implemented.');
+  }
+
+  /// Stream of power-save mode change events.
+  Stream<bool> get powerSaveChangeEvents {
+    throw UnimplementedError('powerSaveChangeEvents has not been implemented.');
+  }
+
+  /// Stream of connectivity change events.
+  Stream<TlConnectivityChangeEvent> get connectivityChangeEvents {
+    throw UnimplementedError(
+      'connectivityChangeEvents has not been implemented.',
+    );
+  }
+
+  /// Stream of enabled-change events.
+  Stream<bool> get enabledChangeEvents {
+    throw UnimplementedError('enabledChangeEvents has not been implemented.');
+  }
+
+  /// Stream of notification action events (Android).
+  Stream<String> get notificationActionEvents {
+    throw UnimplementedError(
+      'notificationActionEvents has not been implemented.',
+    );
+  }
+
+  /// Stream of authorization events (token refresh).
+  Stream<TlAuthorizationEvent> get authorizationEvents {
+    throw UnimplementedError('authorizationEvents has not been implemented.');
+  }
+
+  /// Stream of watchPosition events.
+  Stream<TlLocation> get watchPositionEvents {
+    throw UnimplementedError('watchPositionEvents has not been implemented.');
   }
 }

@@ -9,7 +9,7 @@ class HeadlessEvent {
   /// Creates a new [HeadlessEvent].
   const HeadlessEvent({required this.name, required this.event});
 
-  /// The name of the event (corresponds to the EventChannel suffix).
+  /// The name of the event (e.g. "location", "motionchange").
   ///
   /// Known values: `'location'`, `'motionchange'`, `'activitychange'`,
   /// `'providerchange'`, `'geofence'`, `'geofenceschange'`, `'heartbeat'`,

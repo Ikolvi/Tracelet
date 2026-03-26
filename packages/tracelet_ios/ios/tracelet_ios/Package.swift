@@ -11,25 +11,18 @@ let package = Package(
     products: [
         .library(name: "tracelet-ios", targets: ["tracelet_ios"])
     ],
-    dependencies: [],
+    dependencies: [
+        .package(name: "TraceletSDK", path: "../../../../sdk/ios"),
+    ],
     targets: [
         .target(
             name: "tracelet_ios",
-            dependencies: [],
-            path: "Sources",
-            resources: [
-                .process("tracelet_ios/PrivacyInfo.xcprivacy")
+            dependencies: [
+                .product(name: "TraceletSDK", package: "TraceletSDK"),
             ],
-            linkerSettings: [
-                .linkedLibrary("sqlite3"),
-                .linkedFramework("CoreLocation"),
-                .linkedFramework("CoreMotion"),
-                .linkedFramework("UIKit"),
-                .linkedFramework("BackgroundTasks"),
-                .linkedFramework("AVFoundation"),
-                .linkedFramework("AudioToolbox"),
-                .linkedFramework("Network"),
-                .linkedFramework("DeviceCheck"),
+            path: "Sources/tracelet_ios",
+            resources: [
+                .process("PrivacyInfo.xcprivacy")
             ]
         )
     ]

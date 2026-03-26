@@ -3,8 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tracelet/tracelet.dart';
 import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 
+import 'permission_degradation_test.dart' show EmptyEventStreamsMixin;
+
 /// Mock platform for testing one-shot location and foreground service features.
-class MockTraceletPlatform extends TraceletPlatform {
+class MockTraceletPlatform extends TraceletPlatform
+    with EmptyEventStreamsMixin {
   /// Tracks all method calls for assertion.
   final List<({String method, Object? args})> calls = [];
 

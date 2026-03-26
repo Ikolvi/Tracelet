@@ -126,6 +126,40 @@ class Location {
   /// `null` when audit trail is disabled.
   final int? auditChainIndex;
 
+  /// Creates a [Location] from a Pigeon [TlLocation] without map round-trip.
+  factory Location.fromTl(TlLocation tl) {
+    final c = tl.coords;
+    return Location(
+      coords: Coords(
+        latitude: c.latitude,
+        longitude: c.longitude,
+        accuracy: c.accuracy,
+        speed: c.speed,
+        heading: c.heading,
+        altitude: c.altitude,
+        altitudeAccuracy: c.altitudeAccuracy,
+        speedAccuracy: c.speedAccuracy,
+        headingAccuracy: c.headingAccuracy,
+        floor: c.floor,
+      ),
+      timestamp: tl.timestamp,
+      isMoving: tl.isMoving,
+      uuid: tl.uuid,
+      odometer: tl.odometer,
+      event: tl.event,
+      activity: tl.activity != null
+          ? LocationActivity.fromTl(tl.activity!)
+          : const LocationActivity(),
+      battery: LocationBattery(
+        level: tl.battery.level,
+        isCharging: tl.battery.isCharging,
+      ),
+      extras: tl.extras != null
+          ? Map<String, Object?>.from(tl.extras!)
+          : const <String, Object?>{},
+    );
+  }
+
   /// Creates a [Location] from a platform map.
   factory Location.fromMap(Map<String, Object?> map) {
     final coordsMap = safeMap(map['coords']) ?? const <String, Object?>{};
@@ -521,6 +555,21 @@ class LocationActivity {
 
   /// The confidence level of the detection.
   final ActivityConfidence confidence;
+
+  /// Creates a [LocationActivity] from a Pigeon [TlActivity].
+  factory LocationActivity.fromTl(TlActivity tl) {
+    final actType = ActivityType.values.firstWhere(
+      (e) => e.name == tl.type,
+      orElse: () => ActivityType.unknown,
+    );
+    ActivityConfidence conf = ActivityConfidence.low;
+    if (tl.confidence >= 75) {
+      conf = ActivityConfidence.high;
+    } else if (tl.confidence >= 50) {
+      conf = ActivityConfidence.medium;
+    }
+    return LocationActivity(type: actType, confidence: conf);
+  }
 
   /// Creates a [LocationActivity] from a platform map.
   factory LocationActivity.fromMap(Map<String, Object?> map) {

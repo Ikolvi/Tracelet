@@ -1,4 +1,4 @@
-group = "com.tracelet.tracelet_android"
+group = "com.ikolvi.tracelet.flutter"
 version = "1.0-SNAPSHOT"
 
 buildscript {
@@ -25,7 +25,7 @@ apply plugin: "com.android.library"
 apply plugin: "kotlin-android"
 
 android {
-    namespace = "com.tracelet.tracelet_android"
+    namespace = "com.ikolvi.tracelet.flutter"
 
     compileSdk = 36
 
@@ -49,35 +49,10 @@ android {
     }
 
     dependencies {
-        // Play Services Location (FusedLocationProvider, ActivityRecognition, Geofencing)
-        implementation("com.google.android.gms:play-services-location:21.3.0")
-
-        // JSON serialization
-        implementation("org.json:json:20251224")
-
-        // WorkManager for reliable background scheduling
-        implementation("androidx.work:work-runtime-ktx:2.11.1")
-
-        // OkHttp for HTTP sync
-        implementation("com.squareup.okhttp3:okhttp:5.3.2")
-        implementation("com.squareup.okhttp3:okhttp-tls:5.3.2")
-
-        // SQLCipher for database encryption (Enterprise)
-        implementation("net.zetetic:sqlcipher-android:4.6.1@aar")
-        implementation("androidx.sqlite:sqlite:2.6.2")
-
-        // EncryptedSharedPreferences for key management (Enterprise)
-        implementation("androidx.security:security-crypto:1.1.0")
-
-        // Play Integrity for device attestation (Enterprise)
-        implementation("com.google.android.play:integrity:1.6.0")
-
-        // Core KTX
-        implementation("androidx.core:core-ktx:1.18.0")
-
-        // Lifecycle
-        implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
-        implementation("androidx.lifecycle:lifecycle-service:2.10.0")
+        // Tracelet SDK — standalone geolocation engine
+        // Resolved from Maven Central when published, substituted with local
+        // module via includeBuild during development.
+        implementation("com.ikolvi:tracelet-sdk:0.1.0")
 
         // Testing
         testImplementation("org.jetbrains.kotlin:kotlin-test")

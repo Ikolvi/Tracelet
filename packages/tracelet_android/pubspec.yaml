@@ -25,6 +25,6 @@ flutter:
     implements: tracelet
     platforms:
       android:
-        package: com.tracelet.tracelet_android
+        package: com.ikolvi.tracelet.flutter
         pluginClass: TraceletAndroidPlugin
         dartPluginClass: TraceletAndroid

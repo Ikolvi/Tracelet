@@ -2,8 +2,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 
 void main() {
-  test('TraceletPlatform instance defaults to MethodChannelTracelet', () {
-    expect(TraceletPlatform.instance, isA<MethodChannelTracelet>());
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('TraceletPlatform instance defaults to PigeonTracelet', () {
+    expect(TraceletPlatform.instance, isA<PigeonTracelet>());
   });
 
   test('TraceletEvents has correct base path', () {

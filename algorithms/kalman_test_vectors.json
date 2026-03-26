@@ -1,0 +1,153 @@
+{
+  "$schema": "Shared test vectors for KalmanLocationFilter — 4x4 constant-velocity model",
+  "version": "1.0.0",
+  "tolerance": {
+    "position_degrees": 0.000005,
+    "velocity_mps": 0.5,
+    "description": "Filtered lat/lng within ~0.5m, velocity within ±0.5 m/s"
+  },
+  "constants": {
+    "process_noise_mps2": 3.0,
+    "meters_per_degree_lat": 111320.0,
+    "initial_velocity_variance": 100.0
+  },
+
+  "sequences": [
+    {
+      "description": "Single measurement — filter initializes at first point",
+      "inputs": [
+        {
+          "latitude": 37.7749,
+          "longitude": -122.4194,
+          "accuracy": 10.0,
+          "speed": 0.0,
+          "timestamp_ms": 1000000
+        }
+      ],
+      "expected_outputs": [
+        {
+          "latitude": 37.7749,
+          "longitude": -122.4194,
+          "note": "First measurement initializes state — no filtering"
+        }
+      ]
+    },
+    {
+      "description": "Two stationary measurements — filter averages toward center",
+      "inputs": [
+        {
+          "latitude": 37.7749,
+          "longitude": -122.4194,
+          "accuracy": 10.0,
+          "speed": 0.0,
+          "timestamp_ms": 1000000
+        },
+        {
+          "latitude": 37.77495,
+          "longitude": -122.41935,
+          "accuracy": 10.0,
+          "speed": 0.0,
+          "timestamp_ms": 1001000
+        }
+      ],
+      "expected_outputs": [
+        {
+          "latitude": 37.7749,
+          "longitude": -122.4194,
+          "note": "Initialization"
+        },
+        {
+          "latitude_range": [37.77490, 37.77495],
+          "longitude_range": [-122.41940, -122.41935],
+          "note": "Filtered result between the two measurements"
+        }
+      ]
+    },
+    {
+      "description": "Constant-velocity motion — filter tracks trajectory",
+      "inputs": [
+        {
+          "latitude": 37.7749,
+          "longitude": -122.4194,
+          "accuracy": 10.0,
+          "speed": 5.0,
+          "timestamp_ms": 1000000
+        },
+        {
+          "latitude": 37.77499,
+          "longitude": -122.4194,
+          "accuracy": 10.0,
+          "speed": 5.0,
+          "timestamp_ms": 1001000
+        },
+        {
+          "latitude": 37.77508,
+          "longitude": -122.4194,
+          "accuracy": 10.0,
+          "speed": 5.0,
+          "timestamp_ms": 1002000
+        },
+        {
+          "latitude": 37.77517,
+          "longitude": -122.4194,
+          "accuracy": 10.0,
+          "speed": 5.0,
+          "timestamp_ms": 1003000
+        }
+      ],
+      "expected_outputs": [
+        { "note": "Init" },
+        {
+          "note": "Converging: filtered lat should be between 37.7749 and 37.77499",
+          "latitude_range": [37.77489, 37.77500]
+        },
+        {
+          "note": "Tracking: filter predicts forward, updates. Lat increasing steadily",
+          "latitude_range": [37.77498, 37.77510]
+        },
+        {
+          "note": "Well-tracked: filter closely follows measurements",
+          "latitude_range": [37.77508, 37.77520]
+        }
+      ]
+    },
+    {
+      "description": "GPS spike rejection — one bad reading in a smooth trajectory",
+      "inputs": [
+        { "latitude": 37.7749, "longitude": -122.4194, "accuracy": 5.0, "speed": 5.0, "timestamp_ms": 1000000 },
+        { "latitude": 37.77499, "longitude": -122.4194, "accuracy": 5.0, "speed": 5.0, "timestamp_ms": 1001000 },
+        { "latitude": 37.7780, "longitude": -122.4194, "accuracy": 100.0, "speed": 5.0, "timestamp_ms": 1002000 },
+        { "latitude": 37.77517, "longitude": -122.4194, "accuracy": 5.0, "speed": 5.0, "timestamp_ms": 1003000 }
+      ],
+      "expected_outputs": [
+        { "note": "Init" },
+        { "note": "Normal track" },
+        {
+          "note": "Spike with low accuracy — filter should largely ignore it due to high R",
+          "latitude_range": [37.77500, 37.77550],
+          "latitude_should_not_exceed": 37.77600
+        },
+        {
+          "note": "Recovery — filter snaps back toward good measurement",
+          "latitude_range": [37.77505, 37.77525]
+        }
+      ]
+    },
+    {
+      "description": "Reset behavior — calling reset should start fresh",
+      "action": "reset_before_second_sequence",
+      "inputs_before_reset": [
+        { "latitude": 37.7749, "longitude": -122.4194, "accuracy": 10.0, "speed": 0.0, "timestamp_ms": 1000000 },
+        { "latitude": 37.7750, "longitude": -122.4194, "accuracy": 10.0, "speed": 0.0, "timestamp_ms": 1001000 }
+      ],
+      "inputs_after_reset": [
+        { "latitude": 48.8566, "longitude": 2.3522, "accuracy": 10.0, "speed": 0.0, "timestamp_ms": 1002000 }
+      ],
+      "expected_after_reset": {
+        "latitude": 48.8566,
+        "longitude": 2.3522,
+        "note": "After reset, first measurement initializes fresh — not blended with pre-reset state"
+      }
+    }
+  ]
+}

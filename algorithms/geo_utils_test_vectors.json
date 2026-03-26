@@ -1,0 +1,153 @@
+{
+  "$schema": "Shared test vectors for GeoUtils — Haversine distance and point-in-polygon",
+  "version": "1.0.0",
+  "tolerance": {
+    "distance_meters": 0.5,
+    "description": "All distance results must match within ±0.5 meters"
+  },
+  "constants": {
+    "earth_radius_meters": 6371000.0,
+    "deg2rad": 0.017453292519943295
+  },
+
+  "haversine": [
+    {
+      "description": "Same point — zero distance",
+      "lat1": 37.7749, "lon1": -122.4194,
+      "lat2": 37.7749, "lon2": -122.4194,
+      "expected_meters": 0.0
+    },
+    {
+      "description": "San Francisco to Los Angeles (~559 km)",
+      "lat1": 37.7749, "lon1": -122.4194,
+      "lat2": 34.0522, "lon2": -118.2437,
+      "expected_meters": 559120.5
+    },
+    {
+      "description": "London to Paris (~343 km)",
+      "lat1": 51.5074, "lon1": -0.1278,
+      "lat2": 48.8566, "lon2": 2.3522,
+      "expected_meters": 343556.1
+    },
+    {
+      "description": "North Pole to South Pole (half circumference)",
+      "lat1": 90.0, "lon1": 0.0,
+      "lat2": -90.0, "lon2": 0.0,
+      "expected_meters": 20015086.8
+    },
+    {
+      "description": "Equator — 1 degree of longitude (~111.32 km)",
+      "lat1": 0.0, "lon1": 0.0,
+      "lat2": 0.0, "lon2": 1.0,
+      "expected_meters": 111195.1
+    },
+    {
+      "description": "Short walk — ~270 meters",
+      "lat1": 37.421, "lon1": -122.084,
+      "lat2": 37.423, "lon2": -122.082,
+      "expected_meters": 270.6
+    },
+    {
+      "description": "Antimeridian crossing (Tokyo to Honolulu)",
+      "lat1": 35.6762, "lon1": 139.6503,
+      "lat2": 21.3069, "lon2": -157.8583,
+      "expected_meters": 6199867.1
+    },
+    {
+      "description": "Very short distance — 10 meters",
+      "lat1": 48.8566, "lon1": 2.3522,
+      "lat2": 48.85669, "lon2": 2.35232,
+      "expected_meters": 12.8
+    }
+  ],
+
+  "point_in_polygon": [
+    {
+      "description": "Point inside a simple square",
+      "lat": 37.422,
+      "lng": -122.084,
+      "vertices": [
+        [37.421, -122.085],
+        [37.423, -122.085],
+        [37.423, -122.083],
+        [37.421, -122.083]
+      ],
+      "expected_inside": true
+    },
+    {
+      "description": "Point outside a simple square",
+      "lat": 37.420,
+      "lng": -122.084,
+      "vertices": [
+        [37.421, -122.085],
+        [37.423, -122.085],
+        [37.423, -122.083],
+        [37.421, -122.083]
+      ],
+      "expected_inside": false
+    },
+    {
+      "description": "Point inside a triangle",
+      "lat": 37.422,
+      "lng": -122.084,
+      "vertices": [
+        [37.420, -122.086],
+        [37.424, -122.084],
+        [37.420, -122.082]
+      ],
+      "expected_inside": true
+    },
+    {
+      "description": "Point outside a triangle",
+      "lat": 37.419,
+      "lng": -122.087,
+      "vertices": [
+        [37.420, -122.086],
+        [37.424, -122.084],
+        [37.420, -122.082]
+      ],
+      "expected_inside": false
+    },
+    {
+      "description": "Point inside an L-shaped polygon",
+      "lat": 37.4215,
+      "lng": -122.0845,
+      "vertices": [
+        [37.421, -122.085],
+        [37.421, -122.083],
+        [37.422, -122.083],
+        [37.422, -122.084],
+        [37.423, -122.084],
+        [37.423, -122.085]
+      ],
+      "expected_inside": true
+    },
+    {
+      "description": "Point in concavity of L-shaped polygon (outside)",
+      "lat": 37.4225,
+      "lng": -122.0835,
+      "vertices": [
+        [37.421, -122.085],
+        [37.421, -122.083],
+        [37.422, -122.083],
+        [37.422, -122.084],
+        [37.423, -122.084],
+        [37.423, -122.085]
+      ],
+      "expected_inside": false
+    },
+    {
+      "description": "Pentagon — point inside",
+      "lat": 0.0,
+      "lng": 0.0,
+      "vertices": [
+        [1.0, 0.0],
+        [0.309, 0.951],
+        [-0.809, 0.588],
+        [-0.809, -0.588],
+        [0.309, -0.951]
+      ],
+      "expected_inside": true
+    }
+  ]
+}

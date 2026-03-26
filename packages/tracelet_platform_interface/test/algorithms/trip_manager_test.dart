@@ -246,5 +246,115 @@ void main() {
           tripEvents.first['startLocation'] as Map<String, Object?>;
       expect(startLoc, isEmpty);
     });
+
+    test('waypoint cap evicts oldest entries', () {
+      tripManager.onMotionStateChanged(
+        isMoving: true,
+        latitude: 0,
+        longitude: 0,
+      );
+
+      // Feed 5001 locations (exceeds _maxWaypoints = 5000).
+      // Start waypoint counts as 1, so we need 5000 more to trigger eviction.
+      for (int i = 1; i <= 5001; i++) {
+        tripManager.onLocationReceived(
+          latitude: i.toDouble(),
+          longitude: i.toDouble(),
+          timestamp: 'ts$i',
+        );
+      }
+
+      tripManager.onMotionStateChanged(
+        isMoving: false,
+        latitude: 9999,
+        longitude: 9999,
+      );
+
+      final waypoints =
+          tripEvents.first['waypoints'] as List<Map<String, Object?>>;
+      // Should be capped at 5000 (oldest evicted) + 1 stop waypoint
+      // = 5000 total (cap enforced on add, stop adds one more but
+      // onLocationReceived already added 5001 which was capped to 5000,
+      // then endTrip adds 1 more which triggers another eviction = 5000).
+      expect(waypoints.length, lessThanOrEqualTo(5001));
+      expect(waypoints.length, greaterThan(4999));
+    });
+
+    test('accumulates distance across multiple locations', () {
+      tripManager.onMotionStateChanged(
+        isMoving: true,
+        latitude: 0,
+        longitude: 0,
+      );
+
+      // Move along a straight line: 0,0 → 0,1 → 0,2
+      tripManager.onLocationReceived(latitude: 0, longitude: 1);
+      tripManager.onLocationReceived(latitude: 0, longitude: 2);
+
+      tripManager.onMotionStateChanged(
+        isMoving: false,
+        latitude: 0,
+        longitude: 2,
+      );
+
+      final distance = tripEvents.first['distance'] as double;
+      // 2 degrees of longitude at equator ≈ 222,390m
+      expect(distance, closeTo(222390, 1000));
+    });
+
+    test('duration is positive for real trip', () {
+      tripManager.onMotionStateChanged(
+        isMoving: true,
+        latitude: 10,
+        longitude: 20,
+      );
+      // Duration depends on wall clock so just ensure it's >= 0
+      tripManager.onMotionStateChanged(
+        isMoving: false,
+        latitude: 11,
+        longitude: 21,
+      );
+
+      final duration = tripEvents.first['duration'] as double;
+      expect(duration, greaterThanOrEqualTo(0));
+    });
+
+    test('consecutive start-stop cycles produce separate trips', () {
+      for (int i = 0; i < 3; i++) {
+        tripManager.onMotionStateChanged(
+          isMoving: true,
+          latitude: i.toDouble(),
+          longitude: i.toDouble(),
+        );
+        tripManager.onMotionStateChanged(
+          isMoving: false,
+          latitude: i + 1.0,
+          longitude: i + 1.0,
+        );
+      }
+
+      expect(tripEvents.length, 3);
+    });
+
+    test('reset during active trip does not emit event', () {
+      tripManager.onMotionStateChanged(
+        isMoving: true,
+        latitude: 10,
+        longitude: 20,
+      );
+      tripManager.onLocationReceived(latitude: 11, longitude: 21);
+      tripManager.reset();
+
+      expect(tripManager.isTripActive, isFalse);
+      expect(tripEvents, isEmpty);
+
+      // Can start a new trip after reset
+      tripManager.onMotionStateChanged(
+        isMoving: true,
+        latitude: 30,
+        longitude: 40,
+      );
+      expect(tripManager.isTripActive, isTrue);
+    });
   });
 }

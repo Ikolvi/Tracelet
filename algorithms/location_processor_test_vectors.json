@@ -1,0 +1,245 @@
+{
+  "$schema": "Shared test vectors for LocationProcessor — multi-filter pipeline",
+  "version": "1.0.0",
+  "tolerance": {
+    "distance_meters": 1.0,
+    "speed_mps": 0.1,
+    "description": "Distance and speed comparisons within stated tolerance"
+  },
+
+  "distance_filter": [
+    {
+      "description": "Location passes — distance exceeds filter",
+      "config": {
+        "distanceFilter": 10.0,
+        "elasticityMultiplier": 1.0
+      },
+      "previous_location": {
+        "latitude": 37.7749, "longitude": -122.4194,
+        "speed": 0.0, "timestamp_ms": 1000000
+      },
+      "new_location": {
+        "latitude": 37.77500, "longitude": -122.4194,
+        "speed": 1.0, "timestamp_ms": 1010000
+      },
+      "expected_distance_meters": 11.1,
+      "expected_accepted": true
+    },
+    {
+      "description": "Location rejected — distance below filter",
+      "config": {
+        "distanceFilter": 50.0,
+        "elasticityMultiplier": 1.0
+      },
+      "previous_location": {
+        "latitude": 37.7749, "longitude": -122.4194,
+        "speed": 0.0, "timestamp_ms": 1000000
+      },
+      "new_location": {
+        "latitude": 37.77495, "longitude": -122.41938,
+        "speed": 0.5, "timestamp_ms": 1010000
+      },
+      "expected_distance_meters": 5.8,
+      "expected_accepted": false,
+      "expected_reason": "distance_filter"
+    },
+    {
+      "description": "Elasticity increases effective distance at high speed",
+      "config": {
+        "distanceFilter": 10.0,
+        "elasticityMultiplier": 1.0
+      },
+      "previous_location": {
+        "latitude": 37.7749, "longitude": -122.4194,
+        "speed": 50.0, "timestamp_ms": 1000000
+      },
+      "new_location": {
+        "latitude": 37.77530, "longitude": -122.4194,
+        "speed": 50.0, "timestamp_ms": 1001000
+      },
+      "note": "speedFactor = clamp(50/10, 1, 10) = 5.0 → effective = 10 × 5 × 1 = 50m",
+      "expected_effective_distance": 50.0,
+      "expected_distance_meters": 44.5,
+      "expected_accepted": false,
+      "expected_reason": "distance_filter"
+    },
+    {
+      "description": "No previous location — always accepted",
+      "config": {
+        "distanceFilter": 10.0,
+        "elasticityMultiplier": 1.0
+      },
+      "previous_location": null,
+      "new_location": {
+        "latitude": 37.7749, "longitude": -122.4194,
+        "speed": 0.0, "timestamp_ms": 1000000
+      },
+      "expected_accepted": true
+    }
+  ],
+
+  "accuracy_filter": [
+    {
+      "description": "Accuracy within threshold — accepted",
+      "config": {
+        "trackingAccuracyThreshold": 100.0,
+        "accuracyFilterPolicy": 1
+      },
+      "location": {
+        "latitude": 37.7749, "longitude": -122.4194,
+        "accuracy": 50.0
+      },
+      "expected_accepted": true
+    },
+    {
+      "description": "Accuracy exceeds threshold — rejected (ignore policy)",
+      "config": {
+        "trackingAccuracyThreshold": 100.0,
+        "accuracyFilterPolicy": 1
+      },
+      "location": {
+        "latitude": 37.7749, "longitude": -122.4194,
+        "accuracy": 150.0
+      },
+      "expected_accepted": false,
+      "expected_reason": "accuracy_filter"
+    },
+    {
+      "description": "Threshold disabled (0) — always accepted even with bad accuracy",
+      "config": {
+        "trackingAccuracyThreshold": 0,
+        "accuracyFilterPolicy": 1
+      },
+      "location": {
+        "latitude": 37.7749, "longitude": -122.4194,
+        "accuracy": 5000.0
+      },
+      "expected_accepted": true
+    }
+  ],
+
+  "speed_filter": [
+    {
+      "description": "Speed within limit — accepted",
+      "config": { "maxImpliedSpeed": 100.0 },
+      "previous_location": {
+        "latitude": 37.7749, "longitude": -122.4194,
+        "timestamp_ms": 1000000
+      },
+      "new_location": {
+        "latitude": 37.7759, "longitude": -122.4194,
+        "timestamp_ms": 1010000
+      },
+      "note": "~111m in 10s = 11.1 m/s, below 100 m/s limit",
+      "expected_accepted": true
+    },
+    {
+      "description": "Speed exceeds limit — rejected (teleportation)",
+      "config": { "maxImpliedSpeed": 50.0 },
+      "previous_location": {
+        "latitude": 37.7749, "longitude": -122.4194,
+        "timestamp_ms": 1000000
+      },
+      "new_location": {
+        "latitude": 37.7849, "longitude": -122.4194,
+        "timestamp_ms": 1001000
+      },
+      "note": "~1113m in 1s = 1113 m/s, exceeds 50 m/s limit",
+      "expected_accepted": false,
+      "expected_reason": "speed_filter"
+    },
+    {
+      "description": "Speed filter disabled (0) — always accepted",
+      "config": { "maxImpliedSpeed": 0 },
+      "previous_location": {
+        "latitude": 37.7749, "longitude": -122.4194,
+        "timestamp_ms": 1000000
+      },
+      "new_location": {
+        "latitude": 38.7749, "longitude": -122.4194,
+        "timestamp_ms": 1001000
+      },
+      "expected_accepted": true
+    }
+  ],
+
+  "mock_filter": [
+    {
+      "description": "Mock location rejected when rejectMockLocations is true",
+      "config": { "rejectMockLocations": true },
+      "location": { "isMock": true },
+      "expected_accepted": false,
+      "expected_reason": "mock_filter"
+    },
+    {
+      "description": "Mock location accepted when rejectMockLocations is false",
+      "config": { "rejectMockLocations": false },
+      "location": { "isMock": true },
+      "expected_accepted": true
+    },
+    {
+      "description": "Non-mock location always accepted",
+      "config": { "rejectMockLocations": true },
+      "location": { "isMock": false },
+      "expected_accepted": true
+    }
+  ],
+
+  "sparse_updates": [
+    {
+      "description": "Sparse: location within distance threshold and before timeout — dropped",
+      "config": {
+        "enableSparseUpdates": true,
+        "sparseDistanceThreshold": 50.0,
+        "sparseMaxIdleSeconds": 300
+      },
+      "previous_location": {
+        "latitude": 37.7749, "longitude": -122.4194,
+        "timestamp_ms": 1000000
+      },
+      "new_location": {
+        "latitude": 37.77492, "longitude": -122.41938,
+        "timestamp_ms": 1060000
+      },
+      "note": "~3m in 60s — below 50m threshold and 300s timeout",
+      "expected_accepted": false,
+      "expected_reason": "sparse_dedup"
+    },
+    {
+      "description": "Sparse: distance below threshold but timeout expired — force recorded",
+      "config": {
+        "enableSparseUpdates": true,
+        "sparseDistanceThreshold": 50.0,
+        "sparseMaxIdleSeconds": 300
+      },
+      "previous_location": {
+        "latitude": 37.7749, "longitude": -122.4194,
+        "timestamp_ms": 1000000
+      },
+      "new_location": {
+        "latitude": 37.77492, "longitude": -122.41938,
+        "timestamp_ms": 1301000
+      },
+      "note": "~3m in 301s — below distance threshold but timeout expired",
+      "expected_accepted": true
+    },
+    {
+      "description": "Sparse: distance exceeds threshold — accepted regardless of time",
+      "config": {
+        "enableSparseUpdates": true,
+        "sparseDistanceThreshold": 50.0,
+        "sparseMaxIdleSeconds": 300
+      },
+      "previous_location": {
+        "latitude": 37.7749, "longitude": -122.4194,
+        "timestamp_ms": 1000000
+      },
+      "new_location": {
+        "latitude": 37.7755, "longitude": -122.4194,
+        "timestamp_ms": 1060000
+      },
+      "note": "~66m in 60s — above 50m threshold",
+      "expected_accepted": true
+    }
+  ]
+}

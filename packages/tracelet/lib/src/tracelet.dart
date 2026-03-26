@@ -61,13 +61,8 @@ class Tracelet {
   static TraceletPlatform get _platform => TraceletPlatform.instance;
 
   // ---------------------------------------------------------------------------
-  // Event Channel streams (lazily created singletons)
+  // Event streams (via platform Pigeon FlutterApi)
   // ---------------------------------------------------------------------------
-
-  static final Map<String, EventChannel> _eventChannels =
-      <String, EventChannel>{};
-  static final Map<String, Stream<Object?>> _eventStreams =
-      <String, Stream<Object?>>{};
 
   /// Tracks subscriptions created by [watchPosition] so they can be
   /// cancelled by [stopWatchPosition].
@@ -89,7 +84,7 @@ class Tracelet {
   /// Trip manager instance for trip detection (runs in Dart, not native).
   static final TripManager _tripManager = TripManager();
 
-  /// StreamController for trip events (replaces native EventChannel).
+  /// StreamController for trip events (computed in Dart, not native).
   static final StreamController<TripEvent> _tripController =
       StreamController<TripEvent>.broadcast();
 
@@ -186,16 +181,6 @@ class Tracelet {
     } else {
       _batteryBudgetEngine = null;
     }
-  }
-
-  static Stream<Object?> _getEventStream(String name) {
-    return _eventStreams.putIfAbsent(name, () {
-      final channel = _eventChannels.putIfAbsent(
-        name,
-        () => EventChannel(name),
-      );
-      return channel.receiveBroadcastStream();
-    });
   }
 
   // ---------------------------------------------------------------------------
@@ -527,9 +512,9 @@ class Tracelet {
 
     // Listen to the watchPosition event stream for this watcher.
     // Store the subscription so stopWatchPosition can cancel it.
-    final sub = _getEventStream(
-      TraceletEvents.watchPosition,
-    ).map(_castToMap).map(Location.fromMap).listen(callback);
+    final sub = _platform.watchPositionEvents
+        .map(Location.fromTl)
+        .listen(callback);
 
     _watchSubscriptions[watchId] = sub;
     return watchId;
@@ -1609,9 +1594,8 @@ class Tracelet {
   /// stateful transformations (distance filter state, Kalman state) are
   /// applied exactly once per event regardless of subscriber count.
   static Stream<Location> _getProcessedLocationStream() {
-    return _processedLocationStream ??= _getEventStream(TraceletEvents.location)
-        .map(_castToMap)
-        .map(Location.fromMap)
+    return _processedLocationStream ??= _platform.locationEvents
+        .map(Location.fromTl)
         .where(_shouldAcceptLocation)
         .map(_applyKalmanFilter)
         .asBroadcastStream();
@@ -1624,9 +1608,7 @@ class Tracelet {
     void Function(Location) callback,
   ) {
     return _tracked(
-      _getEventStream(
-        TraceletEvents.motionChange,
-      ).map(_castToMap).map(Location.fromMap).listen(callback),
+      _platform.motionChangeEvents.map(Location.fromTl).listen(callback),
     );
   }
 
@@ -1637,9 +1619,14 @@ class Tracelet {
     void Function(ActivityChangeEvent) callback,
   ) {
     return _tracked(
-      _getEventStream(
-        TraceletEvents.activityChange,
-      ).map(_castToMap).map(ActivityChangeEvent.fromMap).listen(callback),
+      _platform.activityChangeEvents
+          .map(
+            (e) => ActivityChangeEvent.fromMap({
+              'activity': e.activity,
+              'confidence': e.confidence,
+            }),
+          )
+          .listen(callback),
     );
   }
 
@@ -1650,9 +1637,17 @@ class Tracelet {
     void Function(ProviderChangeEvent) callback,
   ) {
     return _tracked(
-      _getEventStream(
-        TraceletEvents.providerChange,
-      ).map(_castToMap).map(ProviderChangeEvent.fromMap).listen(callback),
+      _platform.providerChangeEvents
+          .map(
+            (e) => ProviderChangeEvent.fromMap({
+              'enabled': e.enabled,
+              'gps': e.gps,
+              'network': e.network,
+              'status': e.status,
+              'accuracyAuthorization': e.accuracyAuthorization,
+            }),
+          )
+          .listen(callback),
     );
   }
 
@@ -1663,9 +1658,16 @@ class Tracelet {
     void Function(GeofenceEvent) callback,
   ) {
     return _tracked(
-      _getEventStream(
-        TraceletEvents.geofence,
-      ).map(_castToMap).map(GeofenceEvent.fromMap).listen(callback),
+      _platform.geofenceEvents
+          .map(
+            (e) => GeofenceEvent.fromMap({
+              'identifier': e.identifier,
+              'action': e.action.name,
+              'location': Location.fromTl(e.location).toMap(),
+              'extras': e.extras,
+            }),
+          )
+          .listen(callback),
     );
   }
 
@@ -1676,9 +1678,32 @@ class Tracelet {
     void Function(GeofencesChangeEvent) callback,
   ) {
     return _tracked(
-      _getEventStream(
-        TraceletEvents.geofencesChange,
-      ).map(_castToMap).map(GeofencesChangeEvent.fromMap).listen(callback),
+      _platform.geofencesChangeEvents
+          .map(
+            (e) => GeofencesChangeEvent.fromMap({
+              'on': e.on
+                  ?.map(
+                    (g) => <String, Object?>{
+                      'identifier': g.identifier,
+                      'latitude': g.latitude,
+                      'longitude': g.longitude,
+                      'radius': g.radius,
+                    },
+                  )
+                  .toList(),
+              'off': e.off
+                  ?.map(
+                    (g) => <String, Object?>{
+                      'identifier': g.identifier,
+                      'latitude': g.latitude,
+                      'longitude': g.longitude,
+                      'radius': g.radius,
+                    },
+                  )
+                  .toList(),
+            }),
+          )
+          .listen(callback),
     );
   }
 
@@ -1689,9 +1714,9 @@ class Tracelet {
     void Function(HeartbeatEvent) callback,
   ) {
     return _tracked(
-      _getEventStream(
-        TraceletEvents.heartbeat,
-      ).map(_castToMap).map(HeartbeatEvent.fromMap).listen(callback),
+      _platform.heartbeatEvents
+          .map((e) => HeartbeatEvent(location: Location.fromTl(e.location)))
+          .listen(callback),
     );
   }
 
@@ -1702,9 +1727,15 @@ class Tracelet {
     void Function(HttpEvent) callback,
   ) {
     return _tracked(
-      _getEventStream(
-        TraceletEvents.http,
-      ).map(_castToMap).map(HttpEvent.fromMap).listen(callback),
+      _platform.httpEvents
+          .map(
+            (e) => HttpEvent(
+              success: e.isSuccess,
+              status: e.status,
+              responseText: e.responseText,
+            ),
+          )
+          .listen(callback),
     );
   }
 
@@ -1713,9 +1744,18 @@ class Tracelet {
   /// Fires when the scheduler starts or stops a tracking period.
   static StreamSubscription<State> onSchedule(void Function(State) callback) {
     return _tracked(
-      _getEventStream(
-        TraceletEvents.schedule,
-      ).map(_castToMap).map(State.fromMap).listen(callback),
+      _platform.scheduleEvents
+          .map(
+            (s) => State.fromMap({
+              'enabled': s.enabled,
+              'isMoving': s.isMoving,
+              'trackingMode': s.trackingMode,
+              'schedulerEnabled': s.schedulerEnabled,
+              'odometer': s.odometer,
+              'lastLocationTimestamp': s.lastLocationTimestamp,
+            }),
+          )
+          .listen(callback),
     );
   }
 
@@ -1725,20 +1765,7 @@ class Tracelet {
   static StreamSubscription<bool> onPowerSaveChange(
     void Function(bool) callback,
   ) {
-    return _tracked(
-      _getEventStream(TraceletEvents.powerSaveChange)
-          .map((event) {
-            if (event is bool) return event;
-            if (event is int) return event != 0;
-            if (event is Map) {
-              final v = event['isPowerSaveMode'] ?? event['enabled'];
-              if (v is bool) return v;
-              if (v is int) return v != 0;
-            }
-            return false;
-          })
-          .listen(callback),
-    );
+    return _tracked(_platform.powerSaveChangeEvents.listen(callback));
   }
 
   /// Subscribe to connectivity change events.
@@ -1748,9 +1775,9 @@ class Tracelet {
     void Function(ConnectivityChangeEvent) callback,
   ) {
     return _tracked(
-      _getEventStream(
-        TraceletEvents.connectivityChange,
-      ).map(_castToMap).map(ConnectivityChangeEvent.fromMap).listen(callback),
+      _platform.connectivityChangeEvents
+          .map((e) => ConnectivityChangeEvent(connected: e.connected))
+          .listen(callback),
     );
   }
 
@@ -1760,20 +1787,7 @@ class Tracelet {
   static StreamSubscription<bool> onEnabledChange(
     void Function(bool) callback,
   ) {
-    return _tracked(
-      _getEventStream(TraceletEvents.enabledChange)
-          .map((event) {
-            if (event is bool) return event;
-            if (event is int) return event != 0;
-            if (event is Map) {
-              final v = event['enabled'];
-              if (v is bool) return v;
-              if (v is int) return v != 0;
-            }
-            return false;
-          })
-          .listen(callback),
-    );
+    return _tracked(_platform.enabledChangeEvents.listen(callback));
   }
 
   /// Subscribe to notification action events (Android only).
@@ -1782,15 +1796,7 @@ class Tracelet {
   static StreamSubscription<String> onNotificationAction(
     void Function(String) callback,
   ) {
-    return _tracked(
-      _getEventStream(TraceletEvents.notificationAction)
-          .map((event) {
-            if (event is String) return event;
-            if (event is Map) return event['action']?.toString() ?? '';
-            return '';
-          })
-          .listen(callback),
-    );
+    return _tracked(_platform.notificationActionEvents.listen(callback));
   }
 
   /// Subscribe to authorization events.
@@ -1800,9 +1806,15 @@ class Tracelet {
     void Function(AuthorizationEvent) callback,
   ) {
     return _tracked(
-      _getEventStream(
-        TraceletEvents.authorization,
-      ).map(_castToMap).map(AuthorizationEvent.fromMap).listen(callback),
+      _platform.authorizationEvents
+          .map(
+            (e) => AuthorizationEvent(
+              success: e.success,
+              status: e.status,
+              response: e.response,
+            ),
+          )
+          .listen(callback),
     );
   }
 
@@ -1873,8 +1885,6 @@ class Tracelet {
       sub.cancel();
     }
     _watchSubscriptions.clear();
-    _eventStreams.clear();
-    _eventChannels.clear();
     _processedLocationStream = null;
 
     // Stop trip detection subscriptions.
@@ -1892,19 +1902,6 @@ class Tracelet {
   static StreamSubscription<T> _tracked<T>(StreamSubscription<T> sub) {
     _onSubscriptions.add(sub);
     return sub;
-  }
-
-  static Map<String, Object?> _castToMap(Object? event) {
-    // Fast path: if the platform already sent a correctly-typed map, reuse it
-    // directly instead of allocating a new Map with .map(). This avoids
-    // 14+ redundant map copies per event across all stream listeners.
-    if (event is Map<String, Object?>) return event;
-    if (event is Map) {
-      return event.map<String, Object?>(
-        (Object? k, Object? v) => MapEntry(k.toString(), v),
-      );
-    }
-    return const <String, Object?>{};
   }
 
   /// Returns `true` if the location passes all filters (distance, accuracy,
@@ -1989,18 +1986,17 @@ class Tracelet {
     _stopTripDetection(); // Ensure clean state.
 
     // Listen to motion changes to start/end trips.
-    _tripMotionSub = _getEventStream(TraceletEvents.motionChange)
-        .map(_castToMap)
-        .map(Location.fromMap)
-        .listen((location) {
-          final isMoving = location.isMoving;
-          _tripManager.onMotionStateChanged(
-            isMoving: isMoving,
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-            timestamp: location.timestamp,
-          );
-        });
+    _tripMotionSub = _platform.motionChangeEvents.map(Location.fromTl).listen((
+      location,
+    ) {
+      final isMoving = location.isMoving;
+      _tripManager.onMotionStateChanged(
+        isMoving: isMoving,
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        timestamp: location.timestamp,
+      );
+    });
 
     // Listen to location updates to record waypoints.
     // Reuse the processed location stream to avoid duplicate
@@ -2032,9 +2028,13 @@ class Tracelet {
     if (!_enableAdaptiveMode) return;
     _stopAdaptiveActivityTracking();
 
-    _adaptiveActivitySub = _getEventStream(TraceletEvents.activityChange)
-        .map(_castToMap)
-        .map(ActivityChangeEvent.fromMap)
+    _adaptiveActivitySub = _platform.activityChangeEvents
+        .map(
+          (e) => ActivityChangeEvent.fromMap({
+            'activity': e.activity,
+            'confidence': e.confidence,
+          }),
+        )
         .listen((event) {
           _lastActivityType = event.activity;
           _lastActivityConfidence = event.confidence;
