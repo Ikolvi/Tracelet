@@ -86,7 +86,23 @@ jobs:
         if: ${{ !inputs.dry_run }}
         env:
           COCOAPODS_TRUNK_TOKEN: ${{ secrets.COCOAPODS_TRUNK_TOKEN }}
-        run: pod trunk push TraceletSDK.podspec --allow-warnings --verbose
+        run: |
+          MAX_RETRIES=3
+          RETRY_DELAY=30
+          for attempt in $(seq 1 $MAX_RETRIES); do
+            echo "🚀 Attempt $attempt of $MAX_RETRIES..."
+            if pod trunk push TraceletSDK.podspec --allow-warnings --verbose 2>&1; then
+              echo "✅ Published successfully on attempt $attempt"
+              exit 0
+            fi
+            if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+              echo "⚠️ Attempt $attempt failed. Retrying in ${RETRY_DELAY}s..."
+              sleep $RETRY_DELAY
+              RETRY_DELAY=$((RETRY_DELAY * 2))
+            fi
+          done
+          echo "❌ All $MAX_RETRIES attempts failed"
+          exit 1
 
       # ── Summary ──
       - name: Summary

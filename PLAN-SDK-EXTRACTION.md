@@ -1,9 +1,9 @@
 # Tracelet — Native SDK Extraction Plan
 
 > **Goal**: Extract platform-agnostic native SDKs from the Flutter plugin, publish as standalone libraries, and enable multi-framework support (Flutter, React Native, Capacitor, pure native apps).
-> **Status**: In Progress — Phase 1 & 2 substantially complete
+> **Status**: In Progress — Phase 1, 2 & 5 substantially complete
 > **Created**: March 2025
-> **Last Updated**: March 2025
+> **Last Updated**: March 2026
 
 ---
 
@@ -249,7 +249,7 @@ All `LocationEngine`, `MotionDetector`, `GeofenceManager`, `HttpSyncManager`, `T
 ### 2.1 Create Swift Package
 - [x] Create `sdk/ios/` with `Package.swift` (TraceletSDK, Swift 5.9, iOS 14+)
 - [x] Configure frameworks: CoreLocation, CoreMotion, UIKit, BackgroundTasks, AVFoundation, AudioToolbox, Network, DeviceCheck
-- [ ] Create `TraceletSDK.podspec` for CocoaPods distribution (parallel to SPM)
+- [x] Create `TraceletSDK.podspec` for CocoaPods distribution (at repo root, published to trunk)
 
 ### 2.2 Move Core Code
 - [x] Move all TraceletCore Swift files into `sdk/ios/Sources/TraceletSDK/`
@@ -397,33 +397,23 @@ All `LocationEngine`, `MotionDetector`, `GeofenceManager`, `HttpSyncManager`, `T
 
 ### 5.1 Maven Central (Android)
 - [x] Register Sonatype Central Portal account for `com.ikolvi` group (verified via `ikolvi.com`)
-- [ ] Configure GPG signing for artifacts
-- [ ] Set up `maven-publish` plugin in `sdk/android/core/build.gradle.kts`:
-  ```kotlin
-  publishing {
-      publications {
-          create<MavenPublication>("release") {
-              groupId = "com.ikolvi"
-              artifactId = "tracelet-sdk"
-              version = project.findProperty("SDK_VERSION") as String
-          }
-      }
-  }
-  ```
-- [ ] CI job: on tag `sdk-android-vX.Y.Z` → build → sign → publish to Maven Central
-- [ ] Set up staging → release promotion workflow
+- [x] Configure GPG signing for artifacts (RSA 4096, key `8F4BC8FA5DEB2529`, published to keys.openpgp.org + GitHub)
+- [x] Set up `maven-publish` + `signing` + `nexus-publish` plugins in `sdk/android/build.gradle.kts`
+- [x] CI job: `.github/workflows/publish-sdk-android.yml` — manual dispatch, version input, dry_run option
+- [x] Staging → release promotion workflow (nexus-publish `closeAndReleaseSonatypeStagingRepository`)
+- [x] **Published `com.ikolvi:tracelet-sdk:0.1.0` to Maven Central** (March 2026)
 
 ### 5.2 CocoaPods (iOS)
-- [ ] Register `TraceletSDK` pod name with trunk (under ikolvi ownership)
-- [ ] Configure `TraceletSDK.podspec` with proper source, version, license
-- [ ] CI job: on tag `sdk-ios-vX.Y.Z` → lint → push to CocoaPods trunk
-- [ ] Test pod install in isolated Xcode project
+- [x] Register `TraceletSDK` pod name with trunk (owner: `connect@ikolvi.com`)
+- [x] Configure `TraceletSDK.podspec` at repo root with proper source, version, license
+- [x] CI job: `.github/workflows/publish-sdk-ios.yml` — lint, tag, trunk push
+- [x] **Published `TraceletSDK 0.1.0` to CocoaPods trunk** (March 2026)
 
 ### 5.3 Swift Package Manager (iOS)
-- [ ] `Package.swift` already defines the target (created in Phase 2)
-- [ ] SPM resolves directly from Git tags — no registry needed
-- [ ] CI job: validate `swift build` and `swift test` on each push
-- [ ] Tag format: `sdk-ios-vX.Y.Z` (same tag serves both SPM and CocoaPods)
+- [x] `Package.swift` already defines the target (created in Phase 2)
+- [x] SPM resolves directly from Git tags — no registry needed
+- [x] CI job: `publish-sdk-ios.yml` validates `swift build` and `swift test` before publishing
+- [x] Tag format: `sdk-ios-vX.Y.Z` (same tag serves both SPM and CocoaPods)
 
 ### 5.4 Flutter Plugin Updates
 - [ ] Update `tracelet_android` `build.gradle.kts` to consume SDK from Maven Central
@@ -508,6 +498,9 @@ sdk/
 | D9 | 2025-03 | `#if canImport(TraceletSDK)` for dual CocoaPods/SPM | CocoaPods (Flutter build) compiles all sources in one module; SPM uses separate dependency. Conditional import handles both without code duplication. |
 | D10 | 2025-03 | `TraceletEventSender` interface (Android) / `TraceletEventSending` protocol (iOS) as SDK event abstraction | Map-based API matches existing Flutter channel contract. Typed model classes (TraceletLocation, etc.) deferred until needed by non-Flutter consumers. |
 | D11 | 2025-03 | Example app bundle IDs aligned to `com.ikolvi.tracelet.example` | Consistent namespace across all packages. Android applicationId and iOS PRODUCT_BUNDLE_IDENTIFIER both updated. |
+| D12 | 2026-03 | GPG signing with RSA 4096 key (no passphrase) + nexus-publish-plugin 2.0.0 | Enterprise-grade artifact signing. Central Portal staging API for reliable release promotion. Key published to keys.openpgp.org. |
+| D13 | 2026-03 | `TraceletSDK.podspec` placed at repo root (not `sdk/ios/`) | `pod trunk push` resolves relative paths from the directory it runs in. Repo root placement ensures `source_files` path `sdk/ios/Sources/TraceletSDK/**/*.swift` resolves correctly on CI and locally. |
+| D14 | 2026-03 | Publish workflows use manual dispatch (not tag triggers) | Gives explicit control over publish timing. Version is a workflow input. Tag is created by the workflow itself after validation passes. |
 
 ---
 
@@ -517,7 +510,7 @@ sdk/
 Phase 1 (Android SDK)     ██████████████████████████████  ~90% complete
 Phase 2 (iOS SDK)         ██████████████████████████████  ~90% complete
 Phase 3 (Algorithms)      ████████████████░░░░░░░░░░░░░░  P0 done, P1-P3 remaining
-Phase 5 (CI/CD)           ████░░░░░░░░░░░░░░░░░░░░░░░░░░  Sonatype verified, publishing TBD
+Phase 5 (CI/CD)           ██████████████████████████████  ~95% complete (published!)
 Phase 4 (RN/Capacitor)    ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  Future — demand-driven
 ```
 
@@ -540,10 +533,11 @@ Phase 4 (RN/Capacitor)    ░░░░░░░░░░░░░░░░░░
 
 1. **Physical separation**: Move SDK code from plugin module → `sdk/android/` Gradle module. Currently shares the same module with separate packages.
 2. **Typed SDK models**: Replace `Map<String, Any?>` with `TraceletLocation`, `TraceletState`, etc. for non-Flutter consumers.
-3. **Maven Central publishing**: GPG signing, `maven-publish` plugin, CI pipeline.
-4. **CocoaPods podspec**: Create `TraceletSDK.podspec` for iOS.
+3. ~~**Maven Central publishing**~~: ✅ Published `com.ikolvi:tracelet-sdk:0.1.0`
+4. ~~**CocoaPods podspec**~~: ✅ Published `TraceletSDK 0.1.0` to CocoaPods trunk
 5. **Shared test vectors**: JSON fixtures for cross-platform algorithm validation.
 6. **P1-P3 algorithms**: Battery Budget, Trip Manager, Geofence Evaluator, R-tree.
+7. **Flutter plugin SDK dependency**: Update `tracelet_android` and `tracelet_ios` to consume published SDKs instead of local paths.
 
 **Phase 1 + 2 can run in parallel** — they are fully independent.
 **Phase 5 (CI/CD) should start early** — publishing pipeline is a prerequisite for Phase 1/2 completion.

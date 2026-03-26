@@ -78,6 +78,17 @@ Tracelet uses a **federated plugin architecture** with 4 packages:
 | [`tracelet_ios`](packages/tracelet_ios/) | Swift iOS implementation |
 | [`tracelet_web`](packages/tracelet_web/) | Web implementation (experimental) |
 
+### Native SDKs (No Flutter Required)
+
+Tracelet's core engines are also published as standalone native SDKs:
+
+| Platform | Package | Install |
+|---|---|---|
+| Android | `com.ikolvi:tracelet-sdk` | [Maven Central](https://central.sonatype.com/artifact/com.ikolvi/tracelet-sdk) |
+| iOS | `TraceletSDK` | [CocoaPods](https://cocoapods.org/pods/TraceletSDK) or [SPM](https://github.com/Ikolvi/Tracelet.git) |
+
+See the [Native SDK Guide](help/NATIVE-SDK.md) for installation and usage.
+
 ## Quick Start
 
 ```dart

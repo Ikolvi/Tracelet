@@ -125,3 +125,6 @@ MEDIUM_ARTICLE.txt
 # Copilot instructions (local only)
 .github/copilot-instructions.md
 packages/*/.github/copilot-instructions.md
+
+# GPG key backups
+gpg-signing-key-*.asc
