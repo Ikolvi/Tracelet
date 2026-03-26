@@ -347,12 +347,11 @@ class LocationService : Service() {
                 return
             }
 
-        // Wire headless fallback so events can reach the headless runtime
+        // Headless dispatcher — used for 401 authorization refresh in boot mode.
+        // Note: headless event routing is handled by the EventDispatcher's
+        // headlessFallback, which is wired by the host framework's
+        // eventSenderFactory (e.g. TraceletAndroidPlugin).
         val headless = TraceletBootstrap.headlessDispatcherFactory?.invoke(ctx)
-        if (headless != null && headless.isRegistered()) {
-            // The event sender implementation handles headless routing internally
-            Log.d(TAG, "Headless dispatcher registered for boot tracking")
-        }
 
         // Create HTTP sync manager for boot-mode auto-sync.
         // This ensures locations are synced to the server even when the
