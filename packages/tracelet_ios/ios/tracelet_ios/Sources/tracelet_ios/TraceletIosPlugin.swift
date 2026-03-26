@@ -1,8 +1,6 @@
 import Flutter
 import UIKit
-#if canImport(TraceletSDK)
 import TraceletSDK
-#endif
 
 /// TraceletIosPlugin — Thin Flutter bridge that delegates all work to ``TraceletSdk``.
 ///

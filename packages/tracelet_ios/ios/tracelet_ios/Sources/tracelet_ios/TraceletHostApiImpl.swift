@@ -1,5 +1,6 @@
 import Flutter
 import UIKit
+import TraceletSDK
 
 /// Pigeon-backed implementation of ``TraceletHostApi``.
 ///

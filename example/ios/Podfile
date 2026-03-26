@@ -30,6 +30,11 @@ flutter_ios_podfile_setup
 target 'Runner' do
   use_frameworks!
 
+  # Local development: resolve TraceletSDK from monorepo source.
+  # When the Flutter plugin is consumed from pub.dev, this line is absent and
+  # CocoaPods resolves TraceletSDK from trunk (declared in tracelet_ios.podspec).
+  pod 'TraceletSDK', :path => '../../'
+
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do
     inherit! :search_paths

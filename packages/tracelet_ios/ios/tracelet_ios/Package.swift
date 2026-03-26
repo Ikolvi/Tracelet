@@ -12,6 +12,9 @@ let package = Package(
         .library(name: "tracelet-ios", targets: ["tracelet_ios"])
     ],
     dependencies: [
+        // Local path for SPM-based development in the monorepo.
+        // When consumed via pub.dev, CocoaPods resolves TraceletSDK from trunk
+        // (declared in tracelet_ios.podspec: s.dependency 'TraceletSDK').
         .package(name: "TraceletSDK", path: "../../../../sdk/ios"),
     ],
     targets: [

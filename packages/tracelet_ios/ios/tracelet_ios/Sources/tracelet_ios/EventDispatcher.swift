@@ -1,8 +1,6 @@
 import Flutter
 import Foundation
-#if canImport(TraceletSDK)
 import TraceletSDK
-#endif
 
 /// Flutter-specific event dispatcher using Pigeon FlutterApi.
 ///
@@ -153,6 +151,14 @@ final class EventDispatcher: NSObject, TraceletEventSending {
 
     func sendRemoteConfigEvent(_ data: [String: Any]) {
         fallback("remoteconfig", data)
+    }
+
+    func sendTrip(_ data: [String: Any]) {
+        fallback("trip", data)
+    }
+
+    func sendBudgetAdjustment(_ data: [String: Any]) {
+        fallback("budgetadjustment", data)
     }
 
     func hasListener(eventName: String) -> Bool {

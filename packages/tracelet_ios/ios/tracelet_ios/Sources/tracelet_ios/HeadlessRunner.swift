@@ -1,8 +1,6 @@
 import Flutter
 import Foundation
-#if canImport(TraceletSDK)
 import TraceletSDK
-#endif
 
 /// Manages headless Dart execution for processing events in the background.
 ///

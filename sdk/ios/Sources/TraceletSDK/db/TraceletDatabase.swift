@@ -929,7 +929,7 @@ public final class TraceletDatabase {
     // MARK: - Database Encryption (Enterprise)
 
     /// Checks whether the database file has iOS Data Protection (NSFileProtectionComplete) enabled.
-    func isDatabaseEncrypted() -> Bool {
+    public func isDatabaseEncrypted() -> Bool {
         let path = getDBPath().path
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
               let protection = attrs[.protectionKey] as? FileProtectionType else {
@@ -945,7 +945,7 @@ public final class TraceletDatabase {
     /// No third-party encryption libraries are required.
     ///
     /// - Returns: `true` if protection was successfully applied.
-    func encryptDatabase() -> Bool {
+    public func encryptDatabase() -> Bool {
         let dbPath = getDBPath()
         let dbDir = dbPath.deletingLastPathComponent()
         let walPath = dbPath.path + "-wal"
