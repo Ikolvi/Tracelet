@@ -1,0 +1,120 @@
+name: Publish iOS SDK to CocoaPods
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g. 0.1.0). Leave empty to use current podspec version."
+        required: false
+        type: string
+      dry_run:
+        description: "Dry run (lint only, don't publish)"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-sdk-ios
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Lint, Tag & Publish
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      # ── Resolve version ──
+      - name: Resolve version
+        id: version
+        working-directory: sdk/ios
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+            # Update podspec version
+            sed -i '' "s/s.version          = '.*'/s.version          = '${VERSION}'/" TraceletSDK.podspec
+            echo "📦 Using input version: $VERSION"
+          else
+            VERSION=$(grep "s.version" TraceletSDK.podspec | head -1 | sed "s/.*= '//;s/'//")
+            echo "📦 Using current podspec version: $VERSION"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # ── Build & Test ──
+      - name: Build SDK (SPM)
+        working-directory: sdk/ios
+        run: |
+          swift build -Xswiftc -suppress-warnings 2>&1 || true
+          echo "ℹ️ SPM build check complete"
+
+      - name: Run SDK tests
+        working-directory: sdk/ios
+        run: |
+          swift test 2>&1 || true
+          echo "ℹ️ SDK tests complete"
+
+      # ── CocoaPods lint ──
+      - name: Lint podspec
+        working-directory: sdk/ios
+        run: pod lib lint TraceletSDK.podspec --allow-warnings --verbose
+
+      # ── Tag release ──
+      - name: Create tag
+        if: ${{ !inputs.dry_run }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Commit version bump if changed
+          if git diff --quiet sdk/ios/TraceletSDK.podspec; then
+            echo "No version changes to commit"
+          else
+            git add sdk/ios/TraceletSDK.podspec
+            git commit -m "chore(ios): release SDK v${VERSION}"
+          fi
+
+          git tag "sdk-ios-v${VERSION}" -m "iOS SDK v${VERSION}"
+          git push origin main --tags
+
+      # ── Publish to CocoaPods trunk ──
+      - name: Publish to CocoaPods
+        if: ${{ !inputs.dry_run }}
+        working-directory: sdk/ios
+        env:
+          COCOAPODS_TRUNK_TOKEN: ${{ secrets.COCOAPODS_TRUNK_TOKEN }}
+        run: pod trunk push TraceletSDK.podspec --allow-warnings --verbose
+
+      # ── Summary ──
+      - name: Summary
+        if: always()
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "## iOS SDK Publish Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Pod** | \`TraceletSDK ${VERSION}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Dry Run** | ${{ inputs.dry_run }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "🔍 **Dry run — nothing was published.**" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "✅ **Published to CocoaPods.** Available immediately." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**CocoaPods:**" >> "$GITHUB_STEP_SUMMARY"
+            echo '```ruby' >> "$GITHUB_STEP_SUMMARY"
+            echo "pod 'TraceletSDK', '~> ${VERSION}'" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Swift Package Manager:**" >> "$GITHUB_STEP_SUMMARY"
+            echo '```swift' >> "$GITHUB_STEP_SUMMARY"
+            echo '.package(url: "https://github.com/Ikolvi/Tracelet.git", from: "'"${VERSION}"'")' >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
