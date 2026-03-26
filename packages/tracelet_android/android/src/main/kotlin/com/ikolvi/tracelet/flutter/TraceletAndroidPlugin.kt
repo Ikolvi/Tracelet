@@ -71,6 +71,21 @@ class TraceletAndroidPlugin :
             HeadlessTaskService(ctx)
         }
 
+        // Override event sender factory so boot/task-removal restarts
+        // produce an EventDispatcher with headlessFallback properly wired.
+        // Without this, geofence events fired after task removal are
+        // silently dropped because the EventDispatcher has no fallback.
+        TraceletBootstrap.eventSenderFactory = { ctx ->
+            val dispatcher = EventDispatcher()
+            val hs = HeadlessTaskService(ctx)
+            dispatcher.headlessFallback = { eventName, eventData ->
+                if (hs.isRegistered()) {
+                    hs.dispatchEvent(eventName, eventData)
+                }
+            }
+            dispatcher
+        }
+
         // Pigeon API: register type-safe host API
         TraceletHostApi.setUp(
             binding.binaryMessenger,
