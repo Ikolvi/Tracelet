@@ -38,6 +38,10 @@ jobs:
   publish:
     name: Bump, Commit & Publish
     runs-on: ubuntu-latest
+    environment: pub.dev  # OIDC automated publishing
+    permissions:
+      contents: write
+      id-token: write  # Required for pub.dev OIDC token exchange
     steps:
       - uses: actions/checkout@v4
         with:
@@ -188,12 +192,6 @@ jobs:
         run: git push origin main --tags
 
       # ── Publish (dependency order) ──
-      - name: Setup pub.dev credentials
-        if: ${{ !inputs.dry_run }}
-        run: |
-          mkdir -p "$HOME/.config/dart"
-          echo '${{ secrets.PUB_CREDENTIALS }}' > "$HOME/.config/dart/pub-credentials.json"
-
       - name: Publish packages
         if: ${{ !inputs.dry_run }}
         run: |

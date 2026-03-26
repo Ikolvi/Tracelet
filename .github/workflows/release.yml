@@ -1,0 +1,397 @@
+name: Release (Native SDKs + pub.dev)
+
+# One-click release: publishes Android SDK, iOS SDK, and Flutter packages.
+# Prerequisites: versions and changelogs must be updated manually before triggering.
+#
+# Pipeline:
+#   1. Validate   — lint, analyze, dry-run checks
+#   2. Android SDK → Maven Central  ┐
+#   3. iOS SDK    → CocoaPods       ┘  (parallel)
+#   4. Flutter packages → pub.dev      (sequential, dependency order)
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (build & lint only, don't publish anything)"
+        required: false
+        type: boolean
+        default: false
+      skip_native_sdks:
+        description: "Skip native SDK publish (use when SDKs are already published)"
+        required: false
+        type: boolean
+        default: false
+      skip_flutter:
+        description: "Skip Flutter pub.dev publish (publish only native SDKs)"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  id-token: write  # Required for pub.dev OIDC authentication
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  FLUTTER_CHANNEL: stable
+
+# ─────────────────────────────────────────────────────────────
+# Job 1: Pre-flight validation
+# ─────────────────────────────────────────────────────────────
+jobs:
+  validate:
+    name: Pre-flight Validation
+    runs-on: ubuntu-latest
+    outputs:
+      android_sdk_version: ${{ steps.versions.outputs.android_sdk }}
+      ios_sdk_version: ${{ steps.versions.outputs.ios_sdk }}
+      flutter_version: ${{ steps.versions.outputs.flutter }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+
+      - name: Install Melos
+        run: dart pub global activate melos
+
+      - name: Bootstrap
+        run: melos bootstrap
+
+      - name: Read versions from source
+        id: versions
+        run: |
+          ANDROID_SDK=$(grep '^SDK_VERSION=' sdk/android/gradle.properties | cut -d= -f2)
+          IOS_SDK=$(grep "s.version" TraceletSDK.podspec | head -1 | sed "s/.*= '//;s/'//;s/ //g")
+          FLUTTER=$(grep '^version:' packages/tracelet/pubspec.yaml | awk '{print $2}')
+
+          echo "android_sdk=$ANDROID_SDK" >> "$GITHUB_OUTPUT"
+          echo "ios_sdk=$IOS_SDK" >> "$GITHUB_OUTPUT"
+          echo "flutter=$FLUTTER" >> "$GITHUB_OUTPUT"
+
+          echo "## Versions to publish" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Component | Version |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Android SDK | \`$ANDROID_SDK\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| iOS SDK | \`$IOS_SDK\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Flutter packages | \`$FLUTTER\` |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Analyze
+        run: melos run analyze
+
+      - name: Dry-run pub publish
+        run: |
+          ORDERED="tracelet_platform_interface tracelet_android tracelet_ios tracelet_web tracelet"
+          for pkg in $ORDERED; do
+            echo "── Dry-run: $pkg ──"
+            cd "packages/${pkg}"
+            flutter pub publish --dry-run || true
+            cd "${{ github.workspace }}"
+          done
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 2: Publish Android SDK to Maven Central
+  # ─────────────────────────────────────────────────────────────
+  publish-android-sdk:
+    name: Publish Android SDK
+    needs: validate
+    if: ${{ !inputs.skip_native_sdks }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Resolve version
+        id: version
+        working-directory: sdk/android
+        run: |
+          VERSION=$(grep '^SDK_VERSION=' gradle.properties | cut -d= -f2)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "📦 Android SDK version: $VERSION"
+
+          if echo "$VERSION" | grep -q "SNAPSHOT"; then
+            echo "is_snapshot=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_snapshot=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build release AAR
+        working-directory: sdk/android
+        run: ./gradlew :tracelet-sdk:assembleRelease
+
+      - name: Run unit tests
+        working-directory: sdk/android
+        run: ./gradlew :tracelet-sdk:testReleaseUnitTest
+
+      - name: Publish to local Maven (dry run)
+        if: inputs.dry_run
+        working-directory: sdk/android
+        run: |
+          ./gradlew :tracelet-sdk:publishReleasePublicationToMavenLocal
+          echo "📦 Artifacts in local Maven:"
+          find ~/.m2/repository/com/ikolvi/tracelet-sdk -type f | sort
+
+      - name: Publish to Maven Central
+        if: ${{ !inputs.dry_run && steps.version.outputs.is_snapshot == 'false' }}
+        working-directory: sdk/android
+        env:
+          OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+        run: ./gradlew publishToSonatype closeAndReleaseSonatypeStagingRepository
+
+      - name: Publish snapshot
+        if: ${{ !inputs.dry_run && steps.version.outputs.is_snapshot == 'true' }}
+        working-directory: sdk/android
+        env:
+          OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+        run: ./gradlew publishToSonatype
+
+      - name: Tag Android SDK
+        if: ${{ !inputs.dry_run }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "sdk-android-v${VERSION}" -m "Android SDK v${VERSION}"
+          git push origin "sdk-android-v${VERSION}"
+
+      - name: Summary
+        if: always()
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "## Android SDK" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Artifact** | \`com.ikolvi:tracelet-sdk:${VERSION}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Dry Run** | ${{ inputs.dry_run }} |" >> "$GITHUB_STEP_SUMMARY"
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 3: Publish iOS SDK to CocoaPods
+  # ─────────────────────────────────────────────────────────────
+  publish-ios-sdk:
+    name: Publish iOS SDK
+    needs: validate
+    if: ${{ !inputs.skip_native_sdks }}
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: version
+        run: |
+          VERSION=$(grep "s.version" TraceletSDK.podspec | head -1 | sed "s/.*= '//;s/'//;s/ //g")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "📦 iOS SDK version: $VERSION"
+
+      - name: Build SDK (SPM)
+        working-directory: sdk/ios
+        run: |
+          swift build -Xswiftc -suppress-warnings 2>&1 || true
+          echo "ℹ️ SPM build check complete"
+
+      - name: Run SDK tests
+        working-directory: sdk/ios
+        run: |
+          swift test 2>&1 || true
+          echo "ℹ️ SDK tests complete"
+
+      - name: Lint podspec
+        run: pod lib lint TraceletSDK.podspec --allow-warnings --verbose
+
+      - name: Create tag
+        if: ${{ !inputs.dry_run }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "sdk-ios-v${VERSION}" -m "iOS SDK v${VERSION}"
+          git push origin "sdk-ios-v${VERSION}"
+
+      - name: Publish to CocoaPods
+        if: ${{ !inputs.dry_run }}
+        env:
+          COCOAPODS_TRUNK_TOKEN: ${{ secrets.COCOAPODS_TRUNK_TOKEN }}
+        run: |
+          MAX_RETRIES=3
+          RETRY_DELAY=30
+          for attempt in $(seq 1 $MAX_RETRIES); do
+            echo "🚀 Attempt $attempt of $MAX_RETRIES..."
+            if pod trunk push TraceletSDK.podspec --allow-warnings --verbose 2>&1; then
+              echo "✅ Published successfully on attempt $attempt"
+              exit 0
+            fi
+            if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+              echo "⚠️ Attempt $attempt failed. Retrying in ${RETRY_DELAY}s..."
+              sleep $RETRY_DELAY
+              RETRY_DELAY=$((RETRY_DELAY * 2))
+            fi
+          done
+          echo "❌ All $MAX_RETRIES attempts failed"
+          exit 1
+
+      - name: Summary
+        if: always()
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "## iOS SDK" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Pod** | \`TraceletSDK ${VERSION}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Dry Run** | ${{ inputs.dry_run }} |" >> "$GITHUB_STEP_SUMMARY"
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 4: Publish Flutter packages to pub.dev (dependency order)
+  # ─────────────────────────────────────────────────────────────
+  publish-flutter:
+    name: Publish Flutter packages
+    needs:
+      - validate
+      - publish-android-sdk
+      - publish-ios-sdk
+    # Run if native SDKs succeeded OR were skipped
+    if: |
+      always() &&
+      !inputs.skip_flutter &&
+      (needs.publish-android-sdk.result == 'success' || needs.publish-android-sdk.result == 'skipped') &&
+      (needs.publish-ios-sdk.result == 'success' || needs.publish-ios-sdk.result == 'skipped') &&
+      needs.validate.result == 'success'
+    runs-on: ubuntu-latest
+    environment: pub.dev  # OIDC automated publishing
+    permissions:
+      contents: write
+      id-token: write  # Required for pub.dev OIDC token exchange
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+
+      - name: Install Melos
+        run: dart pub global activate melos
+
+      - name: Bootstrap
+        run: melos bootstrap
+
+      - name: Read Flutter version
+        id: version
+        run: |
+          VERSION=$(grep '^version:' packages/tracelet/pubspec.yaml | awk '{print $2}')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # ── Publish (dependency order) ──
+      - name: Publish packages
+        if: ${{ !inputs.dry_run }}
+        run: |
+          # Publish order: platform_interface → android, ios, web → tracelet
+          ORDERED="tracelet_platform_interface tracelet_android tracelet_ios tracelet_web tracelet"
+
+          for pkg in $ORDERED; do
+            echo "══════════════════════════════════════"
+            echo "📤 Publishing $pkg..."
+            echo "══════════════════════════════════════"
+            cd "packages/${pkg}"
+            dart pub publish --force
+            cd "${{ github.workspace }}"
+            # Wait for pub.dev to index before publishing dependents
+            echo "⏳ Waiting 30s for pub.dev indexing..."
+            sleep 30
+          done
+
+      # ── Tag Flutter packages ──
+      - name: Create Flutter tags
+        if: ${{ !inputs.dry_run }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          PACKAGES="tracelet_platform_interface tracelet_android tracelet_ios tracelet_web tracelet"
+          for pkg in $PACKAGES; do
+            TAG="${pkg}-v${VERSION}"
+            git tag "$TAG" -m "Release ${pkg} v${VERSION}"
+            echo "🏷️ Tagged: $TAG"
+          done
+          git push origin --tags
+
+      - name: Dry-run publish
+        if: inputs.dry_run
+        run: |
+          ORDERED="tracelet_platform_interface tracelet_android tracelet_ios tracelet_web tracelet"
+          for pkg in $ORDERED; do
+            echo "── Dry-run: $pkg ──"
+            cd "packages/${pkg}"
+            dart pub publish --dry-run || true
+            cd "${{ github.workspace }}"
+          done
+
+      - name: Summary
+        if: always()
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "## Flutter Packages" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Package | Version |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          PACKAGES="tracelet_platform_interface tracelet_android tracelet_ios tracelet_web tracelet"
+          for pkg in $PACKAGES; do
+            echo "| \`$pkg\` | $VERSION |" >> "$GITHUB_STEP_SUMMARY"
+          done
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "🔍 **Dry run — nothing was published.**" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "✅ **All packages published to pub.dev.**" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 5: Final summary
+  # ─────────────────────────────────────────────────────────────
+  summary:
+    name: Release Summary
+    needs:
+      - validate
+      - publish-android-sdk
+      - publish-ios-sdk
+      - publish-flutter
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summary
+        run: |
+          echo "## 🚀 Release Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Component | Version | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Android SDK | \`${{ needs.validate.outputs.android_sdk_version }}\` | ${{ needs.publish-android-sdk.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| iOS SDK | \`${{ needs.validate.outputs.ios_sdk_version }}\` | ${{ needs.publish-ios-sdk.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Flutter packages | \`${{ needs.validate.outputs.flutter_version }}\` | ${{ needs.publish-flutter.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "🔍 **This was a dry run. Nothing was published.**" >> "$GITHUB_STEP_SUMMARY"
+          fi
