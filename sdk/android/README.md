@@ -9,11 +9,13 @@ Battery-conscious motion-detection intelligence, geofencing, SQLite persistence,
 
 ## Installation
 
+Latest version: [![Maven Central](https://img.shields.io/maven-central/v/com.ikolvi/tracelet-sdk)](https://central.sonatype.com/artifact/com.ikolvi/tracelet-sdk)
+
 ### Gradle (Kotlin DSL)
 
 ```kotlin
 dependencies {
-    implementation("com.ikolvi:tracelet-sdk:1.0.0")
+    implementation("com.ikolvi:tracelet-sdk:<latest-version>")
 }
 ```
 
@@ -21,9 +23,11 @@ dependencies {
 
 ```groovy
 dependencies {
-    implementation 'com.ikolvi:tracelet-sdk:1.0.0'
+    implementation 'com.ikolvi:tracelet-sdk:<latest-version>'
 }
 ```
+
+> Replace `<latest-version>` with the version shown in the badge above.
 
 ### Requirements
 

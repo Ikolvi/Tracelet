@@ -12,11 +12,13 @@ The native SDKs mirror the Flutter plugin's structured configuration pattern. Da
 
 ## Android — Maven Central
 
+Latest version: [![Maven Central](https://img.shields.io/maven-central/v/com.ikolvi/tracelet-sdk)](https://central.sonatype.com/artifact/com.ikolvi/tracelet-sdk)
+
 ### Gradle (Kotlin DSL)
 
 ```kotlin
 dependencies {
-    implementation("com.ikolvi:tracelet-sdk:1.0.0")
+    implementation("com.ikolvi:tracelet-sdk:<latest-version>")
 }
 ```
 
@@ -24,9 +26,11 @@ dependencies {
 
 ```groovy
 dependencies {
-    implementation 'com.ikolvi:tracelet-sdk:1.0.0'
+    implementation 'com.ikolvi:tracelet-sdk:<latest-version>'
 }
 ```
+
+> Replace `<latest-version>` with the version shown in the badge above.
 
 ### Requirements
 
@@ -106,6 +110,8 @@ class MyApp : Application() {
 
 ## iOS — CocoaPods
 
+Latest version: [![CocoaPods](https://img.shields.io/cocoapods/v/TraceletSDK.svg)](https://cocoapods.org/pods/TraceletSDK)
+
 ### Podfile
 
 ```ruby
@@ -113,9 +119,11 @@ platform :ios, '14.0'
 
 target 'MyApp' do
   use_frameworks!
-  pod 'TraceletSDK', '~> 1.0.0'
+  pod 'TraceletSDK', '~> <latest-version>'
 end
 ```
+
+> Replace `<latest-version>` with the version shown in the badge above.
 
 Then run:
 
@@ -131,14 +139,14 @@ pod install
 
 1. **File → Add Package Dependencies...**
 2. Enter: `https://github.com/Ikolvi/Tracelet.git`
-3. Set version rule: **Up to Next Major** from `0.1.0`
+3. Set version rule: **Up to Next Major** from `1.0.0`
 4. Add the `TraceletSDK` library to your target
 
 ### Package.swift
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/Ikolvi/Tracelet.git", from: "0.1.0")
+    .package(url: "https://github.com/Ikolvi/Tracelet.git", from: "1.0.0")
 ],
 targets: [
     .target(

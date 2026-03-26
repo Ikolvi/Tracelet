@@ -10,6 +10,8 @@ Battery-conscious motion-detection intelligence, geofencing, SQLite persistence,
 
 ## Installation
 
+Latest version: [![CocoaPods](https://img.shields.io/cocoapods/v/TraceletSDK.svg)](https://cocoapods.org/pods/TraceletSDK)
+
 ### CocoaPods
 
 Add to your `Podfile`:
@@ -19,9 +21,11 @@ platform :ios, '14.0'
 
 target 'MyApp' do
   use_frameworks!
-  pod 'TraceletSDK', '~> 1.0.0'
+  pod 'TraceletSDK', '~> <latest-version>'
 end
 ```
+
+> Replace `<latest-version>` with the version shown in the badge above.
 
 Then run:
 
@@ -33,14 +37,14 @@ pod install
 
 1. **File → Add Package Dependencies...**
 2. Enter: `https://github.com/Ikolvi/Tracelet.git`
-3. Set version rule: **Up to Next Major** from `0.1.0`
+3. Set version rule: **Up to Next Major** from `1.0.0`
 4. Add the `TraceletSDK` library to your target
 
 ### Swift Package Manager — Package.swift
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/Ikolvi/Tracelet.git", from: "0.1.0")
+    .package(url: "https://github.com/Ikolvi/Tracelet.git", from: "1.0.0")
 ],
 targets: [
     .target(
