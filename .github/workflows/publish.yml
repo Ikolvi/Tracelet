@@ -193,6 +193,13 @@ jobs:
         if: ${{ !inputs.dry_run }}
         run: git push origin main --tags
 
+      # ── Setup pub.dev credentials ──
+      - name: Setup pub.dev credentials
+        if: ${{ !inputs.dry_run }}
+        run: |
+          mkdir -p "$HOME/.config/dart"
+          echo '${{ secrets.PUB_CREDENTIALS }}' > "$HOME/.config/dart/pub-credentials.json"
+
       # ── Publish (dependency order) ──
       - name: Publish packages
         if: ${{ !inputs.dry_run }}
