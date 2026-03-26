@@ -401,6 +401,11 @@ class TraceletWebPlugin extends TraceletPlatform {
   }
 
   @override
+  Future<int> destroySyncedLocations() {
+    return _storage.destroySyncedLocations();
+  }
+
+  @override
   Future<bool> destroyLocation(String uuid) {
     return _storage.destroyLocation(uuid);
   }

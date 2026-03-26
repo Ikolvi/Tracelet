@@ -1,5 +1,6 @@
 import Flutter
 import UIKit
+import CoreMotion
 import TraceletSDK
 
 /// Pigeon-backed implementation of ``TraceletHostApi``.
@@ -277,6 +278,10 @@ class TraceletHostApiImpl: TraceletHostApi {
         completion(.success(sdk.destroyLocations() as? Bool ?? true))
     }
 
+    func destroySyncedLocations(completion: @escaping (Result<Int64, Error>) -> Void) {
+        completion(.success(Int64(sdk.destroySyncedLocations())))
+    }
+
     func destroyLocation(uuid: String, completion: @escaping (Result<Bool, Error>) -> Void) {
         completion(.success(sdk.destroyLocation(uuid) as? Bool ?? true))
     }
@@ -342,12 +347,31 @@ class TraceletHostApiImpl: TraceletHostApi {
     }
 
     func getMotionPermissionStatus(completion: @escaping (Result<Int64, Error>) -> Void) {
-        completion(.success(Int64(sdk.motionDetector.getMotionAuthorizationStatus() as? Int ?? 0)))
+        if let detector = sdk.motionDetector {
+            completion(.success(Int64(detector.getMotionAuthorizationStatus())))
+        } else {
+            // Pre-ready: fall back to static CMMotionActivityManager check
+            let status = CMMotionActivityManager.authorizationStatus()
+            let code: Int64
+            switch status {
+            case .notDetermined: code = 0
+            case .restricted:    code = 4
+            case .denied:        code = 4
+            case .authorized:    code = 3
+            @unknown default:    code = 0
+            }
+            completion(.success(code))
+        }
     }
 
     func requestMotionPermission(completion: @escaping (Result<Int64, Error>) -> Void) {
-        sdk.motionDetector.requestMotionPermission { status in
-            completion(.success(Int64(status as? Int ?? 0)))
+        guard let detector = sdk.motionDetector else {
+            // Pre-ready: can't request without motionDetector
+            completion(.success(0))
+            return
+        }
+        detector.requestMotionPermission { status in
+            completion(.success(Int64(status)))
         }
     }
 

@@ -174,7 +174,7 @@ class ConfigManager(context: Context) {
         if (fgService is Map<*, *>) {
             @Suppress("UNCHECKED_CAST")
             for ((k, v) in fgService as Map<String, Any?>) {
-                merged["fg_$k"] = v
+                if (v != null) merged["fg_$k"] = v
             }
         }
 
@@ -183,12 +183,17 @@ class ConfigManager(context: Context) {
         if (filter is Map<*, *>) {
             @Suppress("UNCHECKED_CAST")
             for ((k, v) in filter as Map<String, Any?>) {
-                merged[k] = v
+                if (v != null) merged[k] = v
             }
         }
 
         for ((key, value) in flat) {
             if (key == "foregroundService" || key == "filter") continue
+            // Skip null values — a partial setConfig() must not overwrite
+            // existing non-null config with defaults.  E.g. calling
+            // setConfig({app: {heartbeatInterval: -1}}) must not wipe the
+            // HTTP URL that was set during ready().
+            if (value == null) continue
             if (key == "schedule" && value is List<*>) {
                 merged[key] = value.filterIsInstance<String>()
             } else {
@@ -626,6 +631,9 @@ class ConfigManager(context: Context) {
         }
         return emptyMap()
     }
+
+    fun getBatteryBudgetPerHour(): Double =
+        getDouble("batteryBudgetPerHour", 0.0)
 
     // ---------------------------------------------------------------------------
     // Private helpers

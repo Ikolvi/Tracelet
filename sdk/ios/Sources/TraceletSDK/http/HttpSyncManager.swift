@@ -112,11 +112,20 @@ public final class HttpSyncManager: NSObject, URLSessionDelegate {
     // MARK: - Trigger sync
 
     public func onLocationInserted() {
-        guard configManager.getAutoSync() else { return }
-        guard !configManager.getUrl().isEmpty else { return }
+        guard configManager.getAutoSync() else {
+            NSLog("[Tracelet] onLocationInserted: autoSync disabled — skipping")
+            return
+        }
+        guard !configManager.getUrl().isEmpty else {
+            NSLog("[Tracelet] onLocationInserted: no URL configured — skipping")
+            return
+        }
 
         // Skip auto-sync on cellular if configured
-        if configManager.getDisableAutoSyncOnCellular() && isCellular() { return }
+        if configManager.getDisableAutoSyncOnCellular() && isCellular() {
+            NSLog("[Tracelet] onLocationInserted: on cellular with disableAutoSyncOnCellular — skipping")
+            return
+        }
 
         let threshold = configManager.getAutoSyncThreshold()
         if threshold > 0 {
@@ -162,6 +171,13 @@ public final class HttpSyncManager: NSObject, URLSessionDelegate {
         guard !locations.isEmpty else {
             // All done — no more unsynced locations
             isSyncing = false
+            // Auto-delete synced locations from DB to keep it lean
+            if !allSynced.isEmpty {
+                let deleted = database.deleteSyncedLocations()
+                if deleted > 0 {
+                    NSLog("[TraceletSDK] HttpSyncManager: purged \(deleted) synced locations from DB")
+                }
+            }
             if let bgTaskId = bgTaskId { BackgroundTaskHelper.shared.end(bgTaskId) }
             completion?(allSynced)
             return

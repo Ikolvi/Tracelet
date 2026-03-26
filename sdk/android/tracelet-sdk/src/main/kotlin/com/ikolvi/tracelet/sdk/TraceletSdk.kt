@@ -10,6 +10,8 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import androidx.core.content.ContextCompat
+import com.ikolvi.tracelet.sdk.algorithm.BatteryBudgetEngine
+import com.ikolvi.tracelet.sdk.algorithm.TripManager
 import com.ikolvi.tracelet.sdk.attestation.DeviceAttestor
 import com.ikolvi.tracelet.sdk.audit.AuditTrailManager
 import com.ikolvi.tracelet.sdk.db.DatabaseEncryptionManager
@@ -52,6 +54,9 @@ class TraceletSdk private constructor(private val context: Context) {
     companion object {
         @Volatile
         private var instance: TraceletSdk? = null
+
+        /** Battery budget sampling interval: 5 minutes. */
+        private const val BATTERY_SAMPLE_INTERVAL_MS = 5 * 60 * 1000L
 
         fun getInstance(context: Context): TraceletSdk {
             return instance ?: synchronized(this) {
@@ -98,6 +103,12 @@ class TraceletSdk private constructor(private val context: Context) {
 
     private lateinit var eventSender: TraceletEventSender
     val mainHandler by lazy { Handler(Looper.getMainLooper()) }
+
+    // Algorithms
+    lateinit var tripManager: TripManager
+        internal set
+    private var batteryBudgetEngine: BatteryBudgetEngine? = null
+    private var batteryBudgetRunnable: Runnable? = null
 
     var activity: Activity? = null
     var isReady: Boolean = false
@@ -164,6 +175,10 @@ class TraceletSdk private constructor(private val context: Context) {
             httpSyncManager.onLocationInserted()
         }
 
+        // Trip manager
+        tripManager = TripManager()
+        tripManager.onTripEnd = { data -> eventSender.sendTrip(data) }
+
         // Motion detector
         motionDetector = MotionDetector(
             context, configManager, stateManager, eventSender
@@ -218,6 +233,26 @@ class TraceletSdk private constructor(private val context: Context) {
     // =========================================================================
     // Lifecycle — ready
     // =========================================================================
+
+    /**
+     * Initializes configuration and completes SDK startup.
+     *
+     * Typed overload that accepts a [TraceletConfig] for type-safe
+     * configuration matching the Dart API:
+     *
+     * ```kotlin
+     * sdk.ready(TraceletConfig(
+     *     geo = GeoConfig(desiredAccuracy = DesiredAccuracy.HIGH, distanceFilter = 10.0),
+     *     app = AppConfig(stopOnTerminate = false, startOnBoot = true),
+     * )) { state -> /* ready */ }
+     * ```
+     *
+     * @param config Typed configuration.
+     * @param callback Receives the current state map when ready.
+     */
+    fun ready(config: com.ikolvi.tracelet.sdk.model.TraceletConfig, callback: (Map<String, Any?>) -> Unit) {
+        ready(config.toMap(), callback)
+    }
 
     /**
      * Initializes configuration and completes SDK startup.
@@ -300,6 +335,18 @@ class TraceletSdk private constructor(private val context: Context) {
             deviceAttestor.startRefresh(configManager.getAttestationRefreshInterval())
         }
 
+        // Initialize battery budget engine from config
+        val budgetPerHour = configManager.getBatteryBudgetPerHour()
+        if (budgetPerHour > 0) {
+            batteryBudgetEngine = BatteryBudgetEngine(
+                targetBudgetPerHour = budgetPerHour,
+                initialDistanceFilter = configManager.getDistanceFilter(),
+                initialAccuracyIndex = configManager.getDesiredAccuracy(),
+            )
+        } else {
+            batteryBudgetEngine = null
+        }
+
         isReady = true
         val stateMap = stateManager.toMap(config)
         logger.info("ready() called")
@@ -344,9 +391,13 @@ class TraceletSdk private constructor(private val context: Context) {
 
         locationEngine.start()
 
-        // Wire proximity-based geofence monitoring
+        // Wire proximity-based geofence monitoring + trip waypoints
         locationEngine.onLocationUpdate = { lat, lng ->
             geofenceManager.updateProximity(lat, lng)
+            if (configManager.getGeofenceModeHighAccuracy()) {
+                geofenceManager.evaluateHighAccuracyProximity(lat, lng)
+            }
+            tripManager.onLocationReceived(lat, lng, System.currentTimeMillis().toString())
         }
 
         // Activity recognition permission + motion detector
@@ -365,6 +416,7 @@ class TraceletSdk private constructor(private val context: Context) {
 
         startHeartbeat()
         startStopAfterElapsedTimer()
+        startBatteryBudgetSampling()
 
         eventSender.sendEnabledChange(true)
         logger.info("start() — tracking started")
@@ -380,6 +432,9 @@ class TraceletSdk private constructor(private val context: Context) {
         motionDetector.stop()
         stopHeartbeat()
         cancelStopAfterElapsedTimer()
+        tripManager.reset()
+        stopBatteryBudgetSampling()
+        batteryBudgetEngine?.reset()
 
         PeriodicLocationWorker.cancel(context)
         PeriodicLocationWorker.eventSender = null
@@ -409,6 +464,9 @@ class TraceletSdk private constructor(private val context: Context) {
 
         locationEngine.onLocationUpdate = { lat, lng ->
             geofenceManager.updateProximity(lat, lng)
+            if (configManager.getGeofenceModeHighAccuracy()) {
+                geofenceManager.evaluateHighAccuracyProximity(lat, lng)
+            }
         }
 
         if (configManager.getGeofenceModeHighAccuracy()) {
@@ -473,6 +531,10 @@ class TraceletSdk private constructor(private val context: Context) {
                     "SCHEDULE_EXACT_ALARM not granted — timing will be approximate. " +
                         "Grant 'Alarms & reminders' permission in Settings for precise intervals."
                 )
+                // Auto-prompt: open exact alarm settings if an Activity is available
+                if (activity != null) {
+                    openExactAlarmSettings()
+                }
             }
             PeriodicLocationWorker.scheduleOneTime(context)
             PeriodicLocationWorker.scheduleExactAlarm(context, interval)
@@ -500,6 +562,15 @@ class TraceletSdk private constructor(private val context: Context) {
     // =========================================================================
     // Config
     // =========================================================================
+
+    /**
+     * Update the SDK configuration using a typed [TraceletConfig].
+     *
+     * Delegates to [setConfig] with the map produced by [TraceletConfig.toMap].
+     */
+    fun setConfig(config: com.ikolvi.tracelet.sdk.model.TraceletConfig): Map<String, Any?> {
+        return setConfig(config.toMap())
+    }
 
     fun setConfig(config: Map<String, Any?>): Map<String, Any?> {
         val oldConfig = configManager.getConfig()
@@ -581,8 +652,18 @@ class TraceletSdk private constructor(private val context: Context) {
         return geofenceManager.addGeofence(geofence)
     }
 
+    /** Add a geofence using a typed [TraceletGeofence] model. */
+    fun addGeofence(geofence: com.ikolvi.tracelet.sdk.model.TraceletGeofence): Boolean {
+        return addGeofence(geofence.toMap())
+    }
+
     fun addGeofences(geofences: List<Map<String, Any?>>) {
         geofenceManager.addGeofences(geofences)
+    }
+
+    /** Add multiple geofences using typed [TraceletGeofence] models. */
+    fun addTypedGeofences(geofences: List<com.ikolvi.tracelet.sdk.model.TraceletGeofence>) {
+        addGeofences(geofences.map { it.toMap() })
     }
 
     fun removeGeofence(identifier: String): Boolean {
@@ -624,6 +705,11 @@ class TraceletSdk private constructor(private val context: Context) {
 
     fun destroyLocations(): Boolean {
         return database.deleteAllLocations()
+    }
+
+    /** Deletes only synced locations from the database. Returns number deleted. */
+    fun destroySyncedLocations(): Int {
+        return database.deleteSyncedLocations()
     }
 
     fun destroyLocation(uuid: String): Boolean {
@@ -906,8 +992,18 @@ class TraceletSdk private constructor(private val context: Context) {
 
     fun addPrivacyZone(zone: Map<String, Any?>): Boolean = privacyZoneManager.addZone(zone)
 
+    /** Add a privacy zone using a typed [TraceletPrivacyZone] model. */
+    fun addPrivacyZone(zone: com.ikolvi.tracelet.sdk.model.TraceletPrivacyZone): Boolean {
+        return addPrivacyZone(zone.toMap())
+    }
+
     fun addPrivacyZones(zones: List<Map<String, Any?>>): Boolean {
         return privacyZoneManager.addZones(zones)
+    }
+
+    /** Add multiple privacy zones using typed [TraceletPrivacyZone] models. */
+    fun addTypedPrivacyZones(zones: List<com.ikolvi.tracelet.sdk.model.TraceletPrivacyZone>): Boolean {
+        return addPrivacyZones(zones.map { it.toMap() })
     }
 
     fun removePrivacyZone(id: String): Boolean = privacyZoneManager.removeZone(id)
@@ -1029,6 +1125,18 @@ class TraceletSdk private constructor(private val context: Context) {
                 map
             } ?: mapOf("isMoving" to isMoving)
 
+        // Feed TripManager with motion state change
+        val lat = (locationMap["latitude"] as? Number)?.toDouble()
+            ?: ((locationMap["coords"] as? Map<*, *>)?.get("latitude") as? Number)?.toDouble()
+        val lng = (locationMap["longitude"] as? Number)?.toDouble()
+            ?: ((locationMap["coords"] as? Map<*, *>)?.get("longitude") as? Number)?.toDouble()
+        tripManager.onMotionStateChanged(
+            isMoving = isMoving,
+            latitude = lat,
+            longitude = lng,
+            timestamp = locationMap["timestamp"],
+        )
+
         eventSender.sendMotionChange(locationMap)
     }
 
@@ -1062,15 +1170,19 @@ class TraceletSdk private constructor(private val context: Context) {
         heartbeatRunnable = object : Runnable {
             override fun run() {
                 if (!stateManager.enabled) return
-                val cached = locationEngine.getLastLocation()
+                android.util.Log.d("Tracelet", "Heartbeat fired")
+                val cached = locationEngine.getLastGpsLocation()
                 if (cached != null) {
-                    val locationData = locationEngine.enrichLocation(cached, "heartbeat")
+                    // Build enriched location map with UUID, battery, etc.
+                    val locationData = locationEngine.enrichLocation(cached, "heartbeat").toMutableMap()
+                    // Persist to database so it syncs via HTTP automatically.
+                    database.insertLocationAsync(locationData)
+                    locationEngine.onLocationPersisted?.invoke()
                     eventSender.sendHeartbeat(mapOf("location" to locationData))
+                    android.util.Log.d("Tracelet",
+                        "Heartbeat: lat=${cached.latitude}, lon=${cached.longitude}, accuracy=${cached.accuracy}m")
                 } else {
-                    locationEngine.getCurrentPosition(emptyMap()) { location ->
-                        val locationData = location ?: emptyMap()
-                        eventSender.sendHeartbeat(mapOf("location" to locationData))
-                    }
+                    android.util.Log.d("Tracelet", "Heartbeat: no cached location, skipping")
                 }
                 mainHandler.postDelayed(this, intervalSeconds * 1000L)
             }
@@ -1081,6 +1193,41 @@ class TraceletSdk private constructor(private val context: Context) {
     internal fun stopHeartbeat() {
         heartbeatRunnable?.let { mainHandler.removeCallbacks(it) }
         heartbeatRunnable = null
+    }
+
+    private fun startBatteryBudgetSampling() {
+        stopBatteryBudgetSampling()
+        val engine = batteryBudgetEngine ?: return
+
+        batteryBudgetRunnable = object : Runnable {
+            override fun run() {
+                if (!stateManager.enabled) return
+                val level = BatteryUtils.getBatteryLevel(context)
+                val event = engine.processSample(level)
+                if (event != null) {
+                    eventSender.sendBudgetAdjustment(
+                        mapOf(
+                            "currentBatteryDrain" to event.currentBatteryDrain,
+                            "targetBudget" to event.targetBudget,
+                            "newDistanceFilter" to event.newDistanceFilter,
+                            "newDesiredAccuracy" to event.newDesiredAccuracy,
+                            "newPeriodicInterval" to event.newPeriodicInterval,
+                        )
+                    )
+                    logger.info(
+                        "BatteryBudget adjusted: df=${event.newDistanceFilter}, " +
+                        "acc=${event.newDesiredAccuracy}, drain=${event.currentBatteryDrain}%/hr"
+                    )
+                }
+                mainHandler.postDelayed(this, BATTERY_SAMPLE_INTERVAL_MS)
+            }
+        }
+        mainHandler.postDelayed(batteryBudgetRunnable!!, BATTERY_SAMPLE_INTERVAL_MS)
+    }
+
+    private fun stopBatteryBudgetSampling() {
+        batteryBudgetRunnable?.let { mainHandler.removeCallbacks(it) }
+        batteryBudgetRunnable = null
     }
 
     private fun startStopAfterElapsedTimer() {

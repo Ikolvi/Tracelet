@@ -1,3 +1,7 @@
+## 1.7.1
+
+- **FEAT**: Add `destroySyncedLocations()` Pigeon HostApi method — deletes only synced locations and returns count.
+
 ## 1.7.0
 
 - **FEAT**: Migrate all event delivery from EventChannels to Pigeon `TraceletEventApi` FlutterApi.

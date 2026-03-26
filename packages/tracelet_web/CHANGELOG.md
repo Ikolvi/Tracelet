@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.1
+
+- **FEAT**: Add `destroySyncedLocations()` web implementation.
+
 ## 1.7.0
 
 - **CHORE**: Update cross-package dependency constraints to `^1.7.0`.

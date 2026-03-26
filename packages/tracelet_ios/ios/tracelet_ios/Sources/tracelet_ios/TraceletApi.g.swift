@@ -991,6 +991,8 @@ protocol TraceletHostApi {
   func getCount(query: [String: Any?]?, completion: @escaping (Result<Int64, Error>) -> Void)
   /// Delete all stored locations.
   func destroyLocations(completion: @escaping (Result<Bool, Error>) -> Void)
+  /// Delete only synced locations from the database. Returns count deleted.
+  func destroySyncedLocations(completion: @escaping (Result<Int64, Error>) -> Void)
   /// Delete a single location by UUID.
   func destroyLocation(uuid: String, completion: @escaping (Result<Bool, Error>) -> Void)
   /// Insert a custom location. Returns UUID.
@@ -1526,6 +1528,22 @@ class TraceletHostApiSetup {
       }
     } else {
       destroyLocationsChannel.setMessageHandler(nil)
+    }
+    /// Delete only synced locations from the database. Returns count deleted.
+    let destroySyncedLocationsChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.destroySyncedLocations\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      destroySyncedLocationsChannel.setMessageHandler { _, reply in
+        api.destroySyncedLocations { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      destroySyncedLocationsChannel.setMessageHandler(nil)
     }
     /// Delete a single location by UUID.
     let destroyLocationChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.destroyLocation\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)

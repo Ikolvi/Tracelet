@@ -1,3 +1,9 @@
+## 1.7.1
+
+- **FIX**: ConfigManager null-merge — partial `setConfig()` no longer overwrites existing values with null defaults (fixes periodic mode HTTP sync failure).
+- **FEAT**: Add `Tracelet.destroySyncedLocations()` — deletes only synced locations, returns count deleted.
+- **FEAT**: Auto-purge synced locations from database after successful HTTP sync.
+
 ## 1.7.0
 
 - **FEAT**: Migrate all event subscriptions from EventChannels to Pigeon FlutterApi platform streams.

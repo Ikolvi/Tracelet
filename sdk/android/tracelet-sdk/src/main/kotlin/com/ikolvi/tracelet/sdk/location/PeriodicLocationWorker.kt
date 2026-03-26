@@ -16,6 +16,7 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import com.ikolvi.tracelet.sdk.ConfigManager
+import com.ikolvi.tracelet.sdk.ListenerEventSender
 import com.ikolvi.tracelet.sdk.TraceletBootstrap
 import com.ikolvi.tracelet.sdk.TraceletEventSender
 import com.ikolvi.tracelet.sdk.StateManager
@@ -264,8 +265,36 @@ class PeriodicLocationWorker(
                 // Persist to database
                 db.insertLocation(locationMap)
 
-                // Trigger HTTP auto-sync if manager is available
-                httpSyncManager?.onLocationInserted()
+                // Trigger HTTP auto-sync — use static manager if available,
+                // otherwise create a local headless instance so locations
+                // sync even when the Flutter UI process is dead.
+                val sharedSync = httpSyncManager
+                Log.d(TAG, "HTTP sync: sharedSync=${if (sharedSync != null) "SHARED" else "LOCAL"}, url=${config.getHttpUrl()}, autoSync=${config.getAutoSync()}")
+                val syncManager = sharedSync ?: run {
+                    val sender = TraceletBootstrap.eventSenderFactory
+                        ?.invoke(applicationContext)
+                        ?: ListenerEventSender()
+                    val localSync = HttpSyncManager(applicationContext, config, sender, db)
+                    localSync.start()
+                    localSync
+                }
+                try {
+                    if (sharedSync != null) {
+                        // Shared instance — async is fine, it outlives the worker.
+                        syncManager.onLocationInserted()
+                    } else {
+                        // Local instance — must sync synchronously since the
+                        // async path would race with stop() below.
+                        val synced = syncManager.syncBlocking()
+                        Log.d(TAG, "HTTP sync (local): synced ${synced.size} locations")
+                    }
+                } finally {
+                    // Stop locally-created HttpSyncManager to prevent leaking
+                    // network connections and listeners across worker runs.
+                    if (sharedSync == null) {
+                        syncManager.stop()
+                    }
+                }
 
                 // Dispatch to Dart
                 dispatchLocation(locationMap)
@@ -290,6 +319,19 @@ class PeriodicLocationWorker(
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Periodic location work failed: ${e.message}", e)
+            // Re-schedule next alarm even on failure so the chain doesn't break.
+            try {
+                val config = ConfigManager.getInstance(applicationContext)
+                val state = StateManager(applicationContext)
+                val interval = config.getPeriodicLocationInterval()
+                val useExact = config.getPeriodicUseExactAlarms() || interval < 900
+                if (state.enabled && state.trackingMode == 2 && useExact) {
+                    scheduleExactAlarm(applicationContext, interval)
+                    Log.d(TAG, "Re-scheduled next alarm in ${interval}s (after failure)")
+                }
+            } catch (rescheduleErr: Exception) {
+                Log.e(TAG, "Failed to re-schedule alarm: ${rescheduleErr.message}")
+            }
             Result.retry()
         }
     }

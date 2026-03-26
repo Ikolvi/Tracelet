@@ -1,3 +1,12 @@
+## 1.7.1
+
+- **FIX**: ConfigManager null-merge — partial `setConfig()` no longer overwrites existing non-null values (e.g. HTTP URL) with null defaults.
+- **FIX**: PeriodicLocationWorker catch block now re-schedules the next exact alarm before returning `Result.retry()`, preventing permanent chain breaks on exceptions.
+- **FIX**: GeofenceBroadcastReceiver bootstraps SDK when app is killed and `geofenceManager` is null, instead of silently dropping events.
+- **FEAT**: Add `destroySyncedLocations()` — deletes only synced locations from the database.
+- **FEAT**: Auto-purge synced locations after successful HTTP sync in `HttpSyncManager`.
+- **TEST**: Add 5 unit tests for ConfigManager null-merge protection, `deleteSyncedLocations`, and `destroySyncedLocations` facade.
+
 ## 1.7.0
 
 - **FIX**: Wire `headlessFallback` in `eventSenderFactory` — fixes geofence events silently dropped on task removal (#43).

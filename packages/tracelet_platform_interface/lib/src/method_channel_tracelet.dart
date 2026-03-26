@@ -227,6 +227,14 @@ class MethodChannelTracelet extends TraceletPlatform {
   }
 
   @override
+  Future<int> destroySyncedLocations() async {
+    final result = await _methodChannel.invokeMethod<int>(
+      'destroySyncedLocations',
+    );
+    return result ?? 0;
+  }
+
+  @override
   Future<bool> destroyLocation(String uuid) async {
     final result = await _methodChannel.invokeMethod<bool>(
       'destroyLocation',

@@ -315,6 +315,10 @@ class TraceletHostApiImpl(
         callback(Result.success(sdk.destroyLocations()))
     }
 
+    override fun destroySyncedLocations(callback: (Result<Long>) -> Unit) {
+        callback(Result.success(sdk.destroySyncedLocations().toLong()))
+    }
+
     override fun destroyLocation(uuid: String, callback: (Result<Boolean>) -> Unit) {
         callback(Result.success(sdk.destroyLocation(uuid)))
     }

@@ -51,7 +51,30 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         Log.d(TAG, "Geofence transition: type=$transitionType, " +
                 "geofences=${triggeringGeofences.map { it.requestId }}")
 
-        geofenceManager?.handleGeofenceEvent(
+        val manager = geofenceManager ?: run {
+            // App was killed — bootstrap SDK subsystems to handle the event.
+            Log.d(TAG, "GeofenceManager is null (app was killed) — bootstrapping")
+            try {
+                val sdk = com.ikolvi.tracelet.sdk.TraceletSdk.getInstance(context)
+                // lateinit check: try to access, catch UninitializedPropertyAccessException
+                try {
+                    sdk.geofenceManager
+                } catch (_: UninitializedPropertyAccessException) {
+                    sdk.initialize()
+                    sdk.geofenceManager
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to bootstrap SDK for geofence event: ${e.message}")
+                null
+            }
+        }
+
+        if (manager == null) {
+            Log.w(TAG, "GeofenceManager unavailable — event dropped")
+            return
+        }
+
+        manager.handleGeofenceEvent(
             transitionType = transitionType,
             triggeringGeofences = triggeringGeofences,
             latitude = latitude,

@@ -73,9 +73,18 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
         didFinishLaunchingWithOptions launchOptions: [AnyHashable: Any]? = nil
     ) -> Bool {
         let launchedForLocation = (launchOptions?[UIApplication.LaunchOptionsKey.location] as? Bool) == true
+        NSLog("[Tracelet] didFinishLaunchingWithOptions: launchedForLocation=\(launchedForLocation)")
         if launchedForLocation {
+            NSLog("[Tracelet] Killed-state relaunch detected — calling autoResumeTracking()")
             sdk.autoResumeTracking()
         }
         return true
+    }
+
+    // MARK: - UIApplicationDelegate (will terminate)
+
+    public func applicationWillTerminate(_ application: UIApplication) {
+        NSLog("[Tracelet] applicationWillTerminate: ensuring significant location monitoring persists")
+        sdk.onAppWillTerminate()
     }
 }

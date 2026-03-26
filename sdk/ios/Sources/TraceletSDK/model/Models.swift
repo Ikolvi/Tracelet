@@ -639,3 +639,66 @@ public struct TraceletTripEvent {
         ]
     }
 }
+
+// MARK: - TraceletPrivacyZone (definition)
+
+/// Privacy zone definition.
+///
+/// Actions:
+/// - `0` (exclude): Drop location entirely — not persisted, not dispatched.
+/// - `1` (degrade): Snap coordinates to a grid at ``degradedAccuracyMeters`` resolution.
+/// - `2` (eventOnly): Dispatch to listeners but do not persist to database.
+public struct TraceletPrivacyZone {
+    /// Action: drop location entirely.
+    public static let actionExclude = 0
+    /// Action: degrade coordinate precision.
+    public static let actionDegrade = 1
+    /// Action: dispatch to listeners but skip persistence.
+    public static let actionEventOnly = 2
+
+    public let identifier: String
+    public let latitude: Double
+    public let longitude: Double
+    public let radius: Double
+    /// 0 = exclude, 1 = degrade, 2 = eventOnly
+    public let action: Int
+    public let degradedAccuracyMeters: Double
+
+    public init(
+        identifier: String,
+        latitude: Double,
+        longitude: Double,
+        radius: Double,
+        action: Int = 0,
+        degradedAccuracyMeters: Double = 1000.0
+    ) {
+        self.identifier = identifier
+        self.latitude = latitude
+        self.longitude = longitude
+        self.radius = radius
+        self.action = action
+        self.degradedAccuracyMeters = degradedAccuracyMeters
+    }
+
+    public static func fromMap(_ map: [String: Any?]) -> TraceletPrivacyZone {
+        TraceletPrivacyZone(
+            identifier: map["identifier"] as? String ?? "",
+            latitude: (map["latitude"] as? NSNumber)?.doubleValue ?? 0,
+            longitude: (map["longitude"] as? NSNumber)?.doubleValue ?? 0,
+            radius: (map["radius"] as? NSNumber)?.doubleValue ?? 0,
+            action: (map["action"] as? NSNumber)?.intValue ?? 0,
+            degradedAccuracyMeters: (map["degradedAccuracyMeters"] as? NSNumber)?.doubleValue ?? 1000.0
+        )
+    }
+
+    public func toMap() -> [String: Any] {
+        [
+            "identifier": identifier,
+            "latitude": latitude,
+            "longitude": longitude,
+            "radius": radius,
+            "action": action,
+            "degradedAccuracyMeters": degradedAccuracyMeters,
+        ]
+    }
+}

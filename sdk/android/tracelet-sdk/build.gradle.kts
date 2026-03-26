@@ -97,8 +97,11 @@ afterEvaluate {
 
                 pom {
                     name.set("Tracelet SDK")
-                    description.set("Production-grade background geolocation SDK for Android")
-                    url.set("https://github.com/Ikolvi/Tracelet")
+                    description.set("Production-grade background geolocation SDK for Android. " +
+                        "Battery-conscious background geolocation with motion detection, " +
+                        "geofencing, SQLite persistence, HTTP sync, and headless execution. " +
+                        "See the full documentation at https://github.com/Ikolvi/Tracelet/tree/main/sdk/android")
+                    url.set("https://github.com/Ikolvi/Tracelet/tree/main/sdk/android")
 
                     licenses {
                         license {

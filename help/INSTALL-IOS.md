@@ -52,6 +52,7 @@ Add these entries to `ios/Runner/Info.plist`:
     <string>location</string>
     <string>fetch</string>
     <string>processing</string>
+    <string>audio</string>
 </array>
 ```
 
@@ -60,6 +61,7 @@ Add these entries to `ios/Runner/Info.plist`:
 | `location` | Continuous background location updates |
 | `fetch` | Background fetch for headless Dart execution |
 | `processing` | `BGTaskScheduler` for scheduled tracking |
+| `audio` | Required when `preventSuspend: true` — silent audio keep-alive |
 
 ### BGTaskScheduler Permitted Identifiers (Required for Periodic Mode)
 
@@ -147,6 +149,7 @@ If you prefer to use Xcode instead of editing `Info.plist` directly:
         <string>location</string>
         <string>fetch</string>
         <string>processing</string>
+        <string>audio</string>
     </array>
 
     <!-- BGTaskScheduler Identifiers (required for periodic mode) -->

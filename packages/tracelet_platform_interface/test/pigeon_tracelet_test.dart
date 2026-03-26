@@ -222,6 +222,12 @@ class FakeHostApi extends TraceletHostApi {
   }
 
   @override
+  Future<int> destroySyncedLocations() async {
+    _record('destroySyncedLocations');
+    return 5;
+  }
+
+  @override
   Future<bool> destroyLocation(String uuid) async {
     _record('destroyLocation', [uuid]);
     return true;
@@ -702,6 +708,10 @@ void main() {
 
     test('destroyLocations() returns true', () async {
       expect(await pigeon.destroyLocations(), true);
+    });
+
+    test('destroySyncedLocations() returns count', () async {
+      expect(await pigeon.destroySyncedLocations(), 5);
     });
 
     test('destroyLocation() delegates', () async {

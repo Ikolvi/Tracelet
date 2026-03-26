@@ -1034,6 +1034,8 @@ interface TraceletHostApi {
   fun getCount(query: Map<String, Any?>?, callback: (Result<Long>) -> Unit)
   /** Delete all stored locations. */
   fun destroyLocations(callback: (Result<Boolean>) -> Unit)
+  /** Delete only synced locations from the database. Returns count deleted. */
+  fun destroySyncedLocations(callback: (Result<Long>) -> Unit)
   /** Delete a single location by UUID. */
   fun destroyLocation(uuid: String, callback: (Result<Boolean>) -> Unit)
   /** Insert a custom location. Returns UUID. */
@@ -1609,6 +1611,24 @@ interface TraceletHostApi {
         if (api != null) {
           channel.setMessageHandler { _, reply ->
             api.destroyLocations{ result: Result<Boolean> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(TraceletApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(TraceletApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.destroySyncedLocations$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            api.destroySyncedLocations{ result: Result<Long> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(TraceletApiPigeonUtils.wrapError(error))

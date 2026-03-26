@@ -465,3 +465,47 @@ data class TraceletTripEvent(
         "waypoints" to waypoints.map { it.toMap() },
     )
 }
+
+/**
+ * Privacy zone definition.
+ *
+ * Actions:
+ * - `0` (EXCLUDE): Drop location entirely — not persisted, not dispatched.
+ * - `1` (DEGRADE): Snap coordinates to a grid at [degradedAccuracyMeters] resolution.
+ * - `2` (EVENT_ONLY): Dispatch to listeners but do not persist to database.
+ */
+data class TraceletPrivacyZone(
+    val identifier: String,
+    val latitude: Double,
+    val longitude: Double,
+    val radius: Double,
+    val action: Int = 0,
+    val degradedAccuracyMeters: Double = 1000.0,
+) {
+    companion object {
+        /** Action: drop location entirely. */
+        const val ACTION_EXCLUDE = 0
+        /** Action: degrade coordinate precision. */
+        const val ACTION_DEGRADE = 1
+        /** Action: dispatch to listeners but skip persistence. */
+        const val ACTION_EVENT_ONLY = 2
+
+        fun fromMap(map: Map<String, Any?>): TraceletPrivacyZone = TraceletPrivacyZone(
+            identifier = map["identifier"] as? String ?: "",
+            latitude = (map["latitude"] as? Number)?.toDouble() ?: 0.0,
+            longitude = (map["longitude"] as? Number)?.toDouble() ?: 0.0,
+            radius = (map["radius"] as? Number)?.toDouble() ?: 0.0,
+            action = (map["action"] as? Number)?.toInt() ?: 0,
+            degradedAccuracyMeters = (map["degradedAccuracyMeters"] as? Number)?.toDouble() ?: 1000.0,
+        )
+    }
+
+    fun toMap(): Map<String, Any?> = mapOf(
+        "identifier" to identifier,
+        "latitude" to latitude,
+        "longitude" to longitude,
+        "radius" to radius,
+        "action" to action,
+        "degradedAccuracyMeters" to degradedAccuracyMeters,
+    )
+}

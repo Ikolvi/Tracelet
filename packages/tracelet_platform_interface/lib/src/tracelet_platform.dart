@@ -210,6 +210,13 @@ abstract class TraceletPlatform extends PlatformInterface {
     throw UnimplementedError('destroyLocations() has not been implemented.');
   }
 
+  /// Destroy only locations that have been synced. Returns count deleted.
+  Future<int> destroySyncedLocations() {
+    throw UnimplementedError(
+      'destroySyncedLocations() has not been implemented.',
+    );
+  }
+
   /// Destroy a single location by [uuid].
   Future<bool> destroyLocation(String uuid) {
     throw UnimplementedError('destroyLocation() has not been implemented.');

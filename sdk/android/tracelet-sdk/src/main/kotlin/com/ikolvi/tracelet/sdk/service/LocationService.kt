@@ -16,6 +16,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.ikolvi.tracelet.sdk.ConfigManager
 import com.ikolvi.tracelet.sdk.HeadersRefreshable
+import com.ikolvi.tracelet.sdk.ListenerEventSender
 import com.ikolvi.tracelet.sdk.TraceletBootstrap
 import com.ikolvi.tracelet.sdk.TraceletEventSender
 import com.ikolvi.tracelet.sdk.StateManager
@@ -343,8 +344,11 @@ class LocationService : Service() {
         val database = TraceletDatabase.getInstance(ctx)
         val eventSender = TraceletBootstrap.eventSenderFactory?.invoke(ctx)
             ?: run {
-                Log.w(TAG, "No event sender factory registered \u2014 cannot bootstrap boot tracking")
-                return
+                // Fallback: use a no-op ListenerEventSender so native tracking
+                // and HTTP sync still work even when the Flutter engine hasn't
+                // set the factory (e.g., cold boot before plugin initialization).
+                Log.w(TAG, "No event sender factory — falling back to ListenerEventSender for boot tracking")
+                ListenerEventSender()
             }
 
         // Headless dispatcher — used for 401 authorization refresh in boot mode.
@@ -452,13 +456,18 @@ class LocationService : Service() {
         val runnable = object : Runnable {
             override fun run() {
                 if (bootLocationEngine == null) return // Tracking stopped
-                engine.getCurrentPosition(emptyMap()) { location ->
-                    val locationData = location
-                        ?: engine.getLastLocation()?.let {
-                            engine.enrichLocation(it, "heartbeat")
-                        }
-                        ?: emptyMap()
+                Log.d(TAG, "Boot heartbeat fired")
+                val cached = engine.getLastGpsLocation()
+                if (cached != null) {
+                    val locationData = engine.enrichLocation(cached, "heartbeat").toMutableMap()
+                    // Persist to database so it syncs via HTTP automatically.
+                    val db = TraceletDatabase.getInstance(applicationContext)
+                    db.insertLocationAsync(locationData)
+                    engine.onLocationPersisted?.invoke()
                     dispatcher.sendHeartbeat(mapOf("location" to locationData))
+                    Log.d(TAG, "Boot heartbeat: lat=${cached.latitude}, lon=${cached.longitude}, acc=${cached.accuracy}m")
+                } else {
+                    Log.d(TAG, "Boot heartbeat: no cached location, skipping")
                 }
                 handler.postDelayed(this, intervalSeconds * 1000L)
             }

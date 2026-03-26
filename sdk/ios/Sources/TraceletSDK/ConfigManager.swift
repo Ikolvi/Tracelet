@@ -30,7 +30,12 @@ public final class ConfigManager {
                 flat[key] = value
             }
         }
-        cache.merge(flat) { _, new in new }
+        // Filter out NSNull / nil values — a partial setConfig() must not
+        // overwrite existing non-null config with defaults.  E.g. calling
+        // setConfig({app: {heartbeatInterval: -1}}) must not wipe the
+        // HTTP URL that was set during ready().
+        let filtered = flat.filter { !($0.value is NSNull) }
+        cache.merge(filtered) { _, new in new }
         saveToDisk()
         return cache
     }
@@ -233,6 +238,9 @@ public final class ConfigManager {
     }
     public func getRemoteConfigTimeout() -> Int { cache["remoteConfigTimeout"] as? Int ?? 30000 }
     public func getRemoteConfigRefreshInterval() -> Int { cache["remoteConfigRefreshInterval"] as? Int ?? 3600 }
+
+    // MARK: - Battery Budget
+    public func getBatteryBudgetPerHour() -> Double { cache["batteryBudgetPerHour"] as? Double ?? 0.0 }
 
     // MARK: - SSL Pinning
 

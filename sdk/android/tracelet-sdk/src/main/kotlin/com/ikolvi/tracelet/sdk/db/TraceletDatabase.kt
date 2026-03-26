@@ -396,6 +396,11 @@ class TraceletDatabase private constructor(context: Context, private val dbPassw
         return true
     }
 
+    /** Deletes all locations that have been successfully synced. */
+    fun deleteSyncedLocations(): Int {
+        return writableDatabase.delete(TABLE_LOCATIONS, "$COL_SYNCED = 1", null)
+    }
+
     /** Deletes a location by UUID. */
     fun deleteLocation(uuid: String): Boolean {
         return writableDatabase.delete(TABLE_LOCATIONS, "$COL_UUID = ?", arrayOf(uuid)) > 0

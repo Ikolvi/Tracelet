@@ -19,6 +19,9 @@ public final class TraceletPermissionManager: NSObject, CLLocationManagerDelegat
     public typealias PermissionCallback = (Any?) -> Void
 
     private var pendingResult: PermissionCallback?
+    /// The status before the permission request — used to detect actual changes
+    /// when upgrading from whenInUse → always.
+    private var statusBeforeRequest: Int?
 
     public override init() {
         super.init()
@@ -59,9 +62,11 @@ public final class TraceletPermissionManager: NSObject, CLLocationManagerDelegat
 
         switch current {
         case 0: // notDetermined
+            statusBeforeRequest = nil
             pendingResult = result
             locationManager.requestWhenInUseAuthorization()
         case 2: // whenInUse → upgrade to Always
+            statusBeforeRequest = current
             pendingResult = result
             locationManager.requestAlwaysAuthorization()
         default:
@@ -85,8 +90,19 @@ public final class TraceletPermissionManager: NSObject, CLLocationManagerDelegat
 
     public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         guard let pending = pendingResult else { return }
+        let newStatus = getAuthorizationStatus()
+
+        // When upgrading whenInUse → always, iOS fires an immediate callback
+        // with the *unchanged* whenInUse status before showing the dialog.
+        // Ignore this spurious callback — only resolve when the status has
+        // actually changed from what it was before the request.
+        if let before = statusBeforeRequest, newStatus == before {
+            return
+        }
+
         pendingResult = nil
-        pending(getAuthorizationStatus())
+        statusBeforeRequest = nil
+        pending(newStatus)
     }
 
     // MARK: - Power save

@@ -417,6 +417,10 @@ abstract class TraceletHostApi {
   @async
   bool destroyLocations();
 
+  /// Delete only synced locations from the database. Returns count deleted.
+  @async
+  int destroySyncedLocations();
+
   /// Delete a single location by UUID.
   @async
   bool destroyLocation(String uuid);

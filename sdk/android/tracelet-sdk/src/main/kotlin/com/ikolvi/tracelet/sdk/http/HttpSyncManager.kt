@@ -137,11 +137,21 @@ class HttpSyncManager(
 
     /** Trigger auto-sync if conditions are met. Called after each location insert. */
     fun onLocationInserted() {
-        if (!config.getAutoSync()) return
-        val url = config.getHttpUrl() ?: return
+        if (!config.getAutoSync()) {
+            Log.d(TAG, "onLocationInserted: autoSync disabled — skipping")
+            return
+        }
+        val url = config.getHttpUrl()
+        if (url == null) {
+            Log.d(TAG, "onLocationInserted: no URL configured — skipping")
+            return
+        }
 
         // Skip auto-sync on cellular if configured
-        if (config.getDisableAutoSyncOnCellular() && isCellular()) return
+        if (config.getDisableAutoSyncOnCellular() && isCellular()) {
+            Log.d(TAG, "onLocationInserted: on cellular with disableAutoSyncOnCellular — skipping")
+            return
+        }
 
         val threshold = config.getAutoSyncThreshold()
         if (threshold > 0) {
@@ -165,6 +175,17 @@ class HttpSyncManager(
         }
     }
 
+    /**
+     * Synchronous sync for headless workers.
+     *
+     * Performs sync on the calling thread, blocking until complete.
+     * Use this from background workers (e.g., [PeriodicLocationWorker])
+     * where the sync must finish before the worker returns.
+     */
+    fun syncBlocking(): List<Map<String, Any?>> {
+        return performSync()
+    }
+
     /** Async sync (no callback). */
     fun syncAsync() {
         executor.execute { performSync() }
@@ -175,9 +196,20 @@ class HttpSyncManager(
     // =========================================================================
 
     private fun performSync(): List<Map<String, Any?>> {
-        if (isSyncing) return emptyList()
-        val url = config.getHttpUrl() ?: return emptyList()
-        val client = httpClient ?: return emptyList()
+        if (isSyncing) {
+            Log.d(TAG, "performSync: already syncing — skipping")
+            return emptyList()
+        }
+        val url = config.getHttpUrl()
+        if (url == null) {
+            Log.d(TAG, "performSync: no URL configured — skipping")
+            return emptyList()
+        }
+        val client = httpClient
+        if (client == null) {
+            Log.d(TAG, "performSync: httpClient is null (start() not called?) — skipping")
+            return emptyList()
+        }
 
         isSyncing = true
         val allSynced = mutableListOf<Map<String, Any?>>()
@@ -187,24 +219,39 @@ class HttpSyncManager(
                 val batchSize = if (config.getBatchSync()) config.getMaxBatchSize() else 1
                 val orderAsc = config.getLocationsOrderDirection() == 0
                 val locations = db.getUnsyncedLocations(batchSize, orderAsc)
-                if (locations.isEmpty()) break
+                if (locations.isEmpty()) {
+                    Log.d(TAG, "performSync: no unsynced locations in DB")
+                    break
+                }
 
                 if (!isConnected) {
+                    Log.d(TAG, "performSync: not connected — deferring ${locations.size} locations")
                     pendingSyncOnConnect = true
                     break
                 }
 
+                Log.d(TAG, "performSync: sending batch of ${locations.size} to $url")
                 val success = sendBatch(client, url, locations)
                 if (success) {
                     val uuids = locations.mapNotNull { it["uuid"] as? String }
                     db.markSynced(uuids)
                     allSynced.addAll(locations)
+                    Log.d(TAG, "performSync: batch synced OK (${allSynced.size} total)")
                 } else {
+                    Log.w(TAG, "performSync: batch send failed — stopping")
                     break // Stop syncing on failure
                 }
             }
         } finally {
             isSyncing = false
+        }
+
+        // Auto-delete synced locations from DB to keep it lean
+        if (allSynced.isNotEmpty()) {
+            val deleted = db.deleteSyncedLocations()
+            if (deleted > 0) {
+                Log.d(TAG, "performSync: purged $deleted synced locations from DB")
+            }
         }
 
         return allSynced

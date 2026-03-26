@@ -313,6 +313,133 @@ internal class TraceletSdkTest {
     }
 
     // =========================================================================
+    // ConfigManager — null-merge protection
+    // =========================================================================
+
+    @Test
+    fun setConfig_partialUpdate_doesNotOverwriteExistingUrlWithNull() {
+        val config = ConfigManager.getInstance(context)
+        config.reset(null)
+
+        // Simulate ready() setting an HTTP URL
+        config.setConfig(mapOf(
+            "http" to mapOf<String, Any?>("url" to "https://example.com/api"),
+        ))
+        assertEquals("https://example.com/api", config.getHttpUrl())
+
+        // Simulate a partial setConfig with heartbeat change — Dart always
+        // serialises ALL sections including http with url=null by default
+        config.setConfig(mapOf(
+            "app" to mapOf<String, Any?>("heartbeatInterval" to -1),
+            "http" to mapOf<String, Any?>("url" to null, "autoSync" to true),
+        ))
+
+        // URL must NOT be wiped
+        assertEquals("https://example.com/api", config.getHttpUrl())
+        // The non-null value must still be applied
+        assertTrue(config.getAutoSync())
+    }
+
+    @Test
+    fun setConfig_explicitUrlOverwriteStillWorks() {
+        val config = ConfigManager.getInstance(context)
+        config.reset(null)
+
+        config.setConfig(mapOf(
+            "http" to mapOf<String, Any?>("url" to "https://old.example.com"),
+        ))
+        assertEquals("https://old.example.com", config.getHttpUrl())
+
+        config.setConfig(mapOf(
+            "http" to mapOf<String, Any?>("url" to "https://new.example.com"),
+        ))
+        assertEquals("https://new.example.com", config.getHttpUrl())
+    }
+
+    // =========================================================================
+    // Database — deleteSyncedLocations
+    // =========================================================================
+
+    @Test
+    fun deleteSyncedLocations_removesOnlySyncedRows() {
+        val db = TraceletDatabase.getInstance(context)
+
+        // Insert two locations
+        val uuid1 = db.insertLocation(mapOf(
+            "uuid" to "sync-1",
+            "latitude" to 37.77, "longitude" to -122.42,
+            "accuracy" to 5.0, "speed" to 0.0, "heading" to 0.0, "altitude" to 0.0,
+            "timestamp" to System.currentTimeMillis(),
+        ))
+        val uuid2 = db.insertLocation(mapOf(
+            "uuid" to "sync-2",
+            "latitude" to 37.78, "longitude" to -122.43,
+            "accuracy" to 5.0, "speed" to 0.0, "heading" to 0.0, "altitude" to 0.0,
+            "timestamp" to System.currentTimeMillis(),
+        ))
+
+        // Mark only the first as synced
+        db.markSynced(listOf(uuid1))
+
+        assertEquals(2, db.getLocationCount())
+
+        // Delete synced — only uuid1 should be removed
+        val deleted = db.deleteSyncedLocations()
+        assertEquals(1, deleted)
+        assertEquals(1, db.getLocationCount())
+
+        // Remaining location should be the un-synced one
+        val remaining = db.getLocations()
+        assertEquals("sync-2", remaining.first()["uuid"])
+
+        // Cleanup
+        db.deleteAllLocations()
+    }
+
+    @Test
+    fun deleteSyncedLocations_returnsZeroWhenNoneSynced() {
+        val db = TraceletDatabase.getInstance(context)
+        db.deleteAllLocations()
+
+        db.insertLocation(mapOf(
+            "uuid" to "not-synced",
+            "latitude" to 1.0, "longitude" to 2.0,
+            "accuracy" to 5.0, "speed" to 0.0, "heading" to 0.0, "altitude" to 0.0,
+            "timestamp" to System.currentTimeMillis(),
+        ))
+
+        val deleted = db.deleteSyncedLocations()
+        assertEquals(0, deleted)
+        assertEquals(1, db.getLocationCount())
+
+        db.deleteAllLocations()
+    }
+
+    // =========================================================================
+    // destroySyncedLocations — SDK facade
+    // =========================================================================
+
+    @Test
+    fun destroySyncedLocations_delegatesToDatabase() {
+        val sdk = readySdk()
+        val db = TraceletDatabase.getInstance(context)
+        db.deleteAllLocations()
+
+        // Insert and mark synced
+        val uuid = db.insertLocation(mapOf(
+            "uuid" to "facade-test",
+            "latitude" to 1.0, "longitude" to 2.0,
+            "accuracy" to 5.0, "speed" to 0.0, "heading" to 0.0, "altitude" to 0.0,
+            "timestamp" to System.currentTimeMillis(),
+        ))
+        db.markSynced(listOf(uuid))
+
+        val deleted = sdk.destroySyncedLocations()
+        assertEquals(1, deleted)
+        assertEquals(0, db.getLocationCount())
+    }
+
+    // =========================================================================
     // Helper — create initialized SDK via reflection (bypasses KeyStore)
     // =========================================================================
 

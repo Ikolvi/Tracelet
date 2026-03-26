@@ -242,6 +242,9 @@ class PigeonTracelet extends TraceletPlatform {
   Future<bool> destroyLocations() => _api.destroyLocations();
 
   @override
+  Future<int> destroySyncedLocations() => _api.destroySyncedLocations();
+
+  @override
   Future<bool> destroyLocation(String uuid) => _api.destroyLocation(uuid);
 
   @override

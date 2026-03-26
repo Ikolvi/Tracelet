@@ -126,6 +126,14 @@ class WebStorageEngine {
     return true;
   }
 
+  Future<int> destroySyncedLocations() async {
+    final before = _locations.length;
+    _locations.removeWhere(
+      (loc) => loc['synced'] == true || loc['synced'] == 1,
+    );
+    return before - _locations.length;
+  }
+
   Future<bool> destroyLocation(String uuid) async {
     final before = _locations.length;
     _locations.removeWhere((loc) => loc['uuid'] == uuid);

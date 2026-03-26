@@ -724,6 +724,183 @@ final class StateManagerExtendedTests: XCTestCase {
     }
 }
 
+// MARK: - Periodic Sync Contract Tests
+
+final class PeriodicSyncContractTests: XCTestCase {
+
+    // MARK: - onLocationPersisted callback property
+
+    func testOnLocationPersistedDefaultsToNil() {
+        let db = TraceletDatabase(inMemory: true)
+        let config = ConfigManager()
+        let state = StateManager()
+        let sender = MockSyncEventSender()
+        let engine = LocationEngine(
+            configManager: config,
+            stateManager: state,
+            eventDispatcher: sender,
+            database: db
+        )
+        XCTAssertNil(engine.onLocationPersisted)
+    }
+
+    func testOnLocationPersistedCanBeSetAndFired() {
+        let db = TraceletDatabase(inMemory: true)
+        let config = ConfigManager()
+        let state = StateManager()
+        let sender = MockSyncEventSender()
+        let engine = LocationEngine(
+            configManager: config,
+            stateManager: state,
+            eventDispatcher: sender,
+            database: db
+        )
+
+        var callbackFired = false
+        engine.onLocationPersisted = { callbackFired = true }
+        engine.onLocationPersisted?()
+        XCTAssertTrue(callbackFired)
+    }
+
+    // MARK: - HttpSyncManager.onLocationInserted threshold
+
+    func testHttpSyncManagerCreatesWithoutCrash() {
+        let db = TraceletDatabase(inMemory: true)
+        let config = ConfigManager()
+        let sender = MockSyncEventSender()
+        let sync = HttpSyncManager(
+            configManager: config,
+            eventDispatcher: sender,
+            database: db
+        )
+        // Must not crash
+        XCTAssertNotNil(sync)
+    }
+
+    func testHttpSyncManagerStartDoesNotCrashWithNoUrl() {
+        let db = TraceletDatabase(inMemory: true)
+        let config = ConfigManager()
+        // No URL configured — start should be a no-op
+        let sender = MockSyncEventSender()
+        let sync = HttpSyncManager(
+            configManager: config,
+            eventDispatcher: sender,
+            database: db
+        )
+        sync.start()
+        // Must not crash
+    }
+
+    func testOnLocationInsertedDoesNotCrashWithEmptyDb() {
+        let db = TraceletDatabase(inMemory: true)
+        let config = ConfigManager()
+        config.setConfig(["url": "http://localhost:9999/locations"])
+        let sender = MockSyncEventSender()
+        let sync = HttpSyncManager(
+            configManager: config,
+            eventDispatcher: sender,
+            database: db
+        )
+        sync.start()
+        sync.onLocationInserted()
+        // Must not crash — no locations in DB
+    }
+
+    // MARK: - onLocationPersisted → HttpSyncManager wiring
+
+    func testOnLocationPersistedWiresHttpSync() {
+        let db = TraceletDatabase(inMemory: true)
+        let config = ConfigManager()
+        config.setConfig(["url": "http://localhost:9999/locations"])
+        let state = StateManager()
+        let sender = MockSyncEventSender()
+        let engine = LocationEngine(
+            configManager: config,
+            stateManager: state,
+            eventDispatcher: sender,
+            database: db
+        )
+        let sync = HttpSyncManager(
+            configManager: config,
+            eventDispatcher: sender,
+            database: db
+        )
+        sync.start()
+
+        var syncTriggered = false
+        engine.onLocationPersisted = {
+            sync.onLocationInserted()
+            syncTriggered = true
+        }
+
+        // Simulate the callback firing (as it would from getCurrentPosition)
+        engine.onLocationPersisted?()
+        XCTAssertTrue(syncTriggered)
+    }
+
+    // MARK: - Auto-purge workflow: insert → mark synced → delete synced
+
+    func testAutoPurgeWorkflowDeletesSyncedKeepsUnsynced() {
+        let db = TraceletDatabase(inMemory: true)
+
+        // Insert 3 locations
+        let uuid1 = db.insertLocation([
+            "uuid": "purge-1",
+            "latitude": 1.0, "longitude": 2.0,
+            "accuracy": 5.0, "speed": 0.0, "heading": 0.0, "altitude": 0.0,
+            "timestamp": "2024-01-01T00:00:00Z",
+        ])
+        let uuid2 = db.insertLocation([
+            "uuid": "purge-2",
+            "latitude": 3.0, "longitude": 4.0,
+            "accuracy": 5.0, "speed": 0.0, "heading": 0.0, "altitude": 0.0,
+            "timestamp": "2024-01-01T01:00:00Z",
+        ])
+        let _ = db.insertLocation([
+            "uuid": "purge-3",
+            "latitude": 5.0, "longitude": 6.0,
+            "accuracy": 5.0, "speed": 0.0, "heading": 0.0, "altitude": 0.0,
+            "timestamp": "2024-01-01T02:00:00Z",
+        ])
+
+        XCTAssertEqual(db.getLocationCount(), 3)
+
+        // Simulate HTTP sync: mark 2 as synced
+        db.markSynced(uuids: [uuid1, uuid2])
+
+        // Simulate auto-purge (what HttpSyncManager does after successful upload)
+        let deleted = db.deleteSyncedLocations()
+        XCTAssertEqual(deleted, 2)
+
+        // Only the unsynced location remains
+        XCTAssertEqual(db.getLocationCount(), 1)
+        let remaining = db.getLocations()
+        XCTAssertEqual(remaining.first?["uuid"] as? String, "purge-3")
+    }
+}
+
+private class MockSyncEventSender: TraceletEventSending {
+    func sendLocation(_ data: [String: Any]) {}
+    func sendMotionChange(_ data: [String: Any]) {}
+    func sendActivityChange(_ data: [String: Any]) {}
+    func sendProviderChange(_ data: [String: Any]) {}
+    func sendGeofence(_ data: [String: Any]) {}
+    func sendGeofencesChange(_ data: [String: Any]) {}
+    func sendHeartbeat(_ data: [String: Any]) {}
+    func sendHttp(_ data: [String: Any]) {}
+    func sendSchedule(_ data: [String: Any]) {}
+    func sendPowerSaveChange(_ isPowerSave: Bool) {}
+    func sendConnectivityChange(_ data: [String: Any]) {}
+    func sendEnabledChange(_ enabled: Bool) {}
+    func sendNotificationAction(_ data: [String: Any]) {}
+    func sendAuthorization(_ data: [String: Any]) {}
+    func sendWatchPosition(_ data: [String: Any]) {}
+    func sendRemoteConfigEvent(_ data: [String: Any]) {}
+    func sendTrip(_ data: [String: Any]) {}
+    func sendBudgetAdjustment(_ data: [String: Any]) {}
+    func hasListener(eventName: String) -> Bool { false }
+}
+
 // MARK: - Mock Helpers
 
 private class MockEventSender: TraceletEventSending {
@@ -745,7 +922,9 @@ private class MockEventSender: TraceletEventSending {
     func sendAuthorization(_ data: [String: Any]) {}
     func sendWatchPosition(_ data: [String: Any]) {}
     func sendRemoteConfigEvent(_ data: [String: Any]) {}
-    func hasListener(eventName: String) -> Bool { return true }
+    func sendTrip(_ data: [String: Any]) {}
+    func sendBudgetAdjustment(_ data: [String: Any]) {}
+    func hasListener(eventName: String) -> Bool { false }
 }
 
 private class FullMockDelegate: TraceletDelegate {

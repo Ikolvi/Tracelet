@@ -13,6 +13,7 @@ import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationServices
 import com.ikolvi.tracelet.sdk.ConfigManager
 import com.ikolvi.tracelet.sdk.TraceletEventSender
+import com.ikolvi.tracelet.sdk.algorithm.GeofenceEvaluator
 import com.ikolvi.tracelet.sdk.receiver.GeofenceBroadcastReceiver
 import com.ikolvi.tracelet.sdk.db.TraceletDatabase
 import java.util.concurrent.ConcurrentHashMap
@@ -64,6 +65,9 @@ class GeofenceManager(
 
     /** High-accuracy mode: track which geofences the device is currently inside. */
     private val insideGeofenceIds = mutableSetOf<String>()
+
+    /** High-accuracy geofence evaluator (polygon + circular). */
+    private val geofenceEvaluator = GeofenceEvaluator()
 
     /** Last known device location for proximity filtering. */
     private var lastLatitude: Double? = null
@@ -220,15 +224,57 @@ class GeofenceManager(
     }
 
     /**
-     * High-accuracy geofence evaluation is now handled by shared Dart code
-     * (GeofenceEvaluator in tracelet_platform_interface). This method is kept
-     * as a no-op stub for call-site compatibility.
+     * High-accuracy geofence evaluation.
+     *
+     * Uses [GeofenceEvaluator] to perform software-based ENTER/EXIT detection
+     * for both circular and polygon geofences. Dispatches transition events
+     * and geofencesChange events via [TraceletEventSender].
+     *
+     * Called on each location update when `geofenceModeHighAccuracy` is enabled.
      */
     fun evaluateHighAccuracyProximity(latitude: Double, longitude: Double) {
-        // Proximity evaluation moved to shared Dart GeofenceEvaluator.
-        // This method is intentionally empty — Dart handles all ENTER/EXIT
-        // transitions via GeofenceEvaluator.evaluateProximity() in the
-        // onLocation stream pipeline.
+        val allGeofences = getCachedGeofences()
+        if (allGeofences.isEmpty()) return
+
+        val transitions = geofenceEvaluator.evaluateProximity(
+            latitude = latitude,
+            longitude = longitude,
+            geofences = allGeofences,
+        )
+        if (transitions.isEmpty()) return
+
+        val on = mutableListOf<Map<String, Any?>>()
+        val off = mutableListOf<Map<String, Any?>>()
+
+        for (t in transitions) {
+            val eventData = mapOf(
+                "identifier" to t.identifier,
+                "action" to t.action,
+                "location" to mapOf(
+                    "coords" to mapOf(
+                        "latitude" to latitude,
+                        "longitude" to longitude,
+                    )
+                ),
+                "extras" to t.geofence["extras"],
+            )
+            events.sendGeofence(eventData)
+
+            when (t.action) {
+                "ENTER" -> on.add(t.geofence)
+                "EXIT" -> {
+                    off.add(t.geofence)
+                    if (config.getGeofenceModeKnockOut()) {
+                        removeGeofence(t.identifier)
+                        geofenceEvaluator.removeGeofence(t.identifier)
+                    }
+                }
+            }
+        }
+
+        if (on.isNotEmpty() || off.isNotEmpty()) {
+            events.sendGeofencesChange(mapOf("on" to on, "off" to off))
+        }
     }
 
     /**
@@ -307,12 +353,14 @@ class GeofenceManager(
     /** Clear high-accuracy tracking state. */
     fun clearHighAccuracyState() {
         insideGeofenceIds.clear()
+        geofenceEvaluator.clear()
     }
 
     /** Destroy and clean up. */
     fun destroy() {
         unregisterAllGeofences()
         insideGeofenceIds.clear()
+        geofenceEvaluator.clear()
         invalidateGeofenceCache()
     }
 

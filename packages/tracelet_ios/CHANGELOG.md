@@ -1,3 +1,11 @@
+## 1.7.1
+
+- **FIX**: ConfigManager null-merge — filter NSNull values during merge so partial `setConfig()` does not overwrite existing non-null config.
+- **FIX**: Add missing `import UIKit` in `LocationEngine.swift` for `UIBackgroundTaskIdentifier`.
+- **FEAT**: Add `destroySyncedLocations()` — deletes only synced locations from the database.
+- **FEAT**: Auto-purge synced locations after successful HTTP sync in `HttpSyncManager`.
+- **TEST**: Add 4 unit tests for ConfigManager null-merge protection and `deleteSyncedLocations`.
+
 ## 1.7.0
 
 - **FIX**: Wire `headlessFallback` in `eventSenderFactory` (preventive — ensures future factory consumers can route to `HeadlessRunner`).

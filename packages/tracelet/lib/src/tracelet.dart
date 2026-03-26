@@ -619,6 +619,17 @@ class Tracelet {
     return _platform.destroyLocations();
   }
 
+  /// Destroy only locations that have been successfully synced to the server.
+  ///
+  /// Returns the number of synced locations deleted.
+  ///
+  /// Note: synced locations are also automatically purged after each
+  /// successful HTTP sync cycle, so calling this manually is typically
+  /// only needed for immediate cleanup.
+  static Future<int> destroySyncedLocations() {
+    return _platform.destroySyncedLocations();
+  }
+
   /// Destroy a single location by [uuid].
   static Future<bool> destroyLocation(String uuid) {
     return _platform.destroyLocation(uuid);

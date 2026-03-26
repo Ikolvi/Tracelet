@@ -57,7 +57,7 @@ public final class TraceletSdk {
     public private(set) var scheduleManager: ScheduleManager!
     public private(set) var logger: TraceletLogger!
     public private(set) var soundManager: SoundManager!
-    public private(set) var permissionManager: TraceletPermissionManager!
+    public private(set) var permissionManager: TraceletPermissionManager = TraceletPermissionManager()
     public private(set) var auditTrailManager: AuditTrailManager!
     public private(set) var privacyZoneManager: PrivacyZoneManager!
     public private(set) var deviceAttestor: DeviceAttestor!
@@ -71,6 +71,14 @@ public final class TraceletSdk {
     private var heartbeatTimer: Timer?
     private var stopAfterElapsedTimer: Timer?
     private var isReady = false
+
+    // Algorithms
+    public private(set) var tripManager: TripManager!
+    private var batteryBudgetEngine: BatteryBudgetEngine?
+    private var batteryBudgetTimer: Timer?
+
+    /// Battery budget sampling interval: 5 minutes.
+    private static let batterySampleInterval: TimeInterval = 5 * 60
 
     /// Whether ``ready(config:)`` has been called.
     public var isReadyState: Bool { isReady }
@@ -112,6 +120,34 @@ public final class TraceletSdk {
     // =========================================================================
     // MARK: - Lifecycle
     // =========================================================================
+
+    /// Initialize all subsystems with a typed configuration.
+    ///
+    /// Type-safe overload matching the Dart API:
+    ///
+    /// ```swift
+    /// sdk.ready(config: TraceletConfig(
+    ///     geo: .init(desiredAccuracy: .high, distanceFilter: 10.0),
+    ///     app: .init(stopOnTerminate: false, startOnBoot: true)
+    /// ))
+    /// ```
+    ///
+    /// - Parameter config: Typed configuration.
+    /// - Returns: Current state as a dictionary.
+    @discardableResult
+    public func ready(config: TraceletConfig) -> [String: Any] {
+        return ready(config: config.toMap())
+    }
+
+    /// Initialize the SDK using an Objective-C compatible config wrapper.
+    ///
+    /// - Parameter objcConfig: ``TraceletConfigObjC`` instance.
+    /// - Returns: Current state as a dictionary.
+    @objc(readyWithObjCConfig:)
+    @discardableResult
+    public func ready(objcConfig: TraceletConfigObjC) -> [String: Any] {
+        return ready(config: objcConfig.toMap())
+    }
 
     /// Initialize all subsystems with the given configuration.
     ///
@@ -157,6 +193,18 @@ public final class TraceletSdk {
             }
         }
 
+        // Initialize battery budget engine from config
+        let budgetPerHour = configManager.getBatteryBudgetPerHour()
+        if budgetPerHour > 0 {
+            batteryBudgetEngine = BatteryBudgetEngine(
+                targetBudgetPerHour: budgetPerHour,
+                initialDistanceFilter: configManager.getDistanceFilter(),
+                initialAccuracyIndex: configManager.getDesiredAccuracy()
+            )
+        } else {
+            batteryBudgetEngine = nil
+        }
+
         isReady = true
         return stateManager.toMap(merged)
     }
@@ -178,14 +226,23 @@ public final class TraceletSdk {
 
         locationEngine.start()
 
-        // Wire proximity-based geofence monitoring.
+        // Wire proximity-based geofence monitoring + trip waypoints.
         locationEngine.onLocationUpdate = { [weak self] lat, lng in
             self?.geofenceManager.updateProximity(latitude: lat, longitude: lng)
+            if self?.configManager.getGeofenceModeHighAccuracy() == true {
+                self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng)
+            }
+            self?.tripManager.onLocationReceived(
+                latitude: lat,
+                longitude: lng,
+                timestamp: ISO8601DateFormatter().string(from: Date())
+            )
         }
 
         motionDetector.start()
         startHeartbeat()
         startStopAfterElapsedTimer()
+        startBatteryBudgetSampling()
         preventSuspendManager.start()
         backgroundActivitySessionManager.start()
         serviceSessionManager.start()
@@ -217,6 +274,9 @@ public final class TraceletSdk {
             serviceSessionManager.stop()
 
             scheduleManager.stop()
+            tripManager.reset()
+            stopBatteryBudgetSampling()
+            batteryBudgetEngine?.reset()
             eventSender.sendEnabledChange(false)
         }
 
@@ -244,6 +304,9 @@ public final class TraceletSdk {
         // Wire proximity-based geofence monitoring.
         locationEngine.onLocationUpdate = { [weak self] lat, lng in
             self?.geofenceManager.updateProximity(latitude: lat, longitude: lng)
+            if self?.configManager.getGeofenceModeHighAccuracy() == true {
+                self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng)
+            }
         }
 
         // geofenceModeHighAccuracy: start GPS for in-app transition detection.
@@ -287,6 +350,9 @@ public final class TraceletSdk {
         // Wire proximity-based geofence monitoring.
         locationEngine.onLocationUpdate = { [weak self] lat, lng in
             self?.geofenceManager.updateProximity(latitude: lat, longitude: lng)
+            if self?.configManager.getGeofenceModeHighAccuracy() == true {
+                self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng)
+            }
         }
 
         startStopAfterElapsedTimer()
@@ -299,6 +365,10 @@ public final class TraceletSdk {
         if configManager.getPreventSuspend() {
             preventSuspendManager.start()
         }
+
+        // iOS 17+: Maintain background activity session so location delivery
+        // continues when the app has no foreground presence.
+        backgroundActivitySessionManager.start()
 
         // iOS 18+: Preserve authorization across suspension/termination.
         startServiceSessionForCurrentAuth()
@@ -319,6 +389,25 @@ public final class TraceletSdk {
     ///
     /// - Parameter config: Configuration dictionary.
     /// - Returns: Updated state as a dictionary.
+    /// Update the SDK configuration using a typed ``TraceletConfig``.
+    ///
+    /// - Parameter config: Typed configuration struct.
+    /// - Returns: Updated state as a dictionary.
+    @discardableResult
+    public func setConfig(_ config: TraceletConfig) -> [String: Any] {
+        return setConfig(config.toMap())
+    }
+
+    /// Update the SDK configuration using an Objective-C compatible config wrapper.
+    ///
+    /// - Parameter objcConfig: ``TraceletConfigObjC`` instance.
+    /// - Returns: Updated state as a dictionary.
+    @objc(setConfigWithObjC:)
+    @discardableResult
+    public func setConfig(objcConfig: TraceletConfigObjC) -> [String: Any] {
+        return setConfig(objcConfig.toMap())
+    }
+
     @discardableResult
     public func setConfig(_ config: [String: Any]) -> [String: Any] {
         let wasPreventing = configManager.getPreventSuspend()
@@ -463,6 +552,15 @@ public final class TraceletSdk {
         return geofenceManager.addGeofence(geofence)
     }
 
+    /// Add a single geofence using a typed ``TraceletGeofence`` model.
+    ///
+    /// - Parameter geofence: Typed geofence model.
+    /// - Returns: `true` if the geofence was added.
+    @discardableResult
+    public func addGeofence(_ geofence: TraceletGeofence) -> Bool {
+        return addGeofence(geofence.toMap() as [String: Any])
+    }
+
     /// Add multiple geofences at once.
     ///
     /// - Parameter geofences: Array of geofence dictionaries.
@@ -470,6 +568,15 @@ public final class TraceletSdk {
     @discardableResult
     public func addGeofences(_ geofences: [[String: Any]]) -> Bool {
         return geofenceManager.addGeofences(geofences)
+    }
+
+    /// Add multiple geofences using typed ``TraceletGeofence`` models.
+    ///
+    /// - Parameter geofences: Array of typed geofence models.
+    /// - Returns: `true` if all geofences were added.
+    @discardableResult
+    public func addGeofences(_ geofences: [TraceletGeofence]) -> Bool {
+        return addGeofences(geofences.map { $0.toMap() as [String: Any] })
     }
 
     /// Remove a geofence by its identifier.
@@ -546,6 +653,14 @@ public final class TraceletSdk {
     @discardableResult
     public func destroyLocations() -> Bool {
         return database.deleteAllLocations()
+    }
+
+    /// Destroy only locations that have been successfully synced.
+    ///
+    /// - Returns: Number of synced locations deleted.
+    @discardableResult
+    public func destroySyncedLocations() -> Int {
+        return database.deleteSyncedLocations()
     }
 
     /// Destroy a single location by UUID.
@@ -769,6 +884,15 @@ public final class TraceletSdk {
         return privacyZoneManager.addZone(zone)
     }
 
+    /// Add a single privacy zone using a typed ``TraceletPrivacyZone`` model.
+    ///
+    /// - Parameter zone: Typed privacy zone model.
+    /// - Returns: `true` if the zone was added.
+    @discardableResult
+    public func addPrivacyZone(_ zone: TraceletPrivacyZone) -> Bool {
+        return addPrivacyZone(zone.toMap())
+    }
+
     /// Add multiple privacy zones at once.
     ///
     /// - Parameter zones: Array of privacy zone dictionaries.
@@ -776,6 +900,15 @@ public final class TraceletSdk {
     @discardableResult
     public func addPrivacyZones(_ zones: [[String: Any]]) -> Bool {
         return privacyZoneManager.addZones(zones)
+    }
+
+    /// Add multiple privacy zones using typed ``TraceletPrivacyZone`` models.
+    ///
+    /// - Parameter zones: Array of typed privacy zone models.
+    /// - Returns: `true` if all zones were added.
+    @discardableResult
+    public func addPrivacyZones(_ zones: [TraceletPrivacyZone]) -> Bool {
+        return addPrivacyZones(zones.map { $0.toMap() })
     }
 
     /// Remove a privacy zone by its identifier.
@@ -866,6 +999,12 @@ public final class TraceletSdk {
             self?.httpSyncManager.onLocationInserted()
         }
 
+        // Trip manager
+        tripManager = TripManager()
+        tripManager.onTripEnd = { [weak self] data in
+            self?.eventSender.sendTrip(data)
+        }
+
         // Motion detector
         motionDetector = MotionDetector(
             configManager: configManager,
@@ -901,7 +1040,6 @@ public final class TraceletSdk {
 
         // Utilities
         soundManager = SoundManager(configManager: configManager)
-        permissionManager = TraceletPermissionManager()
 
         // Battery monitoring
         BatteryUtils.initialize()
@@ -928,6 +1066,15 @@ public final class TraceletSdk {
             guard let self = self else { return }
             self.stateManager.isMoving = isMoving
             self.locationEngine.changePace(isMoving)
+
+            // Feed TripManager with motion state change
+            let lastLoc = self.locationEngine.getLastLocation()
+            self.tripManager.onMotionStateChanged(
+                isMoving: isMoving,
+                latitude: lastLoc?.coordinate.latitude,
+                longitude: lastLoc?.coordinate.longitude,
+                timestamp: lastLoc.map { ISO8601DateFormatter().string(from: $0.timestamp) }
+            )
         }
     }
 
@@ -960,22 +1107,24 @@ public final class TraceletSdk {
                 repeats: true
             ) { [weak self] _ in
                 guard let self = self else { return }
-                if let location = self.locationEngine.getLastLocation() {
-                    let data: [String: Any] = [
-                        "location": [
-                            "coords": [
-                                "latitude": location.coordinate.latitude,
-                                "longitude": location.coordinate.longitude,
-                                "accuracy": location.horizontalAccuracy,
-                                "altitude": location.altitude,
-                                "speed": location.speed,
-                                "heading": location.course,
-                            ],
-                            "timestamp": ISO8601DateFormatter().string(from: location.timestamp),
-                        ]
-                    ]
-                    self.eventSender.sendHeartbeat(data)
+                NSLog("[Tracelet] Heartbeat fired")
+                guard let location = self.locationEngine.getLastGpsLocation() else {
+                    NSLog("[Tracelet] Heartbeat: no cached location, skipping")
+                    return
                 }
+                // Build a fully enriched location map with UUID, battery, etc.
+                var locationMap = self.locationEngine.buildLocationMap(location)
+                locationMap["event"] = "heartbeat"
+
+                // Persist to database so it syncs via HTTP automatically.
+                let _ = self.database.insertLocation(locationMap)
+                self.locationEngine.onLocationPersisted?()
+
+                let data: [String: Any] = ["location": locationMap]
+                self.eventSender.sendHeartbeat(data)
+                NSLog("[Tracelet] Heartbeat: lat=%.6f, lon=%.6f, accuracy=%.1fm",
+                      location.coordinate.latitude, location.coordinate.longitude,
+                      location.horizontalAccuracy)
             }
         }
     }
@@ -983,6 +1132,42 @@ public final class TraceletSdk {
     private func stopHeartbeat() {
         heartbeatTimer?.invalidate()
         heartbeatTimer = nil
+    }
+
+    // MARK: - Private: Battery Budget Sampling
+
+    private func startBatteryBudgetSampling() {
+        stopBatteryBudgetSampling()
+        guard let engine = batteryBudgetEngine else { return }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.batteryBudgetTimer = Timer.scheduledTimer(
+                withTimeInterval: Self.batterySampleInterval,
+                repeats: true
+            ) { [weak self] _ in
+                guard let self = self, self.stateManager.enabled else { return }
+                let level = Double(BatteryUtils.getBatteryLevel())
+                if let event = engine.processSample(level) {
+                    self.eventSender.sendBudgetAdjustment([
+                        "currentBatteryDrain": event.currentBatteryDrain,
+                        "targetBudget": event.targetBudget,
+                        "newDistanceFilter": event.newDistanceFilter,
+                        "newDesiredAccuracy": event.newDesiredAccuracy,
+                        "newPeriodicInterval": event.newPeriodicInterval as Any,
+                    ])
+                    self.logger.info(
+                        "BatteryBudget adjusted: df=\(event.newDistanceFilter), " +
+                        "acc=\(event.newDesiredAccuracy), drain=\(event.currentBatteryDrain)%/hr"
+                    )
+                }
+            }
+        }
+    }
+
+    private func stopBatteryBudgetSampling() {
+        batteryBudgetTimer?.invalidate()
+        batteryBudgetTimer = nil
     }
 
     // MARK: - Private: stopAfterElapsedMinutes
@@ -1034,6 +1219,41 @@ public final class TraceletSdk {
         }
     }
 
+    // MARK: - Public: App Termination
+
+    /// Called when the app is about to be terminated.
+    ///
+    /// Ensures significant location monitoring is registered so iOS will
+    /// relaunch the app on the next cell-tower change. Also creates a
+    /// fresh `CLLocationManager` to survive the teardown and explicitly
+    /// starts significant location monitoring on it.
+    ///
+    /// **Important:** This does NOT survive user force-quit on iOS (swipe
+    /// up from app switcher). Apple explicitly kills all location services
+    /// in that scenario. This handles system-initiated termination only
+    /// (memory pressure, OS updates, etc.).
+    public func onAppWillTerminate() {
+        guard stateManager != nil, stateManager.enabled else { return }
+        guard configManager != nil, !configManager.getStopOnTerminate() else { return }
+
+        NSLog("[Tracelet] onAppWillTerminate: stopOnTerminate=false, ensuring significant location monitoring")
+
+        // Create a standalone CLLocationManager that outlives the current
+        // singleton teardown. By starting significant location monitoring
+        // on a fresh manager, we guarantee iOS has an active registration
+        // that will trigger a relaunch.
+        let terminationManager = CLLocationManager()
+        terminationManager.startMonitoringSignificantLocationChanges()
+        // Store in a static to prevent deallocation before the process ends.
+        TraceletSdk._terminationLocationManager = terminationManager
+
+        NSLog("[Tracelet] onAppWillTerminate: significant location monitoring registered on termination manager")
+    }
+
+    /// Holds a reference to the CLLocationManager created at termination
+    /// time so it isn't deallocated before the process exits.
+    private static var _terminationLocationManager: CLLocationManager?
+
     // MARK: - Public: Auto-Resume from killed state
 
     /// Automatically resumes tracking after the app is relaunched from a
@@ -1042,26 +1262,53 @@ public final class TraceletSdk {
     /// Call this from `application(_:didFinishLaunchingWithOptions:)` when
     /// `LaunchOptionsKey.location` is present.
     public func autoResumeTracking() {
-        guard configManager != nil else {
+        NSLog("[Tracelet] autoResumeTracking: starting")
+        if configManager == nil {
+            NSLog("[Tracelet] autoResumeTracking: configManager nil, calling initialize()")
             initialize()
+        }
+
+        // Guard: stopOnTerminate means we should NOT resume after kill.
+        if configManager.getStopOnTerminate() {
+            NSLog("[Tracelet] autoResumeTracking: stopOnTerminate=true, aborting")
+            stateManager.enabled = false
             return
         }
-        guard stateManager.enabled else { return }
+
+        guard stateManager.enabled else {
+            NSLog("[Tracelet] autoResumeTracking: stateManager.enabled=false, aborting")
+            return
+        }
 
         let authStatus = locationEngine.getAuthorizationStatus()
         guard authStatus == 3 else { // authorizedAlways
+            NSLog("[Tracelet] autoResumeTracking: authStatus=\(authStatus), need 3 (Always), disabling")
             stateManager.enabled = false
             return
         }
 
         stateManager.didLaunchInBackground = true
         let trackingMode = stateManager.trackingMode
+        NSLog("[Tracelet] autoResumeTracking: trackingMode=\(trackingMode), resuming")
+
+        // Start HTTP sync so killed-state locations are synced to server
+        httpSyncManager.start()
+        NSLog("[Tracelet] autoResumeTracking: httpSyncManager started")
+
+        // Wire onLocationPersisted so persisted locations trigger HTTP auto-sync.
+        // Without this, locations accumulate in SQLite but never sync.
+        locationEngine.onLocationPersisted = { [weak self] in
+            self?.httpSyncManager.onLocationInserted()
+        }
 
         switch trackingMode {
         case 0:
             locationEngine.start()
             locationEngine.onLocationUpdate = { [weak self] lat, lng in
                 self?.geofenceManager.updateProximity(latitude: lat, longitude: lng)
+                if self?.configManager.getGeofenceModeHighAccuracy() == true {
+                    self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng)
+                }
             }
             motionDetector.start()
             startHeartbeat()
@@ -1073,6 +1320,9 @@ public final class TraceletSdk {
             geofenceManager.reRegisterAll()
             locationEngine.onLocationUpdate = { [weak self] lat, lng in
                 self?.geofenceManager.updateProximity(latitude: lat, longitude: lng)
+                if self?.configManager.getGeofenceModeHighAccuracy() == true {
+                    self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng)
+                }
             }
             locationEngine.start()
             preventSuspendManager.start()
@@ -1083,12 +1333,16 @@ public final class TraceletSdk {
             locationEngine.startPeriodic()
             locationEngine.onLocationUpdate = { [weak self] lat, lng in
                 self?.geofenceManager.updateProximity(latitude: lat, longitude: lng)
+                if self?.configManager.getGeofenceModeHighAccuracy() == true {
+                    self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng)
+                }
             }
             let interval = TimeInterval(configManager.getPeriodicLocationInterval())
             periodicRefreshScheduler.start(interval: interval)
             if configManager.getPreventSuspend() {
                 preventSuspendManager.start()
             }
+            backgroundActivitySessionManager.start()
             startServiceSessionForCurrentAuth()
 
         default:

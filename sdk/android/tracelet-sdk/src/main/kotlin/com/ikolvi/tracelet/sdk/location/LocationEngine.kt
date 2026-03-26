@@ -83,6 +83,9 @@ class LocationEngine(
 
     private var trackingCallback: LocationCallback? = null
     private var lastLocation: Location? = null
+    /** Last GPS-quality location (accuracy ≤ 100m).
+     *  Used by heartbeat to avoid returning low-accuracy significant-change fixes. */
+    private var lastGpsLocation: Location? = null
     private var currentActivityType: String = "unknown"
     private var currentActivityConfidence: Int = -1
 
@@ -352,7 +355,10 @@ class LocationEngine(
                 if (age <= maximumAge) {
                     val enriched = enrichLocation(cached, "getCurrentPosition").toMutableMap()
                     if (extras.isNotEmpty()) enriched["extras"] = extras
-                    if (persist) db.insertLocationAsync(enriched)
+                    if (persist) {
+                        db.insertLocationAsync(enriched)
+                        onLocationPersisted?.invoke()
+                    }
                     callback(enriched)
                     return
                 }
@@ -372,7 +378,10 @@ class LocationEngine(
                     if (location != null) {
                         val enriched = enrichLocation(location, "getCurrentPosition").toMutableMap()
                         if (extras.isNotEmpty()) enriched["extras"] = extras
-                        if (persist) db.insertLocationAsync(enriched)
+                        if (persist) {
+                            db.insertLocationAsync(enriched)
+                            onLocationPersisted?.invoke()
+                        }
                         callback(enriched)
                     } else {
                         callback(null)
@@ -411,7 +420,10 @@ class LocationEngine(
         if (cached != null) {
             val enriched = enrichLocation(cached, "getLastKnownLocation").toMutableMap()
             if (extras.isNotEmpty()) enriched["extras"] = extras
-            if (persist) db.insertLocationAsync(enriched)
+            if (persist) {
+                db.insertLocationAsync(enriched)
+                onLocationPersisted?.invoke()
+            }
             callback(enriched)
             return
         }
@@ -424,7 +436,10 @@ class LocationEngine(
                         lastLocation = location
                         val enriched = enrichLocation(location, "getLastKnownLocation").toMutableMap()
                         if (extras.isNotEmpty()) enriched["extras"] = extras
-                        if (persist) db.insertLocationAsync(enriched)
+                        if (persist) {
+                            db.insertLocationAsync(enriched)
+                            onLocationPersisted?.invoke()
+                        }
                         callback(enriched)
                     } else {
                         // 3. Fallback to system LocationManager — works even when
@@ -434,7 +449,10 @@ class LocationEngine(
                             lastLocation = fallback
                             val enriched = enrichLocation(fallback, "getLastKnownLocation").toMutableMap()
                             if (extras.isNotEmpty()) enriched["extras"] = extras
-                            if (persist) db.insertLocationAsync(enriched)
+                            if (persist) {
+                                db.insertLocationAsync(enriched)
+                                onLocationPersisted?.invoke()
+                            }
                             callback(enriched)
                         } else {
                             callback(null)
@@ -448,7 +466,10 @@ class LocationEngine(
                         lastLocation = fallback
                         val enriched = enrichLocation(fallback, "getLastKnownLocation").toMutableMap()
                         if (extras.isNotEmpty()) enriched["extras"] = extras
-                        if (persist) db.insertLocationAsync(enriched)
+                        if (persist) {
+                            db.insertLocationAsync(enriched)
+                            onLocationPersisted?.invoke()
+                        }
                         callback(enriched)
                     } else {
                         callback(null)
@@ -571,6 +592,11 @@ class LocationEngine(
     /** Returns the last known location or null. */
     fun getLastLocation(): Location? = lastLocation
 
+    /** Returns the best location for heartbeat: prefers the last GPS-quality
+     *  fix (≤100m accuracy) over a potentially stale significant-change fix.
+     *  Falls back to lastLocation if no GPS fix exists. */
+    fun getLastGpsLocation(): Location? = lastGpsLocation ?: lastLocation
+
     /** Returns provider state info. */
     fun buildProviderState(): Map<String, Any?> {
         val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
@@ -662,6 +688,9 @@ class LocationEngine(
             state.addOdometer(distance)
         }
         lastLocation = location
+        if (location.accuracy > 0 && location.accuracy <= 100) {
+            lastGpsLocation = location
+        }
         lastEffectiveSpeed = effectiveSpeed
         state.lastLocationTime = location.time
 
@@ -884,7 +913,10 @@ class LocationEngine(
         }
         val enriched = enrichLocation(best, "getCurrentPosition").toMutableMap()
         if (extras.isNotEmpty()) enriched["extras"] = extras
-        if (persist) db.insertLocationAsync(enriched)
+        if (persist) {
+            db.insertLocationAsync(enriched)
+            onLocationPersisted?.invoke()
+        }
         callback(enriched)
     }
 

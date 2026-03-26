@@ -366,6 +366,94 @@ final class TraceletSdkTests: XCTestCase {
         let result = DeltaEncoder.encode(locations, precision: 6)
         XCTAssertEqual(result.count, 1)
     }
+
+    // MARK: - ConfigManager — null-merge protection
+
+    func testConfigManagerPartialUpdateDoesNotOverwriteUrlWithNull() {
+        let config = ConfigManager()
+        config.reset(nil)
+
+        // Simulate ready() setting an HTTP URL
+        let _ = config.setConfig([
+            "http": ["url": "https://example.com/api"] as [String: Any],
+        ])
+        XCTAssertEqual(config.getUrl(), "https://example.com/api")
+
+        // Simulate a partial setConfig — Dart always serialises ALL sections
+        // including http with url=NSNull() by default
+        let _ = config.setConfig([
+            "app": ["heartbeatInterval": -1] as [String: Any],
+            "http": ["url": NSNull(), "autoSync": true] as [String: Any],
+        ])
+
+        // URL must NOT be wiped
+        XCTAssertEqual(config.getUrl(), "https://example.com/api")
+        // The non-null value must still be applied
+        XCTAssertTrue(config.getAutoSync())
+    }
+
+    func testConfigManagerExplicitUrlOverwriteStillWorks() {
+        let config = ConfigManager()
+        config.reset(nil)
+
+        let _ = config.setConfig([
+            "http": ["url": "https://old.example.com"] as [String: Any],
+        ])
+        XCTAssertEqual(config.getUrl(), "https://old.example.com")
+
+        let _ = config.setConfig([
+            "http": ["url": "https://new.example.com"] as [String: Any],
+        ])
+        XCTAssertEqual(config.getUrl(), "https://new.example.com")
+    }
+
+    // MARK: - Database — deleteSyncedLocations
+
+    func testDeleteSyncedLocationsRemovesOnlySyncedRows() {
+        let db = TraceletDatabase(inMemory: true)
+
+        let uuid1 = db.insertLocation([
+            "uuid": "sync-1",
+            "latitude": 37.77, "longitude": -122.42,
+            "accuracy": 5.0, "speed": 0.0, "heading": 0.0, "altitude": 0.0,
+            "timestamp": "2024-01-01T00:00:00Z",
+        ])
+        let uuid2 = db.insertLocation([
+            "uuid": "sync-2",
+            "latitude": 37.78, "longitude": -122.43,
+            "accuracy": 5.0, "speed": 0.0, "heading": 0.0, "altitude": 0.0,
+            "timestamp": "2024-01-01T01:00:00Z",
+        ])
+
+        // Mark only the first as synced
+        db.markSynced(uuids: [uuid1])
+
+        XCTAssertEqual(db.getLocationCount(), 2)
+
+        // Delete synced — only uuid1 should be removed
+        let deleted = db.deleteSyncedLocations()
+        XCTAssertEqual(deleted, 1)
+        XCTAssertEqual(db.getLocationCount(), 1)
+
+        // Remaining location should be the un-synced one
+        let remaining = db.getLocations()
+        XCTAssertEqual(remaining.first?["uuid"] as? String, "sync-2")
+    }
+
+    func testDeleteSyncedLocationsReturnsZeroWhenNoneSynced() {
+        let db = TraceletDatabase(inMemory: true)
+
+        let _ = db.insertLocation([
+            "uuid": "not-synced",
+            "latitude": 1.0, "longitude": 2.0,
+            "accuracy": 5.0, "speed": 0.0, "heading": 0.0, "altitude": 0.0,
+            "timestamp": "2024-01-01T00:00:00Z",
+        ])
+
+        let deleted = db.deleteSyncedLocations()
+        XCTAssertEqual(deleted, 0)
+        XCTAssertEqual(db.getLocationCount(), 1)
+    }
 }
 
 // MARK: - Mock Delegate

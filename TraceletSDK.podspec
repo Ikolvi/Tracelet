@@ -7,7 +7,7 @@ Pod::Spec.new do |s|
     geofencing, SQLite persistence, HTTP sync, and headless execution for iOS.
     Framework-agnostic — usable from Flutter, React Native, Capacitor, or native iOS apps.
   DESC
-  s.homepage         = 'https://github.com/Ikolvi/Tracelet'
+  s.homepage         = 'https://github.com/Ikolvi/Tracelet/tree/main/sdk/ios'
   s.license          = { :type => 'Apache-2.0', :file => 'LICENSE' }
   s.author           = { 'Ikolvi' => 'contact@ikolvi.com' }
   s.source           = { :git => 'https://github.com/Ikolvi/Tracelet.git', :tag => "sdk-ios-v#{s.version}" }

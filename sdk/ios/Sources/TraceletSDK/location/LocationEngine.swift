@@ -1,5 +1,6 @@
 import CoreLocation
 import Foundation
+import UIKit
 
 /// CLLocationManager wrapper providing continuous location tracking,
 /// one-shot position, watch position, significant location changes,
@@ -19,6 +20,12 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     private var watchCallbacks: [Int: Bool] = [:]
     private var nextWatchId = 0
     private var isTracking = false
+
+    /// Background task ID for the current periodic fix request.
+    /// Ended in didUpdateLocations/didFailWithError when periodic mode is active.
+    private var periodicFixBgTaskId: UIBackgroundTaskIdentifier?
+    /// Cancellable timeout work item for periodic fix cleanup.
+    private var periodicFixTimeoutWork: DispatchWorkItem?
 
     /// Last computed effective speed (m/s) from tracking location updates.
     /// Used by the plugin to provide speed in motionchange events, since the
@@ -247,7 +254,12 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         guard isPeriodicTracking else { return }
 
         NSLog("[Tracelet] performPeriodicFix: requesting one-shot GPS fix")
-        let bgTaskId = BackgroundTaskHelper.shared.begin("periodicFix")
+
+        // Cancel any previous timeout that hasn't fired yet
+        periodicFixTimeoutWork?.cancel()
+        endPeriodicFixBgTask()
+
+        periodicFixBgTaskId = BackgroundTaskHelper.shared.begin("periodicFix")
 
         // Temporarily enable background location for this single fix
         locationManager.allowsBackgroundLocationUpdates = true
@@ -255,15 +267,25 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
 
         // Timeout: restore state after locationTimeout seconds if no callback
         let timeout = configManager.getLocationTimeout()
-        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(timeout)) { [weak self] in
+        let timeoutWork = DispatchWorkItem { [weak self] in
             guard let self = self, self.isPeriodicTracking else {
-                BackgroundTaskHelper.shared.end(bgTaskId)
+                self?.endPeriodicFixBgTask()
                 return
             }
             // Restore non-background state
             self.locationManager.allowsBackgroundLocationUpdates = false
             self.locationManager.stopUpdatingLocation()
-            BackgroundTaskHelper.shared.end(bgTaskId)
+            self.endPeriodicFixBgTask()
+        }
+        periodicFixTimeoutWork = timeoutWork
+        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(timeout), execute: timeoutWork)
+    }
+
+    /// Ends the periodic fix background task if one is active.
+    private func endPeriodicFixBgTask() {
+        if let taskId = periodicFixBgTaskId {
+            BackgroundTaskHelper.shared.end(taskId)
+            periodicFixBgTaskId = nil
         }
     }
 
@@ -367,7 +389,10 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             if ageMs <= maximumAge {
                 var locationMap = buildLocationMap(cached)
                 if !extras.isEmpty { locationMap["extras"] = extras }
-                if persist { let _ = database.insertLocation(locationMap) }
+                if persist {
+                    let _ = database.insertLocation(locationMap)
+                    onLocationPersisted?()
+                }
                 callback(locationMap)
                 return
             }
@@ -385,7 +410,10 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             }
             var locationMap = self.buildLocationMap(location)
             if !extras.isEmpty { locationMap["extras"] = extras }
-            if persist { let _ = self.database.insertLocation(locationMap) }
+            if persist {
+                let _ = self.database.insertLocation(locationMap)
+                self.onLocationPersisted?()
+            }
             callback(locationMap)
         }
 
@@ -416,7 +444,10 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         var locationMap = buildLocationMap(location)
         if !extras.isEmpty { locationMap["extras"] = extras }
         locationMap["event"] = "getLastKnownLocation"
-        if persist { let _ = database.insertLocation(locationMap) }
+        if persist {
+            let _ = database.insertLocation(locationMap)
+            onLocationPersisted?()
+        }
         callback(locationMap)
     }
 
@@ -641,6 +672,13 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             switch privacyResult.action {
             case .drop:
                 // Exclusion zone — drop this location entirely.
+                if isPeriodicTracking {
+                    locationManager.stopUpdatingLocation()
+                    locationManager.allowsBackgroundLocationUpdates = false
+                    periodicFixTimeoutWork?.cancel()
+                    periodicFixTimeoutWork = nil
+                    endPeriodicFixBgTask()
+                }
                 return
             case .eventOnly:
                 // Dispatch to Flutter but do NOT persist or audit.
@@ -651,6 +689,9 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
                 if isPeriodicTracking {
                     locationManager.stopUpdatingLocation()
                     locationManager.allowsBackgroundLocationUpdates = false
+                    periodicFixTimeoutWork?.cancel()
+                    periodicFixTimeoutWork = nil
+                    endPeriodicFixBgTask()
                 }
                 return
             case .degraded:
@@ -669,6 +710,9 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
                 if isPeriodicTracking {
                     locationManager.stopUpdatingLocation()
                     locationManager.allowsBackgroundLocationUpdates = false
+                    periodicFixTimeoutWork?.cancel()
+                    periodicFixTimeoutWork = nil
+                    endPeriodicFixBgTask()
                 }
                 return
             case .passThrough:
@@ -699,6 +743,10 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
                   location.coordinate.latitude, location.coordinate.longitude, location.horizontalAccuracy)
             locationManager.stopUpdatingLocation()
             locationManager.allowsBackgroundLocationUpdates = false
+            // Cancel the timeout and end the background task now that the fix succeeded.
+            periodicFixTimeoutWork?.cancel()
+            periodicFixTimeoutWork = nil
+            endPeriodicFixBgTask()
         }
     }
 
@@ -734,6 +782,9 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         if isPeriodicTracking {
             locationManager.stopUpdatingLocation()
             locationManager.allowsBackgroundLocationUpdates = false
+            periodicFixTimeoutWork?.cancel()
+            periodicFixTimeoutWork = nil
+            endPeriodicFixBgTask()
         }
     }
 
@@ -847,7 +898,10 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         }
         var locationMap = buildLocationMap(best)
         if !extras.isEmpty { locationMap["extras"] = extras }
-        if persist { let _ = database.insertLocation(locationMap) }
+        if persist {
+            let _ = database.insertLocation(locationMap)
+            onLocationPersisted?()
+        }
         callback(locationMap)
     }
 

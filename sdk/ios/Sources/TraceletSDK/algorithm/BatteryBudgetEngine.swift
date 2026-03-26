@@ -51,7 +51,8 @@ public class BatteryBudgetEngine {
     public private(set) var periodicInterval: Int?
 
     private var prevBatteryLevel: Double?
-    private var prevSampleTime: Date?
+    // internal for @testable import access in unit tests
+    var prevSampleTime: Date?
 
     public init(
         targetBudgetPerHour: Double,

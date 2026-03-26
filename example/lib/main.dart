@@ -351,7 +351,7 @@ class _DashboardPageState extends State<DashboardPage>
       tl.Tracelet.onHeartbeat((evt) {
         _addLog(
           'HEARTBEAT',
-          '${evt.location.coords.latitude.toStringAsFixed(4)}, ${evt.location.coords.longitude.toStringAsFixed(4)}',
+          '${evt.location.coords.latitude.toStringAsFixed(7)}, ${evt.location.coords.longitude.toStringAsFixed(7)}  acc=${evt.location.coords.accuracy.toStringAsFixed(1)}m',
         );
       }),
     );
@@ -533,7 +533,7 @@ class _DashboardPageState extends State<DashboardPage>
           app: tl.AppConfig(
             stopOnTerminate: false,
             startOnBoot: true,
-            heartbeatInterval: 60,
+            heartbeatInterval: 10,
             // Android foreground service
             foregroundService: _isAndroid
                 ? const tl.ForegroundServiceConfig(
@@ -556,6 +556,7 @@ class _DashboardPageState extends State<DashboardPage>
             stopOnStationary: false,
           ),
           http: const tl.HttpConfig(
+            url: 'http://192.168.20.101:8099/locations',
             method: tl.HttpMethod.post,
             locationsOrderDirection: tl.LocationOrder.asc,
             // ── New feature ──
@@ -637,6 +638,18 @@ class _DashboardPageState extends State<DashboardPage>
         };
       });
       _addLog('SYNC', 'Custom sync body builder registered');
+
+      // ── Battery Optimization Exemption (Android only) ──
+      if (_isAndroid) {
+        final isExempt = await tl.Tracelet.isIgnoringBatteryOptimizations();
+        if (!isExempt) {
+          _addLog(
+            'BATTERY',
+            'Not exempt from battery optimizations — requesting...',
+          );
+          await tl.Tracelet.openBatterySettings();
+        }
+      }
 
       // If periodic mode was active (e.g. after app kill + reopen), load
       // any locations captured in the background via headless dispatch.

@@ -376,6 +376,24 @@ public final class TraceletDatabase {
         }
     }
 
+    /// Deletes all locations that have been successfully synced. Returns number deleted.
+    public func deleteSyncedLocations() -> Int {
+        var count = 0
+        queue.sync {
+            // Count first for return value
+            let countSql = "SELECT COUNT(*) FROM locations WHERE synced = 1"
+            var stmt: OpaquePointer?
+            if sqlite3_prepare_v2(db, countSql, -1, &stmt, nil) == SQLITE_OK {
+                if sqlite3_step(stmt) == SQLITE_ROW {
+                    count = Int(sqlite3_column_int(stmt, 0))
+                }
+            }
+            sqlite3_finalize(stmt)
+            _ = exec("DELETE FROM locations WHERE synced = 1")
+        }
+        return count
+    }
+
     public func deleteLocation(_ uuid: String) -> Bool {
         var success = false
         queue.sync {

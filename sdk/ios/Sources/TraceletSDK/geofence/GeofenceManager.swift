@@ -18,6 +18,9 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     /// High-accuracy mode: track which geofences the device is currently inside.
     private var insideGeofenceIds = Set<String>()
 
+    /// High-accuracy geofence evaluator (polygon + circular).
+    private let geofenceEvaluator = GeofenceEvaluator()
+
     /// Identifiers of geofences currently registered with CLLocationManager.
     private var activeGeofenceIds = Set<String>()
 
@@ -27,6 +30,14 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
 
     /// In-memory cache of geofences — avoids DB query on every proximity update (I-M8).
     private var cachedGeofences: [[String: Any]]?
+
+    /// Returns geofences from cache, refreshing from DB only when invalidated.
+    private func getCachedGeofences() -> [[String: Any]] {
+        if let cached = cachedGeofences { return cached }
+        let geofences = database.getGeofences()
+        cachedGeofences = geofences
+        return geofences
+    }
 
     public init(configManager: ConfigManager,
          eventDispatcher: TraceletEventSending,
@@ -136,11 +147,64 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
 
     // MARK: - High-accuracy proximity evaluation
 
-    /// High-accuracy geofence evaluation is now handled by shared Dart code
-    /// (GeofenceEvaluator in tracelet_platform_interface). This method is kept
-    /// as a no-op stub for call-site compatibility.
+    /// High-accuracy geofence evaluation.
+    ///
+    /// Uses `GeofenceEvaluator` to perform software-based ENTER/EXIT detection
+    /// for both circular and polygon geofences. Dispatches transition events
+    /// and geofencesChange events via `TraceletEventSending`.
+    ///
+    /// Called on each location update when `geofenceModeHighAccuracy` is enabled.
     public func evaluateHighAccuracyProximity(latitude: Double, longitude: Double) {
-        // Proximity evaluation moved to shared Dart GeofenceEvaluator.
+        let allGeofences = getCachedGeofences()
+        if allGeofences.isEmpty { return }
+
+        let transitions = geofenceEvaluator.evaluateProximity(
+            latitude: latitude,
+            longitude: longitude,
+            geofences: allGeofences
+        )
+        if transitions.isEmpty { return }
+
+        var on: [[String: Any]] = []
+        var off: [[String: Any]] = []
+
+        for t in transitions {
+            // Convert [String: Any?] to [String: Any] for dispatch
+            var gfMap: [String: Any] = [:]
+            for (k, v) in t.geofence {
+                if let v = v { gfMap[k] = v }
+            }
+
+            let eventData: [String: Any] = [
+                "identifier": t.identifier,
+                "action": t.action,
+                "location": [
+                    "coords": [
+                        "latitude": latitude,
+                        "longitude": longitude,
+                    ],
+                ],
+                "extras": gfMap["extras"] ?? [:] as [String: Any],
+            ]
+            eventDispatcher.sendGeofence(eventData)
+
+            switch t.action {
+            case "ENTER":
+                on.append(gfMap)
+            case "EXIT":
+                off.append(gfMap)
+                if configManager.getGeofenceModeKnockOut() {
+                    let _ = removeGeofence(t.identifier)
+                    geofenceEvaluator.removeGeofence(t.identifier)
+                }
+            default:
+                break
+            }
+        }
+
+        if !on.isEmpty || !off.isEmpty {
+            eventDispatcher.sendGeofencesChange(["on": on, "off": off])
+        }
     }
 
     /// Update proximity-based geofence monitoring.
@@ -162,13 +226,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         let maxMonitored = resolveMaxMonitored()
 
         // Use cached geofences to avoid DB query on every proximity update (I-M8).
-        let allGeofences: [[String: Any]]
-        if let cached = cachedGeofences {
-            allGeofences = cached
-        } else {
-            allGeofences = database.getGeofences()
-            cachedGeofences = allGeofences
-        }
+        let allGeofences = getCachedGeofences()
         let candidates: [(geofence: [String: Any], distance: Double)] = allGeofences
             .filter { gf in
                 let vertices = gf["vertices"] as? [[Double]]
@@ -229,6 +287,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     /// Clear high-accuracy tracking state.
     public func clearHighAccuracyState() {
         insideGeofenceIds.removeAll()
+        geofenceEvaluator.clear()
     }
 
     public func destroy() {
@@ -236,6 +295,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
             locationManager.stopMonitoring(for: region)
         }
         insideGeofenceIds.removeAll()
+        geofenceEvaluator.clear()
     }
 
     // MARK: - System registration / unregistration
