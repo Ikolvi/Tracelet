@@ -5,6 +5,7 @@ plugins {
 }
 
 nexusPublishing {
+    packageGroup.set("com.ikolvi")
     repositories {
         sonatype {
             // Central Portal staging API (OSSRH legacy was sunset June 2025)
