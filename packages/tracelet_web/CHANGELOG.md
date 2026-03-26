@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.0
+
+- **CHORE**: Update cross-package dependency constraints to `^1.7.0`.
+
 ## 1.6.3-alpha.1
 
 - **CHORE**: Update cross-package dependency constraints to `^1.6.3-alpha.1`.

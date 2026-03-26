@@ -2,7 +2,7 @@ name: tracelet_platform_interface
 description: >-
   A common platform interface for the Tracelet background geolocation plugin.
   Used by tracelet_android and tracelet_ios implementations.
-version: 1.6.3-alpha.1
+version: 1.7.0
 license: Apache-2.0
 homepage: https://github.com/Ikolvi/Tracelet
 repository: https://github.com/Ikolvi/Tracelet/tree/main/packages/tracelet_platform_interface

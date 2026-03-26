@@ -1,3 +1,11 @@
+## 1.7.0
+
+- **FEAT**: Migrate all event subscriptions from EventChannels to Pigeon FlutterApi platform streams.
+- **FEAT**: Add `Location.fromTl` and `LocationActivity.fromTl` factory constructors for Pigeon type conversion.
+- **FIX**: Headless geofence events no longer silently dropped on Android task removal (#43).
+- **REFACTOR**: Extract native SDKs to standalone modules — Android (Maven Central) and iOS (CocoaPods/SPM).
+- **DOCS**: Add local development workflow documentation to CONTRIBUTING.md.
+
 ## 1.6.3-alpha.1
 
 - **FEAT**: Migrate all event subscriptions from EventChannels to Pigeon FlutterApi platform streams.

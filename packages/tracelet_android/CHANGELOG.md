@@ -1,3 +1,13 @@
+## 1.7.0
+
+- **FIX**: Wire `headlessFallback` in `eventSenderFactory` — fixes geofence events silently dropped on task removal (#43).
+- **FIX**: Add missing `sendTrip`/`sendBudgetAdjustment` to `NoOpEventSender`.
+- **FEAT**: Rewrite `EventDispatcher` to use Pigeon `TraceletEventApi` FlutterApi.
+- **FEAT**: Add `TraceletHostApiImpl` for type-safe Pigeon HostApi dispatch.
+- **REFACTOR**: Extract native SDK to standalone `sdk/android/` module (Maven Central: `com.ikolvi:tracelet-sdk`).
+- **REFACTOR**: Remove misleading headless wiring dead code in `LocationService.startBootTracking()`.
+- **CHORE**: Enable `returnDefaultValues` for Android unit tests.
+
 ## 1.6.3-alpha.1
 
 - **FEAT**: Rewrite `EventDispatcher` to use Pigeon `TraceletEventApi` FlutterApi instead of EventChannels.

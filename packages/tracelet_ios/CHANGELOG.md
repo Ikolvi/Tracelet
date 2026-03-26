@@ -1,3 +1,12 @@
+## 1.7.0
+
+- **FIX**: Wire `headlessFallback` in `eventSenderFactory` (preventive — ensures future factory consumers can route to `HeadlessRunner`).
+- **FIX**: Move podspec to repo root for CocoaPods trunk push compatibility.
+- **FEAT**: Rewrite `EventDispatcher` to use Pigeon `TraceletEventApi` FlutterApi.
+- **FEAT**: Add `TraceletHostApiImpl` for type-safe Pigeon HostApi dispatch.
+- **REFACTOR**: Extract native SDK to standalone `sdk/ios/` module (CocoaPods: `TraceletSDK`, SPM package).
+- **REFACTOR**: Wire Flutter plugin to published TraceletSDK pod.
+
 ## 1.6.3-alpha.1
 
 - **FEAT**: Rewrite `EventDispatcher` to use Pigeon `TraceletEventApi` FlutterApi instead of FlutterEventChannels.

@@ -1,3 +1,10 @@
+## 1.7.0
+
+- **FEAT**: Migrate all event delivery from EventChannels to Pigeon `TraceletEventApi` FlutterApi.
+- **FEAT**: Add `PigeonEventReceiver` with 15 broadcast StreamControllers for type-safe native→Dart event routing.
+- **FEAT**: Add `PigeonTracelet` platform implementation wrapping Pigeon HostApi + FlutterApi.
+- **REFACTOR**: Extract native SDK to standalone `sdk/android` (Maven Central) and `sdk/ios` (CocoaPods/SPM) modules.
+
 ## 1.6.3-alpha.1
 
 - **FEAT**: Add `TraceletEventApi` Pigeon FlutterApi with 15 event methods replacing EventChannels.
