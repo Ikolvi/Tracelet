@@ -1,3 +1,5 @@
+# ⚠️ DEPRECATED: Use release.yml instead for unified one-click releases.
+# This standalone workflow is kept for individual pub.dev publishes if needed.
 name: Publish to pub.dev
 
 # Trigger: manual dispatch with version bump type
@@ -43,7 +45,7 @@ jobs:
       contents: write
       id-token: write  # Required for pub.dev OIDC token exchange
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0

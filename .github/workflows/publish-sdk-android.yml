@@ -1,3 +1,5 @@
+# ⚠️ DEPRECATED: Use release.yml instead for unified one-click releases.
+# This standalone workflow is kept for individual SDK publishes if needed.
 name: Publish Android SDK to Maven Central
 
 on:
@@ -25,12 +27,12 @@ jobs:
     name: Build, Sign & Publish
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17

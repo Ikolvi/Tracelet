@@ -51,7 +51,7 @@ jobs:
       ios_sdk_version: ${{ steps.versions.outputs.ios_sdk }}
       flutter_version: ${{ steps.versions.outputs.flutter }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: subosito/flutter-action@v2
         with:
@@ -103,12 +103,12 @@ jobs:
     if: ${{ !inputs.skip_native_sdks }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
@@ -194,7 +194,7 @@ jobs:
     if: ${{ !inputs.skip_native_sdks }}
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
@@ -284,7 +284,7 @@ jobs:
       contents: write
       id-token: write  # Required for pub.dev OIDC token exchange
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
