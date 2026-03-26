@@ -1,3 +1,10 @@
+## 1.6.3-alpha.1
+
+- **FEAT**: Migrate all event subscriptions from EventChannels to Pigeon FlutterApi platform streams.
+- **FEAT**: Add `Location.fromTl` and `LocationActivity.fromTl` factory constructors for Pigeon type conversion.
+- **REFACTOR**: Remove `_eventChannels`, `_eventStreams` maps, and `_getEventStream()` helper.
+- **CHORE**: Update cross-package dependency constraints to `^1.6.3-alpha.1`.
+
 ## 1.6.2
 
 - **FIX**: Update `tracelet_web` dependency to `^1.6.1` — fixes 5 missing HTTP Sync method stubs that caused `UnimplementedError` on web.

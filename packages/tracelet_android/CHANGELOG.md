@@ -1,3 +1,10 @@
+## 1.6.3-alpha.1
+
+- **FEAT**: Rewrite `EventDispatcher` to use Pigeon `TraceletEventApi` FlutterApi instead of EventChannels.
+- **FEAT**: Add `TraceletHostApiImpl` for type-safe Pigeon HostApi dispatch.
+- **REFACTOR**: Extract native SDK code to `sdk/android/` module.
+- **CHORE**: Update cross-package dependency constraints to `^1.6.3-alpha.1`.
+
 ## 1.6.1
 
 - **FEAT**: Add 401-aware retry — on HTTP 401 Unauthorized, invoke headless headers callback to refresh token, then retry once with updated dynamic headers.

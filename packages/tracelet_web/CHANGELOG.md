@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.3-alpha.1
+
+- **CHORE**: Update cross-package dependency constraints to `^1.6.3-alpha.1`.
+
 ## 1.6.1
 
 - **FIX**: Add 5 missing HTTP Sync method overrides (`setDynamicHeaders`, `setRouteContext`, `clearRouteContext`, `registerHeadlessHeadersCallback`, `registerHeadlessSyncBodyBuilder`) that previously threw `UnimplementedError` at runtime.

@@ -1,3 +1,11 @@
+## 1.6.3-alpha.1
+
+- **FEAT**: Add `TraceletEventApi` Pigeon FlutterApi with 15 event methods replacing EventChannels.
+- **FEAT**: Add `PigeonEventReceiver` with 15 broadcast StreamControllers for type-safe native→Dart event routing.
+- **FEAT**: Add `PigeonTracelet` platform implementation wrapping Pigeon HostApi + FlutterApi.
+- **FEAT**: Add 15 event stream getters to `TraceletPlatform` interface.
+- **CHORE**: Update cross-package dependency constraints to `^1.6.3-alpha.1`.
+
 ## 1.6.0
 
 - **FEAT**: Add `setDynamicHeaders`, `setRouteContext`, `clearRouteContext`, `registerHeadlessHeadersCallback`, and `registerHeadlessSyncBodyBuilder` platform methods.
