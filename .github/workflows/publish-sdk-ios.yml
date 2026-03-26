@@ -33,7 +33,6 @@ jobs:
       # ── Resolve version ──
       - name: Resolve version
         id: version
-        working-directory: sdk/ios
         run: |
           if [ -n "${{ inputs.version }}" ]; then
             VERSION="${{ inputs.version }}"
@@ -41,7 +40,7 @@ jobs:
             sed -i '' "s/s.version          = '.*'/s.version          = '${VERSION}'/" TraceletSDK.podspec
             echo "📦 Using input version: $VERSION"
           else
-            VERSION=$(grep "s.version" TraceletSDK.podspec | head -1 | sed "s/.*= '//;s/'//")
+            VERSION=$(grep "s.version" TraceletSDK.podspec | head -1 | sed "s/.*= '//;s/'//;s/ //g")
             echo "📦 Using current podspec version: $VERSION"
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -61,7 +60,6 @@ jobs:
 
       # ── CocoaPods lint ──
       - name: Lint podspec
-        working-directory: sdk/ios
         run: pod lib lint TraceletSDK.podspec --allow-warnings --verbose
 
       # ── Tag release ──
@@ -73,10 +71,10 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # Commit version bump if changed
-          if git diff --quiet sdk/ios/TraceletSDK.podspec; then
+          if git diff --quiet TraceletSDK.podspec; then
             echo "No version changes to commit"
           else
-            git add sdk/ios/TraceletSDK.podspec
+            git add TraceletSDK.podspec
             git commit -m "chore(ios): release SDK v${VERSION}"
           fi
 
@@ -86,7 +84,6 @@ jobs:
       # ── Publish to CocoaPods trunk ──
       - name: Publish to CocoaPods
         if: ${{ !inputs.dry_run }}
-        working-directory: sdk/ios
         env:
           COCOAPODS_TRUNK_TOKEN: ${{ secrets.COCOAPODS_TRUNK_TOKEN }}
         run: pod trunk push TraceletSDK.podspec --allow-warnings --verbose

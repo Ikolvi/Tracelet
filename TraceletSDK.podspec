@@ -8,14 +8,14 @@ Pod::Spec.new do |s|
     Framework-agnostic — usable from Flutter, React Native, Capacitor, or native iOS apps.
   DESC
   s.homepage         = 'https://github.com/Ikolvi/Tracelet'
-  s.license          = { :type => 'Apache-2.0', :file => '../../LICENSE' }
+  s.license          = { :type => 'Apache-2.0', :file => 'LICENSE' }
   s.author           = { 'Ikolvi' => 'contact@ikolvi.com' }
   s.source           = { :git => 'https://github.com/Ikolvi/Tracelet.git', :tag => "sdk-ios-v#{s.version}" }
 
   s.ios.deployment_target = '14.0'
   s.swift_version = '5.9'
 
-  s.source_files = 'Sources/TraceletSDK/**/*.swift'
+  s.source_files = 'sdk/ios/Sources/TraceletSDK/**/*.swift'
 
   # Apple frameworks
   s.frameworks = 'CoreLocation', 'CoreMotion', 'UIKit', 'BackgroundTasks',
