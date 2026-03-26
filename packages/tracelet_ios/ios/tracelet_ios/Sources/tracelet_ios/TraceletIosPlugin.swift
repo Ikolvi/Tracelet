@@ -35,8 +35,17 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
         // Inject Flutter EventDispatcher as the SDK's event sender
         TraceletSdk.shared.setEventSender(instance.eventDispatcher)
 
-        // Register bootstrap factories for killed-state relaunch
-        TraceletBootstrapIOS.eventSenderFactory = { EventDispatcher() }
+        // Register bootstrap factories for killed-state relaunch.
+        // Wire headlessFallback so any future consumer of the factory
+        // (e.g. SDK background bootstrap) gets a properly routed dispatcher.
+        TraceletBootstrapIOS.eventSenderFactory = {
+            let dispatcher = EventDispatcher()
+            let runner = HeadlessRunner()
+            dispatcher.headlessFallback = { eventName, eventData in
+                runner.dispatchEvent(["name": eventName, "event": eventData])
+            }
+            return dispatcher
+        }
         TraceletBootstrapIOS.headlessDispatcherFactory = { HeadlessRunner() }
 
         // Wire headless fallback — when no Dart UI listener, route to HeadlessRunner
