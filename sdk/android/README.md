@@ -13,7 +13,7 @@ Battery-conscious motion-detection intelligence, geofencing, SQLite persistence,
 
 ```kotlin
 dependencies {
-    implementation("com.ikolvi:tracelet-sdk:0.1.0")
+    implementation("com.ikolvi:tracelet-sdk:1.0.0")
 }
 ```
 
@@ -21,7 +21,7 @@ dependencies {
 
 ```groovy
 dependencies {
-    implementation 'com.ikolvi:tracelet-sdk:0.1.0'
+    implementation 'com.ikolvi:tracelet-sdk:1.0.0'
 }
 ```
 

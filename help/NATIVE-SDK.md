@@ -16,7 +16,7 @@ The native SDKs mirror the Flutter plugin's structured configuration pattern. Da
 
 ```kotlin
 dependencies {
-    implementation("com.ikolvi:tracelet-sdk:0.1.0")
+    implementation("com.ikolvi:tracelet-sdk:1.0.0")
 }
 ```
 
@@ -24,7 +24,7 @@ dependencies {
 
 ```groovy
 dependencies {
-    implementation 'com.ikolvi:tracelet-sdk:0.1.0'
+    implementation 'com.ikolvi:tracelet-sdk:1.0.0'
 }
 ```
 
@@ -113,7 +113,7 @@ platform :ios, '14.0'
 
 target 'MyApp' do
   use_frameworks!
-  pod 'TraceletSDK', '~> 0.1.0'
+  pod 'TraceletSDK', '~> 1.0.0'
 end
 ```
 

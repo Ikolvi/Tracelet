@@ -149,7 +149,7 @@ The example app's `Podfile` also overrides the CocoaPod:
 pod 'TraceletSDK', :path => '../../'
 ```
 
-When the plugin is consumed from **pub.dev**, the podspec dependency `s.dependency 'TraceletSDK', '~> 0.1.0'` resolves from CocoaPods trunk.
+When the plugin is consumed from **pub.dev**, the podspec dependency `s.dependency 'TraceletSDK', '~> 1.0.0'` resolves from CocoaPods trunk.
 
 ### Making and Testing Native SDK Changes
 

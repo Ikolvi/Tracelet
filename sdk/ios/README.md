@@ -19,7 +19,7 @@ platform :ios, '14.0'
 
 target 'MyApp' do
   use_frameworks!
-  pod 'TraceletSDK', '~> 0.1.0'
+  pod 'TraceletSDK', '~> 1.0.0'
 end
 ```
 
