@@ -47,6 +47,11 @@ pubspec.lock
 *.apk
 *.aab
 
+# SDK Android — un-ignore Gradle wrapper for CI builds
+!sdk/android/gradlew
+!sdk/android/gradlew.bat
+!sdk/android/gradle/wrapper/gradle-wrapper.jar
+
 # iOS/Xcode
 **/ios/**/*.mode1v3
 **/ios/**/*.mode2v3
