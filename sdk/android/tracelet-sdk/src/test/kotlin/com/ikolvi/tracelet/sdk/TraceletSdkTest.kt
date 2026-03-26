@@ -384,6 +384,8 @@ internal class TraceletSdkTest {
         override fun sendRemoteConfigEvent(data: Map<String, Any?>) {}
         override fun sendSchedule(data: Map<String, Any?>) {}
         override fun sendWatchPosition(data: Map<String, Any?>) {}
+        override fun sendTrip(data: Map<String, Any?>) {}
+        override fun sendBudgetAdjustment(data: Map<String, Any?>) {}
         override fun hasListener(eventName: String): Boolean = false
     }
 }
