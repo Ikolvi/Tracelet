@@ -1,3 +1,8 @@
+## 1.8.0
+
+- **FEAT**: Add `destroySyncedLocations()` Pigeon HostApi method — deletes only synced locations and returns count.
+- **FIX**: Align location map format contract across all platforms (camelCase accuracy keys, nested `coords` map).
+
 ## 1.7.1
 
 - **FEAT**: Add `destroySyncedLocations()` Pigeon HostApi method — deletes only synced locations and returns count.

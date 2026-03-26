@@ -1,3 +1,14 @@
+## 1.8.0
+
+- **FIX**: ConfigManager null-merge — partial `setConfig()` no longer overwrites existing non-null values (e.g. HTTP URL) with null defaults.
+- **FIX**: PeriodicLocationWorker catch block now re-schedules the next exact alarm before returning `Result.retry()`, preventing permanent chain breaks on exceptions.
+- **FIX**: GeofenceBroadcastReceiver bootstraps SDK when app is killed and `geofenceManager` is null, instead of silently dropping events.
+- **FIX**: Align location map format — `isCharging` → `is_charging`, flat coords → nested `coords` map, add `activity` map, `isMock` → `mock`.
+- **FIX**: DB `cursorToLocation` outputs `is_charging` in battery map.
+- **FEAT**: Add `destroySyncedLocations()` — deletes only synced locations from the database.
+- **FEAT**: Auto-purge synced locations after successful HTTP sync in `HttpSyncManager`.
+- **TEST**: Add 28 location map format tests, 5 unit tests for ConfigManager null-merge and `destroySyncedLocations`.
+
 ## 1.7.1
 
 - **FIX**: ConfigManager null-merge — partial `setConfig()` no longer overwrites existing non-null values (e.g. HTTP URL) with null defaults.

@@ -1,3 +1,11 @@
+## 1.8.0
+
+- **FIX**: Align location map format contract across Android, iOS, and Dart layers — fixes 9 format mismatches.
+- **FEAT**: Add `Tracelet.destroySyncedLocations()` — deletes only synced locations, returns count deleted.
+- **FEAT**: Auto-purge synced locations from database after successful HTTP sync.
+- **TEST**: Add 25 Dart location map format tests.
+- **DOCS**: Add `help/LOCATION-MAP-FORMAT.md` canonical format contract reference.
+
 ## 1.7.1
 
 - **FIX**: ConfigManager null-merge — partial `setConfig()` no longer overwrites existing values with null defaults (fixes periodic mode HTTP sync failure).

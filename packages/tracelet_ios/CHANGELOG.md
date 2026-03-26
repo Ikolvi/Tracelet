@@ -1,3 +1,13 @@
+## 1.8.0
+
+- **FIX**: ConfigManager null-merge — filter NSNull values during merge so partial `setConfig()` does not overwrite existing non-null config.
+- **FIX**: Add missing `import UIKit` in `LocationEngine.swift` for `UIBackgroundTaskIdentifier`.
+- **FIX**: Align location map format — snake_case accuracy keys → camelCase (`altitudeAccuracy`, `speedAccuracy`, `headingAccuracy`), dead reckoning `isCharging` → `is_charging`.
+- **FIX**: DB `insertLocation` reads camelCase accuracy keys with snake_case fallback; `locationRowToMap` outputs camelCase.
+- **FEAT**: Add `destroySyncedLocations()` — deletes only synced locations from the database.
+- **FEAT**: Auto-purge synced locations after successful HTTP sync in `HttpSyncManager`.
+- **TEST**: Add 28 location map format tests, 4 unit tests for ConfigManager null-merge and `deleteSyncedLocations`.
+
 ## 1.7.1
 
 - **FIX**: ConfigManager null-merge — filter NSNull values during merge so partial `setConfig()` does not overwrite existing non-null config.
