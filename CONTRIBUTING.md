@@ -98,6 +98,12 @@ When modifying the platform interface API:
 melos run test
 ```
 
+### Android Kotlin Tests
+```bash
+cd example/android
+./gradlew :tracelet_android:testDebugUnitTest
+```
+
 ### Coverage
 ```bash
 melos run coverage
@@ -108,6 +114,93 @@ melos run coverage
 cd packages/tracelet/example
 flutter test integration_test/
 ```
+
+## Local Development with Native SDKs
+
+Tracelet separates the **Flutter plugin layer** (`packages/tracelet_android`, `packages/tracelet_ios`) from the **standalone native SDKs** (`sdk/android`, `sdk/ios`). During local development, changes to native SDK source code are picked up automatically — no publishing required.
+
+### How It Works
+
+#### Android — Gradle Composite Builds
+
+Both `packages/tracelet_android/android/settings.gradle` and `example/android/settings.gradle.kts` use Gradle's [composite build](https://docs.gradle.org/current/userguide/composite_builds.html) feature to substitute the Maven artifact with the local module:
+
+```gradle
+includeBuild("../../sdk/android") {
+    dependencySubstitution {
+        substitute(module("com.ikolvi:tracelet-sdk")).using(project(":tracelet-sdk"))
+    }
+}
+```
+
+When the plugin is consumed from **pub.dev**, the local `sdk/android` path doesn't exist, so Gradle resolves `com.ikolvi:tracelet-sdk` from Maven Central.
+
+#### iOS — SPM (local) + CocoaPods (pub.dev)
+
+The Flutter plugin's `Package.swift` references the SDK via a relative path:
+
+```swift
+.package(name: "TraceletSDK", path: "../../../../sdk/ios")
+```
+
+The example app's `Podfile` also overrides the CocoaPod:
+
+```ruby
+pod 'TraceletSDK', :path => '../../'
+```
+
+When the plugin is consumed from **pub.dev**, the podspec dependency `s.dependency 'TraceletSDK', '~> 0.1.0'` resolves from CocoaPods trunk.
+
+### Making and Testing Native SDK Changes
+
+```bash
+# 1. Edit native SDK source directly
+#    Android: sdk/android/tracelet-sdk/src/main/kotlin/...
+#    iOS:     sdk/ios/Sources/TraceletSDK/...
+
+# 2. Run the example app — local SDK changes are picked up automatically
+cd example && flutter run
+
+# 3. Run Android Kotlin tests (includes SDK compilation)
+cd example/android && ./gradlew :tracelet_android:testDebugUnitTest
+
+# 4. Run iOS Swift tests
+cd sdk/ios && swift test
+
+# 5. Validate everything
+melos run analyze
+melos exec -- "dart format --set-exit-if-changed ."
+```
+
+### For External Contributors (git-based override)
+
+If you're testing a fork or branch against your own app (not the monorepo), add overrides to your `pubspec.yaml`:
+
+```yaml
+dependency_overrides:
+  tracelet:
+    git:
+      url: https://github.com/YourFork/Tracelet.git
+      ref: your-branch
+      path: packages/tracelet
+  tracelet_android:
+    git:
+      url: https://github.com/YourFork/Tracelet.git
+      ref: your-branch
+      path: packages/tracelet_android
+  tracelet_ios:
+    git:
+      url: https://github.com/YourFork/Tracelet.git
+      ref: your-branch
+      path: packages/tracelet_ios
+  tracelet_platform_interface:
+    git:
+      url: https://github.com/YourFork/Tracelet.git
+      ref: your-branch
+      path: packages/tracelet_platform_interface
+```
+
+> **Note:** Git-based overrides include the native SDK source (since it's in the same repo), so composite build substitution works. However, for production use, the native SDK must be published to Maven Central / CocoaPods trunk.
 
 ## Golden Rules
 
