@@ -42,7 +42,7 @@ object BatteryUtils {
         refreshIfStale(context)
         return mapOf(
             "level" to cachedLevel,
-            "isCharging" to cachedCharging,
+            "is_charging" to cachedCharging,
         )
     }
 

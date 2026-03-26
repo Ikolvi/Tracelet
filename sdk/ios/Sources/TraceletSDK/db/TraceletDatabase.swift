@@ -210,11 +210,11 @@ public final class TraceletDatabase {
             sqlite3_bind_double(stmt, 4, coords["longitude"] as? Double ?? 0)
             sqlite3_bind_double(stmt, 5, coords["altitude"] as? Double ?? 0)
             sqlite3_bind_double(stmt, 6, coords["speed"] as? Double ?? -1)
-            sqlite3_bind_double(stmt, 7, coords["speed_accuracy"] as? Double ?? -1)
+            sqlite3_bind_double(stmt, 7, coords["speedAccuracy"] as? Double ?? coords["speed_accuracy"] as? Double ?? -1)
             sqlite3_bind_double(stmt, 8, coords["heading"] as? Double ?? -1)
-            sqlite3_bind_double(stmt, 9, coords["heading_accuracy"] as? Double ?? -1)
+            sqlite3_bind_double(stmt, 9, coords["headingAccuracy"] as? Double ?? coords["heading_accuracy"] as? Double ?? -1)
             sqlite3_bind_double(stmt, 10, coords["accuracy"] as? Double ?? -1)
-            sqlite3_bind_double(stmt, 11, coords["altitude_accuracy"] as? Double ?? -1)
+            sqlite3_bind_double(stmt, 11, coords["altitudeAccuracy"] as? Double ?? coords["altitude_accuracy"] as? Double ?? -1)
             if let floor = coords["floor"] as? Int32 {
                 sqlite3_bind_int(stmt, 12, floor)
             } else {
@@ -841,11 +841,11 @@ public final class TraceletDatabase {
                 "longitude": sqlite3_column_double(stmt, 3),
                 "altitude": sqlite3_column_double(stmt, 4),
                 "speed": sqlite3_column_double(stmt, 5),
-                "speed_accuracy": sqlite3_column_double(stmt, 6),
+                "speedAccuracy": sqlite3_column_double(stmt, 6),
                 "heading": sqlite3_column_double(stmt, 7),
-                "heading_accuracy": sqlite3_column_double(stmt, 8),
+                "headingAccuracy": sqlite3_column_double(stmt, 8),
                 "accuracy": sqlite3_column_double(stmt, 9),
-                "altitude_accuracy": sqlite3_column_double(stmt, 10),
+                "altitudeAccuracy": sqlite3_column_double(stmt, 10),
                 "floor": sqlite3_column_type(stmt, 11) == SQLITE_NULL ? nil : Int(sqlite3_column_int(stmt, 11)),
             ] as [String: Any?],
             "is_moving": sqlite3_column_int(stmt, 12) == 1,

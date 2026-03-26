@@ -648,7 +648,7 @@ class TraceletDatabase private constructor(context: Context, private val dbPassw
             ),
             "battery" to mapOf(
                 "level" to c.getDouble(iBatteryLevel),
-                "isCharging" to (c.getInt(iBatteryCharging) == 1),
+                "is_charging" to (c.getInt(iBatteryCharging) == 1),
             ),
         )
         // Include audit fields when available (LEFT JOIN with audit_trail)

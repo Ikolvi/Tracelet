@@ -338,22 +338,28 @@ class PeriodicLocationWorker(
         val map = mutableMapOf<String, Any?>(
             "uuid" to UUID.randomUUID().toString(),
             "timestamp" to isoFormat.format(Date(location.time)),
-            "latitude" to location.latitude,
-            "longitude" to location.longitude,
-            "accuracy" to location.accuracy.toDouble(),
-            "altitude" to location.altitude,
-            "altitudeAccuracy" to if (android.os.Build.VERSION.SDK_INT >= 26)
-                location.verticalAccuracyMeters.toDouble() else -1.0,
-            "speed" to location.speed.toDouble(),
-            "speedAccuracy" to if (android.os.Build.VERSION.SDK_INT >= 26)
-                location.speedAccuracyMetersPerSecond.toDouble() else -1.0,
-            "heading" to location.bearing.toDouble(),
-            "headingAccuracy" to if (android.os.Build.VERSION.SDK_INT >= 26)
-                location.bearingAccuracyDegrees.toDouble() else -1.0,
+            "coords" to mapOf(
+                "latitude" to location.latitude,
+                "longitude" to location.longitude,
+                "altitude" to location.altitude,
+                "speed" to location.speed.toDouble(),
+                "heading" to location.bearing.toDouble(),
+                "accuracy" to location.accuracy.toDouble(),
+                "altitudeAccuracy" to if (android.os.Build.VERSION.SDK_INT >= 26)
+                    location.verticalAccuracyMeters.toDouble() else -1.0,
+                "speedAccuracy" to if (android.os.Build.VERSION.SDK_INT >= 26)
+                    location.speedAccuracyMetersPerSecond.toDouble() else -1.0,
+                "headingAccuracy" to if (android.os.Build.VERSION.SDK_INT >= 26)
+                    location.bearingAccuracyDegrees.toDouble() else -1.0,
+            ),
             "isMoving" to (location.speed > 0),
             "odometer" to state.odometer,
             "event" to "periodic",
-            "isMock" to location.isFromMockProvider,
+            "mock" to location.isFromMockProvider,
+            "activity" to mapOf(
+                "type" to "unknown",
+                "confidence" to -1,
+            ),
         )
 
         // Battery info

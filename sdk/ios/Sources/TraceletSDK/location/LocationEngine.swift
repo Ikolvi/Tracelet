@@ -12,6 +12,9 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     private let database: TraceletDatabase
 
     private var lastLocation: CLLocation?
+    /// Last GPS-quality location (horizontalAccuracy ≤ 100m).
+    /// Used by heartbeat to avoid returning low-accuracy significant-change fixes.
+    private var lastGpsLocation: CLLocation?
     private var oneShots: [((CLLocation?) -> Void)] = []
     private var watchCallbacks: [Int: Bool] = [:]
     private var nextWatchId = 0
@@ -267,6 +270,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     public func destroy() {
         stop()
         lastLocation = nil
+        lastGpsLocation = nil
         oneShots.removeAll()
         stopAllWatchers()
     }
@@ -478,6 +482,13 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         return lastLocation
     }
 
+    /// Returns the best available location for heartbeat: prefers the last
+    /// GPS-quality fix (≤100m accuracy) over a potentially stale significant-
+    /// location-change fix. Falls back to lastLocation if no GPS fix exists.
+    public func getLastGpsLocation() -> CLLocation? {
+        return lastGpsLocation ?? lastLocation
+    }
+
     // MARK: - Provider state
 
     public func buildProviderState() -> [String: Any] {
@@ -604,6 +615,9 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         lastEffectiveSpeed = effectiveSpeed
 
         lastLocation = location
+        if location.horizontalAccuracy > 0 && location.horizontalAccuracy <= 100 {
+            lastGpsLocation = location
+        }
         stateManager.lastLocationTime = Date().timeIntervalSince1970 * 1000
 
         let locationMap = buildLocationMap(location, speed: effectiveSpeed)
@@ -865,12 +879,12 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             "speed": effectiveSpeed,
             "heading": max(location.course, -1),
             "accuracy": location.horizontalAccuracy,
-            "altitude_accuracy": location.verticalAccuracy,
+            "altitudeAccuracy": location.verticalAccuracy,
         ]
 
         if #available(iOS 13.4, *) {
-            coords["speed_accuracy"] = location.speedAccuracy
-            coords["heading_accuracy"] = location.courseAccuracy
+            coords["speedAccuracy"] = location.speedAccuracy
+            coords["headingAccuracy"] = location.courseAccuracy
         }
 
         if let floor = location.floor {
@@ -1143,7 +1157,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             ],
             "battery": [
                 "level": -1.0,
-                "isCharging": false,
+                "is_charging": false,
             ],
         ]
 
