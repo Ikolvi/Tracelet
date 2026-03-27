@@ -1,3 +1,7 @@
+## 1.8.1
+
+- **CHORE**: Version bump for iOS periodic mode location indicator fix.
+
 ## 1.8.0
 
 - **FEAT**: Add `destroySyncedLocations()` Pigeon HostApi method — deletes only synced locations and returns count.

@@ -366,11 +366,17 @@ public final class TraceletSdk {
             preventSuspendManager.start()
         }
 
-        // iOS 17+: Maintain background activity session so location delivery
-        // continues when the app has no foreground presence.
-        backgroundActivitySessionManager.start()
+        // Do NOT start CLBackgroundActivitySession for periodic mode.
+        // It causes a persistent blue location indicator in the status bar,
+        // which is misleading — periodic mode only uses GPS briefly during
+        // each fix. Background execution is already handled by:
+        //   - BackgroundTaskHelper around each periodic fix
+        //   - Temporarily enabling allowsBackgroundLocationUpdates per fix
+        //   - significantLocationChanges as a wake-up mechanism
+        //   - BGAppRefreshTask via PeriodicRefreshScheduler
 
         // iOS 18+: Preserve authorization across suspension/termination.
+        // This does NOT show the location indicator.
         startServiceSessionForCurrentAuth()
 
         eventSender.sendEnabledChange(true)
@@ -1342,7 +1348,8 @@ public final class TraceletSdk {
             if configManager.getPreventSuspend() {
                 preventSuspendManager.start()
             }
-            backgroundActivitySessionManager.start()
+            // Do NOT start CLBackgroundActivitySession for periodic mode —
+            // it causes a persistent location indicator in the status bar.
             startServiceSessionForCurrentAuth()
 
         default:

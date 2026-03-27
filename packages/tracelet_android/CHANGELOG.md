@@ -1,3 +1,7 @@
+## 1.8.1
+
+- **CHORE**: Version bump for iOS periodic mode location indicator fix.
+
 ## 1.8.0
 
 - **FIX**: ConfigManager null-merge — partial `setConfig()` no longer overwrites existing non-null values (e.g. HTTP URL) with null defaults.

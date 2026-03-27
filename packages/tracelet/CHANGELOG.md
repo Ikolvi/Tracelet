@@ -1,3 +1,7 @@
+## 1.8.1
+
+- **FIX**: iOS periodic mode no longer shows persistent location indicator in the status bar.
+
 ## 1.8.0
 
 - **FIX**: Align location map format contract across Android, iOS, and Dart layers — fixes 9 format mismatches.

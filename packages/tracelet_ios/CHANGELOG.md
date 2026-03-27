@@ -1,3 +1,8 @@
+## 1.8.1
+
+- **FIX**: Periodic mode no longer shows persistent location indicator — removed `CLBackgroundActivitySession` from periodic tracking (it caused the blue arrow to stay on permanently instead of briefly during each fix).
+- **TEST**: Add `BackgroundActivitySessionManager`, `ServiceSessionManager`, and `PeriodicModeBackgroundSession` unit tests.
+
 ## 1.8.0
 
 - **FIX**: ConfigManager null-merge — filter NSNull values during merge so partial `setConfig()` does not overwrite existing non-null config.
