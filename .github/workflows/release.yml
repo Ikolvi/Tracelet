@@ -170,10 +170,15 @@ jobs:
         if: ${{ !inputs.dry_run }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          TAG="sdk-android-v${VERSION}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "sdk-android-v${VERSION}" -m "Android SDK v${VERSION}"
-          git push origin "sdk-android-v${VERSION}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "ℹ️ Tag $TAG already exists — skipping"
+          else
+            git tag "$TAG" -m "Android SDK v${VERSION}"
+            git push origin "$TAG"
+          fi
 
       - name: Summary
         if: always()
@@ -225,10 +230,15 @@ jobs:
         if: ${{ !inputs.dry_run }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          TAG="sdk-ios-v${VERSION}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "sdk-ios-v${VERSION}" -m "iOS SDK v${VERSION}"
-          git push origin "sdk-ios-v${VERSION}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "ℹ️ Tag $TAG already exists — skipping"
+          else
+            git tag "$TAG" -m "iOS SDK v${VERSION}"
+            git push origin "$TAG"
+          fi
 
       - name: Publish to CocoaPods
         if: ${{ !inputs.dry_run }}
@@ -340,12 +350,22 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           PACKAGES="tracelet_platform_interface tracelet_android tracelet_ios tracelet_web tracelet"
+          CREATED=0
           for pkg in $PACKAGES; do
             TAG="${pkg}-v${VERSION}"
-            git tag "$TAG" -m "Release ${pkg} v${VERSION}"
-            echo "🏷️ Tagged: $TAG"
+            if git rev-parse "$TAG" >/dev/null 2>&1; then
+              echo "ℹ️ Tag $TAG already exists — skipping"
+            else
+              git tag "$TAG" -m "Release ${pkg} v${VERSION}"
+              echo "🏷️ Tagged: $TAG"
+              CREATED=$((CREATED + 1))
+            fi
           done
-          git push origin --tags
+          if [ "$CREATED" -gt 0 ]; then
+            git push origin --tags
+          else
+            echo "ℹ️ All tags already existed — no push needed"
+          fi
 
       - name: Dry-run publish
         if: inputs.dry_run
