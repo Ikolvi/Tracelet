@@ -130,6 +130,20 @@ jobs:
             echo "is_snapshot=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Check if already published
+        id: check_published
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          URL="https://repo1.maven.org/maven2/com/ikolvi/tracelet-sdk/${VERSION}/tracelet-sdk-${VERSION}.pom"
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL")
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+            echo "ℹ️ Version $VERSION already exists on Maven Central — skipping publish"
+          else
+            echo "already_published=false" >> "$GITHUB_OUTPUT"
+            echo "📦 Version $VERSION not found on Maven Central — will publish"
+          fi
+
       - name: Build release AAR
         working-directory: sdk/android
         run: ./gradlew :tracelet-sdk:assembleRelease
@@ -147,7 +161,7 @@ jobs:
           find ~/.m2/repository/com/ikolvi/tracelet-sdk -type f | sort
 
       - name: Publish to Maven Central
-        if: ${{ !inputs.dry_run && steps.version.outputs.is_snapshot == 'false' }}
+        if: ${{ !inputs.dry_run && steps.version.outputs.is_snapshot == 'false' && steps.check_published.outputs.already_published == 'false' }}
         working-directory: sdk/android
         env:
           OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
@@ -157,7 +171,7 @@ jobs:
         run: ./gradlew publishToSonatype closeAndReleaseSonatypeStagingRepository
 
       - name: Publish snapshot
-        if: ${{ !inputs.dry_run && steps.version.outputs.is_snapshot == 'true' }}
+        if: ${{ !inputs.dry_run && steps.version.outputs.is_snapshot == 'true' && steps.check_published.outputs.already_published == 'false' }}
         working-directory: sdk/android
         env:
           OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
@@ -211,6 +225,19 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "📦 iOS SDK version: $VERSION"
 
+      - name: Check if already published
+        id: check_published
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          # Check CocoaPods trunk API for existing version
+          if pod trunk info TraceletSDK 2>/dev/null | grep -q "- ${VERSION}"; then
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+            echo "ℹ️ TraceletSDK $VERSION already exists on CocoaPods — skipping publish"
+          else
+            echo "already_published=false" >> "$GITHUB_OUTPUT"
+            echo "📦 TraceletSDK $VERSION not found on CocoaPods — will publish"
+          fi
+
       - name: Build SDK (SPM)
         working-directory: sdk/ios
         run: |
@@ -241,7 +268,7 @@ jobs:
           fi
 
       - name: Publish to CocoaPods
-        if: ${{ !inputs.dry_run }}
+        if: ${{ !inputs.dry_run && steps.check_published.outputs.already_published == 'false' }}
         env:
           COCOAPODS_TRUNK_TOKEN: ${{ secrets.COCOAPODS_TRUNK_TOKEN }}
         run: |
