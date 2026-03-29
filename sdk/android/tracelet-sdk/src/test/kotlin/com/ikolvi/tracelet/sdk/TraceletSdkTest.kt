@@ -135,6 +135,46 @@ internal class TraceletSdkTest {
     }
 
     @Test
+    fun stop_doesNotCrash_beforeReady() {
+        val sdk = initSdk()
+        // stop() should return early without accessing lateinit properties
+        sdk.stop()
+        assertFalse(sdk.isReady)
+    }
+
+    @Test
+    fun playSound_returnsFalse_beforeInitialize() {
+        // SDK without initialize() — soundManager is not set
+        val sdk = TraceletSdk.getInstance(context)
+        sdk.setEventSender(NoOpEventSender())
+        assertFalse(sdk.playSound("test"))
+    }
+
+    @Test
+    fun destroyAll_doesNotCrash_withoutSoundManager() {
+        // Use initSdk() then clear soundManager via reflection to simulate
+        // partial initialization (e.g., crash during initialize() before
+        // soundManager is assigned).
+        val sdk = initSdk()
+
+        // Clear soundManager — Kotlin lateinit fields can be "uninitialized"
+        // by setting the backing field to null via reflection.
+        val field = TraceletSdk::class.java.getDeclaredField("soundManager")
+        field.isAccessible = true
+        field.set(sdk, null)
+
+        // destroyAll() must not crash — soundManager.stop() is guarded.
+        // WorkManager.cancel() may throw in unit tests; we only care that
+        // the uninitialized soundManager doesn't throw.
+        try {
+            sdk.destroyAll()
+        } catch (e: IllegalStateException) {
+            // WorkManager not initialized in unit tests — expected.
+            assertTrue(e.message?.contains("WorkManager") == true)
+        }
+    }
+
+    @Test
     fun isReady_isFalseBeforeReady() {
         val sdk = initSdk()
         assertFalse(sdk.isReady)

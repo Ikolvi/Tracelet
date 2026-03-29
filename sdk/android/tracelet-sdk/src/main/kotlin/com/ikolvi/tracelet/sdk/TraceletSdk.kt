@@ -15,6 +15,7 @@ import com.ikolvi.tracelet.sdk.algorithm.TripManager
 import com.ikolvi.tracelet.sdk.attestation.DeviceAttestor
 import com.ikolvi.tracelet.sdk.audit.AuditTrailManager
 import com.ikolvi.tracelet.sdk.db.DatabaseEncryptionManager
+import com.ikolvi.tracelet.sdk.db.SqlCipherMigrator
 import com.ikolvi.tracelet.sdk.db.TraceletDatabase
 import com.ikolvi.tracelet.sdk.geofence.GeofenceManager
 import com.ikolvi.tracelet.sdk.http.HttpSyncManager
@@ -263,13 +264,19 @@ class TraceletSdk private constructor(private val context: Context) {
     fun ready(config: Map<String, Any?>, callback: (Map<String, Any?>) -> Unit) {
         val merged = configManager.setConfig(config)
 
-        // Auto-encrypt if enabled
+        // Auto-encrypt if enabled and SQLCipher is available
         if (configManager.getEncryptDatabase() && !encryptionManager.isDatabaseEncrypted()) {
-            val customKey = configManager.getEncryptionKey()
-            val key = encryptionManager.getOrCreateKey(customKey)
-            val success = database.encryptDatabase(key, encryptionManager)
-            if (success) {
-                database = TraceletDatabase.getInstance(context, key)
+            if (!SqlCipherMigrator.isAvailable()) {
+                logger.warning("encryptDatabase is enabled but SQLCipher is not on the classpath. " +
+                    "Add implementation(\"net.zetetic:sqlcipher-android:4.6.1@aar\") " +
+                    "to your app's build.gradle to enable database encryption.")
+            } else {
+                val customKey = configManager.getEncryptionKey()
+                val key = encryptionManager.getOrCreateKey(customKey)
+                val success = database.encryptDatabase(key, encryptionManager)
+                if (success) {
+                    database = TraceletDatabase.getInstance(context, key)
+                }
             }
         }
 
@@ -424,6 +431,8 @@ class TraceletSdk private constructor(private val context: Context) {
     }
 
     fun stop() {
+        if (!isReady) return
+
         stateManager.enabled = false
         stateManager.isMoving = false
 
@@ -966,7 +975,10 @@ class TraceletSdk private constructor(private val context: Context) {
     // Sound
     // =========================================================================
 
-    fun playSound(name: String): Boolean = soundManager.playSound(name)
+    fun playSound(name: String): Boolean {
+        if (!::soundManager.isInitialized) return false
+        return soundManager.playSound(name)
+    }
 
     // =========================================================================
     // OEM Compatibility
@@ -1110,10 +1122,10 @@ class TraceletSdk private constructor(private val context: Context) {
 
         if (isMoving) {
             locationEngine.start()
-            soundManager.playMotionChange(true)
+            if (::soundManager.isInitialized) soundManager.playMotionChange(true)
         } else {
             locationEngine.stop()
-            soundManager.playMotionChange(false)
+            if (::soundManager.isInitialized) soundManager.playMotionChange(false)
         }
 
         val locationMap =
@@ -1310,7 +1322,7 @@ class TraceletSdk private constructor(private val context: Context) {
 
         httpSyncManager.stop()
         scheduleManager.stop()
-        soundManager.stop()
+        if (::soundManager.isInitialized) soundManager.stop()
         stopHeartbeat()
 
         val keepPeriodicAlive = !configManager.getStopOnTerminate() &&
