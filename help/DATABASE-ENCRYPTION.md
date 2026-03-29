@@ -20,6 +20,30 @@ encrypted or not.
 
 ## Quick Start
 
+### Android Setup (required)
+
+Database encryption on Android uses SQLCipher, which is an **optional**
+dependency to keep APK size small for apps that don't need it.
+
+Add the following to your **app-level** `build.gradle` (not the plugin):
+
+```kotlin
+// android/app/build.gradle.kts  (or build.gradle)
+dependencies {
+    implementation("net.zetetic:sqlcipher-android:4.6.1@aar")
+}
+```
+
+> **Size impact:** SQLCipher adds ~7.5 MB per ABI (~30 MB in a universal APK).
+> Use App Bundles (`flutter build appbundle`) to serve only the matching ABI
+> to each device (~7.5 MB per device).
+>
+> If you don't add this dependency, calling `encryptDatabase` will throw an
+> `IllegalStateException` with setup instructions. iOS encryption uses
+> built-in `NSFileProtection` and requires no extra dependencies.
+
+### Dart API
+
 ```dart
 import 'package:tracelet/tracelet.dart' as tl;
 

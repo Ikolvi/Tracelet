@@ -13,6 +13,10 @@ import java.security.SecureRandom
  *
  * Keys are stored securely using EncryptedSharedPreferences backed by
  * the Android Keystore. The MasterKey is AES-256-GCM.
+ *
+ * Requires the optional `androidx.security:security-crypto` dependency.
+ * When the library is absent, [isDatabaseEncrypted] returns `false` and
+ * [getDatabasePassword] returns an empty byte array (unencrypted mode).
  */
 class DatabaseEncryptionManager(private val context: Context) {
 
@@ -21,6 +25,17 @@ class DatabaseEncryptionManager(private val context: Context) {
         private const val PREFS_NAME = "com.tracelet.encryption"
         private const val KEY_DB_KEY = "database_key"
         private const val KEY_IS_ENCRYPTED = "is_encrypted"
+
+        /**
+         * Returns `true` if the security-crypto library is on the classpath.
+         */
+        @JvmStatic
+        fun isAvailable(): Boolean = try {
+            Class.forName("androidx.security.crypto.MasterKey")
+            true
+        } catch (_: ClassNotFoundException) {
+            false
+        }
     }
 
     private val masterKey: MasterKey by lazy {
@@ -41,6 +56,7 @@ class DatabaseEncryptionManager(private val context: Context) {
 
     /** Check if the database has been encrypted. */
     fun isDatabaseEncrypted(): Boolean {
+        if (!isAvailable()) return false
         return prefs.getBoolean(KEY_IS_ENCRYPTED, false)
     }
 

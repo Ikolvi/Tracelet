@@ -262,6 +262,30 @@ Here is a minimal `AndroidManifest.xml` for your app. Tracelet's permissions are
 
 ---
 
+## Optional Dependencies
+
+### Database Encryption (SQLCipher)
+
+If you need application-level database encryption (enterprise feature),
+add SQLCipher to your **app-level** `build.gradle`:
+
+```kotlin
+// android/app/build.gradle.kts
+dependencies {
+    implementation("net.zetetic:sqlcipher-android:4.6.1@aar")
+}
+```
+
+**Without this dependency:** Tracelet works normally with Android's built-in
+File-Based Encryption (FBE). Calling `encryptDatabase()` or setting
+`encryptDatabase: true` will throw a clear error.
+
+**Size impact:** ~7.5 MB per ABI. Use App Bundles to minimize.
+
+See [Database Encryption](DATABASE-ENCRYPTION.md) for full setup.
+
+---
+
 ## Troubleshooting
 
 ### Location updates stop after a few minutes

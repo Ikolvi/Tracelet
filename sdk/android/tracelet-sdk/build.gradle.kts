@@ -55,15 +55,20 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:5.3.2")
     implementation("com.squareup.okhttp3:okhttp-tls:5.3.2")
 
-    // SQLCipher for database encryption (Enterprise)
-    implementation("net.zetetic:sqlcipher-android:4.6.1@aar")
+    // SQLCipher for database encryption (Enterprise, optional)
+    // compileOnly: not bundled in the AAR. Apps that need encryption must add
+    // implementation("net.zetetic:sqlcipher-android:4.6.1@aar") to their build.gradle.
+    compileOnly("net.zetetic:sqlcipher-android:4.6.1@aar")
     implementation("androidx.sqlite:sqlite:2.6.2")
 
-    // EncryptedSharedPreferences for key management (Enterprise)
-    implementation("androidx.security:security-crypto:1.1.0")
+    // EncryptedSharedPreferences for key management (Enterprise, optional)
+    // Only needed when database encryption (SQLCipher) is used.
+    compileOnly("androidx.security:security-crypto:1.1.0")
 
-    // Play Integrity for device attestation (Enterprise)
-    implementation("com.google.android.play:integrity:1.6.0")
+    // Play Integrity for device attestation (Enterprise, optional)
+    // compileOnly: not bundled in the AAR. Apps that need attestation must add
+    // implementation("com.google.android.play:integrity:1.6.0") to their build.gradle.
+    compileOnly("com.google.android.play:integrity:1.6.0")
 
     // Core KTX
     implementation("androidx.core:core-ktx:1.18.0")
@@ -84,6 +89,12 @@ dependencies {
     testImplementation("androidx.test:core:1.7.0")
     testImplementation("androidx.work:work-testing:2.11.1")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+
+    // Optional deps needed for tests (security-crypto for EncryptionManager tests,
+    // play-integrity for DeviceAttestor tests). SQLCipher is intentionally NOT
+    // included so SqlCipherMigratorTest can verify the "unavailable" code path.
+    testImplementation("androidx.security:security-crypto:1.1.0")
+    testImplementation("com.google.android.play:integrity:1.6.0")
 }
 
 afterEvaluate {

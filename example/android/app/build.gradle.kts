@@ -48,3 +48,13 @@ android {
 flutter {
     source = "../.."
 }
+
+// Optional enterprise dependencies — uncomment to enable:
+// dependencies {
+//     // Database encryption (SQLCipher) — adds ~16MB to universal APK
+//     implementation("net.zetetic:sqlcipher-android:4.6.1@aar")
+//     implementation("androidx.security:security-crypto:1.1.0")
+//
+//     // Device attestation (Play Integrity) — adds ~1MB
+//     implementation("com.google.android.play:integrity:1.6.0")
+// }

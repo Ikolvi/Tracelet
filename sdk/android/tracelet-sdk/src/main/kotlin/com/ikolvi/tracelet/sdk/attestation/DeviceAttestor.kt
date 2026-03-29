@@ -17,14 +17,30 @@ import java.util.concurrent.TimeUnit
  *
  * Generates signed attestation tokens that prove the device hardware/software
  * is genuine and untampered. Tokens are cached and refreshed periodically.
+ *
+ * Requires the optional `com.google.android.play:integrity` dependency.
+ * If not on the classpath, [requestToken] returns `null` and [isAvailable]
+ * returns `false`.
  */
 class DeviceAttestor(private val context: Context) {
 
     companion object {
         private const val TAG = "DeviceAttestor"
+
+        /**
+         * Returns `true` if the Play Integrity library is on the classpath.
+         */
+        @JvmStatic
+        fun isAvailable(): Boolean = try {
+            Class.forName("com.google.android.play.core.integrity.IntegrityManagerFactory")
+            true
+        } catch (_: ClassNotFoundException) {
+            false
+        }
     }
 
-    private val integrityManager = IntegrityManagerFactory.create(context)
+    // Lazy: avoids NoClassDefFoundError when Play Integrity is absent.
+    private val integrityManager by lazy { IntegrityManagerFactory.create(context) }
     private val scheduler = Executors.newSingleThreadScheduledExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -45,6 +61,14 @@ class DeviceAttestor(private val context: Context) {
      * @param callback Called with the token map, or null if unavailable
      */
     fun requestToken(callback: (Map<String, Any?>?) -> Unit) {
+        if (!isAvailable()) {
+            Log.w(TAG, "Play Integrity not available. " +
+                "Add implementation(\"com.google.android.play:integrity:1.6.0\") " +
+                "to your app's build.gradle.")
+            callback(null)
+            return
+        }
+
         // Return cached token if still fresh (within 5 minutes)
         val cached = cachedToken
         if (cached != null && System.currentTimeMillis() - cachedTimestamp < 300_000) {
@@ -87,6 +111,7 @@ class DeviceAttestor(private val context: Context) {
      * @param intervalSeconds Refresh interval in seconds (minimum 60)
      */
     fun startRefresh(intervalSeconds: Int) {
+        if (!isAvailable()) return
         stopRefresh()
         val interval = intervalSeconds.coerceAtLeast(60).toLong()
         refreshFuture = scheduler.scheduleAtFixedRate(

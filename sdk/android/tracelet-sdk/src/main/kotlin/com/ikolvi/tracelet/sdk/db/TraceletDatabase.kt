@@ -927,11 +927,22 @@ class TraceletDatabase private constructor(context: Context, private val dbPassw
      * 3. Export all data via sqlcipher_export()
      * 4. Detach and replace the original file
      *
+     * Requires the optional `net.zetetic:sqlcipher-android` dependency.
+     * If SQLCipher is not on the classpath, this method throws
+     * [IllegalStateException] with setup instructions.
+     *
      * @param key The encryption key bytes
      * @param encryptionManager The manager to mark encryption complete
      * @return true on success
+     * @throws IllegalStateException if SQLCipher is not available
      */
     fun encryptDatabase(key: ByteArray, encryptionManager: DatabaseEncryptionManager): Boolean {
+        check(SqlCipherMigrator.isAvailable()) {
+            "Database encryption requires the SQLCipher dependency. " +
+                "Add implementation(\"net.zetetic:sqlcipher-android:4.6.1@aar\") " +
+                "to your app's build.gradle."
+        }
+
         return try {
             val dbPath = appContext.getDatabasePath(DB_NAME).absolutePath
             val encryptedPath = "$dbPath.encrypted"
@@ -939,18 +950,8 @@ class TraceletDatabase private constructor(context: Context, private val dbPassw
             // Close the current database
             close()
 
-            // Open the unencrypted database directly using SQLCipher
-            val unencryptedDb = net.zetetic.database.sqlcipher.SQLiteDatabase.openDatabase(
-                dbPath, "", null,
-                net.zetetic.database.sqlcipher.SQLiteDatabase.OPEN_READWRITE, null, null
-            )
-
-            // Attach encrypted database and export
-            val hexKey = key.joinToString("") { "%02x".format(it) }
-            unencryptedDb.rawExecSQL("ATTACH DATABASE '$encryptedPath' AS encrypted KEY x'$hexKey'")
-            unencryptedDb.rawExecSQL("SELECT sqlcipher_export('encrypted')")
-            unencryptedDb.rawExecSQL("DETACH DATABASE encrypted")
-            unencryptedDb.close()
+            // Run SQLCipher ATTACH + export migration
+            SqlCipherMigrator.migrate(dbPath, encryptedPath, key)
 
             // Replace unencrypted with encrypted
             val originalFile = File(dbPath)
