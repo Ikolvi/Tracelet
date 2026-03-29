@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Looper
 import android.util.Log
 import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
 import com.google.android.gms.location.*
 import com.ikolvi.tracelet.sdk.ConfigManager
 import com.ikolvi.tracelet.sdk.TraceletEventSender
@@ -614,7 +615,7 @@ class LocationEngine(
         }
 
         return mapOf(
-            "enabled" to (lm?.isLocationEnabled ?: false),
+            "enabled" to (lm?.let { LocationManagerCompat.isLocationEnabled(it) } ?: false),
             "status" to status,
             "gps" to (lm?.isProviderEnabled(LocationManager.GPS_PROVIDER) ?: false),
             "network" to (lm?.isProviderEnabled(LocationManager.NETWORK_PROVIDER) ?: false),
