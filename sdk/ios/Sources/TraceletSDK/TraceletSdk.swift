@@ -257,6 +257,9 @@ public final class TraceletSdk {
     /// - Returns: Updated state as a dictionary.
     @discardableResult
     public func stop() -> [String: Any] {
+        guard isReady else {
+            return [:]
+        }
         BackgroundTaskHelper.shared.run("stop") { [self] in
             stateManager.enabled = false
             stateManager.isMoving = false

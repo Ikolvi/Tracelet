@@ -139,6 +139,10 @@ class TraceletHostApiImpl: TraceletHostApi {
     }
 
     func stop(completion: @escaping (Result<TlState, Error>) -> Void) {
+        guard sdk.isReadyState else {
+            completion(.failure(PigeonError(code: "NOT_READY", message: "Call ready() before stop()", details: nil)))
+            return
+        }
         let state = sdk.stop()
         completion(.success(dictToTlState(state as? [String: Any] ?? [:])))
     }
