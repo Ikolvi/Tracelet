@@ -1,3 +1,12 @@
+## 1.8.2
+
+- **FIX**: Prevent crash when `stop()` is called before `ready()` on iOS — returns `NOT_READY` error instead of accessing uninitialized properties.
+- **FIX**: Guard `soundManager` access on Android to prevent `UninitializedPropertyAccessException` during motion state changes or cleanup.
+- **FIX**: Use `LocationManagerCompat.isLocationEnabled()` on Android — fixes `NoSuchMethodError` crash on API 26/27 devices.
+- **FIX**: Enterprise optional dependencies (SQLCipher, Play Integrity, security-crypto) now gracefully degrade at runtime when not on the classpath — no more `NoClassDefFoundError` crashes.
+- **REFACTOR**: Refined ProGuard/R8 consumer rules — narrower keep rules, added `-dontwarn` for optional enterprise dependencies.
+- **DOCS**: Updated `INSTALL-ANDROID.md` and `DATABASE-ENCRYPTION.md` with enterprise dependency setup instructions.
+
 ## 1.8.1
 
 - **FIX**: iOS periodic mode no longer shows persistent location indicator in the status bar.

@@ -250,6 +250,27 @@ LoggerConfig(
 
 ### Enterprise Features
 
+Enterprise features use **optional** dependencies — they are `compileOnly` in the SDK and must be added to your app's `build.gradle` if needed:
+
+| Feature | Dependency | Size Impact |
+|---------|-----------|-------------|
+| Database encryption | `net.zetetic:sqlcipher-android:4.6.1@aar` | ~7.5 MB/ABI |
+| Key management | `androidx.security:security-crypto:1.1.0` | ~0.5 MB |
+| Device attestation | `com.google.android.play:integrity:1.6.0` | ~1 MB |
+
+```kotlin
+// app/build.gradle.kts — only add what you need:
+dependencies {
+    implementation("net.zetetic:sqlcipher-android:4.6.1@aar")   // encryption
+    implementation("androidx.security:security-crypto:1.1.0")    // encryption key mgmt
+    implementation("com.google.android.play:integrity:1.6.0")   // device attestation
+}
+```
+
+**Without these dependencies**, enterprise features degrade gracefully:
+- `encryptDatabase: true` → logs a warning, database stays unencrypted
+- `attestation.enabled: true` → attestation callbacks return `null`
+
 ```kotlin
 // Tamper-proof location audit trail
 AuditConfig(enabled = true, hashAlgorithm = HashAlgorithm.SHA256)

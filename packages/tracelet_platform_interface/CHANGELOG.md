@@ -1,3 +1,7 @@
+## 1.8.2
+
+- **CHORE**: Version bump for Android/iOS stability fixes.
+
 ## 1.8.1
 
 - **CHORE**: Version bump for iOS periodic mode location indicator fix.

@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'TraceletSDK'
-  s.version          = '1.0.1'
+  s.version          = '1.0.2'
   s.summary          = 'Production-grade background geolocation SDK for iOS.'
   s.description      = <<-DESC
     TraceletSDK provides battery-conscious background geolocation with motion detection,

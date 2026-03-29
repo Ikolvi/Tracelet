@@ -1,3 +1,12 @@
+## 1.8.2
+
+- **FIX**: Guard `soundManager` access in `handleMotionStateChange()` and `destroyAll()` — prevents `UninitializedPropertyAccessException` if motion detector fires before full initialization.
+- **FIX**: Use `LocationManagerCompat.isLocationEnabled()` instead of `LocationManager.isLocationEnabled()` — fixes crash on Android API 26/27.
+- **FIX**: Enterprise dependencies (SQLCipher, Play Integrity, security-crypto) now degrade gracefully when absent — runtime `Class.forName` checks prevent `NoClassDefFoundError`.
+- **FIX**: `DeviceAttestor` uses lazy `IntegrityManagerFactory` initialization — prevents crash when Play Integrity is not on the classpath.
+- **REFACTOR**: Refined ProGuard/R8 consumer rules — narrower keep rules, `-dontwarn` for optional deps.
+- **TEST**: Add `destroyAll_doesNotCrash_withoutSoundManager` unit test.
+
 ## 1.8.1
 
 - **CHORE**: Version bump for iOS periodic mode location indicator fix.

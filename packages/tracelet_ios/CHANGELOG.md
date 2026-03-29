@@ -1,3 +1,8 @@
+## 1.8.2
+
+- **FIX**: `TraceletSdk.stop()` now checks `isReady` before accessing managers — prevents crash when `stop()` is called before `ready()`.
+- **FIX**: `TraceletHostApiImpl.stop()` returns `NOT_READY` PigeonError when called before initialization.
+
 ## 1.8.1
 
 - **FIX**: Periodic mode no longer shows persistent location indicator — removed `CLBackgroundActivitySession` from periodic tracking (it caused the blue arrow to stay on permanently instead of briefly during each fix).
