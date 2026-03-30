@@ -20,6 +20,14 @@
 -keep class com.ikolvi.tracelet.sdk.TraceletEventSender { *; }
 -keep class com.ikolvi.tracelet.sdk.TraceletListener { *; }
 
+# Bootstrap / cold-boot recovery (must survive R8 full mode)
+-keep class com.ikolvi.tracelet.sdk.TraceletBootstrap { *; }
+-keep class com.ikolvi.tracelet.sdk.ListenerEventSender { *; }
+-keep class com.ikolvi.tracelet.sdk.HeadlessDispatcher { *; }
+
+# Kotlin interface default method implementations
+-keep class com.ikolvi.tracelet.sdk.TraceletListener$DefaultImpls { *; }
+
 # Keep Pigeon-generated API classes (Flutter ↔ Native bridge)
 -keep class com.ikolvi.tracelet.TraceletApi$* { *; }
 -keep class com.ikolvi.tracelet.flutter.TraceletHostApiImpl { *; }

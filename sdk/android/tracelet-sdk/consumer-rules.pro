@@ -9,6 +9,14 @@
 # Model classes used in serialization
 -keep class com.ikolvi.tracelet.sdk.model.** { *; }
 
+# Bootstrap / cold-boot recovery (must survive R8 full mode)
+-keep class com.ikolvi.tracelet.sdk.TraceletBootstrap { *; }
+-keep class com.ikolvi.tracelet.sdk.ListenerEventSender { *; }
+-keep class com.ikolvi.tracelet.sdk.HeadlessDispatcher { *; }
+
+# Kotlin interface default method implementations
+-keep class com.ikolvi.tracelet.sdk.TraceletListener$DefaultImpls { *; }
+
 # Manifest-referenced components
 -keep class com.ikolvi.tracelet.sdk.service.LocationService { *; }
 -keep class com.ikolvi.tracelet.sdk.receiver.** { *; }
