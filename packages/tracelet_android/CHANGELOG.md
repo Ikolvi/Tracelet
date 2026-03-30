@@ -1,6 +1,7 @@
 ## 1.8.3
 
-- **CHORE**: Version bump for iOS pre-ready guard fixes.
+- **FIX**: Add `isReady` guards to all Android SDK methods — prevents `UninitializedPropertyAccessException` when called before `ready()` (re-fixes #46).
+- **CHORE**: Bump native SDK dependency `com.ikolvi:tracelet-sdk` 1.0.2 → 1.0.3.
 
 ## 1.8.2
 

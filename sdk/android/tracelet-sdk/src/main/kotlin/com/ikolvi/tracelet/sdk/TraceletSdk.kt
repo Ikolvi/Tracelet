@@ -457,7 +457,16 @@ class TraceletSdk private constructor(private val context: Context) {
         logger.info("stop() — tracking stopped")
     }
 
-    fun getState(): Map<String, Any?> = stateManager.toMap(configManager.getConfig())
+    fun getState(): Map<String, Any?> {
+        if (!isReady) return mapOf(
+            "enabled" to false,
+            "isMoving" to false,
+            "trackingMode" to 0,
+            "schedulerEnabled" to false,
+            "odometer" to 0.0,
+        )
+        return stateManager.toMap(configManager.getConfig())
+    }
 
     // =========================================================================
     // Lifecycle — startGeofences
@@ -582,6 +591,10 @@ class TraceletSdk private constructor(private val context: Context) {
     }
 
     fun setConfig(config: Map<String, Any?>): Map<String, Any?> {
+        if (!isReady) return mapOf(
+            "enabled" to false, "isMoving" to false,
+            "trackingMode" to 0, "schedulerEnabled" to false, "odometer" to 0.0,
+        )
         val oldConfig = configManager.getConfig()
         val merged = configManager.setConfig(config)
 
@@ -603,6 +616,7 @@ class TraceletSdk private constructor(private val context: Context) {
     }
 
     fun reset(newConfig: Map<String, Any?>?) {
+        if (!isReady) return
         locationEngine.destroy()
         motionDetector.stop()
         stopHeartbeat()
@@ -624,6 +638,7 @@ class TraceletSdk private constructor(private val context: Context) {
         options: Map<String, Any?>,
         callback: (Map<String, Any?>?) -> Unit,
     ) {
+        if (!isReady) { callback(null); return }
         locationEngine.getCurrentPosition(options, callback)
     }
 
@@ -631,25 +646,39 @@ class TraceletSdk private constructor(private val context: Context) {
         options: Map<String, Any?>,
         callback: (Map<String, Any?>?) -> Unit,
     ) {
+        if (!isReady) { callback(null); return }
         locationEngine.getLastKnownLocation(options, callback)
     }
 
     fun watchPosition(options: Map<String, Any?>): Int {
+        if (!isReady) return -1
         return locationEngine.watchPosition(options)
     }
 
     fun stopWatchPosition(watchId: Int): Boolean {
+        if (!isReady) return false
         return locationEngine.stopWatchPosition(watchId)
     }
 
     fun changePace(isMoving: Boolean): Map<String, Any?> {
+        if (!isReady) return mapOf(
+            "enabled" to false, "isMoving" to false,
+            "trackingMode" to 0, "schedulerEnabled" to false, "odometer" to 0.0,
+        )
         locationEngine.changePace(isMoving)
         return stateManager.toMap(configManager.getConfig())
     }
 
-    fun getOdometer(): Double = locationEngine.getOdometer()
+    fun getOdometer(): Double {
+        if (!isReady) return 0.0
+        return locationEngine.getOdometer()
+    }
 
     fun setOdometer(value: Double): Map<String, Any?> {
+        if (!isReady) return mapOf(
+            "enabled" to false, "isMoving" to false,
+            "trackingMode" to 0, "schedulerEnabled" to false, "odometer" to 0.0,
+        )
         return locationEngine.setOdometer(value)
     }
 
@@ -658,6 +687,7 @@ class TraceletSdk private constructor(private val context: Context) {
     // =========================================================================
 
     fun addGeofence(geofence: Map<String, Any?>): Boolean {
+        if (!isReady) return false
         return geofenceManager.addGeofence(geofence)
     }
 
@@ -667,6 +697,7 @@ class TraceletSdk private constructor(private val context: Context) {
     }
 
     fun addGeofences(geofences: List<Map<String, Any?>>) {
+        if (!isReady) return
         geofenceManager.addGeofences(geofences)
     }
 
@@ -676,20 +707,27 @@ class TraceletSdk private constructor(private val context: Context) {
     }
 
     fun removeGeofence(identifier: String): Boolean {
+        if (!isReady) return false
         return geofenceManager.removeGeofence(identifier)
     }
 
     fun removeGeofences(): Boolean {
+        if (!isReady) return false
         return geofenceManager.removeGeofences()
     }
 
-    fun getGeofences(): List<Map<String, Any?>> = geofenceManager.getGeofences()
+    fun getGeofences(): List<Map<String, Any?>> {
+        if (!isReady) return emptyList()
+        return geofenceManager.getGeofences()
+    }
 
     fun getGeofence(identifier: String): Map<String, Any?>? {
+        if (!isReady) return null
         return geofenceManager.getGeofence(identifier)
     }
 
     fun geofenceExists(identifier: String): Boolean {
+        if (!isReady) return false
         return geofenceManager.geofenceExists(identifier)
     }
 
@@ -698,6 +736,7 @@ class TraceletSdk private constructor(private val context: Context) {
     // =========================================================================
 
     fun getLocations(query: Map<String, Any?>?): List<Map<String, Any?>> {
+        if (!isReady) return emptyList()
         val limit = (query?.get("limit") as? Number)?.toInt() ?: -1
         val offset = (query?.get("offset") as? Number)?.toInt() ?: 0
         val orderAsc = (query?.get("order") as? Number)?.toInt() != 1
@@ -707,25 +746,29 @@ class TraceletSdk private constructor(private val context: Context) {
     }
 
     fun getCount(query: Map<String, Any?>?): Int {
+        if (!isReady) return 0
         val startTime = (query?.get("start") as? Number)?.toLong()
         val endTime = (query?.get("end") as? Number)?.toLong()
         return database.getLocationCount(startTime, endTime)
     }
 
     fun destroyLocations(): Boolean {
+        if (!isReady) return false
         return database.deleteAllLocations()
     }
 
-    /** Deletes only synced locations from the database. Returns number deleted. */
     fun destroySyncedLocations(): Int {
+        if (!isReady) return 0
         return database.deleteSyncedLocations()
     }
 
     fun destroyLocation(uuid: String): Boolean {
+        if (!isReady) return false
         return database.deleteLocation(uuid)
     }
 
     fun insertLocation(params: Map<String, Any?>): String {
+        if (!isReady) return ""
         val uuid = database.insertLocation(params)
         httpSyncManager.onLocationInserted()
         return uuid
@@ -736,18 +779,22 @@ class TraceletSdk private constructor(private val context: Context) {
     // =========================================================================
 
     fun sync(callback: (List<Map<String, Any?>>) -> Unit) {
+        if (!isReady) { callback(emptyList()); return }
         httpSyncManager.sync(callback)
     }
 
     fun setDynamicHeaders(headers: Map<String, String>) {
+        if (!isReady) return
         configManager.setDynamicHeaders(headers)
     }
 
     fun setRouteContext(ctx: Map<String, Any?>) {
+        if (!isReady) return
         configManager.setRouteContext(ctx)
     }
 
     fun clearRouteContext() {
+        if (!isReady) return
         configManager.clearRouteContext()
     }
 
@@ -945,29 +992,46 @@ class TraceletSdk private constructor(private val context: Context) {
     // Provider & Sensors
     // =========================================================================
 
-    fun getProviderState(): Map<String, Any?> = locationEngine.buildProviderState()
+    fun getProviderState(): Map<String, Any?> {
+        if (!isReady) return emptyMap()
+        return locationEngine.buildProviderState()
+    }
 
-    fun getSensors(): Map<String, Any?> = motionDetector.getSensors()
+    fun getSensors(): Map<String, Any?> {
+        if (!isReady) return emptyMap()
+        return motionDetector.getSensors()
+    }
 
     // =========================================================================
     // Logging
     // =========================================================================
 
-    fun getLog(query: Map<String, Any?>?): String = logger.getLog(query)
+    fun getLog(query: Map<String, Any?>?): String {
+        if (!isReady) return ""
+        return logger.getLog(query)
+    }
 
-    fun destroyLog(): Boolean = logger.destroyLog()
+    fun destroyLog(): Boolean {
+        if (!isReady) return false
+        return logger.destroyLog()
+    }
 
-    fun log(level: String, message: String): Boolean = logger.log(level, message)
+    fun log(level: String, message: String): Boolean {
+        if (!isReady) return false
+        return logger.log(level, message)
+    }
 
     // =========================================================================
     // Scheduling
     // =========================================================================
 
     fun startSchedule() {
+        if (!isReady) return
         scheduleManager.start()
     }
 
     fun stopSchedule() {
+        if (!isReady) return
         scheduleManager.stop()
     }
 
@@ -994,15 +1058,24 @@ class TraceletSdk private constructor(private val context: Context) {
     // Enterprise: Audit Trail
     // =========================================================================
 
-    fun verifyAuditChain(): Map<String, Any?> = auditTrailManager.verifyChain()
+    fun verifyAuditChain(): Map<String, Any?> {
+        if (!isReady) return emptyMap()
+        return auditTrailManager.verifyChain()
+    }
 
-    fun getAuditProof(uuid: String): Map<String, Any?>? = auditTrailManager.getProof(uuid)
+    fun getAuditProof(uuid: String): Map<String, Any?>? {
+        if (!isReady) return null
+        return auditTrailManager.getProof(uuid)
+    }
 
     // =========================================================================
     // Enterprise: Privacy Zones
     // =========================================================================
 
-    fun addPrivacyZone(zone: Map<String, Any?>): Boolean = privacyZoneManager.addZone(zone)
+    fun addPrivacyZone(zone: Map<String, Any?>): Boolean {
+        if (!isReady) return false
+        return privacyZoneManager.addZone(zone)
+    }
 
     /** Add a privacy zone using a typed [TraceletPrivacyZone] model. */
     fun addPrivacyZone(zone: com.ikolvi.tracelet.sdk.model.TraceletPrivacyZone): Boolean {
@@ -1010,6 +1083,7 @@ class TraceletSdk private constructor(private val context: Context) {
     }
 
     fun addPrivacyZones(zones: List<Map<String, Any?>>): Boolean {
+        if (!isReady) return false
         return privacyZoneManager.addZones(zones)
     }
 
@@ -1018,17 +1092,29 @@ class TraceletSdk private constructor(private val context: Context) {
         return addPrivacyZones(zones.map { it.toMap() })
     }
 
-    fun removePrivacyZone(id: String): Boolean = privacyZoneManager.removeZone(id)
+    fun removePrivacyZone(id: String): Boolean {
+        if (!isReady) return false
+        return privacyZoneManager.removeZone(id)
+    }
 
-    fun removePrivacyZones(): Boolean = privacyZoneManager.removeAllZones()
+    fun removePrivacyZones(): Boolean {
+        if (!isReady) return false
+        return privacyZoneManager.removeAllZones()
+    }
 
-    fun getPrivacyZones(): List<Map<String, Any?>> = privacyZoneManager.getZones()
+    fun getPrivacyZones(): List<Map<String, Any?>> {
+        if (!isReady) return emptyList()
+        return privacyZoneManager.getZones()
+    }
 
     // =========================================================================
     // Enterprise: Database Encryption
     // =========================================================================
 
-    fun isDatabaseEncrypted(): Boolean = encryptionManager.isDatabaseEncrypted()
+    fun isDatabaseEncrypted(): Boolean {
+        if (!isReady) return false
+        return encryptionManager.isDatabaseEncrypted()
+    }
 
     /**
      * Encrypts the database. Returns true on success.
@@ -1036,6 +1122,7 @@ class TraceletSdk private constructor(private val context: Context) {
      * @throws Exception on encryption failure.
      */
     fun encryptDatabase(): Boolean {
+        if (!isReady) return false
         val customKey = configManager.getEncryptionKey()
         val key = encryptionManager.getOrCreateKey(customKey)
         val success = database.encryptDatabase(key, encryptionManager)
@@ -1050,6 +1137,7 @@ class TraceletSdk private constructor(private val context: Context) {
     // =========================================================================
 
     fun attestDevice(callback: (Map<String, Any?>?) -> Unit) {
+        if (!isReady) { callback(null); return }
         deviceAttestor.requestToken(callback)
     }
 
@@ -1058,6 +1146,7 @@ class TraceletSdk private constructor(private val context: Context) {
     // =========================================================================
 
     fun getDeadReckoningState(): Map<String, Any?>? {
+        if (!isReady) return null
         return locationEngine.getDeadReckoningState()
     }
 
@@ -1066,6 +1155,12 @@ class TraceletSdk private constructor(private val context: Context) {
     // =========================================================================
 
     fun getCarbonReport(query: Map<String, Any?>?): Map<String, Any?> {
+        if (!isReady) return mapOf(
+            "totalCarbonGrams" to 0.0,
+            "carbonByMode" to emptyMap<String, Double>(),
+            "distanceByMode" to emptyMap<String, Double>(),
+            "totalTrips" to 0,
+        )
         val from = (query?.get("from") as? Number)?.toLong()
         val to = (query?.get("to") as? Number)?.toLong()
         val locations = database.getLocations(
