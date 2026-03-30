@@ -1628,121 +1628,109 @@ class Tracelet {
   ///
   /// Fires when the detected device activity changes (still, walking, etc.).
   static Stream<ActivityChangeEvent> get activityChangeStream {
-    return _activityChangeStream ??= _platform.activityChangeEvents
-        .map(
-          (e) => ActivityChangeEvent.fromMap({
-            'activity': e.activity,
-            'confidence': e.confidence,
-          }),
-        )
-        .asBroadcastStream();
+    return _activityChangeStream ??= _platform.activityChangeEvents.map(
+      (e) => ActivityChangeEvent.fromMap({
+        'activity': e.activity,
+        'confidence': e.confidence,
+      }),
+    );
   }
 
   /// A broadcast stream of provider change events.
   ///
   /// Fires when GPS/network/authorization state changes.
   static Stream<ProviderChangeEvent> get providerChangeStream {
-    return _providerChangeStream ??= _platform.providerChangeEvents
-        .map(
-          (e) => ProviderChangeEvent.fromMap({
-            'enabled': e.enabled,
-            'gps': e.gps,
-            'network': e.network,
-            'status': e.status,
-            'accuracyAuthorization': e.accuracyAuthorization,
-          }),
-        )
-        .asBroadcastStream();
+    return _providerChangeStream ??= _platform.providerChangeEvents.map(
+      (e) => ProviderChangeEvent.fromMap({
+        'enabled': e.enabled,
+        'gps': e.gps,
+        'network': e.network,
+        'status': e.status,
+        'accuracyAuthorization': e.accuracyAuthorization,
+      }),
+    );
   }
 
   /// A broadcast stream of geofence transition events.
   ///
   /// Fires on enter, exit, or dwell transitions.
   static Stream<GeofenceEvent> get geofenceStream {
-    return _geofenceStream ??= _platform.geofenceEvents
-        .map(
-          (e) => GeofenceEvent.fromMap({
-            'identifier': e.identifier,
-            'action': e.action.name,
-            'location': Location.fromTl(e.location).toMap(),
-            'extras': e.extras,
-          }),
-        )
-        .asBroadcastStream();
+    return _geofenceStream ??= _platform.geofenceEvents.map(
+      (e) => GeofenceEvent.fromMap({
+        'identifier': e.identifier,
+        'action': e.action.name,
+        'location': Location.fromTl(e.location).toMap(),
+        'extras': e.extras,
+      }),
+    );
   }
 
   /// A broadcast stream of geofences change events.
   ///
   /// Fires when the set of actively monitored geofences changes.
   static Stream<GeofencesChangeEvent> get geofencesChangeStream {
-    return _geofencesChangeStream ??= _platform.geofencesChangeEvents
-        .map(
-          (e) => GeofencesChangeEvent.fromMap({
-            'on': e.on
-                ?.map(
-                  (g) => <String, Object?>{
-                    'identifier': g.identifier,
-                    'latitude': g.latitude,
-                    'longitude': g.longitude,
-                    'radius': g.radius,
-                  },
-                )
-                .toList(),
-            'off': e.off
-                ?.map(
-                  (g) => <String, Object?>{
-                    'identifier': g.identifier,
-                    'latitude': g.latitude,
-                    'longitude': g.longitude,
-                    'radius': g.radius,
-                  },
-                )
-                .toList(),
-          }),
-        )
-        .asBroadcastStream();
+    return _geofencesChangeStream ??= _platform.geofencesChangeEvents.map(
+      (e) => GeofencesChangeEvent.fromMap({
+        'on': e.on
+            ?.map(
+              (g) => <String, Object?>{
+                'identifier': g.identifier,
+                'latitude': g.latitude,
+                'longitude': g.longitude,
+                'radius': g.radius,
+              },
+            )
+            .toList(),
+        'off': e.off
+            ?.map(
+              (g) => <String, Object?>{
+                'identifier': g.identifier,
+                'latitude': g.latitude,
+                'longitude': g.longitude,
+                'radius': g.radius,
+              },
+            )
+            .toList(),
+      }),
+    );
   }
 
   /// A broadcast stream of heartbeat events.
   ///
   /// Fires at the interval configured in [AppConfig.heartbeatInterval].
   static Stream<HeartbeatEvent> get heartbeatStream {
-    return _heartbeatStream ??= _platform.heartbeatEvents
-        .map((e) => HeartbeatEvent(location: Location.fromTl(e.location)))
-        .asBroadcastStream();
+    return _heartbeatStream ??= _platform.heartbeatEvents.map(
+      (e) => HeartbeatEvent(location: Location.fromTl(e.location)),
+    );
   }
 
   /// A broadcast stream of HTTP sync events.
   ///
   /// Fires after each HTTP request completes (success or failure).
   static Stream<HttpEvent> get httpStream {
-    return _httpStream ??= _platform.httpEvents
-        .map(
-          (e) => HttpEvent(
-            success: e.isSuccess,
-            status: e.status,
-            responseText: e.responseText,
-          ),
-        )
-        .asBroadcastStream();
+    return _httpStream ??= _platform.httpEvents.map(
+      (e) => HttpEvent(
+        success: e.isSuccess,
+        status: e.status,
+        responseText: e.responseText,
+      ),
+    );
   }
 
   /// A broadcast stream of schedule events.
   ///
   /// Fires when the scheduler starts or stops a tracking period.
   static Stream<State> get scheduleStream {
-    return _scheduleStream ??= _platform.scheduleEvents
-        .map(
-          (s) => State.fromMap({
-            'enabled': s.enabled,
-            'isMoving': s.isMoving,
-            'trackingMode': s.trackingMode,
-            'schedulerEnabled': s.schedulerEnabled,
-            'odometer': s.odometer,
-            'lastLocationTimestamp': s.lastLocationTimestamp,
-          }),
-        )
-        .asBroadcastStream();
+    return _scheduleStream ??= _platform.scheduleEvents.map(
+      (s) => State.fromMap({
+        'enabled': s.enabled,
+        'isMoving': s.isMoving,
+        'trackingMode': s.trackingMode,
+        'schedulerEnabled': s.schedulerEnabled,
+        'odometer': s.odometer,
+        'lastLocationTimestamp': s.lastLocationTimestamp,
+      }),
+    );
   }
 
   /// A broadcast stream of power-save mode changes.
@@ -1755,9 +1743,9 @@ class Tracelet {
   ///
   /// Fires when the device goes online or offline.
   static Stream<ConnectivityChangeEvent> get connectivityChangeStream {
-    return _connectivityChangeStream ??= _platform.connectivityChangeEvents
-        .map((e) => ConnectivityChangeEvent(connected: e.connected))
-        .asBroadcastStream();
+    return _connectivityChangeStream ??= _platform.connectivityChangeEvents.map(
+      (e) => ConnectivityChangeEvent(connected: e.connected),
+    );
   }
 
   /// A broadcast stream of enabled-change events.
