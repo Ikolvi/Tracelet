@@ -140,6 +140,17 @@ class Tracelet {
   /// and incorrectly filter the location.
   static Stream<Location>? _processedLocationStream;
 
+  // Cached broadcast streams for public stream getters.
+  static Stream<Location>? _motionChangeStream;
+  static Stream<ActivityChangeEvent>? _activityChangeStream;
+  static Stream<ProviderChangeEvent>? _providerChangeStream;
+  static Stream<GeofenceEvent>? _geofenceStream;
+  static Stream<GeofencesChangeEvent>? _geofencesChangeStream;
+  static Stream<HeartbeatEvent>? _heartbeatStream;
+  static Stream<HttpEvent>? _httpStream;
+  static Stream<State>? _scheduleStream;
+  static Stream<ConnectivityChangeEvent>? _connectivityChangeStream;
+
   /// Whether the Kalman filter is currently enabled for GPS smoothing.
   ///
   /// Returns `true` if [ready] or [setConfig] was called with
@@ -1604,6 +1615,162 @@ class Tracelet {
   /// For a callback-based alternative, use [onLocation].
   static Stream<Location> get locationStream => _getProcessedLocationStream();
 
+  /// A broadcast stream of motion change events.
+  ///
+  /// Fires when the device transitions between stationary and moving states.
+  static Stream<Location> get motionChangeStream {
+    return _motionChangeStream ??= _platform.motionChangeEvents
+        .map(Location.fromTl)
+        .asBroadcastStream();
+  }
+
+  /// A broadcast stream of activity change events.
+  ///
+  /// Fires when the detected device activity changes (still, walking, etc.).
+  static Stream<ActivityChangeEvent> get activityChangeStream {
+    return _activityChangeStream ??= _platform.activityChangeEvents
+        .map(
+          (e) => ActivityChangeEvent.fromMap({
+            'activity': e.activity,
+            'confidence': e.confidence,
+          }),
+        )
+        .asBroadcastStream();
+  }
+
+  /// A broadcast stream of provider change events.
+  ///
+  /// Fires when GPS/network/authorization state changes.
+  static Stream<ProviderChangeEvent> get providerChangeStream {
+    return _providerChangeStream ??= _platform.providerChangeEvents
+        .map(
+          (e) => ProviderChangeEvent.fromMap({
+            'enabled': e.enabled,
+            'gps': e.gps,
+            'network': e.network,
+            'status': e.status,
+            'accuracyAuthorization': e.accuracyAuthorization,
+          }),
+        )
+        .asBroadcastStream();
+  }
+
+  /// A broadcast stream of geofence transition events.
+  ///
+  /// Fires on enter, exit, or dwell transitions.
+  static Stream<GeofenceEvent> get geofenceStream {
+    return _geofenceStream ??= _platform.geofenceEvents
+        .map(
+          (e) => GeofenceEvent.fromMap({
+            'identifier': e.identifier,
+            'action': e.action.name,
+            'location': Location.fromTl(e.location).toMap(),
+            'extras': e.extras,
+          }),
+        )
+        .asBroadcastStream();
+  }
+
+  /// A broadcast stream of geofences change events.
+  ///
+  /// Fires when the set of actively monitored geofences changes.
+  static Stream<GeofencesChangeEvent> get geofencesChangeStream {
+    return _geofencesChangeStream ??= _platform.geofencesChangeEvents
+        .map(
+          (e) => GeofencesChangeEvent.fromMap({
+            'on': e.on
+                ?.map(
+                  (g) => <String, Object?>{
+                    'identifier': g.identifier,
+                    'latitude': g.latitude,
+                    'longitude': g.longitude,
+                    'radius': g.radius,
+                  },
+                )
+                .toList(),
+            'off': e.off
+                ?.map(
+                  (g) => <String, Object?>{
+                    'identifier': g.identifier,
+                    'latitude': g.latitude,
+                    'longitude': g.longitude,
+                    'radius': g.radius,
+                  },
+                )
+                .toList(),
+          }),
+        )
+        .asBroadcastStream();
+  }
+
+  /// A broadcast stream of heartbeat events.
+  ///
+  /// Fires at the interval configured in [AppConfig.heartbeatInterval].
+  static Stream<HeartbeatEvent> get heartbeatStream {
+    return _heartbeatStream ??= _platform.heartbeatEvents
+        .map((e) => HeartbeatEvent(location: Location.fromTl(e.location)))
+        .asBroadcastStream();
+  }
+
+  /// A broadcast stream of HTTP sync events.
+  ///
+  /// Fires after each HTTP request completes (success or failure).
+  static Stream<HttpEvent> get httpStream {
+    return _httpStream ??= _platform.httpEvents
+        .map(
+          (e) => HttpEvent(
+            success: e.isSuccess,
+            status: e.status,
+            responseText: e.responseText,
+          ),
+        )
+        .asBroadcastStream();
+  }
+
+  /// A broadcast stream of schedule events.
+  ///
+  /// Fires when the scheduler starts or stops a tracking period.
+  static Stream<State> get scheduleStream {
+    return _scheduleStream ??= _platform.scheduleEvents
+        .map(
+          (s) => State.fromMap({
+            'enabled': s.enabled,
+            'isMoving': s.isMoving,
+            'trackingMode': s.trackingMode,
+            'schedulerEnabled': s.schedulerEnabled,
+            'odometer': s.odometer,
+            'lastLocationTimestamp': s.lastLocationTimestamp,
+          }),
+        )
+        .asBroadcastStream();
+  }
+
+  /// A broadcast stream of power-save mode changes.
+  ///
+  /// Fires when the device enters or exits battery saver mode.
+  static Stream<bool> get powerSaveChangeStream =>
+      _platform.powerSaveChangeEvents;
+
+  /// A broadcast stream of connectivity change events.
+  ///
+  /// Fires when the device goes online or offline.
+  static Stream<ConnectivityChangeEvent> get connectivityChangeStream {
+    return _connectivityChangeStream ??= _platform.connectivityChangeEvents
+        .map((e) => ConnectivityChangeEvent(connected: e.connected))
+        .asBroadcastStream();
+  }
+
+  /// A broadcast stream of enabled-change events.
+  ///
+  /// Fires when tracking is enabled or disabled.
+  static Stream<bool> get enabledChangeStream => _platform.enabledChangeEvents;
+
+  /// A broadcast stream of notification action events (Android only).
+  ///
+  /// Fires when the user taps a notification action button.
+  static Stream<String> get notificationActionStream =>
+      _platform.notificationActionEvents;
+
   /// Subscribe to location events.
   ///
   /// Fires for every recorded location.
@@ -1912,6 +2079,15 @@ class Tracelet {
     }
     _watchSubscriptions.clear();
     _processedLocationStream = null;
+    _motionChangeStream = null;
+    _activityChangeStream = null;
+    _providerChangeStream = null;
+    _geofenceStream = null;
+    _geofencesChangeStream = null;
+    _heartbeatStream = null;
+    _httpStream = null;
+    _scheduleStream = null;
+    _connectivityChangeStream = null;
 
     // Stop trip detection subscriptions.
     _stopTripDetection();
