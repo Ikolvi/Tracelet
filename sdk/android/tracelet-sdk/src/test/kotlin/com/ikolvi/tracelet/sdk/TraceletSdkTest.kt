@@ -16,6 +16,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.verify
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.lang.reflect.Field
@@ -477,6 +478,90 @@ internal class TraceletSdkTest {
         val deleted = sdk.destroySyncedLocations()
         assertEquals(1, deleted)
         assertEquals(0, db.getLocationCount())
+    }
+
+    // =========================================================================
+    // handlePermissionResult — ACTIVITY_RECOGNITION without callback (Issue #1)
+    // =========================================================================
+
+    @Test
+    fun handlePermissionResult_activityRecognition_returnsTrue_withoutCallback() {
+        val sdk = readySdk()
+        // No pendingPermissionCallback set — simulates start() auto-request
+        sdk.pendingPermissionCallback = null
+
+        val handled = sdk.handlePermissionResult(
+            TraceletPermissionManager.REQUEST_CODE_ACTIVITY_RECOGNITION,
+            arrayOf(android.Manifest.permission.ACTIVITY_RECOGNITION),
+            intArrayOf(android.content.pm.PackageManager.PERMISSION_GRANTED),
+        )
+        // Must return true — this is our request code
+        assertTrue(handled)
+    }
+
+    @Test
+    fun handlePermissionResult_activityRecognition_invokesCallback_whenPresent() {
+        val sdk = readySdk()
+        var callbackStatus: Int? = null
+        sdk.pendingPermissionCallback = { status -> callbackStatus = status }
+
+        sdk.handlePermissionResult(
+            TraceletPermissionManager.REQUEST_CODE_ACTIVITY_RECOGNITION,
+            arrayOf(android.Manifest.permission.ACTIVITY_RECOGNITION),
+            intArrayOf(android.content.pm.PackageManager.PERMISSION_GRANTED),
+        )
+
+        assertNotNull(callbackStatus)
+        assertNull(sdk.pendingPermissionCallback)
+    }
+
+    @Test
+    fun handlePermissionResult_location_returnsFalse_withoutCallback() {
+        val sdk = readySdk()
+        sdk.pendingPermissionCallback = null
+
+        val handled = sdk.handlePermissionResult(
+            TraceletPermissionManager.REQUEST_CODE_LOCATION,
+            arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION),
+            intArrayOf(android.content.pm.PackageManager.PERMISSION_GRANTED),
+        )
+        // Location results without a callback should return false (no side-effects)
+        assertFalse(handled)
+    }
+
+    // =========================================================================
+    // pendingPermissionCallback cleanup on Activity detach (Issue #5)
+    // =========================================================================
+
+    @Test
+    fun pendingPermissionCallback_invoked_onActivityDetach() {
+        val sdk = readySdk()
+        var callbackStatus: Int? = null
+        sdk.pendingPermissionCallback = { status -> callbackStatus = status }
+
+        // Simulate permanent Activity destroy
+        sdk.pendingPermissionCallback?.invoke(sdk.getPermissionStatus())
+        sdk.pendingPermissionCallback = null
+        sdk.activity = null
+
+        assertNotNull(callbackStatus)
+        assertNull(sdk.pendingPermissionCallback)
+        assertNull(sdk.activity)
+    }
+
+    @Test
+    fun pendingPermissionCallback_nullSafe_onActivityDetach() {
+        val sdk = readySdk()
+        sdk.pendingPermissionCallback = null
+
+        // Should not crash when no pending callback exists
+        val pending = sdk.pendingPermissionCallback
+        sdk.pendingPermissionCallback = null
+        pending?.invoke(sdk.getPermissionStatus())
+        sdk.activity = null
+
+        assertNull(sdk.pendingPermissionCallback)
+        assertNull(sdk.activity)
     }
 
     // =========================================================================

@@ -129,6 +129,13 @@ class HeadlessTaskService(
             return false
         }
 
+        // Guard: blocking the main thread would deadlock because the Dart
+        // MethodChannel response also needs the main thread.
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            Log.e(TAG, "requestHeadersRefresh() must not be called on the main thread — would deadlock")
+            return false
+        }
+
         val latch = CountDownLatch(1)
         headersRefreshLatch = latch
 

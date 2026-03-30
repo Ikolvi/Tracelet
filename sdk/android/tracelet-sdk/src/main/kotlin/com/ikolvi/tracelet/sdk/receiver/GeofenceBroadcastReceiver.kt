@@ -70,6 +70,11 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                         ?: ListenerEventSender()
                     sdk.setEventSender(sender)
                     sdk.initialize()
+
+                    // Start HTTP sync so the geofence event is synced to the
+                    // server immediately, not just persisted to the database.
+                    sdk.httpSyncManager.start()
+
                     sdk.geofenceManager
                 }
             } catch (e: Exception) {

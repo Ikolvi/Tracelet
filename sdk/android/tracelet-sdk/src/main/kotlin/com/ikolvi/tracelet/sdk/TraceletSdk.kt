@@ -146,6 +146,11 @@ class TraceletSdk private constructor(private val context: Context) {
             "setEventSender() must be called before initialize()"
         }
 
+        // Stop any boot-mode native tracking before creating new subsystems.
+        // This prevents an orphaned boot LocationEngine from running in
+        // parallel with the plugin's engine during the ready()→start() gap.
+        LocationService.stopBootTracking()
+
         // Bootstrap factory for headless/boot restart
         TraceletBootstrap.eventSenderFactory = { ctx ->
             getInstance(ctx).getEventSender()
@@ -918,21 +923,27 @@ class TraceletSdk private constructor(private val context: Context) {
         val callback = pendingPermissionCallback
         pendingPermissionCallback = null
 
+        // Always handle ACTIVITY_RECOGNITION side-effects even without a
+        // Dart callback — start() auto-requests this permission and never
+        // sets pendingPermissionCallback.
+        if (requestCode == TraceletPermissionManager.REQUEST_CODE_ACTIVITY_RECOGNITION) {
+            val act = activity
+            val motionStatus = permissionManager.getMotionPermissionStatus(act)
+            if (motionStatus == TraceletPermissionManager.STATUS_ALWAYS &&
+                stateManager.enabled
+            ) {
+                motionDetector.start()
+            }
+            callback?.invoke(motionStatus)
+            return true
+        }
+
         if (callback == null) return false
 
         val act = activity
         when (requestCode) {
             TraceletPermissionManager.REQUEST_CODE_NOTIFICATION -> {
                 callback(permissionManager.getNotificationPermissionStatus(act))
-            }
-            TraceletPermissionManager.REQUEST_CODE_ACTIVITY_RECOGNITION -> {
-                val motionStatus = permissionManager.getMotionPermissionStatus(act)
-                if (motionStatus == TraceletPermissionManager.STATUS_ALWAYS &&
-                    stateManager.enabled
-                ) {
-                    motionDetector.start()
-                }
-                callback(motionStatus)
             }
             else -> {
                 if (act != null) {

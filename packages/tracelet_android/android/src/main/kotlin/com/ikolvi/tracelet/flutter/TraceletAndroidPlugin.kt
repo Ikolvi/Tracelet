@@ -125,6 +125,12 @@ class TraceletAndroidPlugin :
     override fun onDetachedFromActivity() {
         activityBinding?.removeRequestPermissionsResultListener(this)
         activityBinding = null
+        // Invoke and clear any pending permission callback so the Dart
+        // Future doesn't hang forever when the Activity is destroyed
+        // while a permission dialog is showing.
+        val pendingCallback = sdk.pendingPermissionCallback
+        sdk.pendingPermissionCallback = null
+        pendingCallback?.invoke(sdk.getPermissionStatus())
         sdk.activity = null
     }
 
