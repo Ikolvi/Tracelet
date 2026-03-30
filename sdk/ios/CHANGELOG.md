@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.4
+
+- **CHORE**: Version bump for strict dependency pinning in Flutter wrapper.
+
 ## 1.0.3
 
 - **FIX**: Add `isReady` guards to **all** SDK methods that access subsystem properties — prevents crash when any method is called before `ready()`, not just `stop()` (re-fixes #46).

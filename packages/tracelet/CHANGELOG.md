@@ -1,3 +1,8 @@
+## 1.8.4
+
+- **FIX**: Add `isReady` guards to all Android SDK methods — prevents `UninitializedPropertyAccessException` when called before `ready()` (re-fixes #46).
+- **FIX**: Pin native SDK dependencies to exact versions — prevents auto-resolving to incompatible newer native SDK releases.
+
 ## 1.8.3
 
 - **FIX**: Prevent crash when `getState()`, `setConfig()`, or any other method is called before `ready()` on iOS — comprehensive `isReady` guards across all native SDK methods (re-fixes #46).

@@ -1,3 +1,7 @@
+## 1.8.4
+
+- **CHORE**: Version bump for Android pre-ready guard fixes and strict native SDK pinning.
+
 ## 1.8.3
 
 - **CHORE**: Version bump for iOS pre-ready guard fixes.

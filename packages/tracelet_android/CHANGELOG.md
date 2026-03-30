@@ -1,3 +1,8 @@
+## 1.8.4
+
+- **FIX**: Add `isReady` guards to all Android SDK methods — prevents `UninitializedPropertyAccessException` when called before `ready()` (re-fixes #46).
+- **FIX**: Pin native SDK dependency to exact version `1.0.4` — prevents auto-resolving to incompatible newer releases.
+
 ## 1.8.3
 
 - **FIX**: Add `isReady` guards to all Android SDK methods — prevents `UninitializedPropertyAccessException` when called before `ready()` (re-fixes #46).

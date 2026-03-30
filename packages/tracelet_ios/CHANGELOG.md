@@ -1,3 +1,7 @@
+## 1.8.4
+
+- **FIX**: Pin native SDK dependency to exact version `1.0.4` — prevents CocoaPods from auto-resolving to incompatible newer releases.
+
 ## 1.8.3
 
 - **FIX**: Add `isReady` guards to `getState()`, `setConfig()`, `reset()`, `getCurrentPosition()`, `changePace()`, `startSchedule()`, `stopSchedule()` in Flutter bridge — returns safe defaults or `NOT_READY` error instead of crashing (re-fixes #46).
