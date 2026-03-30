@@ -675,8 +675,20 @@ class _DashboardPageState extends State<DashboardPage>
     }
   }
 
+  /// Safely stop tracking — checks state before calling stop().
+  ///
+  /// Uses [tl.Tracelet.getState] to check if tracking is enabled before
+  /// calling [tl.Tracelet.stop]. This is safe to call even before [ready]
+  /// has been called — getState() returns a default disabled state when the
+  /// SDK is not yet initialized (see GitHub issue #46).
   Future<void> _stop() async {
     try {
+      // Safe to call before ready() — returns disabled state if not ready.
+      final currentState = await tl.Tracelet.getState();
+      if (!currentState.enabled) {
+        _addLog('STOP', 'Already stopped — nothing to do');
+        return;
+      }
       final state = await tl.Tracelet.stop();
       setState(() {
         _isTracking = state.enabled;
@@ -1102,9 +1114,14 @@ class _DashboardPageState extends State<DashboardPage>
     }
   }
 
-  /// Stop periodic tracking — delegates to the regular stop method.
+  /// Stop periodic tracking — safely checks state before stopping.
   Future<void> _stopPeriodic() async {
     try {
+      final currentState = await tl.Tracelet.getState();
+      if (!currentState.enabled) {
+        _addLog('PERIODIC', 'Already stopped — nothing to do');
+        return;
+      }
       final state = await tl.Tracelet.stop();
       setState(() {
         _isTracking = state.enabled;
