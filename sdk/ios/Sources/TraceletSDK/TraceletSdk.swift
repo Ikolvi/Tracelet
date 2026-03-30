@@ -315,10 +315,8 @@ public final class TraceletSdk {
         // geofenceModeHighAccuracy: start GPS for in-app transition detection.
         if configManager.getGeofenceModeHighAccuracy() {
             geofenceManager.clearHighAccuracyState()
-            locationEngine.start()
-        } else {
-            locationEngine.start()
         }
+        locationEngine.start()
 
         preventSuspendManager.start()
         backgroundActivitySessionManager.start()
@@ -1068,6 +1066,9 @@ public final class TraceletSdk {
         motionDetector.onMotionStateChanged = { [weak self] isMoving in
             self?.handleMotionStateChange(isMoving)
         }
+        motionDetector.onStopRequested = { [weak self] in
+            self?.stop()
+        }
 
         // Geofencing
         geofenceManager = GeofenceManager(
@@ -1363,6 +1364,11 @@ public final class TraceletSdk {
                 if self?.configManager.getGeofenceModeHighAccuracy() == true {
                     self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng)
                 }
+                self?.tripManager.onLocationReceived(
+                    latitude: lat,
+                    longitude: lng,
+                    timestamp: ISO8601DateFormatter().string(from: Date())
+                )
             }
             motionDetector.start()
             startHeartbeat()

@@ -24,7 +24,7 @@ public final class HttpSyncManager: NSObject, URLSessionDelegate {
     /// Serial queue protecting `_isSyncing`, `_isConnected`, `_pendingSyncOnConnect`.
     private let stateQueue = DispatchQueue(label: "com.tracelet.httpSync.state")
     private var _isSyncing = false
-    private let pathMonitor = NWPathMonitor()
+    private var pathMonitor = NWPathMonitor()
     private var _isConnected = true
     private var _pendingSyncOnConnect = false
 
@@ -106,7 +106,10 @@ public final class HttpSyncManager: NSObject, URLSessionDelegate {
         session.getAllTasks { tasks in
             tasks.forEach { $0.cancel() }
         }
+        // NWPathMonitor cannot be restarted after cancel(); create a fresh
+        // instance so a subsequent start() call works correctly.
         pathMonitor.cancel()
+        pathMonitor = NWPathMonitor()
     }
 
     // MARK: - Trigger sync
