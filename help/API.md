@@ -191,6 +191,48 @@
 
 ---
 
+## Streams
+
+Broadcast `Stream` getters for reactive/declarative usage (e.g. `StreamBuilder`).
+Equivalent to the callback-based events above — choose whichever style fits your code.
+
+| Stream Getter | Element Type | Fires when |
+|---|---|---|
+| `Tracelet.locationStream` | `Location` | Every recorded location (filtered + smoothed) |
+| `Tracelet.motionChangeStream` | `Location` | Moving ↔ stationary |
+| `Tracelet.activityChangeStream` | `ActivityChangeEvent` | Activity changes |
+| `Tracelet.providerChangeStream` | `ProviderChangeEvent` | GPS/permission changes |
+| `Tracelet.geofenceStream` | `GeofenceEvent` | Geofence transitions |
+| `Tracelet.geofencesChangeStream` | `GeofencesChangeEvent` | Monitored set changes |
+| `Tracelet.heartbeatStream` | `HeartbeatEvent` | Heartbeat interval |
+| `Tracelet.httpStream` | `HttpEvent` | HTTP sync result |
+| `Tracelet.scheduleStream` | `State` | Schedule start/stop |
+| `Tracelet.powerSaveChangeStream` | `bool` | Battery saver toggle |
+| `Tracelet.connectivityChangeStream` | `ConnectivityChangeEvent` | Online/offline |
+| `Tracelet.enabledChangeStream` | `bool` | Tracking on/off |
+| `Tracelet.notificationActionStream` | `String` | Notification tap (Android) |
+
+```dart
+// StreamBuilder example
+StreamBuilder<Location>(
+  stream: Tracelet.locationStream,
+  builder: (context, snapshot) {
+    if (!snapshot.hasData) return const Text('Waiting…');
+    final loc = snapshot.data!;
+    return Text('${loc.coords.latitude}, ${loc.coords.longitude}');
+  },
+);
+
+// Direct subscription
+final sub = Tracelet.motionChangeStream.listen((location) {
+  print('Moving: ${location.isMoving}');
+});
+```
+
+All streams are broadcast streams — multiple listeners are supported. Cached streams are invalidated when `Tracelet.removeListeners()` is called.
+
+---
+
 ## Key Event Types
 
 ### Location
