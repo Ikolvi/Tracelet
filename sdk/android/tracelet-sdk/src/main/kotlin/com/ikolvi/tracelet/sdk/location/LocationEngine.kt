@@ -376,8 +376,9 @@ class LocationEngine(
         try {
             fusedClient.getCurrentLocation(priority, null)
                 .addOnSuccessListener { location ->
-                    if (location != null) {
-                        val enriched = enrichLocation(location, "getCurrentPosition").toMutableMap()
+                    val resolved = location ?: lastLocation
+                    if (resolved != null) {
+                        val enriched = enrichLocation(resolved, "getCurrentPosition").toMutableMap()
                         if (extras.isNotEmpty()) enriched["extras"] = extras
                         if (persist) {
                             db.insertLocationAsync(enriched)
@@ -860,7 +861,13 @@ class LocationEngine(
                 if (collected.isNotEmpty()) {
                     deliver(collected, persist, extras, callback)
                 } else {
-                    callback(null)
+                    // Fallback to last known location (e.g. emulator with no GPS)
+                    val fallback = lastLocation
+                    if (fallback != null) {
+                        deliver(listOf(fallback), persist, extras, callback)
+                    } else {
+                        callback(null)
+                    }
                 }
             }
         }, timeoutSeconds * 1000L)

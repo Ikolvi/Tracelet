@@ -1,3 +1,8 @@
+## 1.8.5
+
+- **FIX**: `getCurrentPosition()` falls back to last known location when `CLLocationManager` returns no fix (e.g. simulator, GPS-off) — fixes `LOCATION_UNAVAILABLE` errors (#46).
+- **FIX**: Bump native SDK dependency to exact version `1.0.5`.
+
 ## 1.8.4
 
 - **FIX**: Pin native SDK dependency to exact version `1.0.4` — prevents CocoaPods from auto-resolving to incompatible newer releases.

@@ -1,3 +1,7 @@
+## 1.8.5
+
+- **CHORE**: Version bump for `getCurrentPosition` fallback fix (#46).
+
 ## 1.8.4
 
 - **CHORE**: Version bump for Android pre-ready guard fixes and strict native SDK pinning.

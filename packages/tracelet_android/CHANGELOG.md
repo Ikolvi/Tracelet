@@ -1,3 +1,9 @@
+## 1.8.5
+
+- **FIX**: `getCurrentPosition()` falls back to last known location when `FusedLocationProviderClient.getCurrentLocation()` returns null (e.g. emulator, GPS-off) — fixes `LOCATION_UNAVAILABLE` errors (#46).
+- **FIX**: Add public `clearPendingPermissionCallback()` to `TraceletSdk` — resolves cross-module `internal` visibility error.
+- **FIX**: Bump native SDK dependency to exact version `1.0.5`.
+
 ## 1.8.4
 
 - **FIX**: Add `isReady` guards to all Android SDK methods — prevents `UninitializedPropertyAccessException` when called before `ready()` (re-fixes #46).

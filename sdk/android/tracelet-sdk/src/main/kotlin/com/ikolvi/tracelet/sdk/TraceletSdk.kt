@@ -121,6 +121,19 @@ class TraceletSdk private constructor(private val context: Context) {
     /** Async permission callback — set before triggering OS dialog. */
     internal var pendingPermissionCallback: ((Int) -> Unit)? = null
 
+    /**
+     * Clears any pending permission callback, invoking it with the current
+     * permission status so callers are not left waiting indefinitely.
+     *
+     * Called by the Flutter plugin when the Activity is detached while a
+     * permission dialog may still be showing.
+     */
+    fun clearPendingPermissionCallback() {
+        val callback = pendingPermissionCallback
+        pendingPermissionCallback = null
+        callback?.invoke(getPermissionStatus())
+    }
+
     // =========================================================================
     // Injection
     // =========================================================================

@@ -404,11 +404,16 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         }
 
         oneShots.append { [weak self] location in
-            guard let self = self, let location = location else {
+            guard let self = self else {
                 callback(nil)
                 return
             }
-            var locationMap = self.buildLocationMap(location)
+            let resolved = location ?? self.lastLocation
+            guard let resolved = resolved else {
+                callback(nil)
+                return
+            }
+            var locationMap = self.buildLocationMap(resolved)
             if !extras.isEmpty { locationMap["extras"] = extras }
             if persist {
                 let _ = self.database.insertLocation(locationMap)
@@ -753,9 +758,10 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     public func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         NSLog("[Tracelet] Location error: \(error.localizedDescription)")
 
-        // Fail all one-shots
+        // Fail all one-shots — fallback to lastLocation if available
+        let fallbackLocation = lastLocation
         for callback in oneShots {
-            callback(nil)
+            callback(fallbackLocation)
         }
         oneShots.removeAll()
 
@@ -770,6 +776,8 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
 
             if !state.collected.isEmpty {
                 deliverBest(samples: state.collected, persist: state.persist, extras: state.extras, callback: state.callback)
+            } else if let fallback = lastLocation {
+                deliverBest(samples: [fallback], persist: state.persist, extras: state.extras, callback: state.callback)
             } else {
                 state.callback(nil)
             }
@@ -862,6 +870,9 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
 
             if !state.collected.isEmpty {
                 self.deliverBest(samples: state.collected, persist: state.persist, extras: state.extras, callback: state.callback)
+            } else if let fallback = self.lastLocation {
+                // Fallback to last known location (e.g. simulator with no GPS)
+                self.deliverBest(samples: [fallback], persist: state.persist, extras: state.extras, callback: state.callback)
             } else {
                 state.callback(nil)
             }

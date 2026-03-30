@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.5
+
+- **FIX**: `getCurrentPosition()` / `collectSamples()` / `didFailWithError` fall back to last known location when `CLLocationManager` returns no fix — fixes `LOCATION_UNAVAILABLE` on simulators and GPS-off devices (#46).
+
 ## 1.0.4
 
 - **CHORE**: Version bump for strict dependency pinning in Flutter wrapper.

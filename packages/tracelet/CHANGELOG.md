@@ -1,3 +1,8 @@
+## 1.8.5
+
+- **FIX**: `getCurrentPosition()` falls back to last known location when GPS returns no fix (e.g. emulator, GPS-off) — fixes `LOCATION_UNAVAILABLE` errors (#46).
+- **FIX**: Bump native SDKs to 1.0.5.
+
 ## 1.8.4
 
 - **FIX**: Add `isReady` guards to all Android SDK methods — prevents `UninitializedPropertyAccessException` when called before `ready()` (re-fixes #46).
