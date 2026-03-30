@@ -1589,6 +1589,21 @@ class Tracelet {
   // Event Subscriptions
   // ---------------------------------------------------------------------------
 
+  /// A broadcast stream of processed location updates.
+  ///
+  /// Locations are filtered by [LocationProcessor] (distance, accuracy, speed)
+  /// and smoothed by [KalmanLocationFilter] (if enabled). The stream is shared
+  /// across all listeners — stateful transformations are applied once per event.
+  ///
+  /// ```dart
+  /// final sub = Tracelet.locationStream.listen((location) {
+  ///   print('${location.coords.latitude}, ${location.coords.longitude}');
+  /// });
+  /// ```
+  ///
+  /// For a callback-based alternative, use [onLocation].
+  static Stream<Location> get locationStream => _getProcessedLocationStream();
+
   /// Subscribe to location events.
   ///
   /// Fires for every recorded location.
