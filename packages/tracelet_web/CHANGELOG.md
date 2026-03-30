@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.3
+
+- **CHORE**: Version bump for iOS pre-ready guard fixes.
+
 ## 1.8.2
 
 - **CHORE**: Version bump for Android/iOS stability fixes.

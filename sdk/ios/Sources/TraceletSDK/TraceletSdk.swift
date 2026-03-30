@@ -389,8 +389,13 @@ public final class TraceletSdk {
 
     /// Get the current SDK state.
     ///
-    /// - Returns: State as a dictionary.
+    /// - Returns: State as a dictionary. Returns a default disabled state if
+    ///   ``ready(config:)`` has not been called yet.
     public func getState() -> [String: Any] {
+        guard isReady else {
+            return ["enabled": false, "isMoving": false, "trackingMode": 0,
+                    "schedulerEnabled": false, "odometer": 0.0]
+        }
         return stateManager.toMap(configManager.getConfig())
     }
 
@@ -419,6 +424,7 @@ public final class TraceletSdk {
 
     @discardableResult
     public func setConfig(_ config: [String: Any]) -> [String: Any] {
+        guard isReady else { return getState() }
         let wasPreventing = configManager.getPreventSuspend()
         configManager.setConfig(config)
 
@@ -454,6 +460,7 @@ public final class TraceletSdk {
     /// - Returns: Updated state as a dictionary.
     @discardableResult
     public func reset(_ config: [String: Any]? = nil) -> [String: Any] {
+        guard isReady else { return getState() }
         BackgroundTaskHelper.shared.run("reset") { [self] in
             locationEngine.destroy()
             locationEngine.onLocationUpdate = nil
@@ -492,6 +499,7 @@ public final class TraceletSdk {
     ///   - completion: Called with the location dictionary, or nil on failure.
     public func getCurrentPosition(options: [String: Any] = [:],
                                    completion: @escaping ([String: Any]?) -> Void) {
+        guard isReady else { completion(nil); return }
         locationEngine.getCurrentPosition(options: options, callback: completion)
     }
 
@@ -500,6 +508,7 @@ public final class TraceletSdk {
     /// - Parameter options: Options dictionary (persist, extras).
     /// - Returns: Location dictionary, or nil if no cached location is available.
     public func getLastKnownLocation(options: [String: Any] = [:]) -> [String: Any]? {
+        guard isReady else { return nil }
         var result: [String: Any]?
         locationEngine.getLastKnownLocation(options: options) { result = $0 }
         return result
@@ -510,6 +519,7 @@ public final class TraceletSdk {
     /// - Parameter options: Options dictionary (interval, desiredAccuracy, extras).
     /// - Returns: Watch ID that can be used to stop the watch via ``stopWatchPosition(_:)``.
     public func watchPosition(options: [String: Any] = [:]) -> Int {
+        guard isReady else { return -1 }
         return locationEngine.watchPosition(options: options)
     }
 
@@ -519,6 +529,7 @@ public final class TraceletSdk {
     /// - Returns: `true` if the watcher was found and stopped.
     @discardableResult
     public func stopWatchPosition(_ watchId: Int) -> Bool {
+        guard isReady else { return false }
         return locationEngine.stopWatchPosition(watchId)
     }
 
@@ -531,11 +542,13 @@ public final class TraceletSdk {
     /// - Returns: `true` if the pace was changed.
     @discardableResult
     public func changePace(_ isMoving: Bool) -> Bool {
+        guard isReady else { return false }
         return locationEngine.changePace(isMoving)
     }
 
     /// Get the current odometer value in meters.
     public func getOdometer() -> Double {
+        guard isReady else { return 0.0 }
         return locationEngine.getOdometer()
     }
 
@@ -545,6 +558,7 @@ public final class TraceletSdk {
     /// - Returns: Location dictionary at the reset point.
     @discardableResult
     public func setOdometer(_ value: Double) -> [String: Any] {
+        guard isReady else { return [:] }
         return locationEngine.setOdometer(value)
     }
 
@@ -558,6 +572,7 @@ public final class TraceletSdk {
     /// - Returns: `true` if the geofence was added.
     @discardableResult
     public func addGeofence(_ geofence: [String: Any]) -> Bool {
+        guard isReady else { return false }
         return geofenceManager.addGeofence(geofence)
     }
 
@@ -576,6 +591,7 @@ public final class TraceletSdk {
     /// - Returns: `true` if all geofences were added.
     @discardableResult
     public func addGeofences(_ geofences: [[String: Any]]) -> Bool {
+        guard isReady else { return false }
         return geofenceManager.addGeofences(geofences)
     }
 
@@ -594,6 +610,7 @@ public final class TraceletSdk {
     /// - Returns: `true` if the geofence was removed.
     @discardableResult
     public func removeGeofence(_ identifier: String) -> Bool {
+        guard isReady else { return false }
         return geofenceManager.removeGeofence(identifier)
     }
 
@@ -602,6 +619,7 @@ public final class TraceletSdk {
     /// - Returns: `true` if geofences were removed.
     @discardableResult
     public func removeGeofences() -> Bool {
+        guard isReady else { return false }
         return geofenceManager.removeGeofences()
     }
 
@@ -609,6 +627,7 @@ public final class TraceletSdk {
     ///
     /// - Returns: Array of geofence dictionaries.
     public func getGeofences() -> [[String: Any]] {
+        guard isReady else { return [] }
         return geofenceManager.getGeofences()
     }
 
@@ -617,6 +636,7 @@ public final class TraceletSdk {
     /// - Parameter identifier: The geofence identifier.
     /// - Returns: Geofence dictionary, or nil if not found.
     public func getGeofence(_ identifier: String) -> [String: Any]? {
+        guard isReady else { return nil }
         return geofenceManager.getGeofence(identifier)
     }
 
@@ -625,6 +645,7 @@ public final class TraceletSdk {
     /// - Parameter identifier: The geofence identifier.
     /// - Returns: `true` if the geofence exists.
     public func geofenceExists(_ identifier: String) -> Bool {
+        guard isReady else { return false }
         return geofenceManager.geofenceExists(identifier)
     }
 
@@ -637,6 +658,7 @@ public final class TraceletSdk {
     /// - Parameter query: Optional query parameters (limit, offset, order, start, end).
     /// - Returns: Array of location dictionaries.
     public func getLocations(query: [String: Any]? = nil) -> [[String: Any]] {
+        guard isReady else { return [] }
         let limit = query?["limit"] as? Int ?? -1
         let offset = query?["offset"] as? Int ?? 0
         let orderAsc = (query?["order"] as? Int ?? 0) == 0
@@ -651,6 +673,7 @@ public final class TraceletSdk {
     /// - Parameter query: Optional query parameters (start, end).
     /// - Returns: Number of locations.
     public func getCount(query: [String: Any]? = nil) -> Int {
+        guard isReady else { return 0 }
         let start = query?["start"] as? Int64
         let end = query?["end"] as? Int64
         return database.getLocationCount(startTime: start, endTime: end)
@@ -661,6 +684,7 @@ public final class TraceletSdk {
     /// - Returns: `true` if locations were destroyed.
     @discardableResult
     public func destroyLocations() -> Bool {
+        guard isReady else { return false }
         return database.deleteAllLocations()
     }
 
@@ -669,6 +693,7 @@ public final class TraceletSdk {
     /// - Returns: Number of synced locations deleted.
     @discardableResult
     public func destroySyncedLocations() -> Int {
+        guard isReady else { return 0 }
         return database.deleteSyncedLocations()
     }
 
@@ -678,6 +703,7 @@ public final class TraceletSdk {
     /// - Returns: `true` if the location was destroyed.
     @discardableResult
     public func destroyLocation(_ uuid: String) -> Bool {
+        guard isReady else { return false }
         return database.deleteLocation(uuid)
     }
 
@@ -686,6 +712,7 @@ public final class TraceletSdk {
     /// - Parameter params: Location data dictionary.
     /// - Returns: The UUID of the inserted location.
     public func insertLocation(_ params: [String: Any]) -> String {
+        guard isReady else { return "" }
         let uuid = database.insertLocation(params)
         httpSyncManager.onLocationInserted()
         return uuid
@@ -699,6 +726,7 @@ public final class TraceletSdk {
     ///
     /// - Parameter completion: Called with the list of synced location dictionaries.
     public func sync(completion: (([[String: Any]]) -> Void)? = nil) {
+        guard isReady else { completion?([]); return }
         httpSyncManager.sync(completion: completion)
     }
 
@@ -709,6 +737,7 @@ public final class TraceletSdk {
     ///
     /// - Parameter headers: Header key-value pairs.
     public func setDynamicHeaders(_ headers: [String: String]) {
+        guard isReady else { return }
         configManager.setDynamicHeaders(headers)
     }
 
@@ -720,11 +749,13 @@ public final class TraceletSdk {
     ///
     /// - Parameter context: Route context dictionary (taskId, driverId, etc.).
     public func setRouteContext(_ context: [String: Any]) {
+        guard isReady else { return }
         configManager.setRouteContext(context)
     }
 
     /// Clear the current route context.
     public func clearRouteContext() {
+        guard isReady else { return }
         configManager.clearRouteContext()
     }
 
@@ -772,7 +803,7 @@ public final class TraceletSdk {
             "gyroscope": true,
             "magnetometer": true,
             "significantMotion": true,
-            "motionActivity": !configManager.getDisableMotionActivityUpdates(),
+            "motionActivity": isReady ? !configManager.getDisableMotionActivityUpdates() : true,
         ]
     }
 
@@ -806,6 +837,7 @@ public final class TraceletSdk {
     /// - Returns: `true` if the sound was played.
     @discardableResult
     public func playSound(_ name: String) -> Bool {
+        guard isReady else { return false }
         let _ = soundManager.playSound(name)
         return true
     }
@@ -819,6 +851,7 @@ public final class TraceletSdk {
     /// - Parameter query: Optional query parameters.
     /// - Returns: Formatted log string.
     public func getLog(query: [String: Any]? = nil) -> String {
+        guard isReady else { return "" }
         return database.getLogForEmail()
     }
 
@@ -827,6 +860,7 @@ public final class TraceletSdk {
     /// - Returns: `true` if logs were destroyed.
     @discardableResult
     public func destroyLog() -> Bool {
+        guard isReady else { return false }
         return database.deleteAllLogs()
     }
 
@@ -836,6 +870,7 @@ public final class TraceletSdk {
     ///   - level: Log level ("error", "warn", "info", "debug", "verbose").
     ///   - message: Log message.
     public func log(_ level: String, _ message: String) {
+        guard isReady else { return }
         database.insertLog(level: level, message: message, source: "app")
     }
 
@@ -848,6 +883,7 @@ public final class TraceletSdk {
     /// - Returns: Updated state as a dictionary.
     @discardableResult
     public func startSchedule() -> [String: Any] {
+        guard isReady else { return getState() }
         scheduleManager.start()
         return stateManager.toMap(configManager.getConfig())
     }
@@ -857,6 +893,7 @@ public final class TraceletSdk {
     /// - Returns: Updated state as a dictionary.
     @discardableResult
     public func stopSchedule() -> [String: Any] {
+        guard isReady else { return getState() }
         scheduleManager.stop()
         return stateManager.toMap(configManager.getConfig())
     }
@@ -869,6 +906,7 @@ public final class TraceletSdk {
     ///
     /// - Returns: Verification result dictionary.
     public func verifyAuditTrail() -> [String: Any] {
+        guard isReady else { return [:] }
         return auditTrailManager.verifyChain()
     }
 
@@ -877,6 +915,7 @@ public final class TraceletSdk {
     /// - Parameter uuid: The location UUID.
     /// - Returns: Audit proof dictionary, or nil if not found.
     public func getAuditProof(_ uuid: String) -> [String: Any]? {
+        guard isReady else { return nil }
         return auditTrailManager.getProof(uuid: uuid)
     }
 
@@ -890,6 +929,7 @@ public final class TraceletSdk {
     /// - Returns: `true` if the zone was added.
     @discardableResult
     public func addPrivacyZone(_ zone: [String: Any]) -> Bool {
+        guard isReady else { return false }
         return privacyZoneManager.addZone(zone)
     }
 
@@ -908,6 +948,7 @@ public final class TraceletSdk {
     /// - Returns: `true` if all zones were added.
     @discardableResult
     public func addPrivacyZones(_ zones: [[String: Any]]) -> Bool {
+        guard isReady else { return false }
         return privacyZoneManager.addZones(zones)
     }
 
@@ -926,6 +967,7 @@ public final class TraceletSdk {
     /// - Returns: `true` if the zone was removed.
     @discardableResult
     public func removePrivacyZone(_ identifier: String) -> Bool {
+        guard isReady else { return false }
         return privacyZoneManager.removeZone(identifier)
     }
 
@@ -934,6 +976,7 @@ public final class TraceletSdk {
     /// - Returns: `true` if zones were removed.
     @discardableResult
     public func removePrivacyZones() -> Bool {
+        guard isReady else { return false }
         return privacyZoneManager.removeAllZones()
     }
 
@@ -941,6 +984,7 @@ public final class TraceletSdk {
     ///
     /// - Returns: Array of privacy zone dictionaries.
     public func getPrivacyZones() -> [[String: Any]] {
+        guard isReady else { return [] }
         return privacyZoneManager.getZones()
     }
 
@@ -952,6 +996,7 @@ public final class TraceletSdk {
     ///
     /// - Parameter completion: Called with the attestation token dictionary, or nil.
     public func getAttestationToken(completion: @escaping ([String: Any]?) -> Void) {
+        guard isReady else { completion(nil); return }
         deviceAttestor.requestToken(completion: completion)
     }
 

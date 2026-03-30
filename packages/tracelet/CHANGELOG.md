@@ -1,3 +1,7 @@
+## 1.8.3
+
+- **FIX**: Prevent crash when `getState()`, `setConfig()`, or any other method is called before `ready()` on iOS — comprehensive `isReady` guards across all native SDK methods (re-fixes #46).
+
 ## 1.8.2
 
 - **FIX**: Prevent crash when `stop()` is called before `ready()` on iOS — returns `NOT_READY` error instead of accessing uninitialized properties.

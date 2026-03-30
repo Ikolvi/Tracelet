@@ -166,17 +166,31 @@ class TraceletHostApiImpl: TraceletHostApi {
     }
 
     func getState(completion: @escaping (Result<TlState, Error>) -> Void) {
+        guard sdk.isReadyState else {
+            completion(.success(TlState(
+                enabled: false, isMoving: false, trackingMode: 0,
+                schedulerEnabled: false, odometer: 0.0, lastLocationTimestamp: nil)))
+            return
+        }
         let state = sdk.getState()
         completion(.success(dictToTlState(state as? [String: Any] ?? [:])))
     }
 
     func setConfig(config: [String: Any?], completion: @escaping (Result<TlState, Error>) -> Void) {
+        guard sdk.isReadyState else {
+            completion(.failure(PigeonError(code: "NOT_READY", message: "Call ready() before setConfig()", details: nil)))
+            return
+        }
         let c = config.compactMapValues { $0 }
         let state = sdk.setConfig(c)
         completion(.success(dictToTlState(state as? [String: Any] ?? [:])))
     }
 
     func reset(config: [String: Any?]?, completion: @escaping (Result<TlState, Error>) -> Void) {
+        guard sdk.isReadyState else {
+            completion(.failure(PigeonError(code: "NOT_READY", message: "Call ready() before reset()", details: nil)))
+            return
+        }
         let c = config?.compactMapValues { $0 }
         let state = sdk.reset(c)
         completion(.success(dictToTlState(state as? [String: Any] ?? [:])))
@@ -185,6 +199,10 @@ class TraceletHostApiImpl: TraceletHostApi {
     // MARK: - Location
 
     func getCurrentPosition(options: TlCurrentPositionOptions, completion: @escaping (Result<TlLocation, Error>) -> Void) {
+        guard sdk.isReadyState else {
+            completion(.failure(PigeonError(code: "NOT_READY", message: "Call ready() before getCurrentPosition()", details: nil)))
+            return
+        }
         sdk.getCurrentPosition(options: optionsToDict(options)) { location in
             if let loc = location as? [String: Any] {
                 completion(.success(self.dictToTlLocation(loc)))
@@ -216,6 +234,10 @@ class TraceletHostApiImpl: TraceletHostApi {
     }
 
     func changePace(isMoving: Bool, completion: @escaping (Result<Bool, Error>) -> Void) {
+        guard sdk.isReadyState else {
+            completion(.failure(PigeonError(code: "NOT_READY", message: "Call ready() before changePace()", details: nil)))
+            return
+        }
         let result = sdk.changePace(isMoving)
         completion(.success(result as? Bool ?? true))
     }
@@ -473,11 +495,19 @@ class TraceletHostApiImpl: TraceletHostApi {
     // MARK: - Scheduling
 
     func startSchedule(completion: @escaping (Result<TlState, Error>) -> Void) {
+        guard sdk.isReadyState else {
+            completion(.failure(PigeonError(code: "NOT_READY", message: "Call ready() before startSchedule()", details: nil)))
+            return
+        }
         let state = sdk.startSchedule()
         completion(.success(dictToTlState(state as? [String: Any] ?? [:])))
     }
 
     func stopSchedule(completion: @escaping (Result<TlState, Error>) -> Void) {
+        guard sdk.isReadyState else {
+            completion(.failure(PigeonError(code: "NOT_READY", message: "Call ready() before stopSchedule()", details: nil)))
+            return
+        }
         let state = sdk.stopSchedule()
         completion(.success(dictToTlState(state as? [String: Any] ?? [:])))
     }

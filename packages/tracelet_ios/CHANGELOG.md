@@ -1,3 +1,7 @@
+## 1.8.3
+
+- **FIX**: Add `isReady` guards to `getState()`, `setConfig()`, `reset()`, `getCurrentPosition()`, `changePace()`, `startSchedule()`, `stopSchedule()` in Flutter bridge — returns safe defaults or `NOT_READY` error instead of crashing (re-fixes #46).
+
 ## 1.8.2
 
 - **FIX**: `TraceletSdk.stop()` now checks `isReady` before accessing managers — prevents crash when `stop()` is called before `ready()`.

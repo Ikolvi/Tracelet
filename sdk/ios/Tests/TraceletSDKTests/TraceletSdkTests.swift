@@ -454,6 +454,172 @@ final class TraceletSdkTests: XCTestCase {
         XCTAssertEqual(deleted, 0)
         XCTAssertEqual(db.getLocationCount(), 1)
     }
+
+    // MARK: - Pre-ready guards (issue #46)
+    //
+    // Calling any SDK method before ready() must NOT crash.
+    // The singleton has isReady == false and all subsystem IUOs are nil.
+
+    func testGetStateBeforeReadyReturnsDisabledState() {
+        let sdk = TraceletSdk.shared
+        XCTAssertFalse(sdk.isReadyState)
+
+        let state = sdk.getState()
+        XCTAssertEqual(state["enabled"] as? Bool, false)
+        XCTAssertEqual(state["isMoving"] as? Bool, false)
+        XCTAssertEqual(state["trackingMode"] as? Int, 0)
+        XCTAssertEqual(state["odometer"] as? Double, 0.0)
+    }
+
+    func testStopBeforeReadyReturnsEmptyState() {
+        let sdk = TraceletSdk.shared
+        let state = sdk.stop()
+        XCTAssertTrue(state.isEmpty)
+    }
+
+    func testSetConfigBeforeReadyReturnsDefault() {
+        let sdk = TraceletSdk.shared
+        let state = sdk.setConfig(["geo": ["distanceFilter": 99.0] as [String: Any]])
+        XCTAssertEqual(state["enabled"] as? Bool, false)
+    }
+
+    func testResetBeforeReadyReturnsDefault() {
+        let sdk = TraceletSdk.shared
+        let state = sdk.reset(nil)
+        XCTAssertEqual(state["enabled"] as? Bool, false)
+    }
+
+    func testGetOdometerBeforeReadyReturnsZero() {
+        let sdk = TraceletSdk.shared
+        XCTAssertEqual(sdk.getOdometer(), 0.0)
+    }
+
+    func testSetOdometerBeforeReadyReturnsEmpty() {
+        let sdk = TraceletSdk.shared
+        let result = sdk.setOdometer(500.0)
+        XCTAssertTrue(result.isEmpty)
+    }
+
+    func testGetCurrentPositionBeforeReadyReturnsNil() {
+        let sdk = TraceletSdk.shared
+        let expectation = XCTestExpectation(description: "completion called")
+        sdk.getCurrentPosition { location in
+            XCTAssertNil(location)
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 1.0)
+    }
+
+    func testGetLastKnownLocationBeforeReadyReturnsNil() {
+        let sdk = TraceletSdk.shared
+        XCTAssertNil(sdk.getLastKnownLocation())
+    }
+
+    func testWatchPositionBeforeReadyReturnsInvalid() {
+        let sdk = TraceletSdk.shared
+        XCTAssertEqual(sdk.watchPosition(), -1)
+    }
+
+    func testStopWatchPositionBeforeReadyReturnsFalse() {
+        let sdk = TraceletSdk.shared
+        XCTAssertFalse(sdk.stopWatchPosition(0))
+    }
+
+    func testChangePaceBeforeReadyReturnsFalse() {
+        let sdk = TraceletSdk.shared
+        XCTAssertFalse(sdk.changePace(true))
+    }
+
+    func testGeofenceMethodsBeforeReadyDoNotCrash() {
+        let sdk = TraceletSdk.shared
+        XCTAssertFalse(sdk.addGeofence(["identifier": "test", "latitude": 1.0, "longitude": 2.0, "radius": 100.0]))
+        XCTAssertFalse(sdk.addGeofences([[String: Any]]()))
+        XCTAssertFalse(sdk.removeGeofence("test"))
+        XCTAssertFalse(sdk.removeGeofences())
+        XCTAssertTrue(sdk.getGeofences().isEmpty)
+        XCTAssertNil(sdk.getGeofence("test"))
+        XCTAssertFalse(sdk.geofenceExists("test"))
+    }
+
+    func testPersistenceMethodsBeforeReadyDoNotCrash() {
+        let sdk = TraceletSdk.shared
+        XCTAssertTrue(sdk.getLocations().isEmpty)
+        XCTAssertEqual(sdk.getCount(), 0)
+        XCTAssertFalse(sdk.destroyLocations())
+        XCTAssertEqual(sdk.destroySyncedLocations(), 0)
+        XCTAssertFalse(sdk.destroyLocation("test"))
+        XCTAssertTrue(sdk.insertLocation([:]).isEmpty)
+    }
+
+    func testSyncBeforeReadyDoesNotCrash() {
+        let sdk = TraceletSdk.shared
+        let expectation = XCTestExpectation(description: "sync completion called")
+        sdk.sync { locations in
+            XCTAssertTrue(locations.isEmpty)
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 1.0)
+    }
+
+    func testLoggingMethodsBeforeReadyDoNotCrash() {
+        let sdk = TraceletSdk.shared
+        XCTAssertTrue(sdk.getLog().isEmpty)
+        XCTAssertFalse(sdk.destroyLog())
+        sdk.log("info", "test message") // Should not crash
+    }
+
+    func testScheduleMethodsBeforeReadyDoNotCrash() {
+        let sdk = TraceletSdk.shared
+        let startState = sdk.startSchedule()
+        XCTAssertEqual(startState["enabled"] as? Bool, false)
+        let stopState = sdk.stopSchedule()
+        XCTAssertEqual(stopState["enabled"] as? Bool, false)
+    }
+
+    func testPlaySoundBeforeReadyReturnsFalse() {
+        let sdk = TraceletSdk.shared
+        XCTAssertFalse(sdk.playSound("click"))
+    }
+
+    func testPrivacyZoneMethodsBeforeReadyDoNotCrash() {
+        let sdk = TraceletSdk.shared
+        XCTAssertFalse(sdk.addPrivacyZone(["identifier": "home"]))
+        XCTAssertFalse(sdk.addPrivacyZones([[String: Any]]()))
+        XCTAssertFalse(sdk.removePrivacyZone("home"))
+        XCTAssertFalse(sdk.removePrivacyZones())
+        XCTAssertTrue(sdk.getPrivacyZones().isEmpty)
+    }
+
+    func testAuditTrailMethodsBeforeReadyDoNotCrash() {
+        let sdk = TraceletSdk.shared
+        XCTAssertTrue(sdk.verifyAuditTrail().isEmpty)
+        XCTAssertNil(sdk.getAuditProof("test-uuid"))
+    }
+
+    func testGetAttestationTokenBeforeReadyReturnsNil() {
+        let sdk = TraceletSdk.shared
+        let expectation = XCTestExpectation(description: "attestation completion called")
+        sdk.getAttestationToken { token in
+            XCTAssertNil(token)
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 1.0)
+    }
+
+    func testRouteContextMethodsBeforeReadyDoNotCrash() {
+        let sdk = TraceletSdk.shared
+        sdk.setDynamicHeaders(["X-Test": "value"])
+        sdk.setRouteContext(["taskId": "test"])
+        sdk.clearRouteContext()
+        // No crash = pass
+    }
+
+    func testGetSensorsBeforeReadyReturnsSafeDefaults() {
+        let sdk = TraceletSdk.shared
+        let sensors = sdk.getSensors()
+        XCTAssertEqual(sensors["accelerometer"] as? Bool, true)
+        XCTAssertEqual(sensors["motionActivity"] as? Bool, true)
+    }
 }
 
 // MARK: - Mock Delegate

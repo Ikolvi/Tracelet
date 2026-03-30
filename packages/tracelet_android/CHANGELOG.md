@@ -1,3 +1,7 @@
+## 1.8.3
+
+- **CHORE**: Version bump for iOS pre-ready guard fixes.
+
 ## 1.8.2
 
 - **FIX**: Guard `soundManager` access in `handleMotionStateChange()` and `destroyAll()` — prevents `UninitializedPropertyAccessException` if motion detector fires before full initialization.
