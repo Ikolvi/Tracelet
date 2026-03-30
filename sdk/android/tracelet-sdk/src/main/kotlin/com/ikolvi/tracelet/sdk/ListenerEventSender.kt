@@ -10,16 +10,33 @@ import android.os.Looper
  * Forwards all events from the internal machinery to the consumer's listener
  * on the main thread. Also supports a [headlessFallback] for background
  * event delivery when no listener is attached.
+ *
+ * Events dispatched before a listener or headless fallback is available are
+ * buffered and replayed in order once either becomes available.
  */
 internal class ListenerEventSender : TraceletEventSender {
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    /** The consumer's listener. */
-    var listener: TraceletListener? = null
+    /**
+     * Events buffered while both [listener] and [headlessFallback] are null.
+     * Protected by `synchronized(pendingEvents)`.
+     */
+    private val pendingEvents = mutableListOf<Pair<String, Map<String, Any?>>>()
 
-    /** Headless fallback for when no listener is set. */
+    /** The consumer's listener. Setting this flushes any buffered events. */
+    var listener: TraceletListener? = null
+        set(value) {
+            field = value
+            if (value != null) flushPendingEvents()
+        }
+
+    /** Headless fallback for when no listener is set. Setting this flushes any buffered events. */
     var headlessFallback: ((eventName: String, data: Map<String, Any?>) -> Unit)? = null
+        set(value) {
+            field = value
+            if (value != null && listener == null) flushPendingEvents()
+        }
 
     override fun sendLocation(data: Map<String, Any?>) =
         dispatch("location", data) { listener?.onLocation(data) }
@@ -94,8 +111,53 @@ internal class ListenerEventSender : TraceletEventSender {
             } else {
                 mainHandler.post { action() }
             }
-        } else {
+        } else if (headlessFallback != null) {
             headlessFallback?.invoke(eventName, data)
+        } else {
+            // Neither listener nor headless fallback — buffer the event
+            synchronized(pendingEvents) {
+                pendingEvents.add(eventName to data)
+            }
+        }
+    }
+
+    /**
+     * Replays all buffered events through [dispatch], then clears the buffer.
+     * Called automatically when [listener] or [headlessFallback] is set.
+     */
+    private fun flushPendingEvents() {
+        val snapshot: List<Pair<String, Map<String, Any?>>>
+        synchronized(pendingEvents) {
+            if (pendingEvents.isEmpty()) return
+            snapshot = pendingEvents.toList()
+            pendingEvents.clear()
+        }
+        for ((name, data) in snapshot) {
+            replayEvent(name, data)
+        }
+    }
+
+    /** Dispatches a single buffered event by name. */
+    private fun replayEvent(eventName: String, data: Map<String, Any?>) {
+        when (eventName) {
+            "location" -> sendLocation(data)
+            "motionchange" -> sendMotionChange(data)
+            "activitychange" -> sendActivityChange(data)
+            "providerchange" -> sendProviderChange(data)
+            "geofence" -> sendGeofence(data)
+            "geofenceschange" -> sendGeofencesChange(data)
+            "heartbeat" -> sendHeartbeat(data)
+            "http" -> sendHttp(data)
+            "schedule" -> sendSchedule(data)
+            "powersavechange" -> sendPowerSaveChange(data["value"] as? Boolean ?: false)
+            "connectivitychange" -> sendConnectivityChange(data)
+            "enabledchange" -> sendEnabledChange(data["value"] as? Boolean ?: false)
+            "notificationaction" -> sendNotificationAction(data["value"] as? String ?: "")
+            "authorization" -> sendAuthorization(data)
+            "watchposition" -> sendWatchPosition(data)
+            "remoteconfig" -> sendRemoteConfigEvent(data)
+            "trip" -> sendTrip(data)
+            "budgetadjustment" -> sendBudgetAdjustment(data)
         }
     }
 }

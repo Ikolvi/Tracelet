@@ -6,6 +6,8 @@ import android.content.Intent
 import android.util.Log
 import com.google.android.gms.location.GeofenceStatusCodes
 import com.google.android.gms.location.GeofencingEvent
+import com.ikolvi.tracelet.sdk.ListenerEventSender
+import com.ikolvi.tracelet.sdk.TraceletBootstrap
 import com.ikolvi.tracelet.sdk.geofence.GeofenceManager
 
 /**
@@ -56,10 +58,17 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             Log.d(TAG, "GeofenceManager is null (app was killed) — bootstrapping")
             try {
                 val sdk = com.ikolvi.tracelet.sdk.TraceletSdk.getInstance(context)
-                // lateinit check: try to access, catch UninitializedPropertyAccessException
                 try {
                     sdk.geofenceManager
                 } catch (_: UninitializedPropertyAccessException) {
+                    // Ensure an event sender exists before initialize().
+                    // Prefer the host framework's factory (Flutter plugin, etc.)
+                    // which provides headless Dart dispatch. Fall back to a
+                    // bare ListenerEventSender that buffers events until the
+                    // UI attaches.
+                    val sender = TraceletBootstrap.eventSenderFactory?.invoke(context)
+                        ?: ListenerEventSender()
+                    sdk.setEventSender(sender)
                     sdk.initialize()
                     sdk.geofenceManager
                 }
