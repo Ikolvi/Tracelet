@@ -12,10 +12,17 @@ final class DelegateEventSender: TraceletEventSending {
     weak var sdk: TraceletSdk?
 
     /// The delegate that receives all events.
-    weak var delegate: TraceletDelegate?
+    /// When set, any events buffered while the delegate was nil are flushed.
+    weak var delegate: TraceletDelegate? {
+        didSet { flushPendingEvents() }
+    }
 
     /// Optional headless dispatcher for background event delivery.
     var headlessDispatcher: HeadlessDispatching?
+
+    /// Events buffered while no delegate was registered (e.g., cold launch
+    /// from terminated state before the host app sets its delegate).
+    private var pendingEvents: [(TraceletSdk, TraceletDelegate) -> Void] = []
 
     // MARK: - TraceletEventSending
 
@@ -99,15 +106,34 @@ final class DelegateEventSender: TraceletEventSending {
     // MARK: - Private
 
     private func dispatch(_ block: @escaping (TraceletSdk, TraceletDelegate) -> Void) {
-        guard let sdk = sdk, let delegate = delegate else {
-            // If no delegate, try headless dispatcher
+        guard let sdk = sdk else { return }
+
+        if let delegate = delegate {
+            if Thread.isMainThread {
+                block(sdk, delegate)
+            } else {
+                DispatchQueue.main.async {
+                    block(sdk, delegate)
+                }
+            }
             return
         }
+
+        // Buffer event until delegate becomes available (cold-launch scenario).
+        pendingEvents.append(block)
+    }
+
+    /// Delivers any events that arrived before the delegate was set.
+    private func flushPendingEvents() {
+        guard let sdk = sdk, let delegate = delegate, !pendingEvents.isEmpty else { return }
+        let events = pendingEvents
+        pendingEvents.removeAll()
+
         if Thread.isMainThread {
-            block(sdk, delegate)
+            for block in events { block(sdk, delegate) }
         } else {
             DispatchQueue.main.async {
-                block(sdk, delegate)
+                for block in events { block(sdk, delegate) }
             }
         }
     }

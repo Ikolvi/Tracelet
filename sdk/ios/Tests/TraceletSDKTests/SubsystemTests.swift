@@ -696,6 +696,87 @@ final class DelegateEventSenderExtendedTests: XCTestCase {
         wait(for: [exp], timeout: 1.0)
         XCTAssertTrue(delegate.connectivityChangeCalled)
     }
+
+    // MARK: - Event buffering (cold-launch scenario)
+
+    func testBuffersEventsWhenNoDelegateAndFlushesOnSet() {
+        let sender = DelegateEventSender()
+        sender.sdk = TraceletSdk.shared
+
+        // Send events with no delegate — should be buffered, not dropped
+        sender.sendLocation(["latitude": 37.7749])
+        sender.sendGeofence(["identifier": "office", "action": "ENTER"])
+
+        // Now set the delegate — buffered events should flush
+        let delegate = FullMockDelegate()
+        let exp = XCTestExpectation(description: "geofence flushed")
+        delegate.onGeofence = { exp.fulfill() }
+        sender.delegate = delegate
+
+        wait(for: [exp], timeout: 1.0)
+        XCTAssertTrue(delegate.geofenceCalled)
+    }
+
+    func testBuffersMultipleEventsInOrder() {
+        let sender = DelegateEventSender()
+        sender.sdk = TraceletSdk.shared
+
+        // Buffer two geofence events with no delegate
+        sender.sendGeofence(["identifier": "a", "action": "ENTER"])
+        sender.sendGeofence(["identifier": "b", "action": "EXIT"])
+
+        var identifiers: [String] = []
+        let delegate = OrderTrackingDelegate()
+        delegate.onGeofence = { data in identifiers.append(data["identifier"] as? String ?? "") }
+        sender.delegate = delegate
+
+        // Flush is synchronous on main thread
+        XCTAssertEqual(identifiers, ["a", "b"])
+    }
+
+    func testNoBufferFlushWhenDelegateSetToNil() {
+        let sender = DelegateEventSender()
+        sender.sdk = TraceletSdk.shared
+
+        sender.sendLocation(["latitude": 37.7749])
+
+        // Setting delegate to nil should not crash or flush
+        sender.delegate = nil
+        XCTAssertFalse(sender.hasListener(eventName: "location"))
+    }
+
+    func testEventsDeliveredDirectlyWhenDelegateAlreadySet() {
+        let sender = DelegateEventSender()
+        sender.sdk = TraceletSdk.shared
+        let delegate = FullMockDelegate()
+        sender.delegate = delegate
+
+        let exp = XCTestExpectation(description: "direct delivery")
+        delegate.onHeartbeat = { exp.fulfill() }
+
+        sender.sendHeartbeat(["location": [:]])
+        wait(for: [exp], timeout: 1.0)
+        XCTAssertTrue(delegate.heartbeatCalled)
+    }
+}
+
+/// Helper delegate that tracks geofence event data in order.
+private class OrderTrackingDelegate: TraceletDelegate {
+    var onGeofence: (([String: Any]) -> Void)?
+
+    func tracelet(_ sdk: TraceletSdk, didUpdateLocation location: [String: Any]) {}
+    func tracelet(_ sdk: TraceletSdk, didChangeMotion data: [String: Any]) {}
+    func tracelet(_ sdk: TraceletSdk, didChangeActivity data: [String: Any]) {}
+    func tracelet(_ sdk: TraceletSdk, didChangeProvider data: [String: Any]) {}
+    func tracelet(_ sdk: TraceletSdk, didTriggerGeofence data: [String: Any]) { onGeofence?(data) }
+    func tracelet(_ sdk: TraceletSdk, didChangeGeofences data: [String: Any]) {}
+    func tracelet(_ sdk: TraceletSdk, didHeartbeat data: [String: Any]) {}
+    func tracelet(_ sdk: TraceletSdk, didSyncHttp data: [String: Any]) {}
+    func tracelet(_ sdk: TraceletSdk, didSchedule data: [String: Any]) {}
+    func tracelet(_ sdk: TraceletSdk, didChangePowerSave isPowerSave: Bool) {}
+    func tracelet(_ sdk: TraceletSdk, didChangeConnectivity data: [String: Any]) {}
+    func tracelet(_ sdk: TraceletSdk, didChangeEnabled enabled: Bool) {}
+    func tracelet(_ sdk: TraceletSdk, didAuthorize data: [String: Any]) {}
 }
 
 // MARK: - StateManager Extended Tests
