@@ -2529,8 +2529,13 @@ class TraceletHostApi {
       pigeonVar_channelName,
       isNullValid: false,
     );
+    // MANUAL FIX: Pigeon generates .cast<Map<String, Object?>>() which is a
+    // lazy cast that fails at runtime because platform channel maps arrive as
+    // Map<Object?, Object?> and Dart's reified generics reject the cast.
+    // Eagerly deep-cast each map instead.  Re-apply after Pigeon regeneration.
     return (pigeonVar_replyValue! as List<Object?>)
-        .cast<Map<String, Object?>>();
+        .map((e) => Map<String, Object?>.from(e! as Map))
+        .toList();
   }
 
   /// Check if database is encrypted.

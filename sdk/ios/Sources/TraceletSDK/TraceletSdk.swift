@@ -902,7 +902,7 @@ public final class TraceletSdk {
     ///
     /// - Returns: Verification result dictionary.
     public func verifyAuditTrail() -> [String: Any] {
-        guard isReady else { return [:] }
+        guard auditTrailManager != nil else { return [:] }
         return auditTrailManager.verifyChain()
     }
 
@@ -911,7 +911,7 @@ public final class TraceletSdk {
     /// - Parameter uuid: The location UUID.
     /// - Returns: Audit proof dictionary, or nil if not found.
     public func getAuditProof(_ uuid: String) -> [String: Any]? {
-        guard isReady else { return nil }
+        guard auditTrailManager != nil else { return nil }
         return auditTrailManager.getProof(uuid: uuid)
     }
 
@@ -925,7 +925,7 @@ public final class TraceletSdk {
     /// - Returns: `true` if the zone was added.
     @discardableResult
     public func addPrivacyZone(_ zone: [String: Any]) -> Bool {
-        guard isReady else { return false }
+        guard privacyZoneManager != nil else { return false }
         return privacyZoneManager.addZone(zone)
     }
 
@@ -944,7 +944,7 @@ public final class TraceletSdk {
     /// - Returns: `true` if all zones were added.
     @discardableResult
     public func addPrivacyZones(_ zones: [[String: Any]]) -> Bool {
-        guard isReady else { return false }
+        guard privacyZoneManager != nil else { return false }
         return privacyZoneManager.addZones(zones)
     }
 
@@ -963,7 +963,7 @@ public final class TraceletSdk {
     /// - Returns: `true` if the zone was removed.
     @discardableResult
     public func removePrivacyZone(_ identifier: String) -> Bool {
-        guard isReady else { return false }
+        guard privacyZoneManager != nil else { return false }
         return privacyZoneManager.removeZone(identifier)
     }
 
@@ -972,7 +972,7 @@ public final class TraceletSdk {
     /// - Returns: `true` if zones were removed.
     @discardableResult
     public func removePrivacyZones() -> Bool {
-        guard isReady else { return false }
+        guard privacyZoneManager != nil else { return false }
         return privacyZoneManager.removeAllZones()
     }
 
@@ -980,7 +980,7 @@ public final class TraceletSdk {
     ///
     /// - Returns: Array of privacy zone dictionaries.
     public func getPrivacyZones() -> [[String: Any]] {
-        guard isReady else { return [] }
+        guard privacyZoneManager != nil else { return [] }
         return privacyZoneManager.getZones()
     }
 

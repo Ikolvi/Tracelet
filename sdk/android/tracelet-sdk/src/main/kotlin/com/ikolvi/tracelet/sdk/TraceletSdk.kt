@@ -1083,12 +1083,12 @@ class TraceletSdk private constructor(private val context: Context) {
     // =========================================================================
 
     fun verifyAuditChain(): Map<String, Any?> {
-        if (!isReady) return emptyMap()
+        if (!::auditTrailManager.isInitialized) return emptyMap()
         return auditTrailManager.verifyChain()
     }
 
     fun getAuditProof(uuid: String): Map<String, Any?>? {
-        if (!isReady) return null
+        if (!::auditTrailManager.isInitialized) return null
         return auditTrailManager.getProof(uuid)
     }
 
@@ -1097,7 +1097,7 @@ class TraceletSdk private constructor(private val context: Context) {
     // =========================================================================
 
     fun addPrivacyZone(zone: Map<String, Any?>): Boolean {
-        if (!isReady) return false
+        if (!::privacyZoneManager.isInitialized) return false
         return privacyZoneManager.addZone(zone)
     }
 
@@ -1107,7 +1107,7 @@ class TraceletSdk private constructor(private val context: Context) {
     }
 
     fun addPrivacyZones(zones: List<Map<String, Any?>>): Boolean {
-        if (!isReady) return false
+        if (!::privacyZoneManager.isInitialized) return false
         return privacyZoneManager.addZones(zones)
     }
 
@@ -1117,17 +1117,17 @@ class TraceletSdk private constructor(private val context: Context) {
     }
 
     fun removePrivacyZone(id: String): Boolean {
-        if (!isReady) return false
+        if (!::privacyZoneManager.isInitialized) return false
         return privacyZoneManager.removeZone(id)
     }
 
     fun removePrivacyZones(): Boolean {
-        if (!isReady) return false
+        if (!::privacyZoneManager.isInitialized) return false
         return privacyZoneManager.removeAllZones()
     }
 
     fun getPrivacyZones(): List<Map<String, Any?>> {
-        if (!isReady) return emptyList()
+        if (!::privacyZoneManager.isInitialized) return emptyList()
         return privacyZoneManager.getZones()
     }
 
@@ -1136,7 +1136,7 @@ class TraceletSdk private constructor(private val context: Context) {
     // =========================================================================
 
     fun isDatabaseEncrypted(): Boolean {
-        if (!isReady) return false
+        if (!::encryptionManager.isInitialized) return false
         return encryptionManager.isDatabaseEncrypted()
     }
 

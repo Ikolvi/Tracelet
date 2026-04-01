@@ -20,13 +20,13 @@ void main() {
       expect(state.odometer, 0.0);
     });
 
-    testWidgets('stop before ready throws NOT_READY error', (tester) async {
-      try {
-        await Tracelet.stop();
-        fail('Expected stop() to throw before ready()');
-      } catch (e) {
-        expect(e.toString(), contains('NOT_READY'));
-      }
+    testWidgets('stop before ready returns safely without throwing', (
+      tester,
+    ) async {
+      // Since issue #46 fix, stop() before ready() returns silently
+      // with a safe default state instead of throwing NOT_READY.
+      final state = await Tracelet.stop();
+      expect(state.enabled, isFalse);
     });
 
     testWidgets('getState then conditional stop mirrors issue #46 flow', (
