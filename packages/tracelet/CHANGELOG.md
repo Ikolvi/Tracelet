@@ -4,6 +4,8 @@
 - **FIX**: HTTP sync headers callback (`setHeadersCallback`) no longer invoked per-batch — eliminates unnecessary MethodChannel round-trip latency on every sync request. Token refresh now handled exclusively via `setTokenRefreshCallback` on 401.
 - **FIX**: Headless `FlutterEngine` no longer overwrites foreground `httpSyncManager` callbacks — fixes 10-second timeout on `requestFreshHeaders` caused by MethodChannel messages routed to the wrong Dart isolate.
 - **FIX**: Bump native SDKs to 1.0.6.
+- **FIX**: Privacy zones, audit trail, and encryption APIs now work before `ready()` — only require `initialize()` (DB creation), not active tracking.
+- **FIX**: `getPrivacyZones()` no longer throws `_Map<Object?, Object?>` type cast error — fix Pigeon-generated lazy cast for nested map types.
 
 ## 1.8.5
 

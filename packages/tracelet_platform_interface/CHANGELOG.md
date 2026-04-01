@@ -1,6 +1,7 @@
 ## 1.8.6
 
 - **CHORE**: Version bump for HTTP sync headers fix.
+- **FIX**: Fix Pigeon-generated `getPrivacyZones()` lazy `.cast<Map<String, Object?>>()` — eagerly deep-cast each map to prevent `_Map<Object?, Object?>` type error at runtime.
 
 ## 1.8.5
 

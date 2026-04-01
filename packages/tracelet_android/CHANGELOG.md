@@ -4,6 +4,7 @@
 - **FIX**: Guard `onAttachedToEngine` callback wiring with `primaryInstance` — prevents headless `FlutterEngine` from overwriting foreground `httpSyncManager` callbacks, which caused `requestFreshHeaders` to timeout (10s) or return `notImplemented`.
 - **PERF**: Remove per-batch `onRequestFreshHeaders` invocation — eliminates MethodChannel round-trip before every sync request. Token refresh handled by `onAuthorizationRequired` on 401.
 - **FIX**: Bump native SDK dependency to exact version `1.0.6`.
+- **FIX**: Privacy zones, audit trail, and encryption APIs now work before `ready()` — guards relaxed from `isReady` to `::manager.isInitialized`.
 
 ## 1.8.5
 

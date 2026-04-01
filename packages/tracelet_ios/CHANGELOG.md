@@ -3,6 +3,7 @@
 - **FIX**: `getCurrentPosition(samples: 1)` now uses `startUpdatingLocation` instead of `CLLocationManager.requestLocation()` — forces a fresh GPS fix with proper timeout instead of returning stale cached locations (#46).
 - **PERF**: Remove per-batch `onRequestFreshHeaders` invocation — eliminates latency before every sync request. Token refresh handled by `onAuthorizationRequired` on 401.
 - **FIX**: Bump native SDK dependency to exact version `1.0.6`.
+- **FIX**: Privacy zones, audit trail, and encryption APIs now work before `ready()` — guards relaxed from `isReady` to `manager != nil`.
 
 ## 1.8.5
 
