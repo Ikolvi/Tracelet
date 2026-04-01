@@ -43,12 +43,16 @@ public final class HttpSyncManager: NSObject, URLSessionDelegate {
     }
 
     /// Called when a 401 Unauthorized response is received during sync.
-    ///
-    /// The closure should attempt to refresh authorization headers
-    /// (e.g., by invoking a headless Dart callback that calls
-    /// `ConfigManager.setDynamicHeaders`). Returns `true` if headers
-    /// were successfully refreshed and the request should be retried.
-    public var onAuthorizationRequired: (() -> Bool)?
+    /// Static so all instances (foreground, boot-mode) share the same callback.
+    public static var onAuthorizationRequired: (() -> Bool)?
+
+    /// Called during sync to build a custom request body.
+    /// Static so all instances share the same callback.
+    public static var onBuildCustomSyncBody: (([[String: Any?]]) -> String?)?
+
+    /// Called before each sync request to refresh dynamic HTTP headers.
+    /// Static so all instances share the same callback.
+    public static var onRequestFreshHeaders: (() -> Void)?
 
     public init(configManager: ConfigManager,
          eventDispatcher: TraceletEventSending,
@@ -238,6 +242,46 @@ public final class HttpSyncManager: NSObject, URLSessionDelegate {
 
     private func syncBatch(_ locations: [[String: Any]],
                            completion: @escaping ([[String: Any]]) -> Void) {
+
+        // Refresh dynamic headers from Dart before building the request
+        Self.onRequestFreshHeaders?()
+
+        // Try custom body builder first
+        if let customBuilder = Self.onBuildCustomSyncBody,
+           let customJson = customBuilder(locations),
+           let bodyData = customJson.data(using: .utf8) {
+            NSLog("[Tracelet] syncBatch: using custom sync body (%d chars)", customJson.count)
+            executeRequest(bodyData: bodyData) { [weak self] success, statusCode, responseBody in
+                guard let self = self else { return }
+
+                if success {
+                    NSLog("[Tracelet] syncBatch: custom body sync succeeded (HTTP %d, response: %d chars)", statusCode, responseBody.count)
+                    let uuids = locations.compactMap { $0["uuid"] as? String }
+                    self.database.markSynced(uuids: uuids)
+                    self.retryCount = 0
+
+                    self.eventDispatcher.sendHttp([
+                        "success": true,
+                        "status": statusCode,
+                        "responseText": responseBody,
+                        "isRetry": false,
+                        "retryCount": 0,
+                    ])
+                    completion(locations)
+                } else {
+                    self.handleFailure(
+                        statusCode: statusCode,
+                        responseBody: responseBody,
+                        locations: locations,
+                        isBatch: true,
+                        completion: completion
+                    )
+                }
+            }
+            return
+        }
+
+        // Default body construction
         let rootProperty = configManager.getHttpRootProperty()
         let useDelta = configManager.getEnableDeltaCompression() && locations.count > 1
         let payload: [[String: Any]] = useDelta
@@ -290,6 +334,55 @@ public final class HttpSyncManager: NSObject, URLSessionDelegate {
         }
 
         let location = locations[index]
+
+        // Try custom body builder first (wraps single location in array)
+        if let customBuilder = Self.onBuildCustomSyncBody,
+           let customJson = customBuilder([location]),
+           let bodyData = customJson.data(using: .utf8) {
+            NSLog("[Tracelet] syncOneByOne[%d]: using custom sync body (%d chars)", index, customJson.count)
+            executeRequest(bodyData: bodyData) { [weak self] success, statusCode, responseBody in
+                guard let self = self else { return }
+
+                var updatedSynced = synced
+                if success {
+                    NSLog("[Tracelet] syncOneByOne[%d]: custom body sync succeeded (HTTP %d, response: %d chars)", index, statusCode, responseBody.count)
+                    if let uuid = location["uuid"] as? String {
+                        self.database.markSynced(uuids: [uuid])
+                    }
+                    updatedSynced.append(location)
+                    self.retryCount = 0
+
+                    self.eventDispatcher.sendHttp([
+                        "success": true,
+                        "status": statusCode,
+                        "responseText": responseBody,
+                        "isRetry": false,
+                        "retryCount": 0,
+                    ])
+
+                    self.syncOneByOne(locations, index: index + 1,
+                                     synced: updatedSynced, completion: completion)
+                } else {
+                    self.handleFailure(
+                        statusCode: statusCode,
+                        responseBody: responseBody,
+                        locations: [location],
+                        isBatch: false
+                    ) { retryResult in
+                        if !retryResult.isEmpty {
+                            updatedSynced.append(contentsOf: retryResult)
+                            self.syncOneByOne(locations, index: index + 1,
+                                             synced: updatedSynced, completion: completion)
+                        } else {
+                            completion(updatedSynced)
+                        }
+                    }
+                }
+            }
+            return
+        }
+
+        // Default body construction
         let rootProperty = configManager.getHttpRootProperty()
         let body: [String: Any]
         if rootProperty.isEmpty {
@@ -345,17 +438,12 @@ public final class HttpSyncManager: NSObject, URLSessionDelegate {
 
     // MARK: - HTTP request
 
-    private func sendRequest(body: [String: Any],
-                             completion: @escaping (Bool, Int, String) -> Void) {
-        guard let url = URL(string: configManager.getUrl()) else {
-            completion(false, 0, "Invalid URL")
-            return
-        }
-
+    /// Build a configured URLRequest with common headers, method, and timeout.
+    private func buildURLRequest() -> URLRequest? {
+        guard let url = URL(string: configManager.getUrl()) else { return nil }
         var request = URLRequest(url: url)
         request.httpMethod = configManager.getHttpMethod()
 
-        // Headers (merged: static config + dynamic)
         let headers = configManager.getMergedHttpHeaders()
         for (key, value) in headers {
             request.setValue(value, forHTTPHeaderField: key)
@@ -364,16 +452,18 @@ public final class HttpSyncManager: NSObject, URLSessionDelegate {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
 
-        // Timeout
-        let timeout = configManager.getHttpTimeout()
-        request.timeoutInterval = TimeInterval(timeout) / 1000.0
+        request.timeoutInterval = TimeInterval(configManager.getHttpTimeout()) / 1000.0
+        return request
+    }
 
-        // Body
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: body) else {
-            completion(false, 0, "JSON serialization failed")
+    /// Execute an HTTP request with pre-built body data.
+    private func executeRequest(bodyData: Data,
+                                completion: @escaping (Bool, Int, String) -> Void) {
+        guard var request = buildURLRequest() else {
+            completion(false, 0, "Invalid URL")
             return
         }
-        request.httpBody = jsonData
+        request.httpBody = bodyData
 
         let task = session.dataTask(with: request) { data, response, error in
             if let error = error {
@@ -389,6 +479,15 @@ public final class HttpSyncManager: NSObject, URLSessionDelegate {
             completion(success, statusCode, responseBody)
         }
         task.resume()
+    }
+
+    private func sendRequest(body: [String: Any],
+                             completion: @escaping (Bool, Int, String) -> Void) {
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: body) else {
+            completion(false, 0, "JSON serialization failed")
+            return
+        }
+        executeRequest(bodyData: jsonData, completion: completion)
     }
 
     // MARK: - Error handling
@@ -416,7 +515,7 @@ public final class HttpSyncManager: NSObject, URLSessionDelegate {
         // 401 Unauthorized — attempt to refresh authorization headers once.
         if statusCode == 401 && !authRetried {
             NSLog("[Tracelet] HTTP sync 401 Unauthorized — requesting headers refresh")
-            let refreshed = onAuthorizationRequired?() ?? false
+            let refreshed = Self.onAuthorizationRequired?() ?? false
             if refreshed {
                 NSLog("[Tracelet] Headers refreshed, retrying request")
                 retryCount = 0

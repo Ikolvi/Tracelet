@@ -51,6 +51,34 @@ class HttpSyncManager(
     companion object {
         private const val TAG = "HttpSyncManager"
         private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
+
+        /**
+         * Called when a 401 Unauthorized response is received during sync.
+         *
+         * Static so all instances (foreground, boot-mode, periodic) share
+         * the same callback wired by the plugin.
+         */
+        @Volatile
+        @JvmStatic
+        var onAuthorizationRequired: (() -> Boolean)? = null
+
+        /**
+         * Called during sync to build a custom request body.
+         *
+         * Static so all instances share the same callback.
+         */
+        @Volatile
+        @JvmStatic
+        var onBuildCustomSyncBody: ((List<Map<String, Any?>>) -> String?)? = null
+
+        /**
+         * Called before each sync request to refresh dynamic HTTP headers.
+         *
+         * Static so all instances share the same callback.
+         */
+        @Volatile
+        @JvmStatic
+        var onRequestFreshHeaders: (() -> Unit)? = null
     }
 
     private val executor = Executors.newSingleThreadExecutor()
@@ -66,15 +94,9 @@ class HttpSyncManager(
     private var connectivityCallback: ConnectivityManager.NetworkCallback? = null
     @Volatile private var pendingSyncOnConnect = false
 
-    /**
-     * Called when a 401 Unauthorized response is received during sync.
-     *
-     * The callback should attempt to refresh authorization headers
-     * (e.g., by invoking a headless Dart callback that calls
-     * [ConfigManager.setDynamicHeaders]). Returns `true` if headers
-     * were successfully refreshed and the request should be retried.
-     */
-    var onAuthorizationRequired: (() -> Boolean)? = null
+    // Callbacks are now static — see companion object above.
+    // This ensures boot-mode and periodic-worker instances
+    // share the same plugin-wired callbacks.
 
     /** Initialize the HTTP client. */
     fun start() {
@@ -258,6 +280,7 @@ class HttpSyncManager(
     }
 
     private fun sendBatch(client: OkHttpClient, url: String, locations: List<Map<String, Any?>>): Boolean {
+
         val rootProp = config.getHttpRootProperty()
         val extras = config.getHttpExtras()
         val params = config.getHttpParams()
@@ -273,7 +296,13 @@ class HttpSyncManager(
         // JSONObject allocations per location in batch — A-L5).
         val useDelta = config.getEnableDeltaCompression() && config.getBatchSync() && locations.size > 1
         val body: String
-        if (config.getBatchSync() && locations.size > 1) {
+
+        // Try custom body builder first (allows Dart-side body transformation)
+        val customBody = onBuildCustomSyncBody?.invoke(locations)
+        if (customBody != null) {
+            body = customBody
+            Log.d(TAG, "sendBatch: using custom sync body (${customBody.length} chars)")
+        } else if (config.getBatchSync() && locations.size > 1) {
             val payload = if (useDelta) {
                 DeltaEncoder.encode(locations, config.getDeltaCoordinatePrecision())
             } else {
@@ -317,6 +346,9 @@ class HttpSyncManager(
                 response.close()
 
                 if (response.isSuccessful) {
+                    if (customBody != null) {
+                        Log.d(TAG, "sendBatch: custom body sync succeeded (HTTP $statusCode, response: ${responseBody.length} chars)")
+                    }
                     return true
                 }
 

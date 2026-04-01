@@ -73,7 +73,8 @@
 | `Tracelet.setRouteContext(context)` | `bool` | Attach route context to subsequent locations ([details](HTTP-SYNC.md#route-context)) |
 | `Tracelet.clearRouteContext()` | `bool` | Remove route context from subsequent locations |
 | `Tracelet.setSyncBodyBuilder(builder)` | `void` | Register custom sync body builder for foreground sync ([details](HTTP-SYNC.md#custom-sync-body-builder)) |
-| `Tracelet.registerHeadlessSyncBodyBuilder(cb)` | `bool` | Register headless sync body builder for background sync ([details](HTTP-SYNC.md#custom-sync-body-builder)) |
+| `Tracelet.setSyncBodyResponse(body)` | `void` | Return custom body from headless sync body callback ([details](HTTP-SYNC.md#headless-sync-body-builder)) |
+| `Tracelet.registerHeadlessSyncBodyBuilder(cb)` | `bool` | Register headless sync body builder for background sync ([details](HTTP-SYNC.md#headless-sync-body-builder)) |
 | `Tracelet.registerHeadlessHeadersCallback(cb)` | `bool` | Register headless headers callback for background token recovery ([details](HTTP-SYNC.md#headless-background-callbacks)) |
 
 ---

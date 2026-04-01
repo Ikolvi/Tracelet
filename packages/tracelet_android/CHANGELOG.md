@@ -1,3 +1,9 @@
+## 1.8.6
+
+- **FIX**: Guard `onAttachedToEngine` callback wiring with `primaryInstance` — prevents headless `FlutterEngine` from overwriting foreground `httpSyncManager` callbacks, which caused `requestFreshHeaders` to timeout (10s) or return `notImplemented`.
+- **PERF**: Remove per-batch `onRequestFreshHeaders` invocation — eliminates MethodChannel round-trip before every sync request. Token refresh handled by `onAuthorizationRequired` on 401.
+- **FIX**: Bump native SDK dependency to exact version `1.0.6`.
+
 ## 1.8.5
 
 - **FIX**: `getCurrentPosition()` falls back to last known location when `FusedLocationProviderClient.getCurrentLocation()` returns null (e.g. emulator, GPS-off) — fixes `LOCATION_UNAVAILABLE` errors (#46).

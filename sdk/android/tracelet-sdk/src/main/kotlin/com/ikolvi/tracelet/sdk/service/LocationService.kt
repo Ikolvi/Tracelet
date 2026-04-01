@@ -362,12 +362,9 @@ class LocationService : Service() {
         // Flutter engine is not running (app killed / device rebooted).
         val httpSync = HttpSyncManager(ctx, config, eventSender, database)
 
-        // Wire 401 authorization refresh for boot-mode sync.
-        if (headless != null && headless.isRegistered()) {
-            httpSync.onAuthorizationRequired = {
-                (headless as? HeadersRefreshable)?.requestHeadersRefresh(10_000L) ?: false
-            }
-        }
+        // 401 authorization, custom body, and fresh headers are handled
+        // by the static callbacks on HttpSyncManager (set by the plugin).
+        // Boot-mode instances share those static callbacks automatically.
 
         httpSync.start()
         bootHttpSyncManager = httpSync

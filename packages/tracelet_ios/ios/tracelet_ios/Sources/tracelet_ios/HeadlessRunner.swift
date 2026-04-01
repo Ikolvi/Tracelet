@@ -26,6 +26,12 @@ final class HeadlessRunner: HeadlessDispatching {
     /// Semaphore signaled when headless Dart callback calls setDynamicHeaders.
     private var headersRefreshSemaphore: DispatchSemaphore?
 
+    /// Semaphore signaled when headless Dart callback returns custom sync body.
+    private var syncBodySemaphore: DispatchSemaphore?
+
+    /// Custom sync body JSON returned by headless Dart callback.
+    private var syncBodyResponse: String?
+
     func registerCallbacks(_ registrationId: Int64, _ dispatchId: Int64) {
         let defaults = UserDefaults.standard
         defaults.set(registrationId, forKey: HeadlessRunner.registrationKey)
@@ -116,6 +122,66 @@ final class HeadlessRunner: HeadlessDispatching {
         }
     }
 
+    /// Request a custom sync body from the headless Dart callback.
+    ///
+    /// Dispatches a `syncBodyBuild` event to the Dart headless callback
+    /// registered via `registerHeadlessSyncBodyBuilder`. The Dart callback
+    /// is expected to transform the locations and call
+    /// `Tracelet.setSyncBodyResponse()`, which routes back here and signals
+    /// this method to return.
+    ///
+    /// - Parameters:
+    ///   - locations: The batch of locations to include in the body.
+    ///   - timeout: Maximum time to wait for the Dart callback.
+    /// - Returns: The custom JSON body string, or `nil` if timed out or unavailable.
+    func requestCustomSyncBody(_ locations: [[String: Any]], timeout: TimeInterval) -> String? {
+        let defaults = UserDefaults.standard
+        let dispatchId = defaults.integer(forKey: "com.tracelet.headless.headlessSyncBody_dispatchId")
+        let registrationId = defaults.integer(forKey: "com.tracelet.headless.headlessSyncBody_registrationId")
+        guard dispatchId != 0, registrationId != 0 else {
+            NSLog("[Tracelet] No headless sync body callback registered")
+            return nil
+        }
+
+        guard !Thread.isMainThread else {
+            NSLog("[Tracelet] requestCustomSyncBody must not be called on the main thread")
+            return nil
+        }
+
+        let semaphore = DispatchSemaphore(value: 0)
+        syncBodySemaphore = semaphore
+        syncBodyResponse = nil
+
+        let event: [String: Any] = [
+            "name": "syncBodyBuild",
+            "event": ["locations": locations],
+            "dispatchId": dispatchId,
+        ]
+
+        if isReady, let channel = channel {
+            channel.invokeMethod("headlessEvent", arguments: event)
+        } else {
+            pendingEvents.append(event)
+            if engineBootTaskId == nil {
+                engineBootTaskId = BackgroundTaskHelper.shared.begin("headlessSyncBody")
+            }
+            startEngineIfNeeded()
+        }
+
+        let result = semaphore.wait(timeout: .now() + timeout)
+        let response = syncBodyResponse
+        syncBodySemaphore = nil
+        syncBodyResponse = nil
+
+        if result == .success {
+            NSLog("[Tracelet] Sync body build completed by headless callback")
+            return response
+        } else {
+            NSLog("[Tracelet] Sync body build timed out after \(timeout)s")
+            return nil
+        }
+    }
+
     // MARK: - Engine management
 
     private func startEngineIfNeeded() {
@@ -180,6 +246,10 @@ final class HeadlessRunner: HeadlessDispatching {
                     .mapValues { "\($0)" } ?? [:]
                 self?.configManager?.setDynamicHeaders(headers)
                 self?.headersRefreshSemaphore?.signal()
+                result(true)
+            } else if call.method == "setSyncBodyResponse" {
+                self?.syncBodyResponse = call.arguments as? String
+                self?.syncBodySemaphore?.signal()
                 result(true)
             } else {
                 result(FlutterMethodNotImplemented)

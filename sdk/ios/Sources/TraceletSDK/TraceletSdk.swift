@@ -157,9 +157,7 @@ public final class TraceletSdk {
     /// - Returns: Current state as a dictionary.
     @discardableResult
     public func ready(config: [String: Any]) -> [String: Any] {
-        if configManager == nil {
-            initialize()
-        }
+        initialize()  // no-op if already initialized
 
         let merged = configManager.setConfig(config)
 
@@ -1011,10 +1009,18 @@ public final class TraceletSdk {
     }
 
     // =========================================================================
-    // MARK: - Private: Initialization
+    // MARK: - Initialization
     // =========================================================================
 
-    private func initialize() {
+    /// Create all subsystems. Call ``setEventSender(_:)`` first.
+    ///
+    /// Safe to call multiple times — returns immediately if already initialized.
+    /// Called automatically by ``ready(config:)`` if not already invoked.
+    /// Framework bridges (Flutter, React Native) should call this during plugin
+    /// registration so that callback properties (e.g. ``httpSyncManager``'s
+    /// ``onRequestFreshHeaders``) can be wired before ``ready()`` is called.
+    public func initialize() {
+        guard configManager == nil else { return }
         // Register bootstrap factory for headless/background restarts
         TraceletBootstrapIOS.eventSenderFactory = { [weak self] in
             self?.getEventSender() ?? DelegateEventSender()

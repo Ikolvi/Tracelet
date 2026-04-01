@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert' show jsonEncode;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -708,7 +709,13 @@ class Tracelet {
   static void setHeadersCallback(
     Future<Map<String, String>> Function()? callback,
   ) {
+    print(
+      '[Tracelet] setHeadersCallback called (callback is ${callback != null ? "set" : "null"})',
+    );
     _headersCallback = callback;
+    if (callback != null) {
+      _ensureSyncBodyChannel();
+    }
   }
 
   /// Force a refresh of dynamic headers.
@@ -724,6 +731,46 @@ class Tracelet {
     if (callback == null) return false;
     final headers = await callback();
     return _platform.setDynamicHeaders(headers);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Token Refresh (401 recovery)
+  // ---------------------------------------------------------------------------
+
+  /// Callback registered via [setTokenRefreshCallback].
+  static Future<Map<String, String>> Function()? _tokenRefreshCallback;
+
+  /// Register a callback that refreshes an expired auth token.
+  ///
+  /// When set, Tracelet's native HTTP sync engine will invoke this callback
+  /// on a 401 Unauthorized response. The callback should:
+  /// 1. Call your refresh-token API
+  /// 2. Persist the new tokens
+  /// 3. Return updated HTTP headers (including the new Authorization header)
+  ///
+  /// The returned headers are pushed to the native side via
+  /// [setDynamicHeaders] and the failed request is retried automatically.
+  ///
+  /// In foreground, the callback runs via MethodChannel. In background
+  /// (killed state), it falls back to the headless headers callback
+  /// registered via [registerHeadlessHeadersCallback].
+  ///
+  /// ```dart
+  /// Tracelet.setTokenRefreshCallback(() async {
+  ///   final newToken = await authService.refreshToken();
+  ///   return {
+  ///     'Authorization': 'Bearer \$newToken',
+  ///     // ... other headers
+  ///   };
+  /// });
+  /// ```
+  static void setTokenRefreshCallback(
+    Future<Map<String, String>> Function()? callback,
+  ) {
+    _tokenRefreshCallback = callback;
+    if (callback != null) {
+      _ensureSyncBodyChannel();
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -763,8 +810,35 @@ class Tracelet {
 
   /// Callback registered via [setSyncBodyBuilder].
   static Future<Map<String, Object?>> Function(SyncBodyContext)?
-  // ignore: unused_field
   _syncBodyBuilder;
+
+  /// Whether the native sync body MethodChannel handler has been set up.
+  static bool _syncBodyChannelReady = false;
+
+  /// Recursively cast a platform map to `Map<String, Object?>`.
+  ///
+  /// Platform channels return `Map<Object?, Object?>` which can contain
+  /// nested maps (e.g. `extras`). A shallow `Map.from` only casts the
+  /// top level, leaving nested maps untyped.
+  static Map<String, Object?> _deepCastMap(Map<Object?, Object?> source) {
+    return source.map((key, value) {
+      final castKey = key?.toString() ?? '';
+      if (value is Map) {
+        return MapEntry(castKey, _deepCastMap(value.cast<Object?, Object?>()));
+      }
+      if (value is List) {
+        return MapEntry(
+          castKey,
+          value
+              .map(
+                (e) => e is Map ? _deepCastMap(e.cast<Object?, Object?>()) : e,
+              )
+              .toList(),
+        );
+      }
+      return MapEntry(castKey, value);
+    });
+  }
 
   /// Register a custom sync body builder for foreground sync.
   ///
@@ -792,6 +866,85 @@ class Tracelet {
     Future<Map<String, Object?>> Function(SyncBodyContext)? builder,
   ) {
     _syncBodyBuilder = builder;
+    if (builder != null) {
+      _ensureSyncBodyChannel();
+    } else {
+      _tearDownSyncBodyChannel();
+    }
+  }
+
+  /// Sets up the MethodChannel handler for native → Dart sync body requests.
+  ///
+  /// Called once when [setSyncBodyBuilder] is first invoked. The native side
+  /// invokes `buildSyncBody` on this channel with the locations batch, and
+  /// this handler returns the JSON-encoded custom body.
+  static void _ensureSyncBodyChannel() {
+    if (_syncBodyChannelReady) return;
+    _syncBodyChannelReady = true;
+
+    print(
+      '[Tracelet] _ensureSyncBodyChannel: setting up MethodChannel handler',
+    );
+    const channel = MethodChannel('com.tracelet/sync_body');
+    channel.setMethodCallHandler((MethodCall call) async {
+      print('[Tracelet] MethodChannel received: ${call.method}');
+      if (call.method == 'buildSyncBody') {
+        final builder = _syncBodyBuilder;
+        if (builder == null) return null;
+
+        final rawLocations = call.arguments;
+        if (rawLocations is! List) return null;
+
+        final locations = rawLocations
+            .whereType<Map>()
+            .map((e) => _deepCastMap(e))
+            .toList();
+
+        final body = await builder(SyncBodyContext(locations: locations));
+        // Return JSON-encoded string for native to use as request body
+        return jsonEncode(body);
+      }
+      if (call.method == 'requestFreshHeaders') {
+        final callback = _headersCallback;
+        if (callback == null) return false;
+        final headers = await callback();
+        await _platform.setDynamicHeaders(headers);
+        return true;
+      }
+      if (call.method == 'requestTokenRefresh') {
+        final callback = _tokenRefreshCallback;
+        if (callback == null) return false;
+        final headers = await callback();
+        await _platform.setDynamicHeaders(headers);
+        return true;
+      }
+      return null;
+    });
+  }
+
+  /// Tears down the MethodChannel handler when all callbacks are cleared.
+  static void _tearDownSyncBodyChannel() {
+    if (!_syncBodyChannelReady) return;
+    // Keep the channel alive if any callback is still set.
+    if (_headersCallback != null ||
+        _syncBodyBuilder != null ||
+        _tokenRefreshCallback != null) {
+      return;
+    }
+    _syncBodyChannelReady = false;
+
+    const channel = MethodChannel('com.tracelet/sync_body');
+    channel.setMethodCallHandler(null);
+  }
+
+  /// Send a custom sync body response back to native (headless use).
+  ///
+  /// Called from a headless sync body callback to return the transformed
+  /// body to the native HTTP sync engine. The [body] map is JSON-encoded
+  /// and sent via the `com.tracelet/methods` MethodChannel.
+  static Future<void> setSyncBodyResponse(Map<String, Object?> body) async {
+    const channel = MethodChannel('com.tracelet/methods');
+    await channel.invokeMethod<void>('setSyncBodyResponse', jsonEncode(body));
   }
 
   /// Register a headless sync body builder for background custom payloads.

@@ -1,3 +1,9 @@
+## 1.8.6
+
+- **FIX**: HTTP sync headers callback (`setHeadersCallback`) no longer invoked per-batch — eliminates unnecessary MethodChannel round-trip latency on every sync request. Token refresh now handled exclusively via `setTokenRefreshCallback` on 401.
+- **FIX**: Headless `FlutterEngine` no longer overwrites foreground `httpSyncManager` callbacks — fixes 10-second timeout on `requestFreshHeaders` caused by MethodChannel messages routed to the wrong Dart isolate.
+- **FIX**: Bump native SDKs to 1.0.6.
+
 ## 1.8.5
 
 - **FIX**: `getCurrentPosition()` falls back to last known location when GPS returns no fix (e.g. emulator, GPS-off) — fixes `LOCATION_UNAVAILABLE` errors (#46).

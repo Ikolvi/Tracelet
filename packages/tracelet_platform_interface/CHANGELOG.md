@@ -1,3 +1,7 @@
+## 1.8.6
+
+- **CHORE**: Version bump for HTTP sync headers fix.
+
 ## 1.8.5
 
 - **CHORE**: Version bump for `getCurrentPosition` fallback fix (#46).

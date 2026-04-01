@@ -616,8 +616,10 @@ Config(
 
 ## Custom Sync Body Builder
 
-By default, Tracelet sends locations in a standard JSON format. The sync body
-builder lets you **fully control** the HTTP request body.
+By default, Tracelet sends locations in a standard JSON format wrapped in a
+root property. The sync body builder lets you **fully control** the HTTP
+request body — restructure the payload, add metadata, filter fields, or
+match any server API schema.
 
 ### Foreground Usage
 
@@ -634,7 +636,8 @@ Tracelet.setSyncBodyBuilder((SyncBodyContext context) async {
 ```
 
 The callback receives a `SyncBodyContext` containing the batch of locations.
-The returned map becomes the full HTTP request body.
+The returned `Map` is JSON-encoded and used as the **complete** HTTP request
+body — `httpRootProperty`, `params`, and default wrapping are all bypassed.
 
 Pass `null` to clear the builder and revert to the default format:
 
@@ -647,6 +650,39 @@ Tracelet.setSyncBodyBuilder(null);
 | Field | Type | Description |
 |---|---|---|
 | `locations` | `List<Map<String, Object?>>` | Batch of location maps about to be synced |
+
+### How It Works
+
+When the native sync engine is about to send a batch, it invokes the
+`onBuildCustomSyncBody` callback. In foreground mode, this calls Dart via
+a dedicated `com.tracelet/sync_body` MethodChannel:
+
+```
+Native sync thread                    Main thread                     Dart
+────────────────                      ───────────                     ────
+onBuildCustomSyncBody()
+  ├─ post to main ──────────────────► invokeMethod("buildSyncBody")
+  │                                     ├────────────────────────────► setSyncBodyBuilder callback
+  │                                     │                               ├─ build custom Map
+  │   (blocked on latch/semaphore)      │  ◄────────────────────────────┤ return JSON string
+  │  ◄──────────────────────────────────┘
+  ├─ use custom JSON as request body
+  └─ send HTTP request
+```
+
+The MethodChannel handler is set up lazily on the first call to
+`setSyncBodyBuilder()`. The native side blocks its sync thread (not the
+main thread) for up to **10 seconds** waiting for the Dart response.
+
+### Platform Details
+
+| | Android | iOS |
+|---|---|---|
+| Channel | `MethodChannel("com.tracelet/sync_body")` | `FlutterMethodChannel("com.tracelet/sync_body")` |
+| Sync mechanism | `CountDownLatch` on sync executor | `DispatchSemaphore` on sync queue |
+| Timeout | 10 seconds | 10 seconds |
+| Fallback | Headless `requestCustomSyncBody()` | Default body if `nil` returned |
+| Body encoding | JSON string returned from Dart | JSON string returned from Dart |
 
 ---
 
@@ -679,21 +715,29 @@ await Tracelet.registerHeadlessHeadersCallback(myHeadlessHeadersCallback);
 
 ### Headless Sync Body Builder
 
-Produces custom request bodies in the background:
+Produces custom request bodies in the background when the app is killed:
 
 ```dart
 @pragma('vm:entry-point')
 static void myHeadlessSyncBody(HeadlessEvent event) async {
   final locations = event.event['locations'] as List;
-  return {
+  final body = {
     'deviceId': await getDeviceId(),
     'points': locations,
   };
+
+  // Send the custom body back to the native sync engine
+  await Tracelet.setSyncBodyResponse(body);
 }
 
 // Register during app startup:
 await Tracelet.registerHeadlessSyncBodyBuilder(myHeadlessSyncBody);
 ```
+
+The headless callback receives a `HeadlessEvent` with `name == 'syncBodyBuild'`.
+You **must** call `Tracelet.setSyncBodyResponse()` to return the custom body
+to the native side — the native sync thread blocks on a latch/semaphore
+waiting for this response (10-second timeout).
 
 ### Requirements
 

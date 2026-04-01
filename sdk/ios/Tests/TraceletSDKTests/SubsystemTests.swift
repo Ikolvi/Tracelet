@@ -958,6 +958,49 @@ final class PeriodicSyncContractTests: XCTestCase {
         let remaining = db.getLocations()
         XCTAssertEqual(remaining.first?["uuid"] as? String, "purge-3")
     }
+
+    // MARK: - HttpSyncManager callback wiring after initialize
+
+    func testHttpSyncManagerCallbacksCanBeSetAfterInit() {
+        let db = TraceletDatabase(inMemory: true)
+        let config = ConfigManager()
+        let sender = MockSyncEventSender()
+        let sync = HttpSyncManager(
+            configManager: config,
+            eventDispatcher: sender,
+            database: db
+        )
+
+        XCTAssertNil(sync.onRequestFreshHeaders)
+        XCTAssertNil(sync.onAuthorizationRequired)
+        XCTAssertNil(sync.onBuildCustomSyncBody)
+
+        var headersCalled = false
+        sync.onRequestFreshHeaders = { headersCalled = true }
+        sync.onRequestFreshHeaders?()
+        XCTAssertTrue(headersCalled, "onRequestFreshHeaders callback must be invocable after assignment")
+
+        var authCalled = false
+        sync.onAuthorizationRequired = {
+            authCalled = true
+            return false
+        }
+        let _ = sync.onAuthorizationRequired?()
+        XCTAssertTrue(authCalled, "onAuthorizationRequired callback must be invocable after assignment")
+    }
+
+    func testOptionalChainingOnNilSkipsAssignment() {
+        // This test documents the bug: assigning via ?. on nil does nothing.
+        // It proves that initialize() MUST be called before wiring callbacks.
+        var httpSyncManager: HttpSyncManager? = nil
+
+        var wasCalled = false
+        httpSyncManager?.onRequestFreshHeaders = { wasCalled = true }
+
+        // The callback was never assigned because httpSyncManager is nil
+        XCTAssertNil(httpSyncManager)
+        XCTAssertFalse(wasCalled, "Callback should not fire — it was never assigned")
+    }
 }
 
 private class MockSyncEventSender: TraceletEventSending {

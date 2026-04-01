@@ -57,6 +57,11 @@ class HeadlessTaskService(
     @Volatile
     private var headersRefreshLatch: CountDownLatch? = null
 
+    /** Latch signaled when headless Dart callback returns custom sync body. */
+    private val syncBodyLock = Object()
+    private var syncBodyLatch: CountDownLatch? = null
+    private var syncBodyResponse: String? = null
+
     /** Register the headless callback IDs (called from Dart side). */
     fun registerCallbacks(registrationCallbackId: Long, dispatchCallbackId: Long) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -166,6 +171,72 @@ class HeadlessTaskService(
         }
     }
 
+    /**
+     * Request a custom sync body from the headless Dart callback.
+     *
+     * Dispatches a `syncBodyBuild` event to the Dart headless callback
+     * registered via `registerHeadlessSyncBodyBuilder`. The Dart callback
+     * is expected to transform the locations and call
+     * `Tracelet.setSyncBodyResponse()`, which routes back to the native
+     * side and signals this method to return.
+     *
+     * @param locations The batch of locations to include in the body.
+     * @param timeoutMs Maximum time to wait for the Dart callback to respond.
+     * @return The custom JSON body string, or `null` if timed out or unavailable.
+     */
+    fun requestCustomSyncBody(
+        locations: List<Map<String, Any?>>,
+        timeoutMs: Long,
+    ): String? {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val dispatchId = prefs.getLong("headlessSyncBody_dispatchId", -1L)
+        val registrationId = prefs.getLong("headlessSyncBody_registrationId", -1L)
+        if (dispatchId == -1L || registrationId == -1L) {
+            Log.w(TAG, "No headless sync body callback registered")
+            return null
+        }
+
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            Log.e(TAG, "requestCustomSyncBody() must not be called on the main thread — would deadlock")
+            return null
+        }
+
+        val latch = CountDownLatch(1)
+        synchronized(syncBodyLock) {
+            syncBodyLatch = latch
+            syncBodyResponse = null
+        }
+
+        val event = mapOf(
+            "name" to "syncBodyBuild",
+            "event" to mapOf("locations" to locations),
+            "dispatchId" to dispatchId,
+        )
+
+        if (isEngineReady.get() && headlessMethodChannel != null) {
+            sendEvent(event)
+        } else {
+            pendingEvents.add(event)
+            ensureEngine()
+        }
+
+        return try {
+            val completed = latch.await(timeoutMs, TimeUnit.MILLISECONDS)
+            if (completed) {
+                Log.d(TAG, "Sync body build completed by headless callback")
+                synchronized(syncBodyLock) { syncBodyResponse }
+            } else {
+                Log.w(TAG, "Sync body build timed out after ${timeoutMs}ms")
+                null
+            }
+        } finally {
+            synchronized(syncBodyLock) {
+                syncBodyLatch = null
+                syncBodyResponse = null
+            }
+        }
+    }
+
     // =========================================================================
     // Private
     // =========================================================================
@@ -223,6 +294,13 @@ class HeadlessTaskService(
                                     ?: emptyMap()
                                 configManager?.setDynamicHeaders(headers)
                                 headersRefreshLatch?.countDown()
+                                result.success(true)
+                            }
+                            "setSyncBodyResponse" -> {
+                                synchronized(syncBodyLock) {
+                                    syncBodyResponse = call.arguments as? String
+                                }
+                                syncBodyLatch?.countDown()
                                 result.success(true)
                             }
                             else -> result.notImplemented()

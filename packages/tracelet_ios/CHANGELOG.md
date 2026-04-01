@@ -1,3 +1,8 @@
+## 1.8.6
+
+- **PERF**: Remove per-batch `onRequestFreshHeaders` invocation — eliminates latency before every sync request. Token refresh handled by `onAuthorizationRequired` on 401.
+- **FIX**: Bump native SDK dependency to exact version `1.0.6`.
+
 ## 1.8.5
 
 - **FIX**: `getCurrentPosition()` falls back to last known location when `CLLocationManager` returns no fix (e.g. simulator, GPS-off) — fixes `LOCATION_UNAVAILABLE` errors (#46).
