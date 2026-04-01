@@ -98,8 +98,12 @@ class LocationEngineGetCurrentPositionTest {
             latch.countDown()
         }
 
-        // Drain main looper so callbacks run
-        shadowOf(android.os.Looper.getMainLooper()).idle()
+        // Advance the looper through the full collectSamples timeout.
+        // Since 1.8.6, samples==1 routes through collectSamples which uses
+        // postDelayed for retry (800ms) and timeout (5s). We must advance
+        // far enough for the timeout + retry attempts to complete.
+        val shadow = shadowOf(android.os.Looper.getMainLooper())
+        shadow.idleFor(6, TimeUnit.SECONDS)
         latch.await(2, TimeUnit.SECONDS)
 
         // Assert: should get a location, not null
@@ -125,7 +129,9 @@ class LocationEngineGetCurrentPositionTest {
             latch.countDown()
         }
 
-        shadowOf(android.os.Looper.getMainLooper()).idle()
+        // Advance the looper through the full collectSamples timeout.
+        val shadow = shadowOf(android.os.Looper.getMainLooper())
+        shadow.idleFor(6, TimeUnit.SECONDS)
         latch.await(2, TimeUnit.SECONDS)
 
         // Assert: null is expected when there's truly no location available
