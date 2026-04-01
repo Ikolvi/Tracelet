@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.7
+
+- **CHORE**: Re-release — 1.8.6 was partially published without all fixes.
+
 ## 1.8.6
 
 - **CHORE**: Version bump for HTTP sync headers fix.

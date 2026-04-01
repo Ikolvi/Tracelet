@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.7
+
+- **CHORE**: Re-release — 1.0.6 was published alongside partially-released Flutter packages.
+
 ## 1.0.6
 
 - **FIX**: `getCurrentPosition(samples: 1)` routes through `collectSamples` using `startUpdatingLocation` instead of `CLLocationManager.requestLocation()` — forces a fresh GPS fix with proper timeout instead of returning stale cached locations (#46).

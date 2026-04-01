@@ -1,3 +1,8 @@
+## 1.8.7
+
+- **FIX**: Re-release of 1.8.6 fixes (1.8.6 was partially published to pub.dev without all fixes).
+- **FIX**: Bump native SDKs to 1.0.7.
+
 ## 1.8.6
 
 - **FIX**: `getCurrentPosition(samples: 1)` now forces a fresh GPS fix instead of returning stale cached locations — uses `requestLocationUpdates`/`startUpdatingLocation` instead of `getCurrentLocation`/`requestLocation` which may return cached data without waking GPS hardware (#46).

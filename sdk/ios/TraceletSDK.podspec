@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'TraceletSDK'
-  s.version          = '1.0.5'
+  s.version          = '1.0.7'
   s.summary          = 'Tracelet SDK - background geolocation engine'
   s.homepage         = 'https://github.com/Ikolvi/Tracelet'
   s.license          = { :type => 'MIT' }
