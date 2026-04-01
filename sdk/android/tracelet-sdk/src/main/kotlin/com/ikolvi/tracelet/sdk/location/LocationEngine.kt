@@ -366,35 +366,13 @@ class LocationEngine(
             }
         }
 
-        // Multi-sample collection
-        if (samples > 1) {
-            collectSamples(priority, samples, timeout, persist, extras, callback)
-            return
-        }
-
-        // Single sample
-        try {
-            fusedClient.getCurrentLocation(priority, null)
-                .addOnSuccessListener { location ->
-                    val resolved = location ?: lastLocation
-                    if (resolved != null) {
-                        val enriched = enrichLocation(resolved, "getCurrentPosition").toMutableMap()
-                        if (extras.isNotEmpty()) enriched["extras"] = extras
-                        if (persist) {
-                            db.insertLocationAsync(enriched)
-                            onLocationPersisted?.invoke()
-                        }
-                        callback(enriched)
-                    } else {
-                        callback(null)
-                    }
-                }
-                .addOnFailureListener {
-                    callback(null)
-                }
-        } catch (e: SecurityException) {
-            callback(null)
-        }
+        // Use collectSamples for all cases — including samples == 1.
+        // FusedLocationProviderClient.getCurrentLocation() may return a stale
+        // cached location without waking the GPS hardware, causing
+        // getCurrentPosition() to return old positions. collectSamples uses
+        // requestLocationUpdates() which forces a fresh GPS fix with proper
+        // timeout handling.
+        collectSamples(priority, samples, timeout, persist, extras, callback)
     }
 
     /**

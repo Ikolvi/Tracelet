@@ -709,9 +709,6 @@ class Tracelet {
   static void setHeadersCallback(
     Future<Map<String, String>> Function()? callback,
   ) {
-    print(
-      '[Tracelet] setHeadersCallback called (callback is ${callback != null ? "set" : "null"})',
-    );
     _headersCallback = callback;
     if (callback != null) {
       _ensureSyncBodyChannel();
@@ -882,12 +879,8 @@ class Tracelet {
     if (_syncBodyChannelReady) return;
     _syncBodyChannelReady = true;
 
-    print(
-      '[Tracelet] _ensureSyncBodyChannel: setting up MethodChannel handler',
-    );
     const channel = MethodChannel('com.tracelet/sync_body');
     channel.setMethodCallHandler((MethodCall call) async {
-      print('[Tracelet] MethodChannel received: ${call.method}');
       if (call.method == 'buildSyncBody') {
         final builder = _syncBodyBuilder;
         if (builder == null) return null;

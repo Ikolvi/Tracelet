@@ -398,35 +398,12 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             }
         }
 
-        if samples > 1 {
-            collectSamples(count: samples, persist: persist, extras: extras, callback: callback)
-            return
-        }
-
-        oneShots.append { [weak self] location in
-            guard let self = self else {
-                callback(nil)
-                return
-            }
-            let resolved = location ?? self.lastLocation
-            guard let resolved = resolved else {
-                callback(nil)
-                return
-            }
-            var locationMap = self.buildLocationMap(resolved)
-            if !extras.isEmpty { locationMap["extras"] = extras }
-            if persist {
-                let _ = self.database.insertLocation(locationMap)
-                self.onLocationPersisted?()
-            }
-            callback(locationMap)
-        }
-
-        // Ensure the location manager is configured for one-shot delivery.
-        // requestLocation() requires desiredAccuracy to be set and
-        // will silently fail if the manager isn't properly configured.
-        locationManager.desiredAccuracy = kCLLocationAccuracyBest
-        locationManager.requestLocation()
+        // Use collectSamples for all cases — including samples == 1.
+        // CLLocationManager.requestLocation() may return a stale cached
+        // location without waking the GPS hardware. collectSamples uses
+        // startUpdatingLocation() which forces a fresh GPS fix with proper
+        // timeout handling.
+        collectSamples(count: samples, persist: persist, extras: extras, callback: callback)
     }
 
     /// Returns the last known location without activating any provider.

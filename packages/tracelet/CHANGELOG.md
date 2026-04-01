@@ -1,5 +1,6 @@
 ## 1.8.6
 
+- **FIX**: `getCurrentPosition(samples: 1)` now forces a fresh GPS fix instead of returning stale cached locations — uses `requestLocationUpdates`/`startUpdatingLocation` instead of `getCurrentLocation`/`requestLocation` which may return cached data without waking GPS hardware (#46).
 - **FIX**: HTTP sync headers callback (`setHeadersCallback`) no longer invoked per-batch — eliminates unnecessary MethodChannel round-trip latency on every sync request. Token refresh now handled exclusively via `setTokenRefreshCallback` on 401.
 - **FIX**: Headless `FlutterEngine` no longer overwrites foreground `httpSyncManager` callbacks — fixes 10-second timeout on `requestFreshHeaders` caused by MethodChannel messages routed to the wrong Dart isolate.
 - **FIX**: Bump native SDKs to 1.0.6.
