@@ -394,7 +394,7 @@ class PeriodicLocationWorker(
                 "headingAccuracy" to if (android.os.Build.VERSION.SDK_INT >= 26)
                     location.bearingAccuracyDegrees.toDouble() else -1.0,
             ),
-            "isMoving" to (location.speed > 0),
+            "is_moving" to (location.speed > 0),
             "odometer" to state.odometer,
             "event" to "periodic",
             "mock" to location.isFromMockProvider,

@@ -410,12 +410,13 @@ void main() {
       expect(loc.coords.altitudeAccuracy, 9.0);
     });
 
-    test('Android DB cursorToLocation format parses correctly', () {
-      // Android DB outputs camelCase for coords, is_charging for battery
+    test('Android DB cursorToLocation format parses correctly (canonical)', () {
+      // After fix for #48: Android DB now uses canonical format matching iOS:
+      // - is_moving (snake_case), ISO 8601 timestamp
       final dbMap = <String, Object?>{
         'uuid': 'android-db-uuid',
-        'timestamp': 1718451000000,
-        'isMoving': true,
+        'timestamp': '2024-06-15T12:30:00.000Z',
+        'is_moving': true,
         'odometer': 100.0,
         'event': 'location',
         'coords': <String, Object?>{
@@ -437,6 +438,37 @@ void main() {
       expect(loc.battery.isCharging, isTrue);
       expect(loc.isMoving, isTrue);
       expect(loc.activity.type, ActivityType.still);
+      expect(loc.timestamp, '2024-06-15T12:30:00.000Z');
+    });
+
+    test('Android DB legacy format still parses (backward compat)', () {
+      // Before fix for #48: Android DB used numeric timestamp + isMoving.
+      // Verify old data can still be deserialized for backward compatibility.
+      final legacyMap = <String, Object?>{
+        'uuid': 'android-legacy-uuid',
+        'timestamp': 1718451000000,
+        'isMoving': true,
+        'odometer': 100.0,
+        'event': 'location',
+        'coords': <String, Object?>{
+          'latitude': 37.0,
+          'longitude': -122.0,
+          'altitude': 50.0,
+          'speed': 1.0,
+          'heading': 90.0,
+          'accuracy': 10.0,
+          'speedAccuracy': 2.0,
+          'headingAccuracy': 3.0,
+          'altitudeAccuracy': 4.0,
+        },
+        'battery': <String, Object?>{'level': 0.8, 'is_charging': true},
+        'activity': <String, Object?>{'type': 'still', 'confidence': 100},
+      };
+      final loc = Location.fromMap(legacyMap);
+      expect(loc.isMoving, isTrue);
+      expect(loc.battery.isCharging, isTrue);
+      // Numeric timestamp gets stringified by ensureString()
+      expect(loc.timestamp, '1718451000000');
     });
   });
 }

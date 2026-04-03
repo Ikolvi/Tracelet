@@ -7,6 +7,10 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.util.Log
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import java.util.UUID
 import java.util.concurrent.Executors
 
@@ -85,6 +89,10 @@ class TraceletDatabase private constructor(context: Context, private val dbPassw
         const val TABLE_PRIVACY_ZONES = "privacy_zones"
         const val COL_PZ_ACTION = "action"
         const val COL_PZ_DEGRADED_ACCURACY = "degraded_accuracy"
+
+        private val isoFormatter = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
 
         @Volatile
         private var instance: TraceletDatabase? = null
@@ -284,7 +292,7 @@ class TraceletDatabase private constructor(context: Context, private val dbPassw
             put(COL_ALTITUDE_ACCURACY, (coords?.get("altitudeAccuracy") as? Number)?.toDouble()
                 ?: (location["altitudeAccuracy"] as? Number)?.toDouble() ?: -1.0)
             put(COL_TIMESTAMP, (location["timestamp"] as? Number)?.toLong() ?: System.currentTimeMillis())
-            put(COL_IS_MOVING, if (location["isMoving"] == true) 1 else 0)
+            put(COL_IS_MOVING, if (location["is_moving"] == true || location["isMoving"] == true) 1 else 0)
             put(COL_ODOMETER, (location["odometer"] as? Number)?.toDouble() ?: 0.0)
             put(COL_ACTIVITY_TYPE, (activity?.get("type") as? String)
                 ?: (location["activityType"] as? String))
@@ -632,8 +640,8 @@ class TraceletDatabase private constructor(context: Context, private val dbPassw
     ): Map<String, Any?> {
         val map = mutableMapOf<String, Any?>(
             "uuid" to c.getString(iUuid),
-            "timestamp" to c.getLong(iTimestamp),
-            "isMoving" to (c.getInt(iIsMoving) == 1),
+            "timestamp" to isoFormatter.format(Date(c.getLong(iTimestamp))),
+            "is_moving" to (c.getInt(iIsMoving) == 1),
             "odometer" to c.getDouble(iOdometer),
             "event" to c.getString(iEvent),
             "coords" to mapOf(

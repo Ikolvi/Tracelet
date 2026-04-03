@@ -548,7 +548,7 @@ class LocationEngine(
         }
         // Dispatch motionChange event
         val locationMap = lastLocation?.let { enrichLocation(it, "motionchange", lastEffectiveSpeed) }
-            ?: mapOf("isMoving" to isMoving)
+            ?: mapOf("is_moving" to isMoving)
         events.sendMotionChange(locationMap)
         return true
     }
@@ -774,7 +774,7 @@ class LocationEngine(
         val result = mutableMapOf<String, Any?>(
             "uuid" to UUID.randomUUID().toString(),
             "timestamp" to timestamp,
-            "isMoving" to state.isMoving,
+            "is_moving" to state.isMoving,
             "odometer" to state.odometer,
             "event" to event,
             "locationSource" to locationSource,
@@ -1228,7 +1228,7 @@ class LocationEngine(
         val enriched = mutableMapOf<String, Any?>(
             "uuid" to UUID.randomUUID().toString(),
             "timestamp" to timestamp,
-            "isMoving" to state.isMoving,
+            "is_moving" to state.isMoving,
             "odometer" to state.odometer,
             "event" to "dead_reckoning",
             "mock" to false,
