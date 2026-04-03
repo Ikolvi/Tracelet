@@ -794,7 +794,7 @@ class TraceletDatabase private constructor(context: Context, private val dbPassw
                 "heading" to it.getDouble(it.getColumnIndexOrThrow(COL_HEADING)),
                 "accuracy" to it.getDouble(it.getColumnIndexOrThrow(COL_ACCURACY)),
                 "timestamp" to it.getLong(it.getColumnIndexOrThrow(COL_TIMESTAMP)),
-                "isMoving" to (it.getInt(it.getColumnIndexOrThrow(COL_IS_MOVING)) == 1),
+                "is_moving" to (it.getInt(it.getColumnIndexOrThrow(COL_IS_MOVING)) == 1),
                 "odometer" to it.getDouble(it.getColumnIndexOrThrow(COL_ODOMETER)),
             )
         }
@@ -804,7 +804,7 @@ class TraceletDatabase private constructor(context: Context, private val dbPassw
      * Gets all audit records joined with their locations in a single query.
      * Each map includes audit fields (uuid, hash, previous_hash, chain_index)
      * plus location fields (latitude, longitude, altitude, speed, heading,
-     * accuracy, timestamp, isMoving, odometer). Missing locations yield nulls.
+     * accuracy, timestamp, is_moving, odometer). Missing locations yield nulls.
      */
     fun getAuditTrailWithLocations(): List<Map<String, Any?>> {
         val cursor = readableDatabase.rawQuery(
@@ -847,7 +847,7 @@ class TraceletDatabase private constructor(context: Context, private val dbPassw
                     "heading" to if (hasLocation && hdgIdx >= 0) it.getDouble(hdgIdx) else null,
                     "accuracy" to if (hasLocation && accIdx >= 0) it.getDouble(accIdx) else null,
                     "timestamp" to if (hasLocation && tsIdx >= 0) it.getLong(tsIdx) else null,
-                    "isMoving" to if (hasLocation && movIdx >= 0) (it.getInt(movIdx) == 1) else null,
+                    "is_moving" to if (hasLocation && movIdx >= 0) (it.getInt(movIdx) == 1) else null,
                     "odometer" to if (hasLocation && odoIdx >= 0) it.getDouble(odoIdx) else null,
                 ))
             }

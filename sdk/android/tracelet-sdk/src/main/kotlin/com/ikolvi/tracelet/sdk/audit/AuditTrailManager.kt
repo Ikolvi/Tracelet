@@ -169,7 +169,7 @@ class AuditTrailManager(
         val heading = (locationMap["heading"] as? Number)?.toDouble() ?: 0.0
         val altitude = (locationMap["altitude"] as? Number)?.toDouble() ?: 0.0
         val odometer = (locationMap["odometer"] as? Number)?.toDouble() ?: 0.0
-        val isMoving = locationMap["isMoving"] == true
+        val isMoving = (locationMap["is_moving"] ?: locationMap["isMoving"]) == true
 
         val canonical = buildCanonicalString(
             previousHash, index, uuid,
@@ -254,7 +254,7 @@ class AuditTrailManager(
                 (record["heading"] as? Number)?.toDouble() ?: 0.0,
                 (record["altitude"] as? Number)?.toDouble() ?: 0.0,
                 (record["odometer"] as? Number)?.toDouble() ?: 0.0,
-                record["isMoving"] == true,
+                record["is_moving"] == true || record["isMoving"] == true,
             )
             val computedHash = sha256(canonical)
 
