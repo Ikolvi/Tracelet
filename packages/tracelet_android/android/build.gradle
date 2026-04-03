@@ -52,7 +52,7 @@ android {
         // Tracelet SDK — standalone geolocation engine
         // Resolved from Maven Central when published, substituted with local
         // module via includeBuild during development.
-        implementation("com.ikolvi:tracelet-sdk:1.0.7")
+        implementation("com.ikolvi:tracelet-sdk:1.0.8")
 
         // Testing
         testImplementation("org.jetbrains.kotlin:kotlin-test")

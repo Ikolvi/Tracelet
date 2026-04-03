@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.8
+
+- **CHORE**: Version bump for HTTP sync payload consistency fix (#48).
+
 ## 1.8.7
 
 - **CHORE**: Re-release — 1.8.6 was partially published without all fixes.

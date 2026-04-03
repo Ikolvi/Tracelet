@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.8
+
+- **FIX**: Fix `SubsystemTests` — use `HttpSyncManager.onRequestFreshHeaders` (static type) instead of instance access.
+
 ## 1.0.7
 
 - **CHORE**: Re-release — 1.0.6 was published alongside partially-released Flutter packages.

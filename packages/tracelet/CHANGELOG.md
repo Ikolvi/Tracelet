@@ -1,3 +1,8 @@
+## 1.8.8
+
+- **FIX**: HTTP sync payload now consistent between iOS and Android — Android `cursorToLocation()` and all location map producers now use canonical `is_moving` (snake_case) and ISO 8601 timestamps, matching iOS format (#48).
+- **FIX**: Bump native SDKs to 1.0.8.
+
 ## 1.8.7
 
 - **FIX**: Re-release of 1.8.6 fixes (1.8.6 was partially published to pub.dev without all fixes).

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.8
+
+- **FIX**: `cursorToLocation()` now uses canonical `is_moving` (snake_case) instead of `isMoving` (camelCase) — HTTP sync payload now matches iOS format (#48).
+- **FIX**: `cursorToLocation()` now returns ISO 8601 timestamp string instead of numeric epoch milliseconds.
+- **FIX**: `insertLocation()` now accepts both `is_moving` and `isMoving` keys for backward compatibility.
+- **FIX**: `enrichLocation()`, `buildLocationMap()`, `onDrLocationEstimated()` now use canonical `is_moving` key.
+- **FIX**: Audit trail `appendToChain()` and `verifyChain()` accept both `is_moving` and `isMoving` for hash computation.
+
 ## 1.0.7
 
 - **CHORE**: Re-release — 1.0.6 was published alongside partially-released Flutter packages.

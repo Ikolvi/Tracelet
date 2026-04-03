@@ -1,3 +1,8 @@
+## 1.8.8
+
+- **FIX**: Fix `SubsystemTests` static property access for `HttpSyncManager` callbacks.
+- **FIX**: Bump native SDK dependency to exact version `1.0.8`.
+
 ## 1.8.7
 
 - **CHORE**: Re-release — 1.8.6 was partially published without all fixes.

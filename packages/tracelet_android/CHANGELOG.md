@@ -1,3 +1,8 @@
+## 1.8.8
+
+- **FIX**: HTTP sync payload now uses canonical `is_moving` (snake_case) and ISO 8601 timestamps, matching iOS format (#48).
+- **FIX**: Bump native SDK dependency to exact version `1.0.8`.
+
 ## 1.8.7
 
 - **CHORE**: Re-release — 1.8.6 was partially published without all fixes.
