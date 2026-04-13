@@ -416,6 +416,79 @@ void main() {
       expect(e, isNot(equals(f)));
     });
 
+    test('MotionConfig speed-mode defaults', () {
+      const config = MotionConfig();
+      expect(config.motionDetectionMode, MotionDetectionMode.accelerometer);
+      expect(config.speedMovingThreshold, 1.5);
+      expect(config.speedStationaryDelay, 180);
+      expect(config.stationaryTrackingMode, StationaryTrackingMode.periodic);
+      expect(config.stationaryPeriodicInterval, 120);
+      expect(config.stationaryPeriodicAccuracy, DesiredAccuracy.high);
+      expect(config.speedWakeConfirmCount, 1);
+    });
+
+    test('MotionConfig speed-mode round-trip serialization', () {
+      const config = MotionConfig(
+        motionDetectionMode: MotionDetectionMode.speed,
+        speedMovingThreshold: 2.5,
+        speedStationaryDelay: 300,
+        stationaryTrackingMode: StationaryTrackingMode.geofences,
+        stationaryPeriodicInterval: 300,
+        stationaryPeriodicAccuracy: DesiredAccuracy.medium,
+        speedWakeConfirmCount: 3,
+      );
+      final map = config.toMap();
+      expect(map['motionDetectionMode'], 'speed');
+      expect(map['speedMovingThreshold'], 2.5);
+      expect(map['speedStationaryDelay'], 300);
+      expect(map['stationaryTrackingMode'], 'geofences');
+      expect(map['stationaryPeriodicInterval'], 300);
+      expect(map['stationaryPeriodicAccuracy'], DesiredAccuracy.medium.index);
+      expect(map['speedWakeConfirmCount'], 3);
+
+      final restored = MotionConfig.fromMap(map);
+      expect(restored, equals(config));
+    });
+
+    test('MotionConfig speed-mode fields affect equality', () {
+      const base = MotionConfig(
+        motionDetectionMode: MotionDetectionMode.speed,
+      );
+      const diffMode = MotionConfig();
+      expect(base, isNot(equals(diffMode)));
+
+      const diffThreshold = MotionConfig(
+        motionDetectionMode: MotionDetectionMode.speed,
+        speedMovingThreshold: 2.5,
+      );
+      expect(base, isNot(equals(diffThreshold)));
+
+      const diffStationary = MotionConfig(
+        motionDetectionMode: MotionDetectionMode.speed,
+        stationaryTrackingMode: StationaryTrackingMode.geofences,
+      );
+      expect(base, isNot(equals(diffStationary)));
+    });
+
+    test('MotionConfig.fromMap accepts integer enum indices as fallback', () {
+      final map = <String, Object?>{
+        'motionDetectionMode': MotionDetectionMode.speed.index,
+        'stationaryTrackingMode': StationaryTrackingMode.geofences.index,
+      };
+      final config = MotionConfig.fromMap(map);
+      expect(config.motionDetectionMode, MotionDetectionMode.speed);
+      expect(config.stationaryTrackingMode, StationaryTrackingMode.geofences);
+    });
+
+    test('MotionConfig.fromMap handles unknown enum strings with defaults', () {
+      final config = MotionConfig.fromMap(<String, Object?>{
+        'motionDetectionMode': 'bogus',
+        'stationaryTrackingMode': 'unknown',
+      });
+      expect(config.motionDetectionMode, MotionDetectionMode.accelerometer);
+      expect(config.stationaryTrackingMode, StationaryTrackingMode.periodic);
+    });
+
     test(
       'MotionConfig fromMap with missing sensitivity fields uses defaults',
       () {

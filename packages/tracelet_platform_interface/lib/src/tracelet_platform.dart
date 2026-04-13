@@ -673,6 +673,15 @@ abstract class TraceletPlatform extends PlatformInterface {
     throw UnimplementedError('motionChangeEvents has not been implemented.');
   }
 
+  /// Stream of speed-based motion mode change events.
+  ///
+  /// Only fires when `MotionConfig.motionDetectionMode` is `speed`.
+  Stream<TlSpeedMotionEvent> get motionModeChangeEvents {
+    throw UnimplementedError(
+      'motionModeChangeEvents has not been implemented.',
+    );
+  }
+
   /// Stream of activity change events.
   Stream<TlActivityChangeEvent> get activityChangeEvents {
     throw UnimplementedError('activityChangeEvents has not been implemented.');

@@ -82,7 +82,12 @@ class BootReceiver : BroadcastReceiver() {
             .putBoolean("enabled", true)
             .commit() // synchronous write — must complete before service starts
 
-        if (trackingMode == 2 && !configManager.getPeriodicUseForegroundService()) {
+        // Speed-based motion detection: always use foreground service
+        // (the SpeedMotionManager runs in-process within the service).
+        if (configManager.getMotionDetectionMode() == "speed") {
+            Log.d(TAG, "Speed motion mode — starting foreground service (speedMotionState=${stateManager.speedMotionState})")
+            LocationService.startFromBoot(context)
+        } else if (trackingMode == 2 && !configManager.getPeriodicUseForegroundService()) {
             // Periodic mode without foreground service —
             // re-schedule WorkManager/AlarmManager work directly.
             // No foreground service needed (no persistent notification).

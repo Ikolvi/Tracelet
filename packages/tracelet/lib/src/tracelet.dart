@@ -143,6 +143,7 @@ class Tracelet {
 
   // Cached broadcast streams for public stream getters.
   static Stream<Location>? _motionChangeStream;
+  static Stream<SpeedMotionEvent>? _motionModeChangeStream;
   static Stream<ActivityChangeEvent>? _activityChangeStream;
   static Stream<ProviderChangeEvent>? _providerChangeStream;
   static Stream<GeofenceEvent>? _geofenceStream;
@@ -1893,6 +1894,18 @@ class Tracelet {
         .asBroadcastStream();
   }
 
+  /// A broadcast stream of speed-based motion mode change events.
+  ///
+  /// Only fires when [MotionConfig.motionDetectionMode] is
+  /// [MotionDetectionMode.speed]. Each event reports a state transition
+  /// (`moving`, `slowing`, `stationary`) and the underlying tracking mode
+  /// (`continuous`, `periodic`, `geofences`).
+  static Stream<SpeedMotionEvent> get motionModeChangeStream {
+    return _motionModeChangeStream ??= _platform.motionModeChangeEvents
+        .map(SpeedMotionEvent.fromTl)
+        .asBroadcastStream();
+  }
+
   /// A broadcast stream of activity change events.
   ///
   /// Fires when the detected device activity changes (still, walking, etc.).
@@ -2059,6 +2072,22 @@ class Tracelet {
   ) {
     return _tracked(
       _platform.motionChangeEvents.map(Location.fromTl).listen(callback),
+    );
+  }
+
+  /// Subscribe to speed-based motion mode change events.
+  ///
+  /// Fires only when [MotionConfig.motionDetectionMode] is
+  /// [MotionDetectionMode.speed]. Reports transitions between
+  /// `moving`/`slowing`/`stationary` states and switches between
+  /// continuous and periodic/geofence tracking.
+  static StreamSubscription<SpeedMotionEvent> onMotionModeChange(
+    void Function(SpeedMotionEvent) callback,
+  ) {
+    return _tracked(
+      _platform.motionModeChangeEvents
+          .map(SpeedMotionEvent.fromTl)
+          .listen(callback),
     );
   }
 
@@ -2337,6 +2366,7 @@ class Tracelet {
     _watchSubscriptions.clear();
     _processedLocationStream = null;
     _motionChangeStream = null;
+    _motionModeChangeStream = null;
     _activityChangeStream = null;
     _providerChangeStream = null;
     _geofenceStream = null;

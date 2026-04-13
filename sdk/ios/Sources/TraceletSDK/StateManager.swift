@@ -77,6 +77,32 @@ public final class StateManager {
         }
     }
 
+    // MARK: - Speed Motion Detection
+
+    /// Persisted speed-motion state ("moving", "slowing", "stationary").
+    public var speedMotionState: String? {
+        get { defaults.string(forKey: prefix + "speedMotionState") }
+        set { defaults.set(newValue, forKey: prefix + "speedMotionState") }
+    }
+
+    /// Consecutive low-speed sample count (SLOWING phase).
+    public var speedLowCount: Int {
+        get { defaults.integer(forKey: prefix + "speedLowCount") }
+        set { defaults.set(newValue, forKey: prefix + "speedLowCount") }
+    }
+
+    /// Consecutive wake-speed sample count (STATIONARY phase).
+    public var speedWakeCount: Int {
+        get { defaults.integer(forKey: prefix + "speedWakeCount") }
+        set { defaults.set(newValue, forKey: prefix + "speedWakeCount") }
+    }
+
+    /// Timestamp of the last speed-motion state transition.
+    public var speedLastTransition: Double {
+        get { defaults.double(forKey: prefix + "speedLastTransition") }
+        set { defaults.set(newValue, forKey: prefix + "speedLastTransition") }
+    }
+
     public init() {
         defaults = UserDefaults.standard
     }
@@ -96,6 +122,10 @@ public final class StateManager {
         lastLocationTime = 0
         lastPeriodicLatitude = .nan
         lastPeriodicLongitude = .nan
+        speedMotionState = nil
+        speedLowCount = 0
+        speedWakeCount = 0
+        speedLastTransition = 0
     }
 
     public func toMap(_ config: [String: Any]?) -> [String: Any] {

@@ -638,6 +638,7 @@ internal class TraceletSdkTest {
         override fun sendWatchPosition(data: Map<String, Any?>) {}
         override fun sendTrip(data: Map<String, Any?>) {}
         override fun sendBudgetAdjustment(data: Map<String, Any?>) {}
+        override fun sendSpeedMotionChange(data: Map<String, Any?>) {}
         override fun hasListener(eventName: String): Boolean = false
     }
 }

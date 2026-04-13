@@ -15,6 +15,8 @@ class PigeonEventReceiver implements TraceletEventApi {
 
   final _locationCtrl = StreamController<TlLocation>.broadcast();
   final _motionChangeCtrl = StreamController<TlLocation>.broadcast();
+  final _motionModeChangeCtrl =
+      StreamController<TlSpeedMotionEvent>.broadcast();
   final _activityChangeCtrl =
       StreamController<TlActivityChangeEvent>.broadcast();
   final _providerChangeCtrl =
@@ -39,6 +41,8 @@ class PigeonEventReceiver implements TraceletEventApi {
 
   Stream<TlLocation> get locationEvents => _locationCtrl.stream;
   Stream<TlLocation> get motionChangeEvents => _motionChangeCtrl.stream;
+  Stream<TlSpeedMotionEvent> get motionModeChangeEvents =>
+      _motionModeChangeCtrl.stream;
   Stream<TlActivityChangeEvent> get activityChangeEvents =>
       _activityChangeCtrl.stream;
   Stream<TlProviderChangeEvent> get providerChangeEvents =>
@@ -67,6 +71,10 @@ class PigeonEventReceiver implements TraceletEventApi {
 
   @override
   void onMotionChange(TlLocation location) => _motionChangeCtrl.add(location);
+
+  @override
+  void onMotionModeChange(TlSpeedMotionEvent event) =>
+      _motionModeChangeCtrl.add(event);
 
   @override
   void onActivityChange(TlActivityChangeEvent event) =>
@@ -118,6 +126,7 @@ class PigeonEventReceiver implements TraceletEventApi {
   void dispose() {
     _locationCtrl.close();
     _motionChangeCtrl.close();
+    _motionModeChangeCtrl.close();
     _activityChangeCtrl.close();
     _providerChangeCtrl.close();
     _geofenceCtrl.close();

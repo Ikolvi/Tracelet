@@ -216,6 +216,81 @@ class LocationEngine(
         state.enabled = false
     }
 
+    /**
+     * Stops continuous location updates without killing the service or
+     * clearing the enabled state. Used during speed-based motion detection
+     * mode switches (continuous -> stationary) where the foreground service
+     * must stay alive.
+     *
+     * Unlike [stop], this does NOT call [stopPeriodic], does NOT set
+     * [state.enabled] = false, and preserves [lastLocation].
+     */
+    fun stopContinuous() {
+        gpsFallbackActive = false
+        trackingCallback?.let {
+            fusedClient.removeLocationUpdates(it)
+            trackingCallback = null
+        }
+        deactivateDeadReckoning()
+        cancelGpsLossTimer()
+        Log.d(TAG, "stopContinuous() — continuous updates removed, service stays alive")
+    }
+
+    /**
+     * Requests a single location fix using [FusedLocationProviderClient.getCurrentLocation].
+     *
+     * Used by the speed-based stationary periodic timer. The fix is piped
+     * through the normal [onLocationReceived] path so listeners, persistence,
+     * and [SpeedMotionManager.onLocation] all see it.
+     *
+     * @param accuracy Desired accuracy index (0=high, 1=medium, 2=low, 3=passive).
+     * @param callback Receives the raw [Location] on success, or null on failure/timeout.
+     */
+    fun requestOneShotFix(accuracy: Int, callback: ((Location?) -> Unit)? = null) {
+        if (!hasPermission()) {
+            Log.w(TAG, "requestOneShotFix() — no location permission")
+            callback?.invoke(null)
+            return
+        }
+
+        val priority = accuracyToPriority(accuracy)
+        val cancellationSource = com.google.android.gms.tasks.CancellationTokenSource()
+
+        Log.d(TAG, "requestOneShotFix() — priority=$priority")
+
+        try {
+            fusedClient.getCurrentLocation(priority, cancellationSource.token)
+                .addOnSuccessListener { location: Location? ->
+                    if (location != null) {
+                        // Pipe through normal processing path
+                        onLocationReceived(location, "periodic")
+                        callback?.invoke(location)
+                    } else {
+                        Log.w(TAG, "requestOneShotFix() — null location returned")
+                        callback?.invoke(null)
+                    }
+                }
+                .addOnFailureListener { e ->
+                    Log.w(TAG, "requestOneShotFix() failed: ${e.message}")
+                    callback?.invoke(null)
+                }
+        } catch (e: SecurityException) {
+            Log.w(TAG, "requestOneShotFix() — SecurityException: ${e.message}")
+            callback?.invoke(null)
+        }
+    }
+
+    // =========================================================================
+    // Speed-based motion detection sink
+    // =========================================================================
+
+    /**
+     * Optional sink for forwarding speed from each location fix to
+     * [SpeedMotionManager.onLocation]. Set by LocationService when
+     * speed-based motion detection is active; null otherwise.
+     */
+    var speedMotionSpeedSink: ((Double) -> Unit)? = null
+
     // =========================================================================
     // Periodic one-shot tracking (foreground service + timer strategy)
     // =========================================================================
@@ -723,6 +798,9 @@ class LocationEngine(
         }
         lastEffectiveSpeed = effectiveSpeed
         state.lastLocationTime = location.time
+
+        // Forward speed to SpeedMotionManager when speed-based motion detection is active
+        speedMotionSpeedSink?.invoke(effectiveSpeed)
 
         val enriched = enrichLocation(location, event, effectiveSpeed)
 

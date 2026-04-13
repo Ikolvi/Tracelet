@@ -22,6 +22,7 @@ import com.ikolvi.tracelet.sdk.http.HttpSyncManager
 import com.ikolvi.tracelet.sdk.location.LocationEngine
 import com.ikolvi.tracelet.sdk.location.PeriodicLocationWorker
 import com.ikolvi.tracelet.sdk.motion.MotionDetector
+import com.ikolvi.tracelet.sdk.motion.SpeedMotionManager
 import com.ikolvi.tracelet.sdk.privacy.PrivacyZoneManager
 import com.ikolvi.tracelet.sdk.receiver.BootReceiver
 import com.ikolvi.tracelet.sdk.receiver.GeofenceBroadcastReceiver
@@ -80,6 +81,8 @@ class TraceletSdk private constructor(private val context: Context) {
     lateinit var locationEngine: LocationEngine
         internal set
     lateinit var motionDetector: MotionDetector
+        internal set
+    var speedMotionManager: SpeedMotionManager? = null
         internal set
     lateinit var geofenceManager: GeofenceManager
         internal set
@@ -426,18 +429,40 @@ class TraceletSdk private constructor(private val context: Context) {
             tripManager.onLocationReceived(lat, lng, System.currentTimeMillis().toString())
         }
 
-        // Activity recognition permission + motion detector
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val hasMotion = ContextCompat.checkSelfPermission(
-                context, Manifest.permission.ACTIVITY_RECOGNITION
-            ) == PackageManager.PERMISSION_GRANTED
-            if (!hasMotion) {
-                permissionManager.requestActivityRecognition(activity)
+        // Motion detection — branch on configured mode
+        if (configManager.getMotionDetectionMode() == "speed") {
+            // Speed-based motion detection — skip accelerometer & activity recognition
+            val smm = SpeedMotionManager(
+                configManager, stateManager, eventSender,
+                object : SpeedMotionManager.SpeedMotionCallback {
+                    override fun switchToContinuous() {
+                        LocationService.switchToContinuous(locationEngine, stateManager)
+                    }
+                    override fun switchToStationaryPeriodic() {
+                        LocationService.switchToStationaryPeriodic(locationEngine, configManager, stateManager)
+                    }
+                    override fun switchToStationaryGeofences() {
+                        LocationService.switchToStationaryGeofences(locationEngine, stateManager)
+                    }
+                },
+            )
+            smm.start()
+            speedMotionManager = smm
+            locationEngine.speedMotionSpeedSink = { speed -> smm.onLocation(speed) }
+        } else {
+            // Accelerometer-based motion detection (default)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val hasMotion = ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.ACTIVITY_RECOGNITION
+                ) == PackageManager.PERMISSION_GRANTED
+                if (!hasMotion) {
+                    permissionManager.requestActivityRecognition(activity)
+                } else {
+                    motionDetector.start()
+                }
             } else {
                 motionDetector.start()
             }
-        } else {
-            motionDetector.start()
         }
 
         startHeartbeat()
@@ -457,7 +482,11 @@ class TraceletSdk private constructor(private val context: Context) {
 
         locationEngine.stop()
         locationEngine.onLocationUpdate = null
+        locationEngine.speedMotionSpeedSink = null
         motionDetector.stop()
+        speedMotionManager?.stop()
+        speedMotionManager = null
+        LocationService.stopStationaryTimer()
         stopHeartbeat()
         cancelStopAfterElapsedTimer()
         tripManager.reset()
@@ -952,7 +981,8 @@ class TraceletSdk private constructor(private val context: Context) {
             val act = activity
             val motionStatus = permissionManager.getMotionPermissionStatus(act)
             if (motionStatus == TraceletPermissionManager.STATUS_ALWAYS &&
-                stateManager.enabled
+                stateManager.enabled &&
+                configManager.getMotionDetectionMode() != "speed"
             ) {
                 motionDetector.start()
             }
@@ -1286,7 +1316,9 @@ class TraceletSdk private constructor(private val context: Context) {
             LocationService.start(context)
         }
         locationEngine.start()
-        motionDetector.start()
+        if (configManager.getMotionDetectionMode() != "speed") {
+            motionDetector.start()
+        }
         startHeartbeat()
         eventSender.sendEnabledChange(true)
     }
@@ -1295,6 +1327,10 @@ class TraceletSdk private constructor(private val context: Context) {
         stateManager.enabled = false
         locationEngine.stop()
         motionDetector.stop()
+        speedMotionManager?.stop()
+        speedMotionManager = null
+        locationEngine.speedMotionSpeedSink = null
+        LocationService.stopStationaryTimer()
         stopHeartbeat()
         if (configManager.isForegroundServiceEnabled()) {
             LocationService.stop(context)

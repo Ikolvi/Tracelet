@@ -144,6 +144,14 @@ public final class ConfigManager {
     public func getStopOnStationary() -> Bool { cache["stopOnStationary"] as? Bool ?? false }
     public func getTriggerActivities() -> String { cache["triggerActivities"] as? String ?? "" }
 
+    // Speed-based motion detection
+    public func getMotionDetectionMode() -> String { cache["motionDetectionMode"] as? String ?? "accelerometer" }
+    public func getSpeedMovingThreshold() -> Double { (cache["speedMovingThreshold"] as? NSNumber)?.doubleValue ?? 1.5 }
+    public func getSpeedStationaryDelay() -> Int { cache["speedStationaryDelay"] as? Int ?? 180 }
+    public func getStationaryTrackingMode() -> String { cache["stationaryTrackingMode"] as? String ?? "periodic" }
+    public func getStationaryPeriodicInterval() -> Int { cache["stationaryPeriodicInterval"] as? Int ?? 120 }
+    public func getSpeedWakeConfirmCount() -> Int { cache["speedWakeConfirmCount"] as? Int ?? 1 }
+
     /// Shake threshold in g-force (converted from m/s² config value).
     /// Default: 2.5 m/s² ÷ 9.81 ≈ 0.255 g
     public func getShakeThreshold() -> Double {

@@ -63,4 +63,7 @@ interface TraceletListener {
 
     /** Called when the battery budget engine adjusts parameters. */
     fun onBudgetAdjustment(data: Map<String, Any?>) {}
+
+    /** Called when the speed-based motion detection state changes. */
+    fun onSpeedMotionChange(data: Map<String, Any?>) {}
 }

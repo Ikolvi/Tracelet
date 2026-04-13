@@ -99,6 +99,11 @@ final class DelegateEventSender: TraceletEventSending {
         dispatch { sdk, delegate in delegate.tracelet(sdk, didAdjustBudget: data) }
     }
 
+    func sendSpeedMotionEvent(_ data: [String: Any]) {
+        // Speed motion events are delivered via the motionchange delegate
+        // callback in standalone SDK mode — no separate delegate method yet.
+    }
+
     func hasListener(eventName: String) -> Bool {
         return delegate != nil || headlessDispatcher?.isRegistered() == true
     }

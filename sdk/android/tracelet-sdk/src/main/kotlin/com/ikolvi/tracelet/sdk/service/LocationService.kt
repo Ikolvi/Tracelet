@@ -25,6 +25,7 @@ import com.ikolvi.tracelet.sdk.geofence.GeofenceManager
 import com.ikolvi.tracelet.sdk.http.HttpSyncManager
 import com.ikolvi.tracelet.sdk.location.LocationEngine
 import com.ikolvi.tracelet.sdk.location.PeriodicLocationWorker
+import com.ikolvi.tracelet.sdk.motion.SpeedMotionManager
 import com.ikolvi.tracelet.sdk.receiver.GeofenceBroadcastReceiver
 import com.ikolvi.tracelet.sdk.util.OemCompat
 
@@ -72,6 +73,17 @@ class LocationService : Service() {
         private var bootHeartbeatHandler: Handler? = null
         @Volatile
         private var bootHeartbeatRunnable: Runnable? = null
+
+        // Speed-based motion detection state (boot mode).
+        @Volatile
+        var bootSpeedMotionManager: SpeedMotionManager? = null
+            private set
+
+        // Stationary periodic timer state (speed mode).
+        @Volatile
+        private var stationaryTimerHandler: Handler? = null
+        @Volatile
+        private var stationaryTimerRunnable: Runnable? = null
 
         fun isServiceRunning(): Boolean = isRunning
 
@@ -122,9 +134,81 @@ class LocationService : Service() {
         fun stopBootTracking() {
             stopBootHeartbeat()
             stopBootHttpSync()
+            stopStationaryTimer()
+            bootSpeedMotionManager?.stop()
+            bootSpeedMotionManager = null
+            bootLocationEngine?.speedMotionSpeedSink = null
             bootLocationEngine?.destroy()
             bootLocationEngine = null
             Log.d(TAG, "Boot-mode native tracking stopped — ready() taking over")
+        }
+
+        // =================================================================
+        // Speed-based motion mode switching (stationary timer)
+        // =================================================================
+
+        /**
+         * Switches to stationary periodic mode: stops continuous location
+         * updates and schedules an in-process repeating timer that fires
+         * one-shot fixes at the configured interval.
+         *
+         * The foreground service stays alive — only the GPS radio is
+         * turned off between fixes.
+         */
+        fun switchToStationaryPeriodic(engine: LocationEngine, config: ConfigManager, state: StateManager) {
+            stopStationaryTimer()
+            engine.stopContinuous()
+
+            val intervalMs = config.getStationaryPeriodicInterval() * 1000L
+            val accuracy = config.getStationaryPeriodicAccuracy()
+            state.trackingMode = 2 // periodic
+
+            val handler = Handler(Looper.getMainLooper())
+            stationaryTimerHandler = handler
+
+            val runnable = object : Runnable {
+                override fun run() {
+                    if (!state.enabled) return
+                    Log.d(TAG, "Stationary periodic tick — requesting one-shot fix")
+                    engine.requestOneShotFix(accuracy)
+                    handler.postDelayed(this, intervalMs)
+                }
+            }
+            stationaryTimerRunnable = runnable
+
+            // Fire first fix after one interval (not immediately — we just
+            // transitioned from continuous, so we already have a recent fix).
+            handler.postDelayed(runnable, intervalMs)
+            Log.d(TAG, "switchToStationaryPeriodic() — interval=${intervalMs}ms, accuracy=$accuracy")
+        }
+
+        /**
+         * Switches to stationary geofences mode: stops continuous location
+         * updates and leaves geofence monitoring active.
+         */
+        fun switchToStationaryGeofences(engine: LocationEngine, state: StateManager) {
+            stopStationaryTimer()
+            engine.stopContinuous()
+            state.trackingMode = 1 // geofences
+            Log.d(TAG, "switchToStationaryGeofences() — continuous stopped, geofences active")
+        }
+
+        /**
+         * Switches back to continuous tracking: cancels any stationary
+         * timer and restarts the location engine.
+         */
+        fun switchToContinuous(engine: LocationEngine, state: StateManager) {
+            stopStationaryTimer()
+            state.trackingMode = 0 // location
+            engine.start()
+            Log.d(TAG, "switchToContinuous() — continuous tracking resumed")
+        }
+
+        /** Cancels the stationary periodic timer if active. */
+        fun stopStationaryTimer() {
+            stationaryTimerRunnable?.let { stationaryTimerHandler?.removeCallbacks(it) }
+            stationaryTimerRunnable = null
+            stationaryTimerHandler = null
         }
 
         private fun stopBootHttpSync() {
@@ -443,6 +527,38 @@ class LocationService : Service() {
                 Log.d(TAG, "Boot-mode native tracking started (trackingMode=$trackingMode)")
                 startBootHeartbeat(config, engine, eventSender)
 
+                // Speed-based motion detection: wire up SpeedMotionManager
+                if (config.getMotionDetectionMode() == "speed") {
+                    val smm = SpeedMotionManager(
+                        config, state, eventSender,
+                        object : SpeedMotionManager.SpeedMotionCallback {
+                            override fun switchToContinuous() {
+                                switchToContinuous(engine, state)
+                            }
+                            override fun switchToStationaryPeriodic() {
+                                switchToStationaryPeriodic(engine, config, state)
+                            }
+                            override fun switchToStationaryGeofences() {
+                                switchToStationaryGeofences(engine, state)
+                            }
+                        },
+                    )
+                    smm.start()
+                    bootSpeedMotionManager = smm
+                    engine.speedMotionSpeedSink = { speed -> smm.onLocation(speed) }
+                    Log.d(TAG, "Speed-based motion detection started (boot mode)")
+
+                    // If persisted state was STATIONARY, immediately switch to
+                    // the appropriate stationary tracking mode.
+                    if (state.speedMotionState == "stationary") {
+                        when (config.getStationaryTrackingMode()) {
+                            "geofences" -> switchToStationaryGeofences(engine, state)
+                            else -> switchToStationaryPeriodic(engine, config, state)
+                        }
+                        Log.d(TAG, "Restored stationary mode from persisted speed state")
+                    }
+                }
+
                 // Geofence mode: re-register persisted geofences with Play Services
                 // and restore the static BroadcastReceiver reference so transition
                 // events are not silently dropped after process death.
@@ -500,8 +616,12 @@ class LocationService : Service() {
 
     private fun stopBootTrackingInternal() {
         stopBootHeartbeat()
+        stopStationaryTimer()
+        bootSpeedMotionManager?.stop()
+        bootSpeedMotionManager = null
         bootHttpSyncManager?.stop()
         bootHttpSyncManager = null
+        bootLocationEngine?.speedMotionSpeedSink = null
         bootLocationEngine?.destroy()
         bootLocationEngine = null
     }

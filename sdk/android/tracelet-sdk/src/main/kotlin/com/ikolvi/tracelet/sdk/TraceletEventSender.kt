@@ -45,6 +45,8 @@ interface TraceletEventSender {
 
     fun sendBudgetAdjustment(data: Map<String, Any?>)
 
+    fun sendSpeedMotionChange(data: Map<String, Any?>)
+
     /** Returns true if a listener is attached for the given event name. */
     fun hasListener(eventName: String): Boolean
 }

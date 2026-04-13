@@ -52,6 +52,19 @@ enum TlDesiredAccuracy { high, medium, low, veryLow, passive }
 /// Tracking mode.
 enum TlTrackingMode { location, geofences, periodic }
 
+/// Motion detection strategy.
+///
+/// - `accelerometer`: default. Uses raw accelerometer (+ optional Activity
+///   Recognition) to detect stationary↔moving transitions.
+/// - `speed`: uses GPS speed from each location fix. Immune to the
+///   "phone still on moving vehicle" false-stationarity problem. Drives
+///   automatic switching between continuous and periodic tracking.
+enum TlMotionDetectionMode { accelerometer, speed }
+
+/// Tracking mode to use when the speed-based state machine enters the
+/// stationary state.
+enum TlStationaryTrackingMode { periodic, geofences }
+
 /// Geofence transition action.
 enum TlGeofenceAction { enter, exit, dwell }
 
@@ -298,6 +311,30 @@ class TlConnectivityChangeEvent {
   TlConnectivityChangeEvent({required this.connected});
 
   final bool connected;
+}
+
+/// Speed-based motion state change event.
+///
+/// Fired by the native `SpeedMotionManager` whenever the state machine
+/// transitions between `moving`, `slowing`, and `stationary`, or when the
+/// underlying tracking mode switches between `continuous` and the configured
+/// stationary mode.
+class TlSpeedMotionEvent {
+  TlSpeedMotionEvent({
+    required this.state,
+    required this.previousState,
+    required this.trackingMode,
+  });
+
+  /// New state: `"moving"`, `"slowing"`, or `"stationary"`.
+  final String state;
+
+  /// Previous state before this transition.
+  final String previousState;
+
+  /// Underlying tracking mode after the transition: `"continuous"`,
+  /// `"periodic"`, or `"geofences"`.
+  final String trackingMode;
 }
 
 // =============================================================================
@@ -669,6 +706,13 @@ abstract class TraceletEventApi {
 
   /// Fired when motion state changes (stationary ↔ moving).
   void onMotionChange(TlLocation location);
+
+  /// Fired when the speed-based motion state machine transitions between
+  /// `moving`, `slowing`, and `stationary` states, or when the underlying
+  /// tracking mode switches (continuous ↔ periodic/geofences).
+  ///
+  /// Only fires when `MotionConfig.motionDetectionMode` is `speed`.
+  void onMotionModeChange(TlSpeedMotionEvent event);
 
   /// Fired when detected activity type changes (walking, running, etc.).
   void onActivityChange(TlActivityChangeEvent event);
