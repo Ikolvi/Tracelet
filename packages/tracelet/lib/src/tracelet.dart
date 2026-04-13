@@ -29,6 +29,7 @@ import 'models/privacy_zone_config.dart';
 import 'models/provider_change_event.dart';
 import 'models/route_context.dart';
 import 'models/sensors.dart';
+import 'models/speed_motion_event.dart';
 import 'models/sql_query.dart';
 import 'models/state.dart';
 import 'models/sync_body_context.dart';
