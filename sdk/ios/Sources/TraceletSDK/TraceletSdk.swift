@@ -1634,15 +1634,11 @@ extension TraceletSdk: SpeedMotionDelegate {
         }
     }
 
-    public func emitSpeedMotionEvent(_ event: [String: String]) {
-        // Emit via TraceletEventApi.onMotionModeChange (Pigeon).
-        // The generated Pigeon type TlSpeedMotionEvent is assumed to exist.
-        // Until Pigeon is regenerated, this event is dispatched via
-        // sendSpeedMotionEvent which routes to headless fallback.
+    public func emitSpeedMotionEvent(state: String, previousState: String, trackingMode: String) {
         let data: [String: Any] = [
-            "state": event["state"] ?? "",
-            "previousState": event["previousState"] ?? "",
-            "trackingMode": event["trackingMode"] ?? "",
+            "state": state,
+            "previousState": previousState,
+            "trackingMode": trackingMode,
         ]
         eventSender.sendSpeedMotionEvent(data)
     }

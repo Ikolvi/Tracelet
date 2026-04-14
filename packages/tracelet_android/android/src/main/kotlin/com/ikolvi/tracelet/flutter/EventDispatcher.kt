@@ -16,6 +16,7 @@ import com.ikolvi.tracelet.TlHeartbeatEvent
 import com.ikolvi.tracelet.TlHttpEvent
 import com.ikolvi.tracelet.TlLocation
 import com.ikolvi.tracelet.TlProviderChangeEvent
+import com.ikolvi.tracelet.TlSpeedMotionEvent
 import com.ikolvi.tracelet.TlState
 import com.ikolvi.tracelet.TraceletEventApi
 import com.ikolvi.tracelet.sdk.TraceletEventSender
@@ -245,17 +246,12 @@ class EventDispatcher : TraceletEventSender {
     override fun sendSpeedMotionChange(data: Map<String, Any?>) {
         val api = eventApi
         if (api != null) {
-            // TODO: Use Pigeon-generated TlSpeedMotionEvent + api.onMotionModeChange()
-            // once `dart run pigeon` regenerates the Kotlin bindings.
-            // For now, route via headless fallback so the event is not lost.
-            //
-            // val event = TlSpeedMotionEvent(
-            //     state = data["state"] as? String ?: "",
-            //     previousState = data["previousState"] as? String ?: "",
-            //     trackingMode = data["trackingMode"] as? String ?: "",
-            // )
-            // postToMain { api.onMotionModeChange(event) {} }
-            fallback("speedmotionchange", data)
+            val event = TlSpeedMotionEvent(
+                state = data["state"] as? String ?: "",
+                previousState = data["previousState"] as? String ?: "",
+                trackingMode = data["trackingMode"] as? String ?: "",
+            )
+            postToMain { api.onMotionModeChange(event) {} }
         } else {
             fallback("speedmotionchange", data)
         }

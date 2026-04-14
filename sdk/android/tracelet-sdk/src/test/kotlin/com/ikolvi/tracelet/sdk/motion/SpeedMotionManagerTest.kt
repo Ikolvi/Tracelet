@@ -210,23 +210,18 @@ class SpeedMotionManagerTest {
     // Backward-compat onMotionChange emission
     // =========================================================================
 
+    // Note: backward-compat onMotionChange is now emitted by TraceletSdk's
+    // SpeedMotionCallback implementations (where the last known location is
+    // available), not by SpeedMotionManager itself.
+
     @Test
-    fun `standard onMotionChange fires on MOVING to STATIONARY transition`() {
+    fun `SpeedMotionManager does not emit onMotionChange directly`() {
         configure(stationaryDelaySeconds = 2)
 
         manager.onLocation(5.0)
         repeat(10) { manager.onLocation(0.1) }
 
-        assertTrue(events.motionChangeEvents.any { it["is_moving"] == false })
-    }
-
-    @Test
-    fun `standard onMotionChange does not fire on MOVING to SLOWING transition`() {
-        configure(stationaryDelaySeconds = 60)
-
-        manager.onLocation(5.0)
-        manager.onLocation(0.1)
-
+        // motionChange events should be empty — they are emitted by the host callback
         assertTrue(events.motionChangeEvents.isEmpty())
     }
 

@@ -436,13 +436,27 @@ class TraceletSdk private constructor(private val context: Context) {
                 configManager, stateManager, eventSender,
                 object : SpeedMotionManager.SpeedMotionCallback {
                     override fun switchToContinuous() {
+                        stateManager.isMoving = true
                         LocationService.switchToContinuous(locationEngine, stateManager)
+                        emitMotionChangeWithLocation(isMoving = true)
                     }
                     override fun switchToStationaryPeriodic() {
+                        stateManager.isMoving = false
                         LocationService.switchToStationaryPeriodic(locationEngine, configManager, stateManager)
+                        emitMotionChangeWithLocation(isMoving = false)
+                        if (configManager.getStopOnStationary()) {
+                            mainHandler.post { stop() }
+                            logger.info("stopOnStationary — tracking stopped by speed motion detector")
+                        }
                     }
                     override fun switchToStationaryGeofences() {
+                        stateManager.isMoving = false
                         LocationService.switchToStationaryGeofences(locationEngine, stateManager)
+                        emitMotionChangeWithLocation(isMoving = false)
+                        if (configManager.getStopOnStationary()) {
+                            mainHandler.post { stop() }
+                            logger.info("stopOnStationary — tracking stopped by speed motion detector")
+                        }
                     }
                 },
             )
@@ -1296,6 +1310,35 @@ class TraceletSdk private constructor(private val context: Context) {
             } ?: mapOf("isMoving" to isMoving)
 
         // Feed TripManager with motion state change
+        val lat = (locationMap["latitude"] as? Number)?.toDouble()
+            ?: ((locationMap["coords"] as? Map<*, *>)?.get("latitude") as? Number)?.toDouble()
+        val lng = (locationMap["longitude"] as? Number)?.toDouble()
+            ?: ((locationMap["coords"] as? Map<*, *>)?.get("longitude") as? Number)?.toDouble()
+        tripManager.onMotionStateChanged(
+            isMoving = isMoving,
+            latitude = lat,
+            longitude = lng,
+            timestamp = locationMap["timestamp"],
+        )
+
+        eventSender.sendMotionChange(locationMap)
+    }
+
+    /**
+     * Emit a backward-compat motionChange event enriched with the last known
+     * location. Used by the speed-motion callbacks so downstream listeners
+     * receive a proper TlLocation (not just `{"is_moving": true}`).
+     */
+    private fun emitMotionChangeWithLocation(isMoving: Boolean) {
+        val locationMap =
+            locationEngine.getLastLocation()?.let { loc ->
+                val map = locationEngine.enrichLocation(
+                    loc, "motionchange", locationEngine.lastEffectiveSpeed
+                ).toMutableMap()
+                map["isMoving"] = isMoving
+                map
+            } ?: mapOf("isMoving" to isMoving)
+
         val lat = (locationMap["latitude"] as? Number)?.toDouble()
             ?: ((locationMap["coords"] as? Map<*, *>)?.get("latitude") as? Number)?.toDouble()
         val lng = (locationMap["longitude"] as? Number)?.toDouble()

@@ -1,5 +1,6 @@
 package com.ikolvi.tracelet.sdk.motion
 
+import android.os.SystemClock
 import android.util.Log
 import com.ikolvi.tracelet.sdk.ConfigManager
 import com.ikolvi.tracelet.sdk.StateManager
@@ -89,11 +90,23 @@ class SpeedMotionManager(
         if (started) return
         started = true
 
-        // Cache config
+        // Cache config with bounds enforcement
         speedMovingThreshold = config.getSpeedMovingThreshold()
-        speedStationaryDelay = config.getSpeedStationaryDelay()
         stationaryTrackingMode = config.getStationaryTrackingMode()
-        speedWakeConfirmCount = config.getSpeedWakeConfirmCount()
+
+        val rawDelay = config.getSpeedStationaryDelay()
+        speedStationaryDelay = rawDelay.coerceAtLeast(0)
+        if (rawDelay < 0) {
+            Log.w(TAG, "speedStationaryDelay was $rawDelay, clamped to 0")
+        } else if (rawDelay == 0) {
+            Log.w(TAG, "speedStationaryDelay is 0 — device will transition to STATIONARY immediately after a single low-speed fix")
+        }
+
+        val rawWakeCount = config.getSpeedWakeConfirmCount()
+        speedWakeConfirmCount = rawWakeCount.coerceAtLeast(1)
+        if (rawWakeCount < 1) {
+            Log.w(TAG, "speedWakeConfirmCount was $rawWakeCount, clamped to 1")
+        }
 
         // Restore persisted state
         currentState = State.fromString(state.speedMotionState)
@@ -125,8 +138,9 @@ class SpeedMotionManager(
     fun onLocation(speedMetersPerSecond: Double) {
         if (!started) return
 
-        // Track inter-fix interval for SLOWING countdown
-        val now = System.currentTimeMillis()
+        // Track inter-fix interval for SLOWING countdown.
+        // Use elapsedRealtime() which is monotonic and immune to NTP / manual clock changes.
+        val now = SystemClock.elapsedRealtime()
         if (lastFixTime > 0) {
             val interval = now - lastFixTime
             fixCount++
@@ -234,7 +248,7 @@ class SpeedMotionManager(
         state.speedMotionState = newState.value
         state.speedLowCount = lowSpeedCount
         state.speedWakeCount = wakeCount
-        state.speedLastTransition = System.currentTimeMillis()
+        state.speedLastTransition = SystemClock.elapsedRealtime()
 
         // Update isMoving for compatibility with existing consumers
         state.isMoving = newState != State.STATIONARY
@@ -249,13 +263,6 @@ class SpeedMotionManager(
             },
         )
         events.sendSpeedMotionChange(eventData)
-
-        // Also emit standard motionChange on MOVING<->STATIONARY transitions
-        // for backward compatibility with existing onMotionChange listeners
-        if ((previousState == State.STATIONARY && newState == State.MOVING) ||
-            (previousState != State.STATIONARY && newState == State.STATIONARY)) {
-            events.sendMotionChange(mapOf("is_moving" to (newState != State.STATIONARY)))
-        }
 
         Log.d(TAG, "State transition: ${previousState.value} -> ${newState.value}")
     }

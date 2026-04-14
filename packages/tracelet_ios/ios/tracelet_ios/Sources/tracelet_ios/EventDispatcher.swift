@@ -162,16 +162,13 @@ final class EventDispatcher: NSObject, TraceletEventSending {
     }
 
     func sendSpeedMotionEvent(_ data: [String: Any]) {
-        // TODO: Once Pigeon is regenerated with TlSpeedMotionEvent and
-        // TraceletEventApi.onMotionModeChange, replace this fallback with
-        // a typed Pigeon call:
-        //   let event = TlSpeedMotionEvent(
-        //       state: data["state"] as? String ?? "",
-        //       previousState: data["previousState"] as? String ?? "",
-        //       trackingMode: data["trackingMode"] as? String ?? ""
-        //   )
-        //   api.onMotionModeChange(event: event) { _ in }
-        fallback("speedmotionevent", data)
+        guard let api = eventApi else { return fallback("speedmotionevent", data) }
+        let event = TlSpeedMotionEvent(
+            state: data["state"] as? String ?? "",
+            previousState: data["previousState"] as? String ?? "",
+            trackingMode: data["trackingMode"] as? String ?? ""
+        )
+        DispatchQueue.main.async { api.onMotionModeChange(event: event) { _ in } }
     }
 
     func hasListener(eventName: String) -> Bool {

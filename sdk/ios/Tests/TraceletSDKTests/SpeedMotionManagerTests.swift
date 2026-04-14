@@ -181,8 +181,12 @@ final class SpeedMotionManagerTests: XCTestCase {
         func switchToContinuous() { switchedToContinuous = true }
         func switchToStationaryPeriodic() { switchedToStationaryPeriodic = true }
         func switchToStationaryGeofences() { switchedToStationaryGeofences = true }
-        func emitSpeedMotionEvent(_ event: [String: String]) {
-            speedMotionEvents.append(event)
+        func emitSpeedMotionEvent(state: String, previousState: String, trackingMode: String) {
+            speedMotionEvents.append([
+                "state": state,
+                "previousState": previousState,
+                "trackingMode": trackingMode,
+            ])
         }
     }
 }

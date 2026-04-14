@@ -1634,7 +1634,9 @@ class MotionConfig {
     this.stationaryPeriodicInterval = 120,
     this.stationaryPeriodicAccuracy = DesiredAccuracy.high,
     this.speedWakeConfirmCount = 1,
-  });
+  })  : assert(speedStationaryDelay >= 0, 'speedStationaryDelay must be >= 0'),
+        assert(speedWakeConfirmCount >= 1, 'speedWakeConfirmCount must be >= 1'),
+        assert(speedMovingThreshold > 0, 'speedMovingThreshold must be > 0');
 
   /// Minutes of non-movement before transitioning to stationary state.
   /// Defaults to `5`.

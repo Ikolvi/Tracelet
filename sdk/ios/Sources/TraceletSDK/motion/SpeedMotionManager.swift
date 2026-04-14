@@ -7,9 +7,7 @@ public protocol SpeedMotionDelegate: AnyObject {
     func switchToStationaryPeriodic()
     func switchToStationaryGeofences()
     /// Emit a speed-motion state change event to Dart.
-    /// The generated Pigeon type `TlSpeedMotionEvent` is assumed to exist
-    /// (regenerate Pigeon after the schema update).
-    func emitSpeedMotionEvent(_ event: [String: String])
+    func emitSpeedMotionEvent(state: String, previousState: String, trackingMode: String)
 }
 
 /// GPS-speed-based motion detection state machine.
@@ -93,6 +91,18 @@ public final class SpeedMotionManager {
     public func start() {
         guard !isRunning else { return }
         isRunning = true
+
+        // Validate config bounds
+        if speedStationaryDelay < 0 {
+            NSLog("[SpeedMotion] WARNING: speedStationaryDelay was %d, clamping to 0", speedStationaryDelay)
+            speedStationaryDelay = 0
+        } else if speedStationaryDelay == 0 {
+            NSLog("[SpeedMotion] WARNING: speedStationaryDelay is 0 — device will transition to STATIONARY immediately after a single low-speed fix")
+        }
+        if speedWakeConfirmCount < 1 {
+            NSLog("[SpeedMotion] WARNING: speedWakeConfirmCount was %d, clamping to 1", speedWakeConfirmCount)
+            speedWakeConfirmCount = 1
+        }
 
         // Restore persisted state
         if let persisted = stateManager.speedMotionState,
@@ -225,12 +235,11 @@ public final class SpeedMotionManager {
         let trackingMode: String = (current == .stationary)
             ? stationaryTrackingMode
             : "continuous"
-        let event: [String: String] = [
-            "state": current.rawValue,
-            "previousState": previous.rawValue,
-            "trackingMode": trackingMode,
-        ]
-        delegate?.emitSpeedMotionEvent(event)
+        delegate?.emitSpeedMotionEvent(
+            state: current.rawValue,
+            previousState: previous.rawValue,
+            trackingMode: trackingMode
+        )
     }
 
     // MARK: - Config Loading
