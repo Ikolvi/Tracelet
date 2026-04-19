@@ -1634,9 +1634,9 @@ class MotionConfig {
     this.stationaryPeriodicInterval = 120,
     this.stationaryPeriodicAccuracy = DesiredAccuracy.high,
     this.speedWakeConfirmCount = 1,
-  })  : assert(speedStationaryDelay >= 0, 'speedStationaryDelay must be >= 0'),
-        assert(speedWakeConfirmCount >= 1, 'speedWakeConfirmCount must be >= 1'),
-        assert(speedMovingThreshold > 0, 'speedMovingThreshold must be > 0');
+  }) : assert(speedStationaryDelay >= 0, 'speedStationaryDelay must be >= 0'),
+       assert(speedWakeConfirmCount >= 1, 'speedWakeConfirmCount must be >= 1'),
+       assert(speedMovingThreshold > 0, 'speedMovingThreshold must be > 0');
 
   /// Minutes of non-movement before transitioning to stationary state.
   /// Defaults to `5`.
@@ -1834,7 +1834,9 @@ class MotionConfig {
       shakeThreshold: ensureDouble(map['shakeThreshold'], fallback: 2.5),
       stillThreshold: ensureDouble(map['stillThreshold'], fallback: 0.4),
       stillSampleCount: ensureInt(map['stillSampleCount'], fallback: 25),
-      motionDetectionMode: _parseMotionDetectionMode(map['motionDetectionMode']),
+      motionDetectionMode: _parseMotionDetectionMode(
+        map['motionDetectionMode'],
+      ),
       speedMovingThreshold: ensureDouble(
         map['speedMovingThreshold'],
         fallback: 1.5,
@@ -1870,8 +1872,10 @@ class MotionConfig {
       );
     }
     if (raw is int) {
-      return MotionDetectionMode
-          .values[raw.clamp(0, MotionDetectionMode.values.length - 1)];
+      return MotionDetectionMode.values[raw.clamp(
+        0,
+        MotionDetectionMode.values.length - 1,
+      )];
     }
     return MotionDetectionMode.accelerometer;
   }
@@ -1884,8 +1888,10 @@ class MotionConfig {
       );
     }
     if (raw is int) {
-      return StationaryTrackingMode
-          .values[raw.clamp(0, StationaryTrackingMode.values.length - 1)];
+      return StationaryTrackingMode.values[raw.clamp(
+        0,
+        StationaryTrackingMode.values.length - 1,
+      )];
     }
     return StationaryTrackingMode.periodic;
   }

@@ -105,8 +105,10 @@ class SpeedMotionEvent {
       );
     }
     if (raw is int) {
-      return SpeedMotionState
-          .values[raw.clamp(0, SpeedMotionState.values.length - 1)];
+      return SpeedMotionState.values[raw.clamp(
+        0,
+        SpeedMotionState.values.length - 1,
+      )];
     }
     return SpeedMotionState.moving;
   }
@@ -119,8 +121,10 @@ class SpeedMotionEvent {
       );
     }
     if (raw is int) {
-      return SpeedMotionTrackingMode
-          .values[raw.clamp(0, SpeedMotionTrackingMode.values.length - 1)];
+      return SpeedMotionTrackingMode.values[raw.clamp(
+        0,
+        SpeedMotionTrackingMode.values.length - 1,
+      )];
     }
     return SpeedMotionTrackingMode.continuous;
   }

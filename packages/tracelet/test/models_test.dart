@@ -451,9 +451,7 @@ void main() {
     });
 
     test('MotionConfig speed-mode fields affect equality', () {
-      const base = MotionConfig(
-        motionDetectionMode: MotionDetectionMode.speed,
-      );
+      const base = MotionConfig(motionDetectionMode: MotionDetectionMode.speed);
       const diffMode = MotionConfig();
       expect(base, isNot(equals(diffMode)));
 

@@ -44,7 +44,9 @@ void main() {
       expect(config.speedWakeConfirmCount, 1);
     });
 
-    testWidgets('MotionConfig.toMap includes speed-mode fields', (tester) async {
+    testWidgets('MotionConfig.toMap includes speed-mode fields', (
+      tester,
+    ) async {
       const config = MotionConfig(
         motionDetectionMode: MotionDetectionMode.speed,
         speedMovingThreshold: 2.5,
@@ -64,11 +66,11 @@ void main() {
     testWidgets('Life360-style always-on tracking preset', (tester) async {
       const config = MotionConfig(
         motionDetectionMode: MotionDetectionMode.speed,
-        speedMovingThreshold: 1.5,          // 5.4 km/h
-        speedStationaryDelay: 180,          // 3 min red-light buffer
-        stationaryPeriodicInterval: 120,    // 2 min fixes when parked
+        speedMovingThreshold: 1.5, // 5.4 km/h
+        speedStationaryDelay: 180, // 3 min red-light buffer
+        stationaryPeriodicInterval: 120, // 2 min fixes when parked
         stationaryPeriodicAccuracy: DesiredAccuracy.high,
-        speedWakeConfirmCount: 1,           // instant wake
+        speedWakeConfirmCount: 1, // instant wake
       );
 
       expect(config.motionDetectionMode, MotionDetectionMode.speed);
@@ -79,11 +81,11 @@ void main() {
     testWidgets('Fleet tracking preset with conservative wake', (tester) async {
       const config = MotionConfig(
         motionDetectionMode: MotionDetectionMode.speed,
-        speedMovingThreshold: 2.5,          // 9 km/h — ignore lot crawl
-        speedStationaryDelay: 300,          // 5 min buffer
+        speedMovingThreshold: 2.5, // 9 km/h — ignore lot crawl
+        speedStationaryDelay: 300, // 5 min buffer
         stationaryPeriodicInterval: 300,
         stationaryPeriodicAccuracy: DesiredAccuracy.medium,
-        speedWakeConfirmCount: 3,           // require 3 confirms at medium accuracy
+        speedWakeConfirmCount: 3, // require 3 confirms at medium accuracy
       );
 
       expect(config.motionDetectionMode, MotionDetectionMode.speed);
