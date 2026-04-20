@@ -1,3 +1,9 @@
+## 1.9.1
+
+- **FEAT**: Speed-based motion detection mode (`MotionConfig.motionDetectionMode: speed`). Adds a GPS-speed-driven state machine (MOVING → SLOWING → STATIONARY) for vehicle-tracking scenarios where accelerometer-based stop detection is unreliable. New config fields: `speedMovingThreshold`, `speedStationaryDelay`, `stationaryTrackingMode`, `stationaryPeriodicInterval`, `stationaryPeriodicAccuracy`, `speedWakeConfirmCount`.
+- **FEAT**: New `SpeedMotionEvent` model and `Tracelet.onMotionModeChange` stream for observing speed-mode state transitions.
+- **FEAT**: New Pigeon enums `TlMotionDetectionMode` and `TlStationaryTrackingMode`, and typed `TlSpeedMotionEvent` message for the platform channel.
+
 ## 1.9.0
 
 - **FEAT**: Strongly typed permission APIs (#57). Added `getLocationAuthorization`, `requestLocationAuthorization`, `getNotificationAuthorization`, `requestNotificationAuthorization`, `getMotionAuthorization`, `requestMotionAuthorization`, and `requestTemporaryFullAccuracyAuthorization`, all returning `Future<AuthorizationStatus>` instead of magic ints. The matching int-returning methods (`getPermissionStatus`, `requestPermission`, `getNotificationPermissionStatus`, `requestNotificationPermission`, `getMotionPermissionStatus`, `requestMotionPermission`, `requestTemporaryFullAccuracy`) are now `@Deprecated` and will be removed in 2.0.0.

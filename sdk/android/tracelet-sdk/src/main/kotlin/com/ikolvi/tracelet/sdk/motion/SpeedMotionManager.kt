@@ -254,15 +254,14 @@ class SpeedMotionManager(
         state.isMoving = newState != State.STATIONARY
 
         // Emit speed motion change event
-        val eventData = mapOf(
-            "state" to newState.value,
-            "previousState" to previousState.value,
-            "trackingMode" to when (newState) {
+        events.sendSpeedMotionChange(
+            state = newState.value,
+            previousState = previousState.value,
+            trackingMode = when (newState) {
                 State.STATIONARY -> stationaryTrackingMode
                 else -> "continuous"
             },
         )
-        events.sendSpeedMotionChange(eventData)
 
         Log.d(TAG, "State transition: ${previousState.value} -> ${newState.value}")
     }

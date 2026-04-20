@@ -1,3 +1,7 @@
+## 1.9.1
+
+- **FEAT**: Speed-based motion detection (`SpeedMotionManager`). GPS-speed state machine drives MOVING → SLOWING → STATIONARY transitions and automatic switching between continuous and periodic/geofence tracking modes. Type-safe `emitSpeedMotionEvent(state:previousState:trackingMode:)` delegate using `TlSpeedMotionEvent` Pigeon message.
+
 ## 1.9.0
 
 - **FIX**: Picks up the `tracelet_platform_interface` 1.9.0 fix that restores `extras` and `vertices` propagation for `addGeofence` (#58). No native-side changes.

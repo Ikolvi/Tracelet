@@ -236,8 +236,12 @@ class SpeedMotionManagerTest {
         override fun sendMotionChange(data: Map<String, Any?>) {
             motionChangeEvents.add(data)
         }
-        override fun sendSpeedMotionChange(data: Map<String, Any?>) {
-            speedMotionEvents.add(data)
+        override fun sendSpeedMotionChange(state: String, previousState: String, trackingMode: String) {
+            speedMotionEvents.add(mapOf(
+                "state" to state,
+                "previousState" to previousState,
+                "trackingMode" to trackingMode,
+            ))
         }
 
         override fun sendLocation(data: Map<String, Any?>) {}

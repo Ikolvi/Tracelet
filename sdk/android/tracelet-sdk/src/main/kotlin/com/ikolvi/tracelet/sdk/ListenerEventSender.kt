@@ -98,8 +98,14 @@ internal class ListenerEventSender : TraceletEventSender {
     override fun sendBudgetAdjustment(data: Map<String, Any?>) =
         dispatch("budgetadjustment", data) { listener?.onBudgetAdjustment(data) }
 
-    override fun sendSpeedMotionChange(data: Map<String, Any?>) =
+    override fun sendSpeedMotionChange(state: String, previousState: String, trackingMode: String) {
+        val data = mapOf<String, Any?>(
+            "state" to state,
+            "previousState" to previousState,
+            "trackingMode" to trackingMode,
+        )
         dispatch("speedmotionchange", data) { listener?.onSpeedMotionChange(data) }
+    }
 
     override fun hasListener(eventName: String): Boolean = listener != null
 
@@ -161,7 +167,11 @@ internal class ListenerEventSender : TraceletEventSender {
             "remoteconfig" -> sendRemoteConfigEvent(data)
             "trip" -> sendTrip(data)
             "budgetadjustment" -> sendBudgetAdjustment(data)
-            "speedmotionchange" -> sendSpeedMotionChange(data)
+            "speedmotionchange" -> sendSpeedMotionChange(
+                state = data["state"] as? String ?: "",
+                previousState = data["previousState"] as? String ?: "",
+                trackingMode = data["trackingMode"] as? String ?: "",
+            )
         }
     }
 }

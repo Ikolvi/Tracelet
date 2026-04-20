@@ -1,3 +1,9 @@
+## 1.9.1
+
+- **FEAT**: Speed-based motion detection (`SpeedMotionManager`). GPS-speed state machine drives MOVING → SLOWING → STATIONARY transitions and automatic switching between continuous and periodic/geofence tracking modes. Type-safe `sendSpeedMotionChange(state, previousState, trackingMode)` event sender using `TlSpeedMotionEvent` Pigeon message.
+- **FIX**: `sendMotionChange` in speed mode now emits an enriched `TlLocation` from the last known fix instead of a bare `{"is_moving": true}` map.
+- **FIX**: `stopOnStationary` now handled in speed-mode callbacks (parity with iOS).
+
 ## 1.9.0
 
 - **FIX**: `LocationService` no longer crashes the host app with `RemoteServiceException: Context.startForegroundService() did not then call Service.startForeground()` (#59). Reproducible on real devices when using `periodicUseForegroundService: true`. Root cause: `onStartCommand` only promoted to foreground for `ACTION_START`, but the system can deliver intents for other actions (and null-intent sticky restarts after a system kill) under the same foreground-service contract. Fixed in native `tracelet-sdk` 1.1.0 by always promoting at the top of `onStartCommand`.

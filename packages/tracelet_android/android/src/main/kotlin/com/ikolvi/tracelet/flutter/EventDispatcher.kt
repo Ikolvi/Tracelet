@@ -243,17 +243,21 @@ class EventDispatcher : TraceletEventSender {
         }
     }
 
-    override fun sendSpeedMotionChange(data: Map<String, Any?>) {
+    override fun sendSpeedMotionChange(state: String, previousState: String, trackingMode: String) {
         val api = eventApi
         if (api != null) {
             val event = TlSpeedMotionEvent(
-                state = data["state"] as? String ?: "",
-                previousState = data["previousState"] as? String ?: "",
-                trackingMode = data["trackingMode"] as? String ?: "",
+                state = state,
+                previousState = previousState,
+                trackingMode = trackingMode,
             )
             postToMain { api.onMotionModeChange(event) {} }
         } else {
-            fallback("speedmotionchange", data)
+            fallback("speedmotionchange", mapOf(
+                "state" to state,
+                "previousState" to previousState,
+                "trackingMode" to trackingMode,
+            ))
         }
     }
 
