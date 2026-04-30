@@ -32,6 +32,7 @@ public final class MotionDetector {
     private let motionManager = CMMotionManager()
 
     private var isRunning = false
+    private var isFullModeStarted = false
     private var stopTimer: Timer?
     private var currentActivity: String = "unknown"
     private var currentConfidence: Int = -1
@@ -103,9 +104,12 @@ public final class MotionDetector {
         guard isRunning else { return }
         isRunning = false
 
-        // Full mode cleanup
-        activityManager.stopActivityUpdates()
-        pedometer.stopUpdates()
+        if isFullModeStarted {
+            // Full mode cleanup
+            activityManager.stopActivityUpdates()
+            pedometer.stopUpdates()
+            isFullModeStarted = false
+        }
 
         // Accelerometer-only mode cleanup
         motionManager.stopAccelerometerUpdates()
@@ -119,6 +123,7 @@ public final class MotionDetector {
     // MARK: - Full mode (CMMotionActivityManager + CMPedometer)
 
     private func startFullMode() {
+        isFullModeStarted = true
         guard CMMotionActivityManager.isActivityAvailable() else {
             NSLog("[Tracelet] Motion activity not available — falling back to accelerometer-only")
             startAccelerometerOnlyMode()
