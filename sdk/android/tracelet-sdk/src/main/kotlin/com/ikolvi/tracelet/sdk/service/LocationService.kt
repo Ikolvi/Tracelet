@@ -14,6 +14,10 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import com.ikolvi.tracelet.sdk.ConfigManager
 import com.ikolvi.tracelet.sdk.HeadersRefreshable
 import com.ikolvi.tracelet.sdk.ListenerEventSender
@@ -42,7 +46,7 @@ import com.ikolvi.tracelet.sdk.util.OemCompat
  * for a Dart FlutterEngine. Locations are persisted to SQLite and also
  * forwarded to the headless dispatcher if a headless callback is registered.
  */
-class LocationService : Service() {
+class LocationService : Service(), DefaultLifecycleObserver {
 
     companion object {
         private const val TAG = "LocationService"
@@ -148,7 +152,9 @@ class LocationService : Service() {
     private lateinit var configManager: ConfigManager
 
     // OEM-safe wakelock to prevent aggressive power management
-    private var wakelock: PowerManager.WakeLock? = null
+    private var isForegroundService = false
+    private var lastInForeground: Boolean? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     // Callback for notification action button taps dispatched to TraceletEventSender
     var onNotificationAction: ((String) -> Unit)? = null
@@ -156,32 +162,52 @@ class LocationService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
-        super.onCreate()
+        super<Service>.onCreate()
         configManager = ConfigManager.getInstance(applicationContext)
+
+        // Layer 1: Process-level lifecycle monitoring.
+        // We register as an observer to automatically manage notification
+        // visibility when the app moves between foreground and background.
+        Handler(Looper.getMainLooper()).post {
+            ProcessLifecycleOwner.get().lifecycle.addObserver(this)
+        }
+    }
+
+    override fun onStart(owner: LifecycleOwner) {
+        Log.d(TAG, "App moved to FOREGROUND — checking notification visibility")
+        updateNotificationVisibility()
+    }
+
+    override fun onStop(owner: LifecycleOwner) {
+        Log.d(TAG, "App moved to BACKGROUND — checking notification visibility")
+        updateNotificationVisibility()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Android contract: whenever a service is delivered an intent that
-        // originated from Context.startForegroundService(), it MUST call
-        // Service.startForeground() within ~5s or the system kills the app
-        // with `RemoteServiceException: Context.startForegroundService() did
-        // not then call Service.startForeground()` (#59).
-        //
-        // Every entry into onStartCommand promotes us to foreground first —
-        // including:
-        //   - null-intent sticky restarts after the system reclaims the service
-        //   - ACTION_UPDATE_NOTIFICATION / ACTION_BUTTON intents that may have
-        //     been routed via startForegroundService() on Android 12+ when the
-        //     app is in a restricted state
-        //   - ACTION_STOP (we promote then immediately demote/stop, which is
-        //     safe and satisfies the contract)
-        startForegroundWithNotification()
+        Log.d(TAG, "onStartCommand: action=${intent?.action}")
+        
+        // Initial setup for the very first start command
+        if (lastInForeground == null) {
+            lastInForeground = isAppInForeground()
+        }
+
+        // Requirement #3 & #4: Ensure the foreground contract is satisfied immediately.
+        // We set isRunning true immediately so updateNotificationVisibility() works on the first call.
+        if (intent?.action == ACTION_START || intent?.action == null) {
+            isRunning = true
+        }
+
+        if (!isForegroundService) {
+            Log.d(TAG, "Satisfying foreground contract...")
+            startForegroundWithNotification()
+            isForegroundService = true
+        }
+
+        updateNotificationVisibility()
 
         when (intent?.action) {
             ACTION_START -> {
                 acquireOemWakelock()
-                isRunning = true
-
                 // If started after a device reboot, bootstrap native tracking
                 val isBootStart = intent.getBooleanExtra(EXTRA_BOOT_START, false)
                 if (isBootStart) {
@@ -189,14 +215,16 @@ class LocationService : Service() {
                 }
             }
             ACTION_STOP -> {
+                Log.d(TAG, "Stopping service via ACTION_STOP")
                 stopBootTrackingInternal()
                 releaseOemWakelock()
                 stopForeground(STOP_FOREGROUND_REMOVE)
+                isForegroundService = false
                 stopSelf()
                 isRunning = false
             }
             ACTION_UPDATE_NOTIFICATION -> {
-                updateNotificationContent()
+                // Visibility is managed by updateNotificationVisibility()
             }
             ACTION_BUTTON -> {
                 val action = intent.getStringExtra(EXTRA_BUTTON_ACTION)
@@ -205,13 +233,14 @@ class LocationService : Service() {
                 }
             }
             null -> {
-                // Sticky restart after system kill — keep running. The
-                // startForegroundWithNotification() call above already
-                // satisfies the foreground contract.
+                // Sticky restart after system kill
                 acquireOemWakelock()
-                isRunning = true
             }
         }
+
+        // Final sync of visibility state
+        updateNotificationVisibility()
+
         return START_STICKY
     }
 
@@ -295,7 +324,7 @@ class LocationService : Service() {
         stopBootTrackingInternal()
         releaseOemWakelock()
         isRunning = false
-        super.onDestroy()
+        super<Service>.onDestroy()
     }
 
     // =========================================================================
@@ -311,20 +340,20 @@ class LocationService : Service() {
      * aggressive OEM power managers from suspending our process.
      */
     private fun acquireOemWakelock() {
-        if (wakelock?.isHeld == true) return
-        wakelock = OemCompat.acquireOemSafeWakelock(applicationContext)
+        if (wakeLock?.isHeld == true) return
+        wakeLock = OemCompat.acquireOemSafeWakelock(applicationContext)
     }
 
     private fun releaseOemWakelock() {
         try {
-            if (wakelock?.isHeld == true) {
-                wakelock?.release()
+            if (wakeLock?.isHeld == true) {
+                wakeLock?.release()
                 Log.d(TAG, "Released OEM wakelock")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error releasing wakelock: ${e.message}")
         }
-        wakelock = null
+        wakeLock = null
     }
 
     // =========================================================================
@@ -616,5 +645,73 @@ class LocationService : Service() {
     private fun updateNotificationContent() {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(NOTIFICATION_ID, buildNotification())
+    }
+
+    /**
+     * Updates the notification's visibility based on current config and app state.
+     *
+     * - If showNotificationOnPauseOnly is true: suppresses in foreground, shows in background.
+     * - If false: always shows, but avoids redundant updates.
+     * - Restores notification if dismissed when moving to background.
+     */
+    private fun updateNotificationVisibility() {
+        if (!isRunning) return
+        val showOnPauseOnly = configManager.getShowNotificationOnPauseOnly()
+        val inForeground = isAppInForeground()
+
+        val changed = inForeground != lastInForeground
+        lastInForeground = inForeground
+
+        if (showOnPauseOnly) {
+            if (inForeground) {
+                if (isForegroundService) {
+                    Log.d(TAG, "Suppressing notification (App in foreground)")
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    isForegroundService = false
+                }
+            } else {
+                // Show in background if not already shown OR if we just transitioned.
+                if (!isForegroundService || changed) {
+                    Log.d(TAG, "Showing notification (App in background)")
+                    startForegroundWithNotification()
+                    isForegroundService = true
+                }
+            }
+        } else {
+            // Persistent mode: Always ensure it's shown.
+            if (!isForegroundService) {
+                Log.d(TAG, "Showing persistent notification")
+                startForegroundWithNotification()
+                isForegroundService = true
+            } else if (changed && !inForeground) {
+                // Optimization: Re-show when moving to background in case it was 
+                // manually dismissed while the app was in the foreground.
+                Log.d(TAG, "Restoring persistent notification on background transition")
+                startForegroundWithNotification()
+                isForegroundService = true
+            }
+        }
+    }
+
+    /**
+     * Requirement #2: Dual-Layer Foreground Detection.
+     *
+     * Combines Layer 1 (ProcessLifecycleOwner) with an OS-level check
+     * of the process importance to ensure reliability across OEMs.
+     */
+    private fun isAppInForeground(): Boolean {
+        // Layer 1: Process-level lifecycle check (Accuracy-focused)
+        val lifecycleState = ProcessLifecycleOwner.get().lifecycle.currentState
+        val lifecycleForeground = lifecycleState.isAtLeast(Lifecycle.State.STARTED)
+
+        // Layer 2: OS-level process importance check (Reliability-focused)
+        // Using getMyMemoryState is more efficient and reliable for the current process.
+        val processInfo = ActivityManager.RunningAppProcessInfo()
+        ActivityManager.getMyMemoryState(processInfo)
+        val importanceForeground = processInfo.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE
+
+        Log.d(TAG, "Foreground check: lifecycle=$lifecycleState, importance=${processInfo.importance}")
+
+        return lifecycleForeground || importanceForeground
     }
 }

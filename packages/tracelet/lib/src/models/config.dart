@@ -1,4 +1,4 @@
-import 'package:meta/meta.dart';
+import 'package:flutter/foundation.dart';
 import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 
 import '_helpers.dart';
@@ -1122,6 +1122,7 @@ class ForegroundServiceConfig {
     this.notificationLargeIcon,
     this.notificationPriority = NotificationPriority.defaultPriority,
     this.notificationOngoing = true,
+    this.showNotificationOnPauseOnly = false,
     this.actions = const <String>[],
   });
 
@@ -1168,6 +1169,14 @@ class ForegroundServiceConfig {
   /// Whether the notification is ongoing (cannot be swiped away). Defaults to `true`.
   final bool notificationOngoing;
 
+  /// Whether the notification is only shown when the app is in the background (paused).
+  ///
+  /// When `true`, the persistent notification is automatically dismissed when the app
+  /// enters the foreground and restored when it enters the background.
+  ///
+  /// Defaults to `false`.
+  final bool showNotificationOnPauseOnly;
+
   /// Action button labels shown on the notification.
   final List<String> actions;
 
@@ -1198,6 +1207,10 @@ class ForegroundServiceConfig {
         map['notificationOngoing'],
         fallback: true,
       ),
+      showNotificationOnPauseOnly: ensureBool(
+        map['showNotificationOnPauseOnly'],
+        fallback: false,
+      ),
       actions: actionsList,
     );
   }
@@ -1215,6 +1228,7 @@ class ForegroundServiceConfig {
       'notificationLargeIcon': notificationLargeIcon,
       'notificationPriority': notificationPriority.index - 2,
       'notificationOngoing': notificationOngoing,
+      'showNotificationOnPauseOnly': showNotificationOnPauseOnly,
       'actions': actions,
     };
   }
@@ -1233,7 +1247,9 @@ class ForegroundServiceConfig {
           notificationSmallIcon == other.notificationSmallIcon &&
           notificationLargeIcon == other.notificationLargeIcon &&
           notificationPriority == other.notificationPriority &&
-          notificationOngoing == other.notificationOngoing;
+          notificationOngoing == other.notificationOngoing &&
+          showNotificationOnPauseOnly == other.showNotificationOnPauseOnly &&
+          listEquals(actions, other.actions);
 
   @override
   int get hashCode => Object.hash(
@@ -1247,6 +1263,8 @@ class ForegroundServiceConfig {
     notificationLargeIcon,
     notificationPriority,
     notificationOngoing,
+    showNotificationOnPauseOnly,
+    Object.hashAll(actions),
   );
 }
 
