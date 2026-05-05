@@ -35,14 +35,17 @@ class TraceletHostApiImpl(
     // =========================================================================
 
     @Suppress("UNCHECKED_CAST")
-    private fun mapToTlState(m: Map<String, Any?>): TlState = TlState(
-        enabled = m["enabled"] as? Boolean ?: false,
-        isMoving = m["isMoving"] as? Boolean ?: false,
-        trackingMode = (m["trackingMode"] as? Number)?.toLong() ?: 0L,
-        schedulerEnabled = m["schedulerEnabled"] as? Boolean ?: false,
-        odometer = (m["odometer"] as? Number)?.toDouble() ?: 0.0,
-        lastLocationTimestamp = m["lastLocationTimestamp"] as? String,
-    )
+    private fun mapToTlState(m: Map<String, Any?>): TlState {
+        val modeInt = (m["trackingMode"] as? Number)?.toInt() ?: 0
+        return TlState(
+            enabled = m["enabled"] as? Boolean ?: false,
+            isMoving = m["isMoving"] as? Boolean ?: false,
+            trackingMode = TlTrackingMode.ofRaw(modeInt) ?: TlTrackingMode.LOCATION,
+            schedulerEnabled = m["schedulerEnabled"] as? Boolean ?: false,
+            odometer = (m["odometer"] as? Number)?.toDouble() ?: 0.0,
+            lastLocationTimestamp = m["lastLocationTimestamp"] as? String,
+        )
+    }
 
     @Suppress("UNCHECKED_CAST")
     private fun mapToTlLocation(m: Map<String, Any?>): TlLocation {

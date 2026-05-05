@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import com.ikolvi.tracelet.sdk.ConfigManager
 import com.ikolvi.tracelet.sdk.TraceletEventSender
 import com.ikolvi.tracelet.sdk.StateManager
+import com.ikolvi.tracelet.sdk.model.TrackingMode
 import com.ikolvi.tracelet.sdk.db.TraceletDatabase
 import org.mockito.Mockito
 import org.mockito.Mockito.`when`
@@ -147,9 +148,9 @@ internal class LocationEnginePeriodicTest {
         val ctx = createMockedContext()
         val state = StateManager(ctx)
 
-        // TrackingMode.periodic has index 2
-        state.trackingMode = 2
-        kotlin.test.assertEquals(2, state.trackingMode)
+        // TrackingMode.PERIODIC
+        state.trackingMode = TrackingMode.PERIODIC
+        kotlin.test.assertEquals(TrackingMode.PERIODIC, state.trackingMode)
     }
 
     @Test

@@ -215,7 +215,7 @@ public final class TraceletSdk {
         precondition(isReady, "TraceletSdk.ready() must be called before start()")
 
         stateManager.enabled = true
-        stateManager.trackingMode = 0
+        stateManager.trackingMode = .continuous
         stateManager.isMoving = false
 
         // Stop any periodic tracking before switching to continuous mode.
@@ -295,7 +295,7 @@ public final class TraceletSdk {
         precondition(isReady, "TraceletSdk.ready() must be called before startGeofences()")
 
         stateManager.enabled = true
-        stateManager.trackingMode = 1
+        stateManager.trackingMode = .geofences
 
         locationEngine.stop()
         motionDetector.stop()
@@ -341,7 +341,7 @@ public final class TraceletSdk {
         motionDetector.stop()
 
         stateManager.enabled = true
-        stateManager.trackingMode = 2
+        stateManager.trackingMode = .periodic
         stateManager.isMoving = false
 
         locationEngine.startPeriodic()
@@ -389,7 +389,7 @@ public final class TraceletSdk {
     ///   ``ready(config:)`` has not been called yet.
     public func getState() -> [String: Any] {
         guard isReady else {
-            return ["enabled": false, "isMoving": false, "trackingMode": 0,
+            return ["enabled": false, "isMoving": false, "trackingMode": TrackingMode.continuous.rawValue,
                     "schedulerEnabled": false, "odometer": 0.0]
         }
         return stateManager.toMap(configManager.getConfig())
@@ -425,7 +425,7 @@ public final class TraceletSdk {
         configManager.setConfig(config)
 
         if stateManager.enabled {
-            if stateManager.trackingMode == 2 {
+            if stateManager.trackingMode == .periodic {
                 // Periodic mode — restart periodic tracking.
                 locationEngine.stopPeriodic()
                 locationEngine.startPeriodic()
@@ -467,7 +467,7 @@ public final class TraceletSdk {
 
             let keepGeofencesAlive = !configManager.getStopOnTerminate()
                 && stateManager.enabled
-                && stateManager.trackingMode == 1
+                && stateManager.trackingMode == .geofences
             if !keepGeofencesAlive {
                 geofenceManager.destroy()
             }
@@ -1114,7 +1114,7 @@ public final class TraceletSdk {
         periodicRefreshScheduler.onWakeUp = { [weak self] in
             guard let self = self,
                   self.stateManager.enabled,
-                  self.stateManager.trackingMode == 2 else { return }
+                  self.stateManager.trackingMode == .periodic else { return }
             self.locationEngine.performPeriodicFix()
             self.locationEngine.restartPeriodicTimerIfNeeded()
         }
@@ -1363,7 +1363,7 @@ public final class TraceletSdk {
         }
 
         switch trackingMode {
-        case 0:
+        case .continuous:
             locationEngine.start()
             locationEngine.onLocationUpdate = { [weak self] lat, lng in
                 self?.geofenceManager.updateProximity(latitude: lat, longitude: lng)
@@ -1382,7 +1382,7 @@ public final class TraceletSdk {
             backgroundActivitySessionManager.start()
             serviceSessionManager.start()
 
-        case 1:
+        case .geofences:
             geofenceManager.reRegisterAll()
             locationEngine.onLocationUpdate = { [weak self] lat, lng in
                 self?.geofenceManager.updateProximity(latitude: lat, longitude: lng)
@@ -1395,7 +1395,7 @@ public final class TraceletSdk {
             backgroundActivitySessionManager.start()
             serviceSessionManager.start()
 
-        case 2:
+        case .periodic:
             locationEngine.startPeriodic()
             locationEngine.onLocationUpdate = { [weak self] lat, lng in
                 self?.geofenceManager.updateProximity(latitude: lat, longitude: lng)
@@ -1412,7 +1412,7 @@ public final class TraceletSdk {
             // it causes a persistent location indicator in the status bar.
             startServiceSessionForCurrentAuth()
 
-        default:
+        @unknown default:
             break
         }
     }
@@ -1476,6 +1476,53 @@ public final class TraceletSdk {
         case "motorcycle": return 113.0
         case "plane", "flight": return 255.0
         default: return 192.0
+        }
+    // =========================================================================
+    // MARK: - Cleanup
+    // =========================================================================
+
+    /// Comprehensive teardown of all subsystems.
+    ///
+    /// Called when the host application (or its bridge) is being destroyed.
+    /// Respects `stopOnTerminate: false` by skipping teardown for critical
+    /// background tracking components when enabled.
+    public func destroyAll() {
+        // When stopOnTerminate=false and tracking is active, the SDK should
+        // continue running in the background. Tearing down subsystems here
+        // would kill that background continuity.
+        let keepAlive = !configManager.getStopOnTerminate() && stateManager.enabled
+
+        // LocationEngine — keep alive for continuous and geofence modes.
+        // Periodic mode has its own scheduler lifecycle.
+        if !(keepAlive && stateManager.trackingMode != .periodic) {
+            locationEngine.stop()
+        }
+        motionDetector.stop()
+
+        // GeofenceManager — keep alive only in geofence mode.
+        let keepGeofencesAlive = keepAlive && stateManager.trackingMode == .geofences
+        if !keepGeofencesAlive {
+            geofenceManager.destroy()
+        }
+
+        // Subsystems that should only survive if we are in a background-active mode.
+        if !keepAlive {
+            httpSyncManager.stop()
+            scheduleManager.stop()
+            stopHeartbeat()
+            preventSuspendManager.stop()
+            backgroundActivitySessionManager.stop()
+            serviceSessionManager.stop()
+        }
+
+        // Sound and budget sampling are safe to stop unconditionally.
+        soundManager.stop()
+        stopBatteryBudgetSampling()
+
+        // Periodic scheduler — keep alive only in periodic mode.
+        let keepPeriodicAlive = keepAlive && stateManager.trackingMode == .periodic
+        if !keepPeriodicAlive {
+            periodicRefreshScheduler.stop()
         }
     }
 }

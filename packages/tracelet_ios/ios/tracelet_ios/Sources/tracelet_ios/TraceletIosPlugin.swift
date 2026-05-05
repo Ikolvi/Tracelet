@@ -199,6 +199,25 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
         TraceletHostApiSetup.setUp(binaryMessenger: registrar.messenger(), api: hostApi)
     }
 
+    public func detachFromEngine(for registrar: FlutterPluginRegistrar) {
+        NSLog("[Tracelet] detachFromEngine")
+        TraceletHostApiSetup.setUp(binaryMessenger: registrar.messenger(), api: nil)
+
+        if TraceletIosPlugin.primaryInstance === self {
+            TraceletIosPlugin.primaryInstance = nil
+
+            // Clear SDK callbacks that reference this engine's MethodChannel
+            HttpSyncManager.onAuthorizationRequired = nil
+            HttpSyncManager.onRequestFreshHeaders = nil
+            HttpSyncManager.onBuildCustomSyncBody = nil
+
+            sdk.destroyAll()
+            NSLog("[Tracelet] detachFromEngine: primary instance — SDK callbacks cleared, destroyAll() called")
+        } else {
+            NSLog("[Tracelet] detachFromEngine: secondary instance — skipping SDK destroy")
+        }
+    }
+
     // MARK: - UIApplicationDelegate (killed-state relaunch)
 
     public func application(

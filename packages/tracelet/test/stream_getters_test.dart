@@ -95,7 +95,7 @@ class StreamTestPlatform extends TraceletPlatform {
   @override
   Future<Map<String, Object?>> ready(Map<String, Object?> config) async => {
     'enabled': false,
-    'trackingMode': 0,
+    'trackingMode': TlTrackingMode.location.index,
     'isMoving': false,
     'odometer': 0.0,
   };
@@ -353,7 +353,7 @@ void main() {
         TlState(
           enabled: true,
           isMoving: false,
-          trackingMode: 0,
+          trackingMode: TlTrackingMode.location,
           schedulerEnabled: true,
           odometer: 0,
         ),

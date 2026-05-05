@@ -9,6 +9,7 @@ import com.ikolvi.tracelet.sdk.TraceletBootstrap
 import com.ikolvi.tracelet.sdk.TraceletEventSender
 import com.ikolvi.tracelet.sdk.db.TraceletDatabase
 import com.ikolvi.tracelet.sdk.http.HttpSyncManager
+import com.ikolvi.tracelet.sdk.model.TrackingMode
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -245,14 +246,14 @@ class PeriodicSyncContractTest {
         ))
         val state = StateManager(context)
         state.enabled = true
-        state.trackingMode = 2
+        state.trackingMode = TrackingMode.PERIODIC
 
         val interval = config.getPeriodicLocationInterval()
         val useExact = config.getPeriodicUseExactAlarms() || interval < 900
 
         // The catch block should decide to re-schedule
         assertTrue(state.enabled, "State should be enabled")
-        assertEquals(2, state.trackingMode, "Tracking mode should be periodic (2)")
+        assertEquals(TrackingMode.PERIODIC, state.trackingMode, "Tracking mode should be periodic")
         assertTrue(useExact, "Should use exact alarms")
         assertEquals(60, interval)
     }
@@ -262,14 +263,14 @@ class PeriodicSyncContractTest {
         val config = ConfigManager.getInstance(context)
         val state = StateManager(context)
         state.enabled = true
-        state.trackingMode = 1 // Standard mode, not periodic
+        state.trackingMode = TrackingMode.GEOFENCES // Geofences mode, not periodic
 
         val interval = config.getPeriodicLocationInterval()
         val useExact = config.getPeriodicUseExactAlarms() || interval < 900
 
-        // trackingMode != 2 means re-schedule should be skipped
+        // trackingMode != PERIODIC means re-schedule should be skipped
         assertTrue(state.enabled)
-        assertFalse(state.trackingMode == 2, "Tracking mode should NOT be periodic")
+        assertFalse(state.trackingMode == TrackingMode.PERIODIC, "Tracking mode should NOT be periodic")
     }
 
     @Test
@@ -277,7 +278,7 @@ class PeriodicSyncContractTest {
         val config = ConfigManager.getInstance(context)
         val state = StateManager(context)
         state.enabled = false
-        state.trackingMode = 2
+        state.trackingMode = TrackingMode.PERIODIC
 
         // Disabled state means re-schedule should be skipped
         assertFalse(state.enabled, "State should be disabled")

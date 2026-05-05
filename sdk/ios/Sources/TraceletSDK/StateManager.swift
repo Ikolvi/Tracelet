@@ -10,10 +10,10 @@ public final class StateManager {
         set { defaults.set(newValue, forKey: prefix + "enabled") }
     }
 
-    /// 0 = location tracking, 1 = geofences-only
-    public var trackingMode: Int {
-        get { defaults.integer(forKey: prefix + "trackingMode") }
-        set { defaults.set(newValue, forKey: prefix + "trackingMode") }
+    /// The current tracking mode (continuous, geofences, periodic).
+    public var trackingMode: TrackingMode {
+        get { TrackingMode.fromInt(defaults.integer(forKey: prefix + "trackingMode")) }
+        set { defaults.set(newValue.rawValue, forKey: prefix + "trackingMode") }
     }
 
     public var schedulerEnabled: Bool {
@@ -88,7 +88,7 @@ public final class StateManager {
 
     public func reset() {
         enabled = false
-        trackingMode = 0
+        trackingMode = .continuous
         schedulerEnabled = false
         isMoving = false
         odometer = 0.0
@@ -101,7 +101,7 @@ public final class StateManager {
     public func toMap(_ config: [String: Any]?) -> [String: Any] {
         return [
             "enabled": enabled,
-            "trackingMode": trackingMode,
+            "trackingMode": trackingMode.rawValue,
             "schedulerEnabled": schedulerEnabled,
             "isMoving": isMoving,
             "odometer": odometer,

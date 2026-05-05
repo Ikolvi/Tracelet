@@ -19,7 +19,7 @@ class FakeHostApi extends TraceletHostApi {
   static final _defaultState = TlState(
     enabled: true,
     isMoving: false,
-    trackingMode: 1,
+    trackingMode: TlTrackingMode.geofences,
     schedulerEnabled: false,
     odometer: 123.4,
     lastLocationTimestamp: '2024-01-01T00:00:00Z',

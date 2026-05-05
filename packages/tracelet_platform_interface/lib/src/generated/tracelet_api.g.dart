@@ -358,7 +358,7 @@ class TlState {
 
   bool isMoving;
 
-  int trackingMode;
+  TlTrackingMode trackingMode;
 
   bool schedulerEnabled;
 
@@ -386,7 +386,7 @@ class TlState {
     return TlState(
       enabled: result[0]! as bool,
       isMoving: result[1]! as bool,
-      trackingMode: result[2]! as int,
+      trackingMode: result[2]! as TlTrackingMode,
       schedulerEnabled: result[3]! as bool,
       odometer: result[4]! as double,
       lastLocationTimestamp: result[5] as String?,
@@ -2529,13 +2529,8 @@ class TraceletHostApi {
       pigeonVar_channelName,
       isNullValid: false,
     );
-    // MANUAL FIX: Pigeon generates .cast<Map<String, Object?>>() which is a
-    // lazy cast that fails at runtime because platform channel maps arrive as
-    // Map<Object?, Object?> and Dart's reified generics reject the cast.
-    // Eagerly deep-cast each map instead.  Re-apply after Pigeon regeneration.
     return (pigeonVar_replyValue! as List<Object?>)
-        .map((e) => Map<String, Object?>.from(e! as Map))
-        .toList();
+        .cast<Map<String, Object?>>();
   }
 
   /// Check if database is encrypted.

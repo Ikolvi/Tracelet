@@ -4,6 +4,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import com.ikolvi.tracelet.sdk.model.TrackingMode
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -18,7 +19,7 @@ class StateManagerTest {
         assertFalse(state.enabled)
         assertFalse(state.isMoving)
         assertFalse(state.schedulerEnabled)
-        assertEquals(0, state.trackingMode)
+        assertEquals(TrackingMode.CONTINUOUS, state.trackingMode)
         assertEquals(0.0, state.odometer)
     }
 
@@ -34,8 +35,8 @@ class StateManagerTest {
     fun `tracking mode persists`() {
         val context = RuntimeEnvironment.getApplication()
         val state = StateManager(context)
-        state.trackingMode = 2
-        assertEquals(2, state.trackingMode)
+        state.trackingMode = TrackingMode.PERIODIC
+        assertEquals(TrackingMode.PERIODIC, state.trackingMode)
     }
 
     @Test
@@ -53,7 +54,7 @@ class StateManagerTest {
         val context = RuntimeEnvironment.getApplication()
         val state = StateManager(context)
         state.enabled = true
-        state.trackingMode = 1
+        state.trackingMode = TrackingMode.GEOFENCES
         state.isMoving = true
         state.odometer = 42.0
 

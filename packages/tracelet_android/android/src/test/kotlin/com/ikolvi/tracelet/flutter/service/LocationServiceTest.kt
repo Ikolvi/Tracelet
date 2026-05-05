@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.ikolvi.tracelet.sdk.ConfigManager
 import com.ikolvi.tracelet.sdk.StateManager
+import com.ikolvi.tracelet.sdk.model.TrackingMode
 import com.ikolvi.tracelet.sdk.service.LocationService
 import org.mockito.Mockito
 import org.mockito.Mockito.`when`
@@ -139,16 +140,16 @@ internal class LocationServiceTest {
         val state = StateManager(ctx)
         val config = ConfigManager(ctx)
 
-        state.trackingMode = 2
+        state.trackingMode = TrackingMode.PERIODIC
         state.enabled = true
 
-        assertEquals(2, state.trackingMode)
+        assertEquals(TrackingMode.PERIODIC, state.trackingMode)
         assertEquals(false, config.getPeriodicUseForegroundService())
         assertEquals(false, config.getPeriodicUseExactAlarms())
 
         // Decision: trackingMode == 2 && !periodicUseForegroundService
         // → BootReceiver should re-schedule WorkManager, NOT start FG service
-        val shouldUseForegroundService = state.trackingMode != 2 ||
+        val shouldUseForegroundService = state.trackingMode != TrackingMode.PERIODIC ||
             config.getPeriodicUseForegroundService()
         assertEquals(false, shouldUseForegroundService)
     }
@@ -162,16 +163,16 @@ internal class LocationServiceTest {
             "geo" to mapOf("periodicUseExactAlarms" to true)
         ))
 
-        state.trackingMode = 2
+        state.trackingMode = TrackingMode.PERIODIC
         state.enabled = true
 
-        assertEquals(2, state.trackingMode)
+        assertEquals(TrackingMode.PERIODIC, state.trackingMode)
         assertEquals(false, config.getPeriodicUseForegroundService())
         assertEquals(true, config.getPeriodicUseExactAlarms())
 
         // Decision: trackingMode == 2 && !periodicUseForegroundService
         // → BootReceiver should re-schedule exact alarms, NOT start FG service
-        val shouldUseForegroundService = state.trackingMode != 2 ||
+        val shouldUseForegroundService = state.trackingMode != TrackingMode.PERIODIC ||
             config.getPeriodicUseForegroundService()
         assertEquals(false, shouldUseForegroundService)
     }
@@ -185,15 +186,15 @@ internal class LocationServiceTest {
             "geo" to mapOf("periodicUseForegroundService" to true)
         ))
 
-        state.trackingMode = 2
+        state.trackingMode = TrackingMode.PERIODIC
         state.enabled = true
 
-        assertEquals(2, state.trackingMode)
+        assertEquals(TrackingMode.PERIODIC, state.trackingMode)
         assertEquals(true, config.getPeriodicUseForegroundService())
 
         // Decision: trackingMode == 2 && periodicUseForegroundService == true
         // → BootReceiver should start FG service, which calls startBootTracking()
-        val shouldUseForegroundService = state.trackingMode != 2 ||
+        val shouldUseForegroundService = state.trackingMode != TrackingMode.PERIODIC ||
             config.getPeriodicUseForegroundService()
         assertEquals(true, shouldUseForegroundService)
     }
@@ -203,11 +204,11 @@ internal class LocationServiceTest {
         val (ctx, _, _) = createMockedContext()
         val state = StateManager(ctx)
 
-        state.trackingMode = 0
+        state.trackingMode = TrackingMode.CONTINUOUS
         state.enabled = true
 
-        // Decision: trackingMode != 2 → always start FG service
-        val shouldUseForegroundService = state.trackingMode != 2 ||
+        // Decision: trackingMode != PERIODIC → always start FG service
+        val shouldUseForegroundService = state.trackingMode != TrackingMode.PERIODIC ||
             ConfigManager(ctx).getPeriodicUseForegroundService()
         assertEquals(true, shouldUseForegroundService)
     }
@@ -217,10 +218,10 @@ internal class LocationServiceTest {
         val (ctx, _, _) = createMockedContext()
         val state = StateManager(ctx)
 
-        state.trackingMode = 1
+        state.trackingMode = TrackingMode.GEOFENCES
         state.enabled = true
 
-        val shouldUseForegroundService = state.trackingMode != 2 ||
+        val shouldUseForegroundService = state.trackingMode != TrackingMode.PERIODIC ||
             ConfigManager(ctx).getPeriodicUseForegroundService()
         assertEquals(true, shouldUseForegroundService)
     }
@@ -236,7 +237,7 @@ internal class LocationServiceTest {
         val state = StateManager(ctx)
         val config = ConfigManager(ctx)
 
-        state.trackingMode = 2
+        state.trackingMode = TrackingMode.PERIODIC
 
         // Default config: both false → WorkManager strategy
         val strategy = when {
@@ -256,7 +257,7 @@ internal class LocationServiceTest {
             "geo" to mapOf("periodicUseExactAlarms" to true)
         ))
 
-        state.trackingMode = 2
+        state.trackingMode = TrackingMode.PERIODIC
 
         val strategy = when {
             config.getPeriodicUseForegroundService() -> "foreground-service"
@@ -275,7 +276,7 @@ internal class LocationServiceTest {
             "geo" to mapOf("periodicUseForegroundService" to true)
         ))
 
-        state.trackingMode = 2
+        state.trackingMode = TrackingMode.PERIODIC
 
         val strategy = when {
             config.getPeriodicUseForegroundService() -> "foreground-service"
@@ -290,10 +291,10 @@ internal class LocationServiceTest {
         val (ctx, _, _) = createMockedContext()
         val state = StateManager(ctx)
 
-        state.trackingMode = 0
+        state.trackingMode = TrackingMode.CONTINUOUS
 
         // For continuous mode, the when(trackingMode) should hit else branch
-        val isPeriodic = state.trackingMode == 2
+        val isPeriodic = state.trackingMode == TrackingMode.PERIODIC
         assertEquals(false, isPeriodic)
     }
 
@@ -302,9 +303,9 @@ internal class LocationServiceTest {
         val (ctx, _, _) = createMockedContext()
         val state = StateManager(ctx)
 
-        state.trackingMode = 1
+        state.trackingMode = TrackingMode.GEOFENCES
 
-        val isPeriodic = state.trackingMode == 2
+        val isPeriodic = state.trackingMode == TrackingMode.PERIODIC
         assertEquals(false, isPeriodic)
     }
 
@@ -320,10 +321,10 @@ internal class LocationServiceTest {
         val state = StateManager(ctx)
         val config = ConfigManager(ctx)
 
-        state.trackingMode = 2
+        state.trackingMode = TrackingMode.PERIODIC
         state.enabled = true
 
-        val shouldStopService = state.trackingMode == 2 &&
+        val shouldStopService = state.trackingMode == TrackingMode.PERIODIC &&
             !config.getPeriodicUseForegroundService()
         assertEquals(true, shouldStopService)
     }
@@ -337,10 +338,10 @@ internal class LocationServiceTest {
             "geo" to mapOf("periodicUseForegroundService" to true)
         ))
 
-        state.trackingMode = 2
+        state.trackingMode = TrackingMode.PERIODIC
         state.enabled = true
 
-        val shouldStopService = state.trackingMode == 2 &&
+        val shouldStopService = state.trackingMode == TrackingMode.PERIODIC &&
             !config.getPeriodicUseForegroundService()
         assertEquals(false, shouldStopService)
     }
@@ -350,10 +351,10 @@ internal class LocationServiceTest {
         val (ctx, _, _) = createMockedContext()
         val state = StateManager(ctx)
 
-        state.trackingMode = 0
+        state.trackingMode = TrackingMode.CONTINUOUS
         state.enabled = true
 
-        val shouldStopService = state.trackingMode == 2 &&
+        val shouldStopService = state.trackingMode == TrackingMode.PERIODIC &&
             !ConfigManager(ctx).getPeriodicUseForegroundService()
         assertEquals(false, shouldStopService)
     }
@@ -372,11 +373,11 @@ internal class LocationServiceTest {
         config.setConfig(mapOf("stopOnTerminate" to false))
 
         state.enabled = true
-        state.trackingMode = 1
+        state.trackingMode = TrackingMode.GEOFENCES
 
         val keepGeofencesAlive = !config.getStopOnTerminate()
             && state.enabled
-            && state.trackingMode == 1
+            && state.trackingMode == TrackingMode.GEOFENCES
         assertEquals(true, keepGeofencesAlive)
     }
 
@@ -388,11 +389,11 @@ internal class LocationServiceTest {
         val config = ConfigManager(ctx)
 
         state.enabled = true
-        state.trackingMode = 1
+        state.trackingMode = TrackingMode.GEOFENCES
 
         val keepGeofencesAlive = !config.getStopOnTerminate()
             && state.enabled
-            && state.trackingMode == 1
+            && state.trackingMode == TrackingMode.GEOFENCES
         assertEquals(false, keepGeofencesAlive)
     }
 
@@ -406,11 +407,11 @@ internal class LocationServiceTest {
         config.setConfig(mapOf("stopOnTerminate" to false))
 
         state.enabled = true
-        state.trackingMode = 0
+        state.trackingMode = TrackingMode.CONTINUOUS
 
         val keepGeofencesAlive = !config.getStopOnTerminate()
             && state.enabled
-            && state.trackingMode == 1
+            && state.trackingMode == TrackingMode.GEOFENCES
         assertEquals(false, keepGeofencesAlive)
     }
 
@@ -423,11 +424,11 @@ internal class LocationServiceTest {
         config.setConfig(mapOf("stopOnTerminate" to false))
 
         state.enabled = true
-        state.trackingMode = 2
+        state.trackingMode = TrackingMode.PERIODIC
 
         val keepGeofencesAlive = !config.getStopOnTerminate()
             && state.enabled
-            && state.trackingMode == 1
+            && state.trackingMode == TrackingMode.GEOFENCES
         assertEquals(false, keepGeofencesAlive)
     }
 
@@ -441,11 +442,11 @@ internal class LocationServiceTest {
         config.setConfig(mapOf("stopOnTerminate" to false))
 
         state.enabled = false
-        state.trackingMode = 1
+        state.trackingMode = TrackingMode.GEOFENCES
 
         val keepGeofencesAlive = !config.getStopOnTerminate()
             && state.enabled
-            && state.trackingMode == 1
+            && state.trackingMode == TrackingMode.GEOFENCES
         assertEquals(false, keepGeofencesAlive)
     }
 
@@ -459,14 +460,14 @@ internal class LocationServiceTest {
         config.setConfig(mapOf("stopOnTerminate" to false))
 
         state.enabled = true
-        state.trackingMode = 1
+        state.trackingMode = TrackingMode.GEOFENCES
 
         val keepGeofencesAlive = !config.getStopOnTerminate()
             && state.enabled
-            && state.trackingMode == 1
+            && state.trackingMode == TrackingMode.GEOFENCES
         val keepPeriodicAlive = !config.getStopOnTerminate()
             && state.enabled
-            && state.trackingMode == 2
+            && state.trackingMode == TrackingMode.PERIODIC
 
         assertEquals(true, keepGeofencesAlive)
         assertEquals(false, keepPeriodicAlive)
@@ -483,9 +484,9 @@ internal class LocationServiceTest {
         val (ctx, _, _) = createMockedContext()
         val state = StateManager(ctx)
 
-        state.trackingMode = 1
+        state.trackingMode = TrackingMode.GEOFENCES
 
-        val shouldRecoverGeofences = state.trackingMode == 1
+        val shouldRecoverGeofences = state.trackingMode == TrackingMode.GEOFENCES
         assertEquals(true, shouldRecoverGeofences)
     }
 
@@ -494,9 +495,9 @@ internal class LocationServiceTest {
         val (ctx, _, _) = createMockedContext()
         val state = StateManager(ctx)
 
-        state.trackingMode = 0
+        state.trackingMode = TrackingMode.CONTINUOUS
 
-        val shouldRecoverGeofences = state.trackingMode == 1
+        val shouldRecoverGeofences = state.trackingMode == TrackingMode.GEOFENCES
         assertEquals(false, shouldRecoverGeofences)
     }
 
@@ -505,9 +506,9 @@ internal class LocationServiceTest {
         val (ctx, _, _) = createMockedContext()
         val state = StateManager(ctx)
 
-        state.trackingMode = 2
+        state.trackingMode = TrackingMode.PERIODIC
 
-        val shouldRecoverGeofences = state.trackingMode == 1
+        val shouldRecoverGeofences = state.trackingMode == TrackingMode.GEOFENCES
         assertEquals(false, shouldRecoverGeofences)
     }
 
@@ -530,7 +531,7 @@ internal class LocationServiceTest {
         val config = ConfigManager(ctx)
         config.setConfig(mapOf("stopOnTerminate" to false))
 
-        state.trackingMode = 0
+        state.trackingMode = TrackingMode.CONTINUOUS
         state.enabled = true
 
         // Decision: all modes should create HttpSyncManager
@@ -545,7 +546,7 @@ internal class LocationServiceTest {
         val config = ConfigManager(ctx)
         config.setConfig(mapOf("stopOnTerminate" to false))
 
-        state.trackingMode = 1
+        state.trackingMode = TrackingMode.GEOFENCES
         state.enabled = true
 
         val shouldCreateHttpSync = !config.getStopOnTerminate() && state.enabled
@@ -559,7 +560,7 @@ internal class LocationServiceTest {
         val config = ConfigManager(ctx)
         config.setConfig(mapOf("stopOnTerminate" to false))
 
-        state.trackingMode = 2
+        state.trackingMode = TrackingMode.PERIODIC
         state.enabled = true
 
         val shouldCreateHttpSync = !config.getStopOnTerminate() && state.enabled
@@ -573,7 +574,7 @@ internal class LocationServiceTest {
         val state = StateManager(ctx)
         val config = ConfigManager(ctx)
 
-        state.trackingMode = 0
+        state.trackingMode = TrackingMode.CONTINUOUS
         state.enabled = true
 
         val shouldCreateHttpSync = !config.getStopOnTerminate() && state.enabled
@@ -587,7 +588,7 @@ internal class LocationServiceTest {
         val config = ConfigManager(ctx)
         config.setConfig(mapOf("stopOnTerminate" to false))
 
-        state.trackingMode = 0
+        state.trackingMode = TrackingMode.CONTINUOUS
         state.enabled = false
 
         val shouldCreateHttpSync = !config.getStopOnTerminate() && state.enabled
@@ -603,10 +604,10 @@ internal class LocationServiceTest {
         val config = ConfigManager(ctx)
         config.setConfig(mapOf("stopOnTerminate" to false))
 
-        state.trackingMode = 2
+        state.trackingMode = TrackingMode.PERIODIC
         state.enabled = true
 
-        val isPeriodicWithoutFg = state.trackingMode == 2 &&
+        val isPeriodicWithoutFg = state.trackingMode == TrackingMode.PERIODIC &&
             !config.getPeriodicUseForegroundService()
         val shouldCreateHttpSync = !config.getStopOnTerminate() && state.enabled
         assertEquals(true, isPeriodicWithoutFg)

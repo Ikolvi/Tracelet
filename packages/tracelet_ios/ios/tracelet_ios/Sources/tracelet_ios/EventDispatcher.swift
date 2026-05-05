@@ -223,10 +223,11 @@ final class EventDispatcher: NSObject, TraceletEventSending {
     }
 
     private func mapToTlState(_ data: [String: Any]) -> TlState {
+        let modeInt = data["trackingMode"] as? Int ?? TrackingMode.continuous.rawValue
         return TlState(
             enabled: data["enabled"] as? Bool ?? false,
             isMoving: (data["isMoving"] ?? data["is_moving"]) as? Bool ?? false,
-            trackingMode: Int64(data["trackingMode"] as? Int ?? 0),
+            trackingMode: TlTrackingMode(rawValue: modeInt) ?? .location,
             schedulerEnabled: data["schedulerEnabled"] as? Bool ?? false,
             odometer: (data["odometer"] as? NSNumber)?.doubleValue ?? 0,
             lastLocationTimestamp: data["lastLocationTimestamp"] as? String

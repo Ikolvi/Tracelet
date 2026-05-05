@@ -310,12 +310,29 @@ public struct TraceletGeofence {
     }
 }
 
+// MARK: - TrackingMode
+
+/// Tracking modes supported by the SDK.
+@objc public enum TrackingMode: Int {
+    /// Continuous location tracking with motion detection.
+    case continuous = 0
+    /// Passive geofence-only monitoring (saves maximum battery).
+    case geofences = 1
+    /// Periodic location fixes at fixed intervals.
+    case periodic = 2
+
+    /// Returns a variant from an integer value, defaulting to `.continuous` on unknown values.
+    public static func fromInt(_ value: Int) -> TrackingMode {
+        return TrackingMode(rawValue: value) ?? .continuous
+    }
+}
+
 // MARK: - TraceletState
 
 /// Current state of the Tracelet SDK.
 public struct TraceletState {
     public let enabled: Bool
-    public let trackingMode: Int
+    public let trackingMode: TrackingMode
     public let isMoving: Bool
     public let schedulerEnabled: Bool
     public let odometer: Double
@@ -324,7 +341,7 @@ public struct TraceletState {
 
     public init(
         enabled: Bool,
-        trackingMode: Int = 0,
+        trackingMode: TrackingMode = .continuous,
         isMoving: Bool = false,
         schedulerEnabled: Bool = false,
         odometer: Double = 0,
@@ -341,9 +358,10 @@ public struct TraceletState {
     }
 
     public static func fromMap(_ map: [String: Any?]) -> TraceletState {
-        TraceletState(
+        let modeInt = (map["trackingMode"] as? NSNumber)?.intValue ?? 0
+        return TraceletState(
             enabled: map["enabled"] as? Bool ?? false,
-            trackingMode: (map["trackingMode"] as? NSNumber)?.intValue ?? 0,
+            trackingMode: TrackingMode.fromInt(modeInt),
             isMoving: (map["isMoving"] ?? map["is_moving"]) as? Bool ?? false,
             schedulerEnabled: map["schedulerEnabled"] as? Bool ?? false,
             odometer: (map["odometer"] as? NSNumber)?.doubleValue ?? 0,
@@ -355,7 +373,7 @@ public struct TraceletState {
     public func toMap() -> [String: Any?] {
         [
             "enabled": enabled,
-            "trackingMode": trackingMode,
+            "trackingMode": trackingMode.rawValue,
             "isMoving": isMoving,
             "schedulerEnabled": schedulerEnabled,
             "odometer": odometer,

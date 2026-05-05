@@ -345,7 +345,7 @@ data class TlActivity (
 data class TlState (
   val enabled: Boolean,
   val isMoving: Boolean,
-  val trackingMode: Long,
+  val trackingMode: TlTrackingMode,
   val schedulerEnabled: Boolean,
   val odometer: Double,
   val lastLocationTimestamp: String? = null
@@ -355,7 +355,7 @@ data class TlState (
     fun fromList(pigeonVar_list: List<Any?>): TlState {
       val enabled = pigeonVar_list[0] as Boolean
       val isMoving = pigeonVar_list[1] as Boolean
-      val trackingMode = pigeonVar_list[2] as Long
+      val trackingMode = pigeonVar_list[2] as TlTrackingMode
       val schedulerEnabled = pigeonVar_list[3] as Boolean
       val odometer = pigeonVar_list[4] as Double
       val lastLocationTimestamp = pigeonVar_list[5] as String?

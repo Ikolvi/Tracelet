@@ -11,6 +11,7 @@ import androidx.core.content.ContextCompat
 import com.ikolvi.tracelet.sdk.ConfigManager
 import com.ikolvi.tracelet.sdk.StateManager
 import com.ikolvi.tracelet.sdk.location.PeriodicLocationWorker
+import com.ikolvi.tracelet.sdk.model.TrackingMode
 import com.ikolvi.tracelet.sdk.service.LocationService
 import com.ikolvi.tracelet.sdk.util.OemCompat
 
@@ -82,7 +83,7 @@ class BootReceiver : BroadcastReceiver() {
             .putBoolean("enabled", true)
             .commit() // synchronous write — must complete before service starts
 
-        if (trackingMode == 2 && !configManager.getPeriodicUseForegroundService()) {
+        if (trackingMode == TrackingMode.PERIODIC && !configManager.getPeriodicUseForegroundService()) {
             // Periodic mode without foreground service —
             // re-schedule WorkManager/AlarmManager work directly.
             // No foreground service needed (no persistent notification).

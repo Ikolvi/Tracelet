@@ -8,6 +8,7 @@ import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.ikolvi.tracelet.sdk.StateManager
+import com.ikolvi.tracelet.sdk.model.TrackingMode
 import com.ikolvi.tracelet.sdk.location.PeriodicLocationWorker
 
 /**
@@ -43,7 +44,7 @@ class PeriodicAlarmReceiver : BroadcastReceiver() {
 
         // Verify periodic tracking is still enabled
         val state = StateManager(context)
-        if (!state.enabled || state.trackingMode != 2) {
+        if (!state.enabled || state.trackingMode != TrackingMode.PERIODIC) {
             Log.d(TAG, "Periodic tracking no longer active — ignoring alarm")
             return
         }

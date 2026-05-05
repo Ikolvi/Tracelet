@@ -20,6 +20,7 @@ import com.ikolvi.tracelet.sdk.ListenerEventSender
 import com.ikolvi.tracelet.sdk.TraceletBootstrap
 import com.ikolvi.tracelet.sdk.TraceletEventSender
 import com.ikolvi.tracelet.sdk.StateManager
+import com.ikolvi.tracelet.sdk.model.TrackingMode
 import com.ikolvi.tracelet.sdk.db.TraceletDatabase
 import com.ikolvi.tracelet.sdk.http.HttpSyncManager
 import com.ikolvi.tracelet.sdk.receiver.PeriodicAlarmReceiver
@@ -311,7 +312,7 @@ class PeriodicLocationWorker(
             val interval = config.getPeriodicLocationInterval()
             val useExact = config.getPeriodicUseExactAlarms() || interval < 900
 
-            if (state.enabled && state.trackingMode == 2 && useExact) {
+            if (state.enabled && state.trackingMode == TrackingMode.PERIODIC && useExact) {
                 scheduleExactAlarm(applicationContext, interval)
                 Log.d(TAG, "Re-scheduled next alarm in ${interval}s")
             }
@@ -325,7 +326,7 @@ class PeriodicLocationWorker(
                 val state = StateManager(applicationContext)
                 val interval = config.getPeriodicLocationInterval()
                 val useExact = config.getPeriodicUseExactAlarms() || interval < 900
-                if (state.enabled && state.trackingMode == 2 && useExact) {
+                if (state.enabled && state.trackingMode == TrackingMode.PERIODIC && useExact) {
                     scheduleExactAlarm(applicationContext, interval)
                     Log.d(TAG, "Re-scheduled next alarm in ${interval}s (after failure)")
                 }

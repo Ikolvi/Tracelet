@@ -26,6 +26,7 @@ import com.ikolvi.tracelet.sdk.http.HttpSyncManager
 import com.ikolvi.tracelet.sdk.location.LocationEngine
 import com.ikolvi.tracelet.sdk.location.PeriodicLocationWorker
 import com.ikolvi.tracelet.sdk.receiver.GeofenceBroadcastReceiver
+import com.ikolvi.tracelet.sdk.model.TrackingMode
 import com.ikolvi.tracelet.sdk.util.OemCompat
 
 /**
@@ -246,7 +247,7 @@ class LocationService : Service() {
             // the foreground service at all — WorkManager/AlarmManager handles
             // the scheduling independently. Stop the service to avoid showing
             // an unnecessary persistent notification.
-            if (state.trackingMode == 2 && !configManager.getPeriodicUseForegroundService()) {
+            if (state.trackingMode == TrackingMode.PERIODIC && !configManager.getPeriodicUseForegroundService()) {
                 // Ensure WorkManager/AlarmManager is scheduled (may already be)
                 PeriodicLocationWorker.eventSender = null // No UI
 
@@ -398,7 +399,7 @@ class LocationService : Service() {
         Log.d(TAG, "Bootstrapping native tracking after boot/task-removal (trackingMode=$trackingMode)")
 
         when (trackingMode) {
-            2 -> {
+            TrackingMode.PERIODIC -> {
                 // Periodic mode — restart the correct scheduling strategy.
                 // Wire the shared event sender so WorkManager workers can dispatch.
                 PeriodicLocationWorker.eventSender = eventSender
@@ -446,7 +447,7 @@ class LocationService : Service() {
                 // Geofence mode: re-register persisted geofences with Play Services
                 // and restore the static BroadcastReceiver reference so transition
                 // events are not silently dropped after process death.
-                if (trackingMode == 1) {
+                if (trackingMode == TrackingMode.GEOFENCES) {
                     val geoManager = GeofenceManager(ctx, config, eventSender, database)
                     geoManager.reRegisterAll()
                     GeofenceBroadcastReceiver.geofenceManager = geoManager

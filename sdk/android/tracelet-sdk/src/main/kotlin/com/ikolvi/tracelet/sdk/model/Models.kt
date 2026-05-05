@@ -226,11 +226,33 @@ data class TraceletGeofence(
 }
 
 /**
+ * Tracking mode for the Tracelet SDK.
+ *
+ * @property value The integer value persisted to SharedPreferences and
+ *                 serialized to the Dart layer via platform channels.
+ */
+enum class TrackingMode(val value: Int) {
+    /** Continuous GPS tracking — LocationEngine is always running. */
+    CONTINUOUS(0),
+
+    /** Geofence-only monitoring — LocationEngine runs for proximity updates. */
+    GEOFENCES(1),
+
+    /** Periodic one-shot fixes via WorkManager / AlarmManager. */
+    PERIODIC(2);
+
+    companion object {
+        /** Converts a raw integer (from SharedPreferences or Dart) to a [TrackingMode]. */
+        fun fromInt(value: Int): TrackingMode = entries.firstOrNull { it.value == value } ?: CONTINUOUS
+    }
+}
+
+/**
  * Current state of the Tracelet SDK.
  */
 data class TraceletState(
     val enabled: Boolean,
-    val trackingMode: Int = 0,
+    val trackingMode: TrackingMode = TrackingMode.CONTINUOUS,
     val isMoving: Boolean = false,
     val schedulerEnabled: Boolean = false,
     val odometer: Double = 0.0,
@@ -240,7 +262,7 @@ data class TraceletState(
     companion object {
         fun fromMap(map: Map<String, Any?>): TraceletState = TraceletState(
             enabled = map["enabled"] as? Boolean ?: false,
-            trackingMode = (map["trackingMode"] as? Number)?.toInt() ?: 0,
+            trackingMode = TrackingMode.fromInt((map["trackingMode"] as? Number)?.toInt() ?: 0),
             isMoving = (map["isMoving"] ?: map["is_moving"]) as? Boolean ?: false,
             schedulerEnabled = map["schedulerEnabled"] as? Boolean ?: false,
             odometer = (map["odometer"] as? Number)?.toDouble() ?: 0.0,
@@ -251,7 +273,7 @@ data class TraceletState(
 
     fun toMap(): Map<String, Any?> = mapOf(
         "enabled" to enabled,
-        "trackingMode" to trackingMode,
+        "trackingMode" to trackingMode.value,
         "isMoving" to isMoving,
         "schedulerEnabled" to schedulerEnabled,
         "odometer" to odometer,

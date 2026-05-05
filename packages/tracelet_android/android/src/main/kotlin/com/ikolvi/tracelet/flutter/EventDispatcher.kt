@@ -311,10 +311,11 @@ class EventDispatcher : TraceletEventSender {
     }
 
     private fun mapToTlState(data: Map<String, Any?>): TlState {
+        val modeInt = (data["trackingMode"] as? Number)?.toInt() ?: 0
         return TlState(
             enabled = data["enabled"] as? Boolean ?: false,
             isMoving = (data["isMoving"] ?: data["is_moving"]) as? Boolean ?: false,
-            trackingMode = (data["trackingMode"] as? Number)?.toLong() ?: 0L,
+            trackingMode = TlTrackingMode.ofRaw(modeInt) ?: TlTrackingMode.LOCATION,
             schedulerEnabled = data["schedulerEnabled"] as? Boolean ?: false,
             odometer = (data["odometer"] as? Number)?.toDouble() ?: 0.0,
             lastLocationTimestamp = data["lastLocationTimestamp"] as? String,

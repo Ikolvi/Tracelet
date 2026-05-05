@@ -19,10 +19,11 @@ class TraceletHostApiImpl: TraceletHostApi {
     // MARK: - Converters: SDK Dictionary → Pigeon types
 
     private func dictToTlState(_ d: [String: Any]) -> TlState {
-        TlState(
+        let modeInt = d["trackingMode"] as? Int ?? TrackingMode.continuous.rawValue
+        return TlState(
             enabled: d["enabled"] as? Bool ?? false,
             isMoving: d["isMoving"] as? Bool ?? false,
-            trackingMode: Int64(d["trackingMode"] as? Int ?? 0),
+            trackingMode: TlTrackingMode(rawValue: modeInt) ?? .location,
             schedulerEnabled: d["schedulerEnabled"] as? Bool ?? false,
             odometer: d["odometer"] as? Double ?? 0.0,
             lastLocationTimestamp: d["lastLocationTimestamp"] as? String
@@ -168,7 +169,7 @@ class TraceletHostApiImpl: TraceletHostApi {
     func getState(completion: @escaping (Result<TlState, Error>) -> Void) {
         guard sdk.isReadyState else {
             completion(.success(TlState(
-                enabled: false, isMoving: false, trackingMode: 0,
+                enabled: false, isMoving: false, trackingMode: .location,
                 schedulerEnabled: false, odometer: 0.0, lastLocationTimestamp: nil)))
             return
         }

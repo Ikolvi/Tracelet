@@ -33,7 +33,7 @@ class PigeonTracelet extends TraceletPlatform {
   Map<String, Object?> _stateToMap(TlState s) => <String, Object?>{
     'enabled': s.enabled,
     'isMoving': s.isMoving,
-    'trackingMode': s.trackingMode,
+    'trackingMode': s.trackingMode.index,
     'schedulerEnabled': s.schedulerEnabled,
     'odometer': s.odometer,
     'lastLocationTimestamp': s.lastLocationTimestamp,

@@ -154,7 +154,7 @@ class TlState {
 
   final bool enabled;
   final bool isMoving;
-  final int trackingMode;
+  final TlTrackingMode trackingMode;
   final bool schedulerEnabled;
   final double odometer;
   final String? lastLocationTimestamp;

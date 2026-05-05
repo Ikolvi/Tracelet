@@ -1,7 +1,10 @@
 ## 1.9.2
 
+- **REFACTOR**: Migrated `TlTrackingMode` to a strongly-typed enum across the entire Pigeon bridge. This improves type safety and developer experience by eliminating magic integers in the platform communication layer. Android and iOS native implementations now use the generated enum types directly.
+- **FIX**: Resolved "Unable to establish connection" regression in `locationStream` when secondary engines (like overlays or background isolates) detach. Ensured `destroyAll()` is correctly integrated into the `primaryInstance` guard on both Android and iOS to prevent resource leaks and duplicate registrations during hot restarts.
 - **FIX**: `Tracelet.locationStream` no longer goes silent when `flutter_overlay_window` (or any plugin using `FlutterEngineGroup`) creates a secondary in-process `FlutterEngine`. The primary-instance guard introduced in 1.9.0 (#51) blocked `EventDispatcher` re-binding for in-process overlay engines, causing Pigeon FlutterApi `onLocation` channel to report "Unable to establish connection". A Looper-based discriminator now distinguishes overlay engines (main-thread attach → re-bind dispatcher) from headless background engines (off-thread attach → full skip, preserving #51).
 - **FIX**: Android `destroyAll()` now guards all background-critical subsystems when `stopOnTerminate: false` (#65). `httpSyncManager.stop()`, `scheduleManager.stop()`, and `stopHeartbeat()` were still called unconditionally on every swipe-to-dismiss, permanently killing HTTP sync and heartbeat monitoring until the app was manually reopened. Fixed in native `tracelet-sdk` 1.1.2.
+- **CHORE**: Aligned `PigeonTracelet` serialization logic to use enum indices for backward compatibility with the high-level `State` model while maintaining type-safe internal bridge contracts.
 
 ## 1.9.1
 

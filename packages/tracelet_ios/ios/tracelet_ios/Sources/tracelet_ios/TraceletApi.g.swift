@@ -364,7 +364,7 @@ struct TlActivity: Hashable {
 struct TlState: Hashable {
   var enabled: Bool
   var isMoving: Bool
-  var trackingMode: Int64
+  var trackingMode: TlTrackingMode
   var schedulerEnabled: Bool
   var odometer: Double
   var lastLocationTimestamp: String? = nil
@@ -374,7 +374,7 @@ struct TlState: Hashable {
   static func fromList(_ pigeonVar_list: [Any?]) -> TlState? {
     let enabled = pigeonVar_list[0] as! Bool
     let isMoving = pigeonVar_list[1] as! Bool
-    let trackingMode = pigeonVar_list[2] as! Int64
+    let trackingMode = pigeonVar_list[2] as! TlTrackingMode
     let schedulerEnabled = pigeonVar_list[3] as! Bool
     let odometer = pigeonVar_list[4] as! Double
     let lastLocationTimestamp: String? = nilOrValue(pigeonVar_list[5])

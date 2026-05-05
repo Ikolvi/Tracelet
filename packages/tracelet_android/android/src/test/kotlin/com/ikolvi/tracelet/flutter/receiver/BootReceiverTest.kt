@@ -6,6 +6,7 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import com.ikolvi.tracelet.sdk.ConfigManager
 import com.ikolvi.tracelet.sdk.StateManager
+import com.ikolvi.tracelet.sdk.model.TrackingMode
 import org.mockito.Mockito
 import org.mockito.Mockito.`when`
 import org.mockito.Mockito.never
@@ -165,17 +166,17 @@ internal class BootReceiverTest {
         val (ctx, _, stateStore) = createMockedContext()
         val state = stateOf(ctx)
 
-        // Default should be 0 (continuous)
-        assertEquals(0, state.trackingMode)
+        // Default should be CONTINUOUS
+        assertEquals(TrackingMode.CONTINUOUS, state.trackingMode)
 
-        // Set to periodic (2)
-        state.trackingMode = 2
-        assertEquals(2, stateStore["trackingMode"])
-        assertEquals(2, state.trackingMode)
+        // Set to periodic
+        state.trackingMode = TrackingMode.PERIODIC
+        assertEquals(TrackingMode.PERIODIC.value, stateStore["trackingMode"])
+        assertEquals(TrackingMode.PERIODIC, state.trackingMode)
 
-        // Set to geofences (1)
-        state.trackingMode = 1
-        assertEquals(1, state.trackingMode)
+        // Set to geofences
+        state.trackingMode = TrackingMode.GEOFENCES
+        assertEquals(TrackingMode.GEOFENCES, state.trackingMode)
     }
 
     @Test
@@ -185,7 +186,7 @@ internal class BootReceiverTest {
         val (ctx, _, _) = createMockedContext()
         val state = stateOf(ctx)
 
-        for (mode in listOf(0, 1, 2)) {
+        for (mode in TrackingMode.entries) {
             state.trackingMode = mode
             assertEquals(mode, state.trackingMode,
                 "trackingMode=$mode should round-trip correctly")
@@ -244,7 +245,7 @@ internal class BootReceiverTest {
         val state = stateOf(ctx)
 
         state.enabled = true
-        state.trackingMode = 2
+        state.trackingMode = TrackingMode.PERIODIC
         state.didDeviceReboot = true
         state.didLaunchInBackground = true
 
@@ -252,7 +253,7 @@ internal class BootReceiverTest {
 
         // After reset, defaults should be restored
         assertEquals(false, state.enabled)
-        assertEquals(0, state.trackingMode)
+        assertEquals(TrackingMode.CONTINUOUS, state.trackingMode)
         assertEquals(false, state.didDeviceReboot)
         assertEquals(false, state.didLaunchInBackground)
     }
@@ -265,12 +266,12 @@ internal class BootReceiverTest {
         val state = stateOf(ctx)
 
         state.enabled = true
-        state.trackingMode = 2
+        state.trackingMode = TrackingMode.PERIODIC
 
         // After "reboot", state should be readable
         val stateAfterBoot = stateOf(ctx) // new instance, same prefs
         assertEquals(true, stateAfterBoot.enabled)
-        assertEquals(2, stateAfterBoot.trackingMode)
+        assertEquals(TrackingMode.PERIODIC, stateAfterBoot.trackingMode)
     }
 
     @Test
@@ -279,11 +280,11 @@ internal class BootReceiverTest {
         val state = stateOf(ctx)
 
         state.enabled = true
-        state.trackingMode = 0
+        state.trackingMode = TrackingMode.CONTINUOUS
 
         val stateAfterBoot = stateOf(ctx)
         assertEquals(true, stateAfterBoot.enabled)
-        assertEquals(0, stateAfterBoot.trackingMode)
+        assertEquals(TrackingMode.CONTINUOUS, stateAfterBoot.trackingMode)
     }
 
     @Test
@@ -292,11 +293,11 @@ internal class BootReceiverTest {
         val state = stateOf(ctx)
 
         state.enabled = true
-        state.trackingMode = 1
+        state.trackingMode = TrackingMode.GEOFENCES
 
         val stateAfterBoot = stateOf(ctx)
         assertEquals(true, stateAfterBoot.enabled)
-        assertEquals(1, stateAfterBoot.trackingMode)
+        assertEquals(TrackingMode.GEOFENCES, stateAfterBoot.trackingMode)
     }
 
     @Test

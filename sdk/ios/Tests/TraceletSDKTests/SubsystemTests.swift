@@ -786,13 +786,13 @@ final class StateManagerExtendedTests: XCTestCase {
     func testToMapIncludesConfig() {
         let state = StateManager()
         state.enabled = true
-        state.trackingMode = 1
+        state.trackingMode = .geofences
 
         let config: [String: Any] = ["distanceFilter": 50.0]
         let map = state.toMap(config)
 
         XCTAssertEqual(map["enabled"] as? Bool, true)
-        XCTAssertEqual(map["trackingMode"] as? Int, 1)
+        XCTAssertEqual(map["trackingMode"] as? Int, TrackingMode.geofences.rawValue)
     }
 
     func testMultipleOdometerIncrements() {
@@ -1117,12 +1117,12 @@ final class ServiceSessionManagerTests: XCTestCase {
 
 // MARK: - Periodic Mode: No Background Activity Session
 
-/// Verifies that periodic mode (trackingMode=2) does NOT start a
+/// Verifies that periodic mode (trackingMode=.periodic) does NOT start a
 /// CLBackgroundActivitySession. The session causes a persistent blue
 /// location indicator in the status bar, which is inappropriate for
 /// periodic mode where GPS is only active for ~5 seconds per fix.
 ///
-/// Continuous mode (trackingMode=0) and geofence mode (trackingMode=1)
+/// Continuous mode (trackingMode=.continuous) and geofence mode (trackingMode=.geofences)
 /// appropriately use the background activity session.
 final class PeriodicModeBackgroundSessionTests: XCTestCase {
 

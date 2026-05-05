@@ -27,6 +27,7 @@ import com.ikolvi.tracelet.sdk.receiver.BootReceiver
 import com.ikolvi.tracelet.sdk.receiver.GeofenceBroadcastReceiver
 import com.ikolvi.tracelet.sdk.schedule.ScheduleManager
 import com.ikolvi.tracelet.sdk.service.LocationService
+import com.ikolvi.tracelet.sdk.model.TrackingMode
 import com.ikolvi.tracelet.sdk.util.BatteryUtils
 import com.ikolvi.tracelet.sdk.util.OemCompat
 import com.ikolvi.tracelet.sdk.util.SoundManager
@@ -238,7 +239,7 @@ class TraceletSdk private constructor(private val context: Context) {
         permissionManager = TraceletPermissionManager(context)
 
         // Re-wire periodic mode if already active (process restart)
-        if (stateManager.enabled && stateManager.trackingMode == 2) {
+        if (stateManager.enabled && stateManager.trackingMode == TrackingMode.PERIODIC) {
             PeriodicLocationWorker.eventSender = eventSender
             PeriodicLocationWorker.httpSyncManager = httpSyncManager
         }
@@ -408,7 +409,7 @@ class TraceletSdk private constructor(private val context: Context) {
         PeriodicLocationWorker.httpSyncManager = null
 
         stateManager.enabled = true
-        stateManager.trackingMode = 0
+        stateManager.trackingMode = TrackingMode.CONTINUOUS
         stateManager.isMoving = configManager.getIsMoving()
 
         if (configManager.isForegroundServiceEnabled()) {
@@ -480,7 +481,7 @@ class TraceletSdk private constructor(private val context: Context) {
         if (!isReady) return mapOf(
             "enabled" to false,
             "isMoving" to false,
-            "trackingMode" to 0,
+            "trackingMode" to TrackingMode.CONTINUOUS.value,
             "schedulerEnabled" to false,
             "odometer" to 0.0,
         )
@@ -495,7 +496,7 @@ class TraceletSdk private constructor(private val context: Context) {
         if (!isReady) return "NOT_READY"
 
         stateManager.enabled = true
-        stateManager.trackingMode = 1
+        stateManager.trackingMode = TrackingMode.GEOFENCES
 
         geofenceManager.reRegisterAll()
 
@@ -546,7 +547,7 @@ class TraceletSdk private constructor(private val context: Context) {
         }
 
         stateManager.enabled = true
-        stateManager.trackingMode = 2
+        stateManager.trackingMode = TrackingMode.PERIODIC
         stateManager.isMoving = false
 
         PeriodicLocationWorker.eventSender = eventSender
@@ -612,7 +613,7 @@ class TraceletSdk private constructor(private val context: Context) {
     fun setConfig(config: Map<String, Any?>): Map<String, Any?> {
         if (!isReady) return mapOf(
             "enabled" to false, "isMoving" to false,
-            "trackingMode" to 0, "schedulerEnabled" to false, "odometer" to 0.0,
+            "trackingMode" to TrackingMode.CONTINUOUS.value, "schedulerEnabled" to false, "odometer" to 0.0,
         )
         val oldConfig = configManager.getConfig()
         val merged = configManager.setConfig(config)
@@ -682,7 +683,7 @@ class TraceletSdk private constructor(private val context: Context) {
     fun changePace(isMoving: Boolean): Map<String, Any?> {
         if (!isReady) return mapOf(
             "enabled" to false, "isMoving" to false,
-            "trackingMode" to 0, "schedulerEnabled" to false, "odometer" to 0.0,
+            "trackingMode" to TrackingMode.CONTINUOUS.value, "schedulerEnabled" to false, "odometer" to 0.0,
         )
         locationEngine.changePace(isMoving)
         // Re-sync MotionDetector's sensor state so it can wake the SDK back up
@@ -704,7 +705,7 @@ class TraceletSdk private constructor(private val context: Context) {
     fun setOdometer(value: Double): Map<String, Any?> {
         if (!isReady) return mapOf(
             "enabled" to false, "isMoving" to false,
-            "trackingMode" to 0, "schedulerEnabled" to false, "odometer" to 0.0,
+            "trackingMode" to TrackingMode.CONTINUOUS.value, "schedulerEnabled" to false, "odometer" to 0.0,
         )
         return locationEngine.setOdometer(value)
     }
@@ -1450,13 +1451,13 @@ class TraceletSdk private constructor(private val context: Context) {
 
         // LocationEngine — keep alive for continuous (0) and geofence (1) modes.
         // Periodic mode (2) has its own WorkManager/AlarmManager lifecycle.
-        if (!(keepAlive && stateManager.trackingMode != 2)) {
+        if (!(keepAlive && stateManager.trackingMode != TrackingMode.PERIODIC)) {
             locationEngine.destroy()
         }
         motionDetector.stop()
 
         // GeofenceManager — keep alive only in geofence mode (1).
-        val keepGeofencesAlive = keepAlive && stateManager.trackingMode == 1
+        val keepGeofencesAlive = keepAlive && stateManager.trackingMode == TrackingMode.GEOFENCES
         if (!keepGeofencesAlive) {
             geofenceManager.destroy()
         }
@@ -1479,7 +1480,7 @@ class TraceletSdk private constructor(private val context: Context) {
         if (::soundManager.isInitialized) soundManager.stop()
 
         // PeriodicLocationWorker — keep alive only in periodic mode (2).
-        val keepPeriodicAlive = keepAlive && stateManager.trackingMode == 2
+        val keepPeriodicAlive = keepAlive && stateManager.trackingMode == TrackingMode.PERIODIC
         if (!keepPeriodicAlive) {
             PeriodicLocationWorker.cancel(context)
         }
