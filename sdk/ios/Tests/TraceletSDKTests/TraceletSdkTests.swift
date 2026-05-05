@@ -17,7 +17,7 @@ final class TraceletSdkTests: XCTestCase {
         let state = StateManager()
         state.reset()
         XCTAssertFalse(state.enabled)
-        XCTAssertEqual(state.trackingMode, 0)
+        XCTAssertEqual(state.trackingMode, .continuous)
         XCTAssertFalse(state.isMoving)
         XCTAssertEqual(state.odometer, 0.0)
         XCTAssertFalse(state.schedulerEnabled)
@@ -28,7 +28,7 @@ final class TraceletSdkTests: XCTestCase {
         state.enabled = true
         state.isMoving = true
         state.odometer = 1234.5
-        state.trackingMode = 2
+        state.trackingMode = .periodic
         state.schedulerEnabled = true
 
         state.reset()
@@ -36,14 +36,14 @@ final class TraceletSdkTests: XCTestCase {
         XCTAssertFalse(state.enabled)
         XCTAssertFalse(state.isMoving)
         XCTAssertEqual(state.odometer, 0.0)
-        XCTAssertEqual(state.trackingMode, 0)
+        XCTAssertEqual(state.trackingMode, .continuous)
         XCTAssertFalse(state.schedulerEnabled)
     }
 
     func testStateManagerToMap() {
         let state = StateManager()
         state.enabled = true
-        state.trackingMode = 1
+        state.trackingMode = .geofences
         state.isMoving = true
         state.odometer = 500.0
 
