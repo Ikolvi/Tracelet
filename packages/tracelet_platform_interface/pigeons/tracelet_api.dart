@@ -32,10 +32,28 @@ enum TlGeofenceAction { enter, exit, dwell }
 
 enum TlAuthorizationStatus {
   notDetermined,
+  restricted,
   denied,
   whenInUse,
   always,
   deniedForever,
+}
+
+enum TlMotionAuthorizationStatus {
+  notDetermined,
+  restricted,
+  denied,
+  authorized,
+  deniedForever,
+}
+
+enum TlNotificationAuthorizationStatus {
+  notDetermined,
+  denied,
+  authorized,
+  deniedForever,
+  provisional,
+  ephemeral,
 }
 
 enum TlHttpMethod { post, put }
@@ -731,10 +749,10 @@ abstract class TraceletHostApi {
   TlAuthorizationStatus requestPermission();
 
   @async
-  int getNotificationPermissionStatus();
+  TlNotificationAuthorizationStatus getNotificationPermissionStatus();
 
   @async
-  int requestNotificationPermission();
+  TlNotificationAuthorizationStatus requestNotificationPermission();
 
   @async
   bool canScheduleExactAlarms();
@@ -743,10 +761,10 @@ abstract class TraceletHostApi {
   bool openExactAlarmSettings();
 
   @async
-  int getMotionPermissionStatus();
+  TlMotionAuthorizationStatus getMotionPermissionStatus();
 
   @async
-  int requestMotionPermission();
+  TlMotionAuthorizationStatus requestMotionPermission();
 
   @async
   int requestTemporaryFullAccuracy(String purpose);

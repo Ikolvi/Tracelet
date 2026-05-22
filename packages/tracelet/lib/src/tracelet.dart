@@ -33,6 +33,7 @@ import 'models/sql_query.dart';
 import 'models/state.dart';
 import 'models/sync_body_context.dart';
 import 'models/trip_event.dart';
+import 'models/speed_motion_event.dart';
 
 /// Production-grade background geolocation for Flutter.
 ///
@@ -359,8 +360,8 @@ class Tracelet {
       _platform.getDeviceInfo(), // 4
       _platform.isPowerSaveMode(), // 5
       _platform.isIgnoringBatteryOptimizations(), // 6
-      _platform.getPermissionStatus(), // 7
-      _platform.getMotionPermissionStatus(), // 8
+      _platform.getLocationAuthorization(), // 7 (AuthorizationStatus)
+      _platform.getMotionAuthorization(), // 8 (MotionAuthorizationStatus)
       _platform.getCount(), // 9
     ]);
 
@@ -372,8 +373,8 @@ class Tracelet {
       deviceInfo: Map<String, Object?>.from(results[4] as Map),
       isPowerSave: results[5] as bool,
       ignoringBatteryOpt: results[6] as bool,
-      locationPermissionStatus: results[7] as int,
-      motionPermissionStatus: results[8] as int,
+      locationPermissionStatus: (results[7] as AuthorizationStatus).index,
+      motionPermissionStatus: (results[8] as MotionAuthorizationStatus).index,
       dbCount: results[9] as int,
     );
   }
@@ -1076,55 +1077,19 @@ class Tracelet {
   /// method will be removed in 2.0.0.
   ///
   /// Returns the [AuthorizationStatus] index:
-  /// - `0` notDetermined — never asked
-  /// - `1` denied — denied but can ask again (Android only)
-  /// - `2` whenInUse — foreground granted
-  /// - `3` always — background granted
-  /// - `4` deniedForever — permanently denied, open Settings to change
-  ///
-  /// Use this to decide what UI to show before calling [requestPermission].
-  @Deprecated('Use getLocationAuthorization() — will be removed in 2.0.0')
-  static Future<int> getPermissionStatus() {
-    return _platform.getPermissionStatus();
-  }
-
   /// Get the current location permission status without triggering a dialog.
   ///
-  /// Returns a strongly typed [AuthorizationStatus] (replaces the deprecated
-  /// int-based [getPermissionStatus]).
+  /// Returns a strongly typed [AuthorizationStatus].
   ///
   /// Use this to decide what UI to show before calling
   /// [requestLocationAuthorization].
-  static Future<AuthorizationStatus> getLocationAuthorization() async {
-    final raw = await _platform.getPermissionStatus();
-    return _intToAuthorizationStatus(raw);
+  static Future<AuthorizationStatus> getLocationAuthorization() {
+    return _platform.getLocationAuthorization();
   }
 
   /// Request location permission asynchronously.
   ///
-  /// **Deprecated**: prefer [requestLocationAuthorization], which returns the
-  /// strongly typed [AuthorizationStatus] enum instead of an int. This
-  /// method will be removed in 2.0.0.
-  ///
-  /// Triggers the native OS permission dialog (no custom native dialogs) and
-  /// returns the **actual** [AuthorizationStatus] after the user responds.
-  ///
-  /// Escalation logic:
-  /// - `notDetermined` → requests foreground (When In Use) permission
-  /// - `whenInUse` → requests background (Always) permission
-  /// - `denied` / `deniedForever` / `always` → returns immediately
-  ///
-  /// For denied/deniedForever cases, show your own Dart dialog and use
-  /// [openAppSettings] to let the user fix permissions manually.
-  @Deprecated('Use requestLocationAuthorization() — will be removed in 2.0.0')
-  static Future<int> requestPermission() {
-    return _platform.requestPermission();
-  }
-
-  /// Request location permission asynchronously.
-  ///
-  /// Returns a strongly typed [AuthorizationStatus] (replaces the deprecated
-  /// int-based [requestPermission]).
+  /// Returns a strongly typed [AuthorizationStatus].
   ///
   /// Escalation logic:
   /// - [AuthorizationStatus.notDetermined] → requests foreground (When In
@@ -1133,72 +1098,22 @@ class Tracelet {
   ///   permission
   /// - [AuthorizationStatus.denied] / [AuthorizationStatus.deniedForever] /
   ///   [AuthorizationStatus.always] → returns immediately
-  static Future<AuthorizationStatus> requestLocationAuthorization() async {
-    final raw = await _platform.requestPermission();
-    return _intToAuthorizationStatus(raw);
+  static Future<AuthorizationStatus> requestLocationAuthorization() {
+    return _platform.requestLocationAuthorization();
   }
 
-  /// Get the notification permission status (Android 13+ / API 33+ only).
+  /// Get the notification permission status as a typed [NotificationAuthorizationStatus].
   ///
-  /// **Deprecated**: prefer [getNotificationAuthorization], which returns
-  /// the strongly typed [AuthorizationStatus] enum instead of an int. This
-  /// method will be removed in 2.0.0.
-  ///
-  /// Returns a status code:
-  /// - `0` notDetermined — never asked
-  /// - `1` denied — denied but can ask again
-  /// - `3` always (granted)
-  /// - `4` deniedForever — permanently denied, must open Settings
-  ///
-  /// On Android < 13 and on iOS, always returns `3` (granted) since no
-  /// runtime notification permission is needed.
-  ///
-  /// On Android 13+, the POST_NOTIFICATIONS permission is required for
-  /// the foreground service notification to be visible. Without it, the
-  /// service still runs but the notification is hidden.
-  @Deprecated('Use getNotificationAuthorization() — will be removed in 2.0.0')
-  static Future<int> getNotificationPermissionStatus() {
-    return _platform.getNotificationPermissionStatus();
-  }
-
-  /// Get the notification permission status as a typed [AuthorizationStatus].
-  ///
-  /// Replaces the deprecated int-based [getNotificationPermissionStatus].
-  /// Behaves identically: on Android < 13 and on iOS always returns
-  /// [AuthorizationStatus.always].
-  static Future<AuthorizationStatus> getNotificationAuthorization() async {
-    final raw = await _platform.getNotificationPermissionStatus();
-    return _intToAuthorizationStatus(raw);
+  /// On Android < 13 and on iOS always returns [NotificationAuthorizationStatus.authorized].
+  static Future<NotificationAuthorizationStatus> getNotificationAuthorization() {
+    return _platform.getNotificationAuthorization();
   }
 
   /// Request notification permission asynchronously (Android 13+ / API 33+).
   ///
-  /// **Deprecated**: prefer [requestNotificationAuthorization], which
-  /// returns the strongly typed [AuthorizationStatus] enum instead of an
-  /// int. This method will be removed in 2.0.0.
-  ///
-  /// Triggers the OS POST_NOTIFICATIONS dialog and returns the **actual**
-  /// status after the user responds.
-  ///
-  /// On Android < 13 and on iOS, returns `3` (granted) immediately.
-  ///
-  /// **Important:** On Android 13+, call this before starting a foreground
-  /// service with a notification. Without this permission, the notification
-  /// will not be visible (though the service still runs).
-  @Deprecated(
-    'Use requestNotificationAuthorization() — will be removed in 2.0.0',
-  )
-  static Future<int> requestNotificationPermission() {
-    return _platform.requestNotificationPermission();
-  }
-
-  /// Request notification permission asynchronously (Android 13+ / API 33+).
-  ///
-  /// Returns a strongly typed [AuthorizationStatus] (replaces the deprecated
-  /// int-based [requestNotificationPermission]).
-  static Future<AuthorizationStatus> requestNotificationAuthorization() async {
-    final raw = await _platform.requestNotificationPermission();
-    return _intToAuthorizationStatus(raw);
+  /// Returns a strongly typed [NotificationAuthorizationStatus].
+  static Future<NotificationAuthorizationStatus> requestNotificationAuthorization() {
+    return _platform.requestNotificationAuthorization();
   }
 
   /// Check whether the app can schedule exact alarms.
@@ -1226,69 +1141,22 @@ class Tracelet {
     return _platform.openExactAlarmSettings();
   }
 
-  /// Get the motion / activity recognition permission status.
+  /// Get the motion permission status as a typed [MotionAuthorizationStatus].
   ///
-  /// **Deprecated**: prefer [getMotionAuthorization], which returns the
-  /// strongly typed [AuthorizationStatus] enum instead of an int. This
-  /// method will be removed in 2.0.0.
-  ///
-  /// Returns an `AuthorizationStatus` code:
-  /// - `0` notDetermined — never asked
-  /// - `1` denied — denied but can ask again (Android only)
-  /// - `3` always (granted)
-  /// - `4` deniedForever — permanently denied, must open Settings
-  ///
-  /// On Android < 10 (API < 29), always returns `3` since the
-  /// ACTIVITY_RECOGNITION runtime permission is not needed.
-  /// On iOS, returns the CMMotionActivityManager authorization status.
-  ///
-  /// **When to use:** Call before [start] to check if the device can detect
-  /// motion transitions (walking, driving, stationary).
-  ///
-  /// **Note:** When `Config.motion.disableMotionActivityUpdates` is `true`,
-  /// this always returns `3` (granted) because the accelerometer-only
-  /// fallback mode does not require any permission.
-  @Deprecated('Use getMotionAuthorization() — will be removed in 2.0.0')
-  static Future<int> getMotionPermissionStatus() {
-    return _platform.getMotionPermissionStatus();
+  /// On Android < 10 (API < 29), always returns [MotionAuthorizationStatus.authorized].
+  static Future<MotionAuthorizationStatus> getMotionAuthorization() {
+    return _platform.getMotionAuthorization();
   }
 
-  /// Get the motion / activity recognition permission status as a typed
-  /// [AuthorizationStatus]. Replaces [getMotionPermissionStatus].
-  static Future<AuthorizationStatus> getMotionAuthorization() async {
-    final raw = await _platform.getMotionPermissionStatus();
-    return _intToAuthorizationStatus(raw);
-  }
-
-  /// Request motion / activity recognition permission asynchronously.
-  ///
-  /// **Deprecated**: prefer [requestMotionAuthorization], which returns the
-  /// strongly typed [AuthorizationStatus] enum instead of an int. This
-  /// method will be removed in 2.0.0.
-  ///
-  /// On Android 10+ (API 29+), triggers the ACTIVITY_RECOGNITION dialog.
-  /// On iOS, triggers the Motion & Fitness permission dialog.
-  /// On Android < 10, returns `3` (granted) immediately.
-  ///
-  /// Returns the actual status after the user responds.
-  ///
   /// **Important:** Without this permission **and** without the
   /// accelerometer-only fallback (`Config.motion.disableMotionActivityUpdates`),
   /// the plugin cannot detect motion transitions. The device will not fire
   /// `onMotionChange` events unless [changePace] is called manually.
   ///
-  /// When `Config.motion.disableMotionActivityUpdates` is `true`, returns `3`
-  /// immediately without showing any dialog.
-  @Deprecated('Use requestMotionAuthorization() — will be removed in 2.0.0')
-  static Future<int> requestMotionPermission() {
-    return _platform.requestMotionPermission();
-  }
-
-  /// Request motion / activity recognition permission as a typed
-  /// [AuthorizationStatus]. Replaces [requestMotionPermission].
-  static Future<AuthorizationStatus> requestMotionAuthorization() async {
-    final raw = await _platform.requestMotionPermission();
-    return _intToAuthorizationStatus(raw);
+  /// When `Config.motion.disableMotionActivityUpdates` is `true`, returns
+  /// [MotionAuthorizationStatus.authorized] immediately without showing any dialog.
+  static Future<MotionAuthorizationStatus> requestMotionAuthorization() {
+    return _platform.requestMotionAuthorization();
   }
 
   /// Request temporary full accuracy (iOS 14+).
@@ -1311,21 +1179,10 @@ class Tracelet {
   ///
   /// [purpose] must match a key in the app's `Info.plist`
   /// `NSLocationTemporaryUsageDescriptionDictionary`.
-  static Future<AuthorizationStatus> requestTemporaryFullAccuracyAuthorization(
+  static Future<FullAccuracyStatus> requestTemporaryFullAccuracyAuthorization(
     String purpose,
-  ) async {
-    final raw = await _platform.requestTemporaryFullAccuracy(purpose);
-    return _intToAuthorizationStatus(raw);
-  }
-
-  /// Maps the int returned by the platform interface into an
-  /// [AuthorizationStatus]. Out-of-range values are clamped to
-  /// [AuthorizationStatus.notDetermined].
-  static AuthorizationStatus _intToAuthorizationStatus(int raw) {
-    if (raw < 0 || raw >= AuthorizationStatus.values.length) {
-      return AuthorizationStatus.notDetermined;
-    }
-    return AuthorizationStatus.values[raw];
+  ) {
+    return _platform.requestTemporaryFullAccuracyAuthorization(purpose);
   }
 
   /// Get the current location provider state.
@@ -1784,8 +1641,8 @@ class Tracelet {
     final results = await Future.wait([
       _platform.getState(), // 0
       _platform.getCount(), // 1
-      _platform.getPermissionStatus(), // 2
-      _platform.getMotionPermissionStatus(), // 3
+      _platform.getLocationAuthorization(), // 2
+      _platform.getMotionAuthorization(), // 3
       _platform.getPrivacyZones(), // 4
       _platform.getLocations(<String, Object?>{
         'limit': 1,
@@ -1800,8 +1657,8 @@ class Tracelet {
 
     final stateMap = Map<String, Object?>.from(results[0] as Map);
     final count = results[1] as int;
-    final locationPerm = results[2] as int;
-    final motionPerm = results[3] as int;
+    final locationPerm = (results[2] as AuthorizationStatus).index;
+    final motionPerm = (results[3] as MotionAuthorizationStatus).index;
     final zones = (results[4] as List)
         .map((z) => Map<String, Object?>.from(z as Map))
         .toList();
@@ -2076,6 +1933,21 @@ class Tracelet {
   ) {
     return _tracked(
       _platform.motionChangeEvents.map(Location.fromTl).listen(callback),
+    );
+  }
+
+  /// Subscribe to speed-based motion mode change events.
+  ///
+  /// Fires when the tracking engine transitions between moving, slowing,
+  /// and stationary states based on GPS speed rather than activity sensors.
+  /// Only active when [MotionDetectionMode.speed] is configured.
+  static StreamSubscription<SpeedMotionEvent> onSpeedMotionChange(
+    void Function(SpeedMotionEvent) callback,
+  ) {
+    return _tracked(
+      _platform.motionModeChangeEvents
+          .map(SpeedMotionEvent.fromTl)
+          .listen(callback),
     );
   }
 

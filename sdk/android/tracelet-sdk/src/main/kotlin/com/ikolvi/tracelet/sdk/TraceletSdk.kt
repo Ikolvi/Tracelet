@@ -27,6 +27,8 @@ import com.ikolvi.tracelet.sdk.receiver.BootReceiver
 import com.ikolvi.tracelet.sdk.receiver.GeofenceBroadcastReceiver
 import com.ikolvi.tracelet.sdk.schedule.ScheduleManager
 import com.ikolvi.tracelet.sdk.service.LocationService
+import com.ikolvi.tracelet.sdk.model.TraceletTripEvent
+import com.ikolvi.tracelet.sdk.model.AuthorizationStatus
 import com.ikolvi.tracelet.sdk.model.TrackingMode
 import com.ikolvi.tracelet.sdk.util.BatteryUtils
 import com.ikolvi.tracelet.sdk.util.OemCompat
@@ -120,7 +122,7 @@ class TraceletSdk private constructor(private val context: Context) {
     private var stopAfterElapsedRunnable: Runnable? = null
 
     /** Async permission callback — set before triggering OS dialog. */
-    internal var pendingPermissionCallback: ((Int) -> Unit)? = null
+    internal var pendingPermissionCallback: ((AuthorizationStatus) -> Unit)? = null
 
     /**
      * Clears any pending permission callback, invoking it with the current
@@ -392,8 +394,8 @@ class TraceletSdk private constructor(private val context: Context) {
         if (!isReady) return "NOT_READY"
 
         val authStatus = permissionManager.getAuthorizationStatus(activity)
-        if (authStatus != TraceletPermissionManager.STATUS_WHEN_IN_USE &&
-            authStatus != TraceletPermissionManager.STATUS_ALWAYS
+        if (authStatus != AuthorizationStatus.WHEN_IN_USE &&
+            authStatus != AuthorizationStatus.ALWAYS
         ) {
             return "PERMISSION_DENIED"
         }
@@ -531,8 +533,8 @@ class TraceletSdk private constructor(private val context: Context) {
         if (!isReady) return "NOT_READY"
 
         val authStatus = permissionManager.getAuthorizationStatus(activity)
-        if (authStatus != TraceletPermissionManager.STATUS_WHEN_IN_USE &&
-            authStatus != TraceletPermissionManager.STATUS_ALWAYS
+        if (authStatus != AuthorizationStatus.WHEN_IN_USE &&
+            authStatus != AuthorizationStatus.ALWAYS
         ) {
             return "PERMISSION_DENIED"
         }
@@ -829,22 +831,22 @@ class TraceletSdk private constructor(private val context: Context) {
     // Permissions
     // =========================================================================
 
-    fun getPermissionStatus(): Int {
+    fun getPermissionStatus(): AuthorizationStatus {
         return permissionManager.getAuthorizationStatus(activity)
     }
 
-    fun getNotificationPermissionStatus(): Int {
+    fun getNotificationPermissionStatus(): AuthorizationStatus {
         return permissionManager.getNotificationPermissionStatus(activity)
     }
 
-    fun getMotionPermissionStatus(): Int {
+    fun getMotionPermissionStatus(): AuthorizationStatus {
         return permissionManager.getMotionPermissionStatus(activity)
     }
 
     /**
      * Requests location permission. Callback receives the resulting status.
      */
-    fun requestPermission(callback: (Int) -> Unit) {
+    fun requestPermission(callback: (AuthorizationStatus) -> Unit) {
         val act = activity
         if (act == null || pendingPermissionCallback != null) {
             callback(permissionManager.getAuthorizationStatus(activity))
@@ -853,17 +855,17 @@ class TraceletSdk private constructor(private val context: Context) {
 
         val status = permissionManager.getAuthorizationStatus(act)
         when (status) {
-            TraceletPermissionManager.STATUS_NOT_DETERMINED,
-            TraceletPermissionManager.STATUS_DENIED -> {
+            AuthorizationStatus.NOT_DETERMINED,
+            AuthorizationStatus.DENIED -> {
                 pendingPermissionCallback = callback
                 permissionManager.requestForegroundPermission(act)
             }
-            TraceletPermissionManager.STATUS_WHEN_IN_USE -> {
+            AuthorizationStatus.WHEN_IN_USE -> {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     pendingPermissionCallback = callback
                     permissionManager.requestBackgroundPermission(act)
                 } else {
-                    callback(TraceletPermissionManager.STATUS_ALWAYS)
+                    callback(AuthorizationStatus.ALWAYS)
                 }
             }
             else -> callback(status)
@@ -873,9 +875,9 @@ class TraceletSdk private constructor(private val context: Context) {
     /**
      * Requests notification permission (Android 13+). Callback receives status.
      */
-    fun requestNotificationPermission(callback: (Int) -> Unit) {
+    fun requestNotificationPermission(callback: (AuthorizationStatus) -> Unit) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            callback(TraceletPermissionManager.STATUS_ALWAYS)
+            callback(AuthorizationStatus.ALWAYS)
             return
         }
 
@@ -886,9 +888,8 @@ class TraceletSdk private constructor(private val context: Context) {
         }
 
         val status = permissionManager.getNotificationPermissionStatus(act)
-        if (status == TraceletPermissionManager.STATUS_ALWAYS ||
-            status == TraceletPermissionManager.STATUS_DENIED_FOREVER
-        ) {
+
+        if (status == AuthorizationStatus.DENIED_FOREVER || status == AuthorizationStatus.ALWAYS) {
             callback(status)
             return
         }
@@ -900,9 +901,9 @@ class TraceletSdk private constructor(private val context: Context) {
     /**
      * Requests activity recognition permission (API 29+). Callback receives status.
      */
-    fun requestMotionPermission(callback: (Int) -> Unit) {
+    fun requestMotionPermission(callback: (AuthorizationStatus) -> Unit) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            callback(TraceletPermissionManager.STATUS_ALWAYS)
+            callback(AuthorizationStatus.ALWAYS)
             return
         }
 
@@ -913,9 +914,8 @@ class TraceletSdk private constructor(private val context: Context) {
         }
 
         val status = permissionManager.getMotionPermissionStatus(act)
-        if (status == TraceletPermissionManager.STATUS_ALWAYS ||
-            status == TraceletPermissionManager.STATUS_DENIED_FOREVER
-        ) {
+
+        if (status == AuthorizationStatus.DENIED_FOREVER || status == AuthorizationStatus.ALWAYS) {
             callback(status)
             return
         }
@@ -943,20 +943,20 @@ class TraceletSdk private constructor(private val context: Context) {
         }
 
         val callback = pendingPermissionCallback
-        pendingPermissionCallback = null
-
+        
         // Always handle ACTIVITY_RECOGNITION side-effects even without a
         // Dart callback — start() auto-requests this permission and never
         // sets pendingPermissionCallback.
         if (requestCode == TraceletPermissionManager.REQUEST_CODE_ACTIVITY_RECOGNITION) {
             val act = activity
             val motionStatus = permissionManager.getMotionPermissionStatus(act)
-            if (motionStatus == TraceletPermissionManager.STATUS_ALWAYS &&
+            if (motionStatus == AuthorizationStatus.ALWAYS &&
                 stateManager.enabled
             ) {
                 motionDetector.start()
             }
             callback?.invoke(motionStatus)
+            pendingPermissionCallback = null
             return true
         }
 
@@ -966,6 +966,16 @@ class TraceletSdk private constructor(private val context: Context) {
         when (requestCode) {
             TraceletPermissionManager.REQUEST_CODE_NOTIFICATION -> {
                 callback(permissionManager.getNotificationPermissionStatus(act))
+                pendingPermissionCallback = null
+            }
+            TraceletPermissionManager.REQUEST_CODE_BACKGROUND_LOCATION -> {
+                if (act != null) {
+                    val status = permissionManager.getStatusAfterRequest(act)
+                    callback(status)
+                } else {
+                    callback(permissionManager.getAuthorizationStatus(null))
+                }
+                pendingPermissionCallback = null
             }
             else -> {
                 if (act != null) {
@@ -973,6 +983,7 @@ class TraceletSdk private constructor(private val context: Context) {
                 } else {
                     callback(permissionManager.getAuthorizationStatus(null))
                 }
+                pendingPermissionCallback = null
             }
         }
         return true

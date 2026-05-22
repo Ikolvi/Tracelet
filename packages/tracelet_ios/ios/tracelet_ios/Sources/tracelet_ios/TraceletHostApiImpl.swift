@@ -485,12 +485,12 @@ class TraceletHostApiImpl: TraceletHostApi {
         }
     }
 
-    func getNotificationPermissionStatus(completion: @escaping (Result<Int64, Error>) -> Void) {
-        completion(.success(3)) // Always granted on iOS
+    func getNotificationPermissionStatus(completion: @escaping (Result<TlNotificationAuthorizationStatus, Error>) -> Void) {
+        completion(.success(.authorized)) // Always granted on iOS
     }
 
-    func requestNotificationPermission(completion: @escaping (Result<Int64, Error>) -> Void) {
-        completion(.success(3)) // Always granted on iOS
+    func requestNotificationPermission(completion: @escaping (Result<TlNotificationAuthorizationStatus, Error>) -> Void) {
+        completion(.success(.authorized)) // Always granted on iOS
     }
 
     func canScheduleExactAlarms(completion: @escaping (Result<Bool, Error>) -> Void) {
@@ -501,35 +501,46 @@ class TraceletHostApiImpl: TraceletHostApi {
         completion(.success(false)) // N/A on iOS
     }
 
-    func getMotionPermissionStatus(completion: @escaping (Result<Int64, Error>) -> Void) {
-        if let detector = sdk.motionDetector {
-            completion(.success(Int64(detector.getMotionAuthorizationStatus())))
-        } else {
-            // Pre-ready: fall back to static CMMotionActivityManager check
-            let status = CMMotionActivityManager.authorizationStatus()
-            let code: Int64
-            switch status {
-            case .notDetermined: code = 0
-            case .restricted:    code = 2 // Denied/Restricted
-            case .denied:        code = 2
-            case .authorized:    code = 3
-            @unknown default:    code = 0
-            }
-            completion(.success(code))
+    private func intToMotionStatus(_ code: Int) -> TlMotionAuthorizationStatus {
+        switch code {
+        case 0: return .notDetermined
+        case 1: return .restricted
+        case 2: return .denied
+        case 3: return .authorized
+        case 4: return .deniedForever
+        default: return .notDetermined
         }
     }
 
-    func requestMotionPermission(completion: @escaping (Result<Int64, Error>) -> Void) {
+    func getMotionPermissionStatus(completion: @escaping (Result<TlMotionAuthorizationStatus, Error>) -> Void) {
+        if let detector = sdk.motionDetector {
+            completion(.success(intToMotionStatus(detector.getMotionAuthorizationStatus())))
+        } else {
+            // Pre-ready: fall back to static CMMotionActivityManager check
+            let status = CMMotionActivityManager.authorizationStatus()
+            let tlStatus: TlMotionAuthorizationStatus
+            switch status {
+            case .notDetermined: tlStatus = .notDetermined
+            case .restricted:    tlStatus = .restricted
+            case .denied:        tlStatus = .denied
+            case .authorized:    tlStatus = .authorized
+            @unknown default:    tlStatus = .notDetermined
+            }
+            completion(.success(tlStatus))
+        }
+    }
+
+    func requestMotionPermission(completion: @escaping (Result<TlMotionAuthorizationStatus, Error>) -> Void) {
         guard let detector = sdk.motionDetector else {
             // Pre-ready: can't request without motionDetector
-            completion(.success(0))
+            completion(.success(.notDetermined))
             return
         }
         NSLog("[Tracelet] requestMotionPermission called")
         DispatchQueue.main.async {
             detector.requestMotionPermission { status in
                 NSLog("[Tracelet] requestMotionPermission result: \(status)")
-                completion(.success(Int64(status)))
+                completion(.success(self.intToMotionStatus(status)))
             }
         }
     }

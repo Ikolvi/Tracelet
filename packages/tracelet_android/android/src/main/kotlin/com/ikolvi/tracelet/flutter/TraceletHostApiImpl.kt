@@ -22,10 +22,13 @@ import com.ikolvi.tracelet.TlAndroidConfig
 import com.ikolvi.tracelet.TlIosConfig
 import com.ikolvi.tracelet.TlHttpConfig
 import com.ikolvi.tracelet.TlDesiredAccuracy
+import com.ikolvi.tracelet.TlNotificationAuthorizationStatus
+import com.ikolvi.tracelet.TlMotionAuthorizationStatus
 import com.ikolvi.tracelet.TraceletHostApi
 import com.ikolvi.tracelet.FlutterError
 import com.ikolvi.tracelet.flutter.service.HeadlessTaskService
 import com.ikolvi.tracelet.sdk.TraceletSdk
+import com.ikolvi.tracelet.sdk.model.AuthorizationStatus
 import com.ikolvi.tracelet.sdk.util.OemCompat
 
 /**
@@ -515,41 +518,61 @@ class TraceletHostApiImpl(
     // Permissions
     // =========================================================================
 
-    private fun intToAuthStatus(value: Int): TlAuthorizationStatus {
-        return when (value) {
-            0 -> TlAuthorizationStatus.NOT_DETERMINED
-            1 -> TlAuthorizationStatus.DENIED
-            2 -> TlAuthorizationStatus.WHEN_IN_USE
-            3 -> TlAuthorizationStatus.ALWAYS
-            4 -> TlAuthorizationStatus.DENIED_FOREVER
-            else -> TlAuthorizationStatus.NOT_DETERMINED
+    private fun authStatusToTl(status: AuthorizationStatus): TlAuthorizationStatus {
+        return when (status) {
+            AuthorizationStatus.NOT_DETERMINED -> TlAuthorizationStatus.NOT_DETERMINED
+            AuthorizationStatus.DENIED -> TlAuthorizationStatus.DENIED
+            AuthorizationStatus.WHEN_IN_USE -> TlAuthorizationStatus.WHEN_IN_USE
+            AuthorizationStatus.ALWAYS -> TlAuthorizationStatus.ALWAYS
+            AuthorizationStatus.DENIED_FOREVER -> TlAuthorizationStatus.DENIED_FOREVER
+        }
+    }
+
+    private fun notificationStatusToTl(status: AuthorizationStatus): TlNotificationAuthorizationStatus {
+        return when (status) {
+            AuthorizationStatus.NOT_DETERMINED -> TlNotificationAuthorizationStatus.NOT_DETERMINED
+            AuthorizationStatus.DENIED -> TlNotificationAuthorizationStatus.DENIED
+            AuthorizationStatus.WHEN_IN_USE, AuthorizationStatus.ALWAYS -> TlNotificationAuthorizationStatus.AUTHORIZED
+            AuthorizationStatus.DENIED_FOREVER -> TlNotificationAuthorizationStatus.DENIED_FOREVER
+        }
+    }
+
+    private fun motionStatusToTl(status: AuthorizationStatus): TlMotionAuthorizationStatus {
+        return when (status) {
+            AuthorizationStatus.NOT_DETERMINED -> TlMotionAuthorizationStatus.NOT_DETERMINED
+            AuthorizationStatus.DENIED -> TlMotionAuthorizationStatus.DENIED
+            AuthorizationStatus.WHEN_IN_USE, AuthorizationStatus.ALWAYS -> TlMotionAuthorizationStatus.AUTHORIZED
+            AuthorizationStatus.DENIED_FOREVER -> TlMotionAuthorizationStatus.DENIED_FOREVER
         }
     }
 
     override fun getPermissionStatus(callback: (Result<TlAuthorizationStatus>) -> Unit) {
         try {
             val status = sdk.getPermissionStatus()
-            callback(Result.success(intToAuthStatus(status)))
+            callback(Result.success(authStatusToTl(status)))
         } catch (e: Exception) { callback(Result.failure(e)) }
     }
 
     override fun requestPermission(callback: (Result<TlAuthorizationStatus>) -> Unit) {
         try {
             sdk.requestPermission { status ->
-                callback(Result.success(intToAuthStatus(status)))
+                callback(Result.success(authStatusToTl(status)))
             }
         } catch (e: Exception) { callback(Result.failure(e)) }
     }
 
-    override fun getNotificationPermissionStatus(callback: (Result<Long>) -> Unit) {
+    override fun getNotificationPermissionStatus(callback: (Result<TlNotificationAuthorizationStatus>) -> Unit) {
         try {
-            callback(Result.success(sdk.getNotificationPermissionStatus().toLong()))
+            val status = sdk.getNotificationPermissionStatus()
+            callback(Result.success(notificationStatusToTl(status)))
         } catch (e: Exception) { callback(Result.failure(e)) }
     }
 
-    override fun requestNotificationPermission(callback: (Result<Long>) -> Unit) {
+    override fun requestNotificationPermission(callback: (Result<TlNotificationAuthorizationStatus>) -> Unit) {
         try {
-            sdk.requestNotificationPermission { callback(Result.success(it.toLong())) }
+            sdk.requestNotificationPermission { status ->
+                callback(Result.success(notificationStatusToTl(status)))
+            }
         } catch (e: Exception) { callback(Result.failure(e)) }
     }
 
@@ -565,15 +588,18 @@ class TraceletHostApiImpl(
         } catch (e: Exception) { callback(Result.failure(e)) }
     }
 
-    override fun getMotionPermissionStatus(callback: (Result<Long>) -> Unit) {
+    override fun getMotionPermissionStatus(callback: (Result<TlMotionAuthorizationStatus>) -> Unit) {
         try {
-            callback(Result.success(sdk.getMotionPermissionStatus().toLong()))
+            val status = sdk.getMotionPermissionStatus()
+            callback(Result.success(motionStatusToTl(status)))
         } catch (e: Exception) { callback(Result.failure(e)) }
     }
 
-    override fun requestMotionPermission(callback: (Result<Long>) -> Unit) {
+    override fun requestMotionPermission(callback: (Result<TlMotionAuthorizationStatus>) -> Unit) {
         try {
-            sdk.requestMotionPermission { callback(Result.success(it.toLong())) }
+            sdk.requestMotionPermission { status ->
+                callback(Result.success(motionStatusToTl(status)))
+            }
         } catch (e: Exception) { callback(Result.failure(e)) }
     }
 

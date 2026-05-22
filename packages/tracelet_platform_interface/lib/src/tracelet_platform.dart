@@ -294,30 +294,11 @@ abstract class TraceletPlatform extends PlatformInterface {
 
   /// Get current location permission status without triggering any dialog.
   ///
-  /// Returns a status code matching [AuthorizationStatus]:
-  /// - `0` notDetermined — never asked
-  /// - `1` denied — denied but can ask again (Android only)
-  /// - `2` whenInUse — foreground granted
-  /// - `3` always — background granted
-  /// - `4` deniedForever — permanently denied, must open Settings
+  /// Get the current location permission status asynchronously.
   ///
-  /// Prefer [getLocationAuthorization] for type-safe results.
-  @Deprecated('Use getLocationAuthorization() which returns AuthorizationStatus.')
-  Future<int> getPermissionStatus() {
-    throw UnimplementedError('getPermissionStatus() has not been implemented.');
-  }
-
-  /// Get current location permission status as a typed enum.
-  ///
-  /// Never triggers any OS dialog. Use [requestLocationAuthorization] to
-  /// prompt the user.
-  Future<AuthorizationStatus> getLocationAuthorization() async {
-    // ignore: deprecated_member_use_from_same_package
-    final raw = await getPermissionStatus();
-    return AuthorizationStatus.values[raw.clamp(
-      0,
-      AuthorizationStatus.values.length - 1,
-    )];
+  /// Does **not** trigger any dialogs.
+  Future<AuthorizationStatus> getLocationAuthorization() {
+    throw UnimplementedError('getLocationAuthorization() has not been implemented.');
   }
 
   /// Request location permission asynchronously.
@@ -327,77 +308,26 @@ abstract class TraceletPlatform extends PlatformInterface {
   ///
   /// Escalation: notDetermined → foreground, whenInUse → background.
   /// Terminal states (denied/always) return immediately.
-  ///
-  /// Prefer [requestLocationAuthorization] for type-safe results.
-  @Deprecated('Use requestLocationAuthorization() which returns AuthorizationStatus.')
-  Future<int> requestPermission() {
-    throw UnimplementedError('requestPermission() has not been implemented.');
+  Future<AuthorizationStatus> requestLocationAuthorization() {
+    throw UnimplementedError('requestLocationAuthorization() has not been implemented.');
   }
 
-  /// Request location permission as a typed enum result.
-  ///
-  /// Escalation: notDetermined → foreground, whenInUse → background.
-  /// Terminal states (denied/always) return immediately without a dialog.
-  Future<AuthorizationStatus> requestLocationAuthorization() async {
-    // ignore: deprecated_member_use_from_same_package
-    final raw = await requestPermission();
-    return AuthorizationStatus.values[raw.clamp(
-      0,
-      AuthorizationStatus.values.length - 1,
-    )];
-  }
-
-  /// Get the notification permission status (Android 13+ / API 33+ only).
-  ///
-  /// Returns:
-  /// - `0` notDetermined — never asked
-  /// - `1` denied — denied but can ask again
-  /// - `3` always (granted)
-  /// - `4` deniedForever — permanently denied
-  ///
-  /// On Android < 13 and on iOS, always returns `3` (granted).
-  ///
-  /// Prefer [getNotificationAuthorization] for type-safe results.
-  @Deprecated('Use getNotificationAuthorization() which returns NotificationAuthorizationStatus.')
-  Future<int> getNotificationPermissionStatus() {
-    throw UnimplementedError(
-      'getNotificationPermissionStatus() has not been implemented.',
-    );
-  }
 
   /// Get notification permission status as a typed [NotificationAuthorizationStatus].
   ///
-  /// On Android < 13 and on iOS (when permitted), always returns [NotificationAuthorizationStatus.granted].
-  Future<NotificationAuthorizationStatus> getNotificationAuthorization() async {
-    // ignore: deprecated_member_use_from_same_package
-    final raw = await getNotificationPermissionStatus();
-    return _rawIntToNotificationStatus(raw);
-  }
-
-  /// Request notification permission asynchronously (Android 13+ / API 33+).
-  ///
-  /// Triggers the OS POST_NOTIFICATIONS dialog and returns the actual result
-  /// after the user responds.
-  ///
-  /// On Android < 13 and on iOS, returns `3` (granted) immediately.
-  ///
-  /// Prefer [requestNotificationAuthorization] for type-safe results.
-  @Deprecated('Use requestNotificationAuthorization() which returns NotificationAuthorizationStatus.')
-  Future<int> requestNotificationPermission() {
-    throw UnimplementedError(
-      'requestNotificationPermission() has not been implemented.',
-    );
+  /// On Android < 13 and on iOS (when permitted), always returns [NotificationAuthorizationStatus.authorized].
+  Future<NotificationAuthorizationStatus> getNotificationAuthorization() {
+    throw UnimplementedError('getNotificationAuthorization() has not been implemented.');
   }
 
   /// Request notification permission and return the result as a typed
   /// [NotificationAuthorizationStatus].
   ///
-  /// On Android < 13 and on iOS, returns [NotificationAuthorizationStatus.granted] immediately.
-  Future<NotificationAuthorizationStatus> requestNotificationAuthorization() async {
-    // ignore: deprecated_member_use_from_same_package
-    final raw = await requestNotificationPermission();
-    return _rawIntToNotificationStatus(raw);
+  /// On Android < 13 and on iOS, returns [NotificationAuthorizationStatus.authorized] immediately.
+  Future<NotificationAuthorizationStatus> requestNotificationAuthorization() {
+    throw UnimplementedError('requestNotificationAuthorization() has not been implemented.');
   }
+
 
   /// Check whether the app can schedule exact alarms (Android 12+ / API 31+).
   ///
@@ -430,56 +360,19 @@ abstract class TraceletPlatform extends PlatformInterface {
 
   /// Get the motion / activity recognition permission status.
   ///
-  /// Returns:
-  /// - `0` notDetermined — never asked
-  /// - `1` denied — denied but can ask again (Android only)
-  /// - `3` always (granted)
-  /// - `4` deniedForever — permanently denied
-  ///
-  /// On Android < 10 (API < 29), always returns `3` since no runtime
+  /// On Android < 10 (API < 29), always returns `authorized` since no runtime
   /// permission is needed. On iOS, returns the CMMotionActivityManager
   /// authorization status.
-  ///
-  /// Prefer [getMotionAuthorization] for type-safe results.
-  @Deprecated('Use getMotionAuthorization() which returns MotionAuthorizationStatus.')
-  Future<int> getMotionPermissionStatus() {
-    throw UnimplementedError(
-      'getMotionPermissionStatus() has not been implemented.',
-    );
-  }
-
-  /// Get motion / activity recognition permission status as a typed
-  /// [MotionAuthorizationStatus].
-  ///
-  /// On Android < 10 (API < 29), always returns [MotionAuthorizationStatus.granted].
-  Future<MotionAuthorizationStatus> getMotionAuthorization() async {
-    // ignore: deprecated_member_use_from_same_package
-    final raw = await getMotionPermissionStatus();
-    return _rawIntToMotionStatus(raw);
+  Future<MotionAuthorizationStatus> getMotionAuthorization() {
+    throw UnimplementedError('getMotionAuthorization() has not been implemented.');
   }
 
   /// Request motion / activity recognition permission asynchronously.
   ///
-  /// On Android 10+ (API 29+), triggers the ACTIVITY_RECOGNITION dialog.
-  /// On iOS, triggers the Motion & Fitness permission dialog.
-  /// On Android < 10, returns `3` (granted) immediately.
-  ///
-  /// Prefer [requestMotionAuthorization] for type-safe results.
-  @Deprecated('Use requestMotionAuthorization() which returns MotionAuthorizationStatus.')
-  Future<int> requestMotionPermission() {
-    throw UnimplementedError(
-      'requestMotionPermission() has not been implemented.',
-    );
-  }
-
-  /// Request motion / activity recognition permission and return the result
-  /// as a typed [MotionAuthorizationStatus].
-  ///
-  /// On Android < 10 (API < 29), returns [MotionAuthorizationStatus.granted] immediately.
-  Future<MotionAuthorizationStatus> requestMotionAuthorization() async {
-    // ignore: deprecated_member_use_from_same_package
-    final raw = await requestMotionPermission();
-    return _rawIntToMotionStatus(raw);
+  /// Triggers the OS ACTIVITY_RECOGNITION dialog on Android 10+.
+  /// Returns the actual result after user responds.
+  Future<MotionAuthorizationStatus> requestMotionAuthorization() {
+    throw UnimplementedError('requestMotionAuthorization() has not been implemented.');
   }
 
   /// Request temporary full accuracy (iOS 14+).

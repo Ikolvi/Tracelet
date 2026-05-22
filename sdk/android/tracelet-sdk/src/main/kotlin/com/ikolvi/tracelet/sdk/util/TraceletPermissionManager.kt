@@ -11,6 +11,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.ikolvi.tracelet.sdk.model.AuthorizationStatus
 
 /**
  * Pure permission primitives — **no dialogs**.
@@ -33,13 +34,6 @@ class TraceletPermissionManager(private val context: Context) {
         const val REQUEST_CODE_ACTIVITY_RECOGNITION = 1003
         const val REQUEST_CODE_NOTIFICATION = 1004
 
-        // Status codes matching Dart AuthorizationStatus enum (index order)
-        const val STATUS_NOT_DETERMINED = 0
-        const val STATUS_DENIED = 1
-        const val STATUS_WHEN_IN_USE = 2
-        const val STATUS_ALWAYS = 3
-        const val STATUS_DENIED_FOREVER = 4
-
         private const val PREFS_NAME = "tracelet_permissions"
         private const val KEY_EVER_REQUESTED = "permission_ever_requested"
         // Tracks whether the most recent OS dialog resulted in a grant.
@@ -60,9 +54,9 @@ class TraceletPermissionManager(private val context: Context) {
      * dialog or permission request.
      *
      * Uses `shouldShowRequestPermissionRationale` + SharedPrefs to
-     * distinguish notDetermined (0), denied (1), and deniedForever (4).
+     * distinguish notDetermined, denied, and deniedForever.
      */
-    fun getAuthorizationStatus(activity: Activity? = null): Int {
+    fun getAuthorizationStatus(activity: Activity? = null): AuthorizationStatus {
         val hasFine = ContextCompat.checkSelfPermission(
             context, Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
@@ -77,19 +71,19 @@ class TraceletPermissionManager(private val context: Context) {
                     activity, Manifest.permission.ACCESS_FINE_LOCATION
                 )
                 return when {
-                    canShowRationale -> STATUS_DENIED          // 1 — denied, can ask again
-                    !hasEverRequested() -> STATUS_NOT_DETERMINED // 0 — never asked
+                    canShowRationale -> AuthorizationStatus.DENIED          // denied, can ask again
+                    !hasEverRequested() -> AuthorizationStatus.NOT_DETERMINED // never asked
                     // Both "Only this time" expiry and true permanent deny look
                     // the same: !canShowRationale && hasEverRequested.  Use the
                     // last OS dialog result to disambiguate: if the user's most
                     // recent choice was a grant (temporary or otherwise), the OS
                     // will still show the dialog on the next request → STATUS_DENIED.
-                    wasLastResultGrant() -> STATUS_DENIED       // 1 — one-time grant expired
-                    else -> STATUS_DENIED_FOREVER               // 4 — permanently denied
+                    wasLastResultGrant() -> AuthorizationStatus.DENIED       // one-time grant expired
+                    else -> AuthorizationStatus.DENIED_FOREVER               // permanently denied
                 }
             }
             // No activity — best effort
-            return if (hasEverRequested()) STATUS_DENIED else STATUS_NOT_DETERMINED
+            return if (hasEverRequested()) AuthorizationStatus.DENIED else AuthorizationStatus.NOT_DETERMINED
         }
 
         val hasBackground = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -100,7 +94,7 @@ class TraceletPermissionManager(private val context: Context) {
             true // Pre-Q: foreground grant = always
         }
 
-        return if (hasBackground) STATUS_ALWAYS else STATUS_WHEN_IN_USE
+        return if (hasBackground) AuthorizationStatus.ALWAYS else AuthorizationStatus.WHEN_IN_USE
     }
 
     // ── Request primitives (fire-only, result comes via onRequestPermissionsResult) ──
@@ -161,35 +155,35 @@ class TraceletPermissionManager(private val context: Context) {
      * Returns the motion (ACTIVITY_RECOGNITION) permission status.
      *
      * Returns:
-     * - `0` (notDetermined) — never asked
-     * - `1` (denied) — denied but can ask again
-     * - `3` (granted) — permission granted
-     * - `4` (deniedForever) — permanently denied
+     * - `NOT_DETERMINED` — never asked
+     * - `DENIED` — denied but can ask again
+     * - `ALWAYS` — permission granted
+     * - `DENIED_FOREVER` — permanently denied
      *
-     * On API < 29, activity recognition is always allowed → returns 3.
+     * On API < 29, activity recognition is always allowed → returns ALWAYS.
      */
-    fun getMotionPermissionStatus(activity: Activity? = null): Int {
+    fun getMotionPermissionStatus(activity: Activity? = null): AuthorizationStatus {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            return STATUS_ALWAYS // Pre-10: no runtime permission needed
+            return AuthorizationStatus.ALWAYS // Pre-10: no runtime permission needed
         }
 
         val granted = ContextCompat.checkSelfPermission(
             context, Manifest.permission.ACTIVITY_RECOGNITION
         ) == PackageManager.PERMISSION_GRANTED
 
-        if (granted) return STATUS_ALWAYS // 3
+        if (granted) return AuthorizationStatus.ALWAYS
 
         if (activity != null) {
             val canShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
                 activity, Manifest.permission.ACTIVITY_RECOGNITION
             )
             return when {
-                canShowRationale -> STATUS_DENIED       // 1 — denied, can ask again
-                hasEverRequestedMotion() -> STATUS_DENIED_FOREVER // 4
-                else -> STATUS_NOT_DETERMINED            // 0 — never asked
+                canShowRationale -> AuthorizationStatus.DENIED       // denied, can ask again
+                hasEverRequestedMotion() -> AuthorizationStatus.DENIED_FOREVER
+                else -> AuthorizationStatus.NOT_DETERMINED            // never asked
             }
         }
-        return if (hasEverRequestedMotion()) STATUS_DENIED else STATUS_NOT_DETERMINED
+        return if (hasEverRequestedMotion()) AuthorizationStatus.DENIED else AuthorizationStatus.NOT_DETERMINED
     }
 
     // ── Post-request status (called from onRequestPermissionsResult) ─────
@@ -204,21 +198,21 @@ class TraceletPermissionManager(private val context: Context) {
      * `getAuthorizationStatus` can distinguish "one-time grant expired"
      * from "truly permanently denied".
      */
-    fun getStatusAfterRequest(activity: Activity): Int {
+    fun getStatusAfterRequest(activity: Activity): AuthorizationStatus {
         val status = getAuthorizationStatus(activity)
 
         // Record whether the user granted anything (even temporarily).
         // This flag is read on the *next* app launch when the one-time
         // grant may have expired and the API signals look identical to
         // a permanent deny.
-        val granted = status == STATUS_WHEN_IN_USE || status == STATUS_ALWAYS
+        val granted = status == AuthorizationStatus.WHEN_IN_USE || status == AuthorizationStatus.ALWAYS
         markLastResultGrant(granted)
 
         // If the general check returns NOT_DETERMINED but we just requested,
         // it means the user denied AND shouldShowRequestPermissionRationale is
         // false (permanent deny). Override to DENIED_FOREVER.
-        if (status == STATUS_NOT_DETERMINED && hasEverRequested()) {
-            return STATUS_DENIED_FOREVER
+        if (status == AuthorizationStatus.NOT_DETERMINED && hasEverRequested()) {
+            return AuthorizationStatus.DENIED_FOREVER
         }
         return status
     }
@@ -228,35 +222,35 @@ class TraceletPermissionManager(private val context: Context) {
      * Returns the notification permission status.
      *
      * Returns:
-     * - `0` (notDetermined) — never asked (API 33+) or not applicable (< 33)
-     * - `1` (denied) — denied but can ask again
-     * - `3` (granted) — permission granted
-     * - `4` (deniedForever) — permanently denied
+     * - `NOT_DETERMINED` — never asked (API 33+) or not applicable (< 33)
+     * - `DENIED` — denied but can ask again
+     * - `ALWAYS` — permission granted
+     * - `DENIED_FOREVER` — permanently denied
      *
-     * On API < 33, notifications are always allowed → returns 3.
+     * On API < 33, notifications are always allowed → returns ALWAYS.
      */
-    fun getNotificationPermissionStatus(activity: Activity? = null): Int {
+    fun getNotificationPermissionStatus(activity: Activity? = null): AuthorizationStatus {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            return STATUS_ALWAYS // Pre-13: no runtime permission needed
+            return AuthorizationStatus.ALWAYS // Pre-13: no runtime permission needed
         }
 
         val granted = ContextCompat.checkSelfPermission(
             context, Manifest.permission.POST_NOTIFICATIONS
         ) == PackageManager.PERMISSION_GRANTED
 
-        if (granted) return STATUS_ALWAYS // 3
+        if (granted) return AuthorizationStatus.ALWAYS
 
         if (activity != null) {
             val canShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
                 activity, Manifest.permission.POST_NOTIFICATIONS
             )
             return when {
-                canShowRationale -> STATUS_DENIED       // 1 — denied, can ask again
-                hasEverRequestedNotification() -> STATUS_DENIED_FOREVER // 4
-                else -> STATUS_NOT_DETERMINED            // 0 — never asked
+                canShowRationale -> AuthorizationStatus.DENIED       // denied, can ask again
+                hasEverRequestedNotification() -> AuthorizationStatus.DENIED_FOREVER
+                else -> AuthorizationStatus.NOT_DETERMINED            // never asked
             }
         }
-        return if (hasEverRequestedNotification()) STATUS_DENIED else STATUS_NOT_DETERMINED
+        return if (hasEverRequestedNotification()) AuthorizationStatus.DENIED else AuthorizationStatus.NOT_DETERMINED
     }
 
     /**

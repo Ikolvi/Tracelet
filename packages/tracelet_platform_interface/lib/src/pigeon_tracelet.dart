@@ -1,6 +1,7 @@
 import 'generated/tracelet_api.g.dart';
 import 'pigeon_event_receiver.dart';
 import 'tracelet_platform.dart';
+import 'types/enums.dart';
 
 /// A [TraceletPlatform] implementation backed by Pigeon-generated code.
 ///
@@ -300,24 +301,30 @@ class PigeonTracelet extends TraceletPlatform {
   // ---------------------------------------------------------------------------
 
   @override
-  Future<int> getPermissionStatus() async {
+  Future<AuthorizationStatus> getLocationAuthorization() async {
     final status = await _api.getPermissionStatus();
-    return status.index;
+    return AuthorizationStatus.values.firstWhere((e) => e.name == status.name, orElse: () => AuthorizationStatus.notDetermined);
   }
 
   @override
-  Future<int> requestPermission() async {
+  Future<AuthorizationStatus> requestLocationAuthorization() async {
     final status = await _api.requestPermission();
-    return status.index;
+    return AuthorizationStatus.values.firstWhere((e) => e.name == status.name, orElse: () => AuthorizationStatus.notDetermined);
   }
 
   @override
-  Future<int> getNotificationPermissionStatus() =>
-      _api.getNotificationPermissionStatus();
+  Future<NotificationAuthorizationStatus> getNotificationAuthorization() async {
+    final status = await _api.getNotificationPermissionStatus();
+    if (status == TlNotificationAuthorizationStatus.authorized) return NotificationAuthorizationStatus.granted;
+    return NotificationAuthorizationStatus.values.firstWhere((e) => e.name == status.name, orElse: () => NotificationAuthorizationStatus.notDetermined);
+  }
 
   @override
-  Future<int> requestNotificationPermission() =>
-      _api.requestNotificationPermission();
+  Future<NotificationAuthorizationStatus> requestNotificationAuthorization() async {
+    final status = await _api.requestNotificationPermission();
+    if (status == TlNotificationAuthorizationStatus.authorized) return NotificationAuthorizationStatus.granted;
+    return NotificationAuthorizationStatus.values.firstWhere((e) => e.name == status.name, orElse: () => NotificationAuthorizationStatus.notDetermined);
+  }
 
   @override
   Future<bool> canScheduleExactAlarms() => _api.canScheduleExactAlarms();
@@ -326,10 +333,18 @@ class PigeonTracelet extends TraceletPlatform {
   Future<bool> openExactAlarmSettings() => _api.openExactAlarmSettings();
 
   @override
-  Future<int> getMotionPermissionStatus() => _api.getMotionPermissionStatus();
+  Future<MotionAuthorizationStatus> getMotionAuthorization() async {
+    final status = await _api.getMotionPermissionStatus();
+    if (status == TlMotionAuthorizationStatus.authorized) return MotionAuthorizationStatus.granted;
+    return MotionAuthorizationStatus.values.firstWhere((e) => e.name == status.name, orElse: () => MotionAuthorizationStatus.notDetermined);
+  }
 
   @override
-  Future<int> requestMotionPermission() => _api.requestMotionPermission();
+  Future<MotionAuthorizationStatus> requestMotionAuthorization() async {
+    final status = await _api.requestMotionPermission();
+    if (status == TlMotionAuthorizationStatus.authorized) return MotionAuthorizationStatus.granted;
+    return MotionAuthorizationStatus.values.firstWhere((e) => e.name == status.name, orElse: () => MotionAuthorizationStatus.notDetermined);
+  }
 
   @override
   Future<int> requestTemporaryFullAccuracy(String purpose) =>

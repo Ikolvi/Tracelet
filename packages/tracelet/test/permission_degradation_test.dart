@@ -93,52 +93,78 @@ class MockPermissionPlatform extends TraceletPlatform
   // ---------------------------------------------------------------------------
 
   @override
-  Future<int> getPermissionStatus() async {
-    calls.add((method: 'getPermissionStatus', args: null));
-    return locationStatus;
+  Future<AuthorizationStatus> getLocationAuthorization() async {
+    calls.add((method: 'getLocationAuthorization', args: null));
+    return AuthorizationStatus.values[locationStatus.clamp(0, AuthorizationStatus.values.length - 1)];
   }
 
   @override
-  Future<int> requestPermission() async {
-    calls.add((method: 'requestPermission', args: null));
-    if (!simulateUserGrant) return locationStatus;
+  Future<AuthorizationStatus> requestLocationAuthorization() async {
+    calls.add((method: 'requestLocationAuthorization', args: null));
+    if (!simulateUserGrant) {
+        return AuthorizationStatus.values[locationStatus.clamp(0, AuthorizationStatus.values.length - 1)];
+    }
     // Simulate escalation: 0→2, 2→3
     if (locationStatus == 0 || locationStatus == 1) {
       locationStatus = 2;
     } else if (locationStatus == 2) {
       locationStatus = 3;
     }
-    return locationStatus;
+    return AuthorizationStatus.values[locationStatus.clamp(0, AuthorizationStatus.values.length - 1)];
   }
 
   @override
-  Future<int> getMotionPermissionStatus() async {
-    calls.add((method: 'getMotionPermissionStatus', args: null));
-    return motionStatus;
+  Future<MotionAuthorizationStatus> getMotionAuthorization() async {
+    calls.add((method: 'getMotionAuthorization', args: null));
+    switch (motionStatus) {
+      case 0: return MotionAuthorizationStatus.notDetermined;
+      case 1: return MotionAuthorizationStatus.deniedForever;
+      case 3: return MotionAuthorizationStatus.granted;
+      case 4: return MotionAuthorizationStatus.deniedForever;
+      default: return MotionAuthorizationStatus.notDetermined;
+    }
   }
 
   @override
-  Future<int> requestMotionPermission() async {
-    calls.add((method: 'requestMotionPermission', args: null));
+  Future<MotionAuthorizationStatus> requestMotionAuthorization() async {
+    calls.add((method: 'requestMotionAuthorization', args: null));
     if (simulateUserGrant && motionStatus == 0) {
       motionStatus = 3;
     }
-    return motionStatus;
+    switch (motionStatus) {
+      case 0: return MotionAuthorizationStatus.notDetermined;
+      case 1: return MotionAuthorizationStatus.deniedForever;
+      case 3: return MotionAuthorizationStatus.granted;
+      case 4: return MotionAuthorizationStatus.deniedForever;
+      default: return MotionAuthorizationStatus.notDetermined;
+    }
   }
 
   @override
-  Future<int> getNotificationPermissionStatus() async {
-    calls.add((method: 'getNotificationPermissionStatus', args: null));
-    return notificationStatus;
+  Future<NotificationAuthorizationStatus> getNotificationAuthorization() async {
+    calls.add((method: 'getNotificationAuthorization', args: null));
+    switch (notificationStatus) {
+      case 0: return NotificationAuthorizationStatus.notDetermined;
+      case 1: return NotificationAuthorizationStatus.denied;
+      case 3: return NotificationAuthorizationStatus.granted;
+      case 4: return NotificationAuthorizationStatus.deniedForever;
+      default: return NotificationAuthorizationStatus.notDetermined;
+    }
   }
 
   @override
-  Future<int> requestNotificationPermission() async {
-    calls.add((method: 'requestNotificationPermission', args: null));
+  Future<NotificationAuthorizationStatus> requestNotificationAuthorization() async {
+    calls.add((method: 'requestNotificationAuthorization', args: null));
     if (simulateUserGrant && notificationStatus == 0) {
       notificationStatus = 3;
     }
-    return notificationStatus;
+    switch (notificationStatus) {
+      case 0: return NotificationAuthorizationStatus.notDetermined;
+      case 1: return NotificationAuthorizationStatus.denied;
+      case 3: return NotificationAuthorizationStatus.granted;
+      case 4: return NotificationAuthorizationStatus.deniedForever;
+      default: return NotificationAuthorizationStatus.notDetermined;
+    }
   }
 
   @override
@@ -154,9 +180,9 @@ class MockPermissionPlatform extends TraceletPlatform
   }
 
   @override
-  Future<int> requestTemporaryFullAccuracy(String purpose) async {
-    calls.add((method: 'requestTemporaryFullAccuracy', args: purpose));
-    return 0; // full accuracy
+  Future<FullAccuracyStatus> requestTemporaryFullAccuracyAuthorization(String purpose) async {
+    calls.add((method: 'requestTemporaryFullAccuracyAuthorization', args: purpose));
+    return FullAccuracyStatus.full;
   }
 
   // ---------------------------------------------------------------------------
@@ -271,32 +297,32 @@ void main() {
   group('Location permission status', () {
     test('returns notDetermined (0) when never asked', () async {
       mock.locationStatus = 0;
-      final status = await Tracelet.getPermissionStatus();
-      expect(status, 0);
+      final status = await Tracelet.getLocationAuthorization();
+      expect(status, AuthorizationStatus.notDetermined);
     });
 
     test('returns denied (1) when denied but can ask again', () async {
       mock.locationStatus = 1;
-      final status = await Tracelet.getPermissionStatus();
-      expect(status, 1);
+      final status = await Tracelet.getLocationAuthorization();
+      expect(status, AuthorizationStatus.denied);
     });
 
     test('returns whenInUse (2) when foreground-only granted', () async {
       mock.locationStatus = 2;
-      final status = await Tracelet.getPermissionStatus();
-      expect(status, 2);
+      final status = await Tracelet.getLocationAuthorization();
+      expect(status, AuthorizationStatus.whenInUse);
     });
 
     test('returns always (3) when background granted', () async {
       mock.locationStatus = 3;
-      final status = await Tracelet.getPermissionStatus();
-      expect(status, 3);
+      final status = await Tracelet.getLocationAuthorization();
+      expect(status, AuthorizationStatus.always);
     });
 
     test('returns deniedForever (4) when permanently denied', () async {
       mock.locationStatus = 4;
-      final status = await Tracelet.getPermissionStatus();
-      expect(status, 4);
+      final status = await Tracelet.getLocationAuthorization();
+      expect(status, AuthorizationStatus.deniedForever);
     });
   });
 
@@ -308,32 +334,32 @@ void main() {
       mock.locationStatus = 0;
       mock.simulateUserGrant = true;
 
-      final result = await Tracelet.requestPermission();
-      expect(result, 2); // whenInUse
+      final result = await Tracelet.requestLocationAuthorization();
+      expect(result, AuthorizationStatus.whenInUse); // whenInUse
     });
 
     test('requestPermission escalates whenInUse → always', () async {
       mock.locationStatus = 2;
       mock.simulateUserGrant = true;
 
-      final result = await Tracelet.requestPermission();
-      expect(result, 3); // always
+      final result = await Tracelet.requestLocationAuthorization();
+      expect(result, AuthorizationStatus.always); // always
     });
 
     test('requestPermission stays at deniedForever when user denied', () async {
       mock.locationStatus = 4;
       mock.simulateUserGrant = false;
 
-      final result = await Tracelet.requestPermission();
-      expect(result, 4); // still deniedForever
+      final result = await Tracelet.requestLocationAuthorization();
+      expect(result, AuthorizationStatus.deniedForever); // still deniedForever
     });
 
     test('requestPermission stays at always when already granted', () async {
       mock.locationStatus = 3;
       mock.simulateUserGrant = true;
 
-      final result = await Tracelet.requestPermission();
-      expect(result, 3); // still always
+      final result = await Tracelet.requestLocationAuthorization();
+      expect(result, AuthorizationStatus.always); // still always
     });
   });
 
@@ -347,11 +373,11 @@ void main() {
       mock.locationStatus = 2;
       mock.simulateUserGrant = false; // Can't escalate further
 
-      final status = await Tracelet.getPermissionStatus();
-      expect(status, 2); // Capped at whenInUse
+      final status = await Tracelet.getLocationAuthorization();
+      expect(status, AuthorizationStatus.whenInUse); // Capped at whenInUse
 
-      final requested = await Tracelet.requestPermission();
-      expect(requested, 2); // Still capped — no crash
+      final requested = await Tracelet.requestLocationAuthorization();
+      expect(requested, AuthorizationStatus.whenInUse); // Still capped — no crash
     });
 
     test('ready() succeeds with foreground-only permission', () async {
@@ -383,12 +409,12 @@ void main() {
   group('No location permission', () {
     test('getPermissionStatus returns notDetermined (0)', () async {
       mock.locationStatus = 0;
-      expect(await Tracelet.getPermissionStatus(), 0);
+      expect(await Tracelet.getLocationAuthorization(), AuthorizationStatus.notDetermined);
     });
 
     test('getPermissionStatus returns deniedForever (4)', () async {
       mock.locationStatus = 4;
-      expect(await Tracelet.getPermissionStatus(), 4);
+      expect(await Tracelet.getLocationAuthorization(), AuthorizationStatus.deniedForever);
     });
 
     test('getCurrentPosition throws PlatformException when denied', () async {
@@ -422,33 +448,33 @@ void main() {
   group('Motion permission', () {
     test('returns granted (3) by default', () async {
       mock.motionStatus = 3;
-      expect(await Tracelet.getMotionPermissionStatus(), 3);
+      expect(await Tracelet.getMotionAuthorization(), MotionAuthorizationStatus.granted);
     });
 
     test('returns notDetermined (0) when never asked', () async {
       mock.motionStatus = 0;
-      expect(await Tracelet.getMotionPermissionStatus(), 0);
+      expect(await Tracelet.getMotionAuthorization(), MotionAuthorizationStatus.notDetermined);
     });
 
     test('returns deniedForever (4) when denied', () async {
       mock.motionStatus = 4;
-      expect(await Tracelet.getMotionPermissionStatus(), 4);
+      expect(await Tracelet.getMotionAuthorization(), MotionAuthorizationStatus.deniedForever);
     });
 
     test('requestMotionPermission grants when user accepts', () async {
       mock.motionStatus = 0;
       mock.simulateUserGrant = true;
 
-      final result = await Tracelet.requestMotionPermission();
-      expect(result, 3);
+      final result = await Tracelet.requestMotionAuthorization();
+      expect(result, MotionAuthorizationStatus.granted);
     });
 
     test('requestMotionPermission stays denied when user rejects', () async {
       mock.motionStatus = 4;
       mock.simulateUserGrant = false;
 
-      final result = await Tracelet.requestMotionPermission();
-      expect(result, 4);
+      final result = await Tracelet.requestMotionAuthorization();
+      expect(result, MotionAuthorizationStatus.deniedForever);
     });
   });
 
@@ -460,8 +486,8 @@ void main() {
       // When disableMotionActivityUpdates is true, native side always returns 3
       mock.motionStatus = 3;
 
-      final status = await Tracelet.getMotionPermissionStatus();
-      expect(status, 3); // No permission needed
+      final status = await Tracelet.getMotionAuthorization();
+      expect(status, MotionAuthorizationStatus.granted); // No permission needed
     });
 
     test('ready() succeeds without motion permission', () async {
@@ -492,17 +518,17 @@ void main() {
   group('Notification permission', () {
     test('returns granted (3) on pre-Android 13', () async {
       mock.notificationStatus = 3;
-      expect(await Tracelet.getNotificationPermissionStatus(), 3);
+      expect(await Tracelet.getNotificationAuthorization(), NotificationAuthorizationStatus.granted);
     });
 
     test('returns notDetermined (0) on Android 13+ before asking', () async {
       mock.notificationStatus = 0;
-      expect(await Tracelet.getNotificationPermissionStatus(), 0);
+      expect(await Tracelet.getNotificationAuthorization(), NotificationAuthorizationStatus.notDetermined);
     });
 
     test('returns denied (4) when permanently denied', () async {
       mock.notificationStatus = 4;
-      expect(await Tracelet.getNotificationPermissionStatus(), 4);
+      expect(await Tracelet.getNotificationAuthorization(), NotificationAuthorizationStatus.deniedForever);
     });
 
     test('ready() succeeds without notification permission', () async {
@@ -633,38 +659,38 @@ void main() {
   group('MethodChannelTracelet null-safety defaults', () {
     // These test that the MethodChannelTracelet returns safe defaults
     // when the native side returns null (e.g., permission removed).
-    test('_TestPlatform getPermissionStatus throws UnimplementedError', () {
+    test('_TestPlatform getLocationAuthorization throws UnimplementedError', () {
       final platform = _TestPlatform();
       expect(
-        () => platform.getPermissionStatus(),
+        () => platform.getLocationAuthorization(),
         throwsA(isA<UnimplementedError>()),
       );
     });
 
-    test('_TestPlatform requestPermission throws UnimplementedError', () {
+    test('_TestPlatform requestLocationAuthorization throws UnimplementedError', () {
       final platform = _TestPlatform();
       expect(
-        () => platform.requestPermission(),
+        () => platform.requestLocationAuthorization(),
         throwsA(isA<UnimplementedError>()),
       );
     });
 
     test(
-      '_TestPlatform getMotionPermissionStatus throws UnimplementedError',
+      '_TestPlatform getMotionAuthorization throws UnimplementedError',
       () {
         final platform = _TestPlatform();
         expect(
-          () => platform.getMotionPermissionStatus(),
+          () => platform.getMotionAuthorization(),
           throwsA(isA<UnimplementedError>()),
         );
       },
     );
 
-    test('_TestPlatform getNotificationPermissionStatus throws '
+    test('_TestPlatform getNotificationAuthorization throws '
         'UnimplementedError', () {
       final platform = _TestPlatform();
       expect(
-        () => platform.getNotificationPermissionStatus(),
+        () => platform.getNotificationAuthorization(),
         throwsA(isA<UnimplementedError>()),
       );
     });
@@ -678,197 +704,7 @@ void main() {
     });
   });
 
-  // ==========================================================================
-  // Issue #57 — typed AuthorizationStatus permission APIs
-  // ==========================================================================
-  group('AuthorizationStatus enum APIs (#57)', () {
-    test('getLocationAuthorization maps each int to the right enum', () async {
-      const expected = {
-        0: AuthorizationStatus.notDetermined,
-        1: AuthorizationStatus.denied,
-        2: AuthorizationStatus.whenInUse,
-        3: AuthorizationStatus.always,
-        4: AuthorizationStatus.deniedForever,
-      };
-      for (final entry in expected.entries) {
-        mock.locationStatus = entry.key;
-        expect(await Tracelet.getLocationAuthorization(), entry.value);
-      }
-    });
 
-    test(
-      'getLocationAuthorization clamps out-of-range to notDetermined',
-      () async {
-        mock.locationStatus = 99;
-        expect(
-          await Tracelet.getLocationAuthorization(),
-          AuthorizationStatus.notDetermined,
-        );
-        mock.locationStatus = -1;
-        expect(
-          await Tracelet.getLocationAuthorization(),
-          AuthorizationStatus.notDetermined,
-        );
-      },
-    );
-
-    test('requestLocationAuthorization escalates and returns enum', () async {
-      mock.locationStatus = 0;
-      mock.simulateUserGrant = true;
-      expect(
-        await Tracelet.requestLocationAuthorization(),
-        AuthorizationStatus.whenInUse,
-      );
-      expect(
-        await Tracelet.requestLocationAuthorization(),
-        AuthorizationStatus.always,
-      );
-    });
-
-    test('getNotificationAuthorization returns AuthorizationStatus', () async {
-      mock.notificationStatus = 3;
-      expect(
-        await Tracelet.getNotificationAuthorization(),
-        AuthorizationStatus.always,
-      );
-      mock.notificationStatus = 4;
-      expect(
-        await Tracelet.getNotificationAuthorization(),
-        AuthorizationStatus.deniedForever,
-      );
-    });
-
-    test(
-      'requestNotificationAuthorization returns AuthorizationStatus',
-      () async {
-        mock.notificationStatus = 0;
-        mock.simulateUserGrant = true;
-        expect(
-          await Tracelet.requestNotificationAuthorization(),
-          AuthorizationStatus.always,
-        );
-      },
-    );
-
-    test('getMotionAuthorization returns AuthorizationStatus', () async {
-      mock.motionStatus = 3;
-      expect(
-        await Tracelet.getMotionAuthorization(),
-        AuthorizationStatus.always,
-      );
-      mock.motionStatus = 1;
-      expect(
-        await Tracelet.getMotionAuthorization(),
-        AuthorizationStatus.denied,
-      );
-    });
-
-    test('requestMotionAuthorization returns AuthorizationStatus', () async {
-      mock.motionStatus = 0;
-      mock.simulateUserGrant = true;
-      expect(
-        await Tracelet.requestMotionAuthorization(),
-        AuthorizationStatus.always,
-      );
-    });
-
-    test(
-      'requestTemporaryFullAccuracyAuthorization returns AuthorizationStatus',
-      () async {
-        // Mock returns 0 (notDetermined) for temporary accuracy.
-        expect(
-          await Tracelet.requestTemporaryFullAccuracyAuthorization('purpose'),
-          AuthorizationStatus.notDetermined,
-        );
-        expect(mock.calls.last.method, 'requestTemporaryFullAccuracy');
-        expect(mock.calls.last.args, 'purpose');
-      },
-    );
-
-    test(
-      'hasBackgroundPermission is true only for AuthorizationStatus.always',
-      () async {
-        const cases = {
-          0: false, // notDetermined
-          1: false, // denied
-          2: false, // whenInUse
-          3: true, //  always
-          4: false, // deniedForever
-        };
-        for (final entry in cases.entries) {
-          mock.locationStatus = entry.key;
-          expect(
-            await Tracelet.hasBackgroundPermission,
-            entry.value,
-            reason: 'locationStatus=${entry.key}',
-          );
-        }
-      },
-    );
-
-    test(
-      'getNotificationAuthorization maps each int to the right enum',
-      () async {
-        const expected = {
-          0: AuthorizationStatus.notDetermined,
-          1: AuthorizationStatus.denied,
-          2: AuthorizationStatus.whenInUse,
-          3: AuthorizationStatus.always,
-          4: AuthorizationStatus.deniedForever,
-        };
-        for (final entry in expected.entries) {
-          mock.notificationStatus = entry.key;
-          expect(
-            await Tracelet.getNotificationAuthorization(),
-            entry.value,
-            reason: 'notificationStatus=${entry.key}',
-          );
-        }
-      },
-    );
-
-    test('getMotionAuthorization maps each int to the right enum', () async {
-      const expected = {
-        0: AuthorizationStatus.notDetermined,
-        1: AuthorizationStatus.denied,
-        2: AuthorizationStatus.whenInUse,
-        3: AuthorizationStatus.always,
-        4: AuthorizationStatus.deniedForever,
-      };
-      for (final entry in expected.entries) {
-        mock.motionStatus = entry.key;
-        expect(
-          await Tracelet.getMotionAuthorization(),
-          entry.value,
-          reason: 'motionStatus=${entry.key}',
-        );
-      }
-    });
-
-    test('new typed methods delegate to the deprecated int methods', () async {
-      mock.calls.clear();
-      mock.locationStatus = 3;
-      mock.notificationStatus = 3;
-      mock.motionStatus = 3;
-
-      await Tracelet.getLocationAuthorization();
-      await Tracelet.requestLocationAuthorization();
-      await Tracelet.getNotificationAuthorization();
-      await Tracelet.requestNotificationAuthorization();
-      await Tracelet.getMotionAuthorization();
-      await Tracelet.requestMotionAuthorization();
-
-      final methods = mock.calls.map((c) => c.method).toList();
-      expect(methods, [
-        'getPermissionStatus',
-        'requestPermission',
-        'getNotificationPermissionStatus',
-        'requestNotificationPermission',
-        'getMotionPermissionStatus',
-        'requestMotionPermission',
-      ]);
-    });
-  });
 }
 
 /// A bare TraceletPlatform subclass for testing default UnimplementedError.

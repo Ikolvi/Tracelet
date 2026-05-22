@@ -56,8 +56,8 @@ Future<void> singleLocationExample() async {
   );
 
   // Ensure location permission is granted before requesting.
-  final authStatus = await tl.Tracelet.requestPermission();
-  if (authStatus != 2 && authStatus != 3) {
+  final authStatus = await tl.Tracelet.requestLocationAuthorization();
+  if (authStatus != tl.AuthorizationStatus.whenInUse && authStatus != tl.AuthorizationStatus.always) {
     print('⚠️ Location permission denied (status=$authStatus)');
     return;
   }
@@ -93,8 +93,8 @@ Future<void> bestOfThreeSamplesExample() async {
   );
 
   // Ensure location permission is granted before requesting.
-  final authStatus = await tl.Tracelet.requestPermission();
-  if (authStatus != 2 && authStatus != 3) {
+  final authStatus = await tl.Tracelet.requestLocationAuthorization();
+  if (authStatus != tl.AuthorizationStatus.whenInUse && authStatus != tl.AuthorizationStatus.always) {
     print('⚠️ Location permission denied (status=$authStatus)');
     return;
   }
@@ -130,8 +130,8 @@ Future<void> lastKnownLocationExample() async {
   );
 
   // Ensure location permission is granted before requesting.
-  final authStatus = await tl.Tracelet.requestPermission();
-  if (authStatus != 2 && authStatus != 3) {
+  final authStatus = await tl.Tracelet.requestLocationAuthorization();
+  if (authStatus != tl.AuthorizationStatus.whenInUse && authStatus != tl.AuthorizationStatus.always) {
     print('⚠️ Location permission denied (status=$authStatus)');
     return;
   }
@@ -384,15 +384,15 @@ Future<void> wifiOnlySyncExample() async {
 /// UI. If permanently denied, guide the user to Settings from Dart.
 Future<void> permissionFlowExample() async {
   // 1. Check current status without triggering any dialog.
-  final status = await tl.Tracelet.getPermissionStatus();
+  final status = await tl.Tracelet.getLocationAuthorization();
   print('Current permission status: $status');
 
-  if (status == 0 || status == 1) {
+  if (status == tl.AuthorizationStatus.notDetermined || status == tl.AuthorizationStatus.denied) {
     // notDetermined or denied (can ask again) → request foreground.
-    final result = await tl.Tracelet.requestPermission();
+    final result = await tl.Tracelet.requestLocationAuthorization();
     print('After request: $result');
 
-    if (result == 4) {
+    if (result == tl.AuthorizationStatus.deniedForever) {
       // Permanently denied — show YOUR OWN Dart dialog here, e.g.:
       // showDialog(context, builder: (_) => AlertDialog(
       //   title: Text('Permission Required'),
@@ -406,12 +406,12 @@ Future<void> permissionFlowExample() async {
       return;
     }
 
-    if (result == 2) {
+    if (result == tl.AuthorizationStatus.whenInUse) {
       // Foreground granted — request background upgrade.
-      final bgResult = await tl.Tracelet.requestPermission();
+      final bgResult = await tl.Tracelet.requestLocationAuthorization();
       print('Background request: $bgResult');
     }
-  } else if (status == 4) {
+  } else if (status == tl.AuthorizationStatus.deniedForever) {
     // Already permanently denied — guide user to settings.
     await tl.Tracelet.openAppSettings();
     return;

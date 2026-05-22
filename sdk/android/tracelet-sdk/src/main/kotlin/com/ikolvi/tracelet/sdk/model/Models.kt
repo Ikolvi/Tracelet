@@ -1,6 +1,21 @@
 package com.ikolvi.tracelet.sdk.model
 
 /**
+ * Location authorization status.
+ */
+enum class AuthorizationStatus(val value: Int) {
+    NOT_DETERMINED(0),
+    DENIED(1),
+    WHEN_IN_USE(2),
+    ALWAYS(3),
+    DENIED_FOREVER(4);
+
+    companion object {
+        fun fromInt(value: Int): AuthorizationStatus = entries.firstOrNull { it.value == value } ?: NOT_DETERMINED
+    }
+}
+
+/**
  * Geographic coordinates and accuracy metrics.
  */
 data class TraceletCoords(
