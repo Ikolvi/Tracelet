@@ -78,6 +78,20 @@ class EventDispatcher : TraceletEventSender {
         }
     }
 
+    override fun sendSpeedMotionChange(data: Map<String, Any?>) {
+        val api = eventApi
+        if (api != null) {
+            val event = com.ikolvi.tracelet.TlSpeedMotionEvent(
+                state = data["state"] as? String ?: "unknown",
+                previousState = data["previousState"] as? String ?: "unknown",
+                trackingMode = data["trackingMode"] as? String ?: "unknown",
+            )
+            postToMain { api.onMotionModeChange(event) {} }
+        } else {
+            fallback("speedmotionchange", data)
+        }
+    }
+
     override fun sendActivityChange(data: Map<String, Any?>) {
         val api = eventApi
         if (api != null) {

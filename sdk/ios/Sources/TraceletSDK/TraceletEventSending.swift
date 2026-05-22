@@ -6,8 +6,9 @@ import Foundation
 /// All method implementations must be safe to call from any thread —
 /// the implementation is responsible for marshalling to the correct thread.
 public protocol TraceletEventSending: AnyObject {
-    func sendLocation(_ data: [String: Any])
-    func sendMotionChange(_ data: [String: Any])
+    func sendLocation(_ params: [String: Any])
+    func sendSpeedMotionEvent(_ params: [String: Any])
+    func sendMotionChange(_ params: [String: Any])
     func sendActivityChange(_ data: [String: Any])
     func sendProviderChange(_ data: [String: Any])
     func sendGeofence(_ data: [String: Any])

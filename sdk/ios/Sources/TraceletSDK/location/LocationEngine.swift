@@ -67,6 +67,9 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// [Enterprise] Privacy zone manager — set by the plugin after initialization.
     public var privacyZoneManager: PrivacyZoneManager?
 
+    /// Optional callback invoked to feed raw speed to SpeedMotionManager.
+    public var speedSink: ((Double) -> Void)?
+
     // Dead Reckoning
     private var deadReckoningEngine: DeadReckoningEngine?
     private var gpsLossTimer: Timer?
@@ -188,6 +191,56 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         // compute distance from a stale position.
         stateManager.lastPeriodicLatitude = .nan
         stateManager.lastPeriodicLongitude = .nan
+    }
+
+    // MARK: - Speed-Mode Atomic Switching
+    //
+    // These methods switch between continuous and stationary tracking modes
+    // WITHOUT invalidating CLServiceSession / CLBackgroundActivitySession.
+    // Sessions are only torn down on a full user-initiated stop().
+
+    /// Switch from continuous to stationary periodic one-shot tracking.
+    ///
+    /// Stops continuous `startUpdatingLocation()` and starts the periodic
+    /// timer. Significant-location-change monitoring and background sessions
+    /// remain active.
+    public func switchToStationaryPeriodic() {
+        NSLog("[Tracelet] switchToStationaryPeriodic: stopping continuous, starting periodic timer")
+        locationManager.stopUpdatingLocation()
+        cancelGpsLossTimer()
+        deactivateDeadReckoning()
+
+        isPeriodicTracking = true
+        // isTracking stays true so delegate callbacks are processed
+        configureLocationManagerForPeriodic()
+        startPeriodicTimer()
+    }
+
+    /// Switch from continuous to stationary geofence-only mode.
+    ///
+    /// Stops continuous `startUpdatingLocation()` but leaves region monitoring
+    /// active. Background sessions remain active.
+    public func switchToStationaryGeofences() {
+        NSLog("[Tracelet] switchToStationaryGeofences: stopping continuous, geofences remain active")
+        locationManager.stopUpdatingLocation()
+        cancelGpsLossTimer()
+        deactivateDeadReckoning()
+        // Region monitoring (geofences) is managed by GeofenceManager and
+        // remains active. isTracking stays true for delegate callbacks.
+    }
+
+    /// Switch from stationary (periodic or geofences) back to continuous tracking.
+    ///
+    /// Stops the periodic timer and resumes `startUpdatingLocation()`.
+    /// Background sessions remain active.
+    public func switchToContinuous() {
+        NSLog("[Tracelet] switchToContinuous: stopping periodic, resuming continuous")
+        stopPeriodicTimer()
+        isPeriodicTracking = false
+
+        configureLocationManager()
+        locationManager.startUpdatingLocation()
+        startGpsLossTimer()
     }
 
     /// Configures CLLocationManager for periodic mode.
@@ -677,6 +730,11 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         // Resolve effective speed: platform speed if available, otherwise computed
         let effectiveSpeed = (location.speed > 0) ? location.speed : computedSpeed
         lastEffectiveSpeed = effectiveSpeed
+
+        // Forward speed to SpeedMotionManager when speed-based motion detection
+        // is active. Uses the raw CLLocation.speed (not computed) because
+        // computed speed from distance/time is noisy at low speeds.
+        speedSink?(location.speed)
 
         lastLocation = location
         if location.horizontalAccuracy > 0 && location.horizontalAccuracy <= 100 {

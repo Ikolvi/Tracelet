@@ -89,6 +89,15 @@ class ConfigManager(context: Context) {
         const val DEFAULT_STILL_THRESHOLD = 0.4
         const val DEFAULT_STILL_SAMPLE_COUNT = 25
 
+        // Speed-based motion detection defaults
+        const val DEFAULT_MOTION_DETECTION_MODE = "accelerometer"
+        const val DEFAULT_SPEED_MOVING_THRESHOLD = 1.5
+        const val DEFAULT_SPEED_STATIONARY_DELAY = 180
+        const val DEFAULT_STATIONARY_TRACKING_MODE = "periodic"
+        const val DEFAULT_STATIONARY_PERIODIC_INTERVAL = 120
+        const val DEFAULT_STATIONARY_PERIODIC_ACCURACY = 0 // DesiredAccuracy.high
+        const val DEFAULT_SPEED_WAKE_CONFIRM_COUNT = 1
+
         // GeofenceConfig defaults
         const val DEFAULT_GEOFENCE_PROXIMITY_RADIUS = 1000
         const val DEFAULT_GEOFENCE_INITIAL_TRIGGER_ENTRY = true
@@ -539,6 +548,29 @@ class ConfigManager(context: Context) {
 
     fun getStillSampleCount(): Int =
         getInt("stillSampleCount", DEFAULT_STILL_SAMPLE_COUNT)
+
+    // Speed-based motion detection config
+
+    fun getMotionDetectionMode(): String =
+        getString("motionDetectionMode", DEFAULT_MOTION_DETECTION_MODE)
+
+    fun getSpeedMovingThreshold(): Double =
+        getDouble("speedMovingThreshold", DEFAULT_SPEED_MOVING_THRESHOLD)
+
+    fun getSpeedStationaryDelay(): Int =
+        getInt("speedStationaryDelay", DEFAULT_SPEED_STATIONARY_DELAY)
+
+    fun getStationaryTrackingMode(): String =
+        getString("stationaryTrackingMode", DEFAULT_STATIONARY_TRACKING_MODE)
+
+    fun getStationaryPeriodicInterval(): Int =
+        getInt("stationaryPeriodicInterval", DEFAULT_STATIONARY_PERIODIC_INTERVAL)
+
+    fun getStationaryPeriodicAccuracy(): Int =
+        getInt("stationaryPeriodicAccuracy", DEFAULT_STATIONARY_PERIODIC_ACCURACY)
+
+    fun getSpeedWakeConfirmCount(): Int =
+        getInt("speedWakeConfirmCount", DEFAULT_SPEED_WAKE_CONFIRM_COUNT)
 
     // ---------------------------------------------------------------------------
     // Typed Getters (GeofenceConfig)

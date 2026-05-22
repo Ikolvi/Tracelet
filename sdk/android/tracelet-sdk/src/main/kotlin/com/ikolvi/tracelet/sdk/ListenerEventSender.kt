@@ -41,6 +41,11 @@ internal class ListenerEventSender : TraceletEventSender {
     override fun sendLocation(data: Map<String, Any?>) =
         dispatch("location", data) { listener?.onLocation(data) }
 
+    override fun sendSpeedMotionChange(data: Map<String, Any?>) {
+        // Not exposed to standard Java/Kotlin listeners directly.
+        // It's meant for internal state propagation to Dart.
+    }
+
     override fun sendMotionChange(data: Map<String, Any?>) =
         dispatch("motionchange", data) { listener?.onMotionChange(data) }
 

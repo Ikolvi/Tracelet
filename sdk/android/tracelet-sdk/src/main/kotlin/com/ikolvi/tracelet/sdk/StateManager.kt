@@ -24,6 +24,10 @@ class StateManager(context: Context) {
         private const val KEY_LAST_LOCATION_TIME = "lastLocationTime"
         private const val KEY_LAST_PERIODIC_LAT = "lastPeriodicLat"
         private const val KEY_LAST_PERIODIC_LNG = "lastPeriodicLng"
+        private const val KEY_SPEED_MOTION_STATE = "speedMotionState"
+        private const val KEY_SPEED_LOW_COUNT = "speedLowCount"
+        private const val KEY_SPEED_WAKE_COUNT = "speedWakeCount"
+        private const val KEY_SPEED_LAST_TRANSITION = "speedLastTransition"
     }
 
     private val prefs: SharedPreferences =
@@ -74,6 +78,30 @@ class StateManager(context: Context) {
         set(value) = prefs.edit().putLong(
             KEY_LAST_PERIODIC_LAT, java.lang.Double.doubleToLongBits(value)
         ).apply()
+
+    // ---------------------------------------------------------------------------
+    // Speed-based motion detection state
+    // ---------------------------------------------------------------------------
+
+    /** Current speed motion state: "moving", "slowing", or "stationary". */
+    var speedMotionState: String?
+        get() = prefs.getString(KEY_SPEED_MOTION_STATE, null)
+        set(value) = prefs.edit().putString(KEY_SPEED_MOTION_STATE, value).apply()
+
+    /** Consecutive low-speed fix count (SLOWING state). */
+    var speedLowCount: Int
+        get() = prefs.getInt(KEY_SPEED_LOW_COUNT, 0)
+        set(value) = prefs.edit().putInt(KEY_SPEED_LOW_COUNT, value).apply()
+
+    /** Consecutive wake-speed fix count (STATIONARY state). */
+    var speedWakeCount: Int
+        get() = prefs.getInt(KEY_SPEED_WAKE_COUNT, 0)
+        set(value) = prefs.edit().putInt(KEY_SPEED_WAKE_COUNT, value).apply()
+
+    /** Epoch millis of last speed-motion state transition. */
+    var speedLastTransition: Long
+        get() = prefs.getLong(KEY_SPEED_LAST_TRANSITION, 0L)
+        set(value) = prefs.edit().putLong(KEY_SPEED_LAST_TRANSITION, value).apply()
 
     /** Last periodic fix longitude (for odometer computation across worker runs). */
     var lastPeriodicLongitude: Double

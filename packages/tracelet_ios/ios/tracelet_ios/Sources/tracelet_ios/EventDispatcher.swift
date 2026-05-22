@@ -40,6 +40,16 @@ final class EventDispatcher: NSObject, TraceletEventSending {
         DispatchQueue.main.async { api.onMotionChange(location: location) { _ in } }
     }
 
+    func sendSpeedMotionEvent(_ data: [String: Any]) {
+        guard let api = eventApi else { return fallback("speedmotion", data) }
+        let event = TlSpeedMotionEvent(
+            state: data["state"] as? String ?? "",
+            previousState: data["previousState"] as? String ?? "",
+            trackingMode: data["trackingMode"] as? String ?? ""
+        )
+        DispatchQueue.main.async { api.onSpeedMotion(event: event) { _ in } }
+    }
+
     func sendActivityChange(_ data: [String: Any]) {
         guard let api = eventApi else { return fallback("activitychange", data) }
         let event = TlActivityChangeEvent(

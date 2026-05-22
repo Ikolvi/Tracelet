@@ -30,6 +30,11 @@ final class DelegateEventSender: TraceletEventSending {
         dispatch { sdk, delegate in delegate.tracelet(sdk, didUpdateLocation: data) }
     }
 
+    func sendSpeedMotionEvent(_ data: [String: Any]) {
+        // Not exposed to standard Swift delegates directly.
+        // It's meant for internal state propagation to Dart.
+    }
+
     func sendMotionChange(_ data: [String: Any]) {
         dispatch { sdk, delegate in delegate.tracelet(sdk, didChangeMotion: data) }
     }

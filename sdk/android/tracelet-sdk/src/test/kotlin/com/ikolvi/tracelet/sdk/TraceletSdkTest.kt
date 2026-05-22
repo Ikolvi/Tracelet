@@ -281,14 +281,14 @@ internal class TraceletSdkTest {
         val sdk = readySdk()
         val status = sdk.getPermissionStatus()
         // Without permissions granted, status should not be ALWAYS
-        assertTrue(status != 3) // STATUS_ALWAYS = 3
+        assertTrue(status != com.ikolvi.tracelet.sdk.model.AuthorizationStatus.ALWAYS)
     }
 
     @Test
     fun requestPermission_withNoActivity_callsBackImmediately() {
         val sdk = readySdk()
         sdk.activity = null
-        var callbackStatus: Int? = null
+        var callbackStatus: com.ikolvi.tracelet.sdk.model.AuthorizationStatus? = null
 
         sdk.requestPermission { status -> callbackStatus = status }
 
@@ -552,7 +552,7 @@ internal class TraceletSdkTest {
     @Test
     fun handlePermissionResult_activityRecognition_invokesCallback_whenPresent() {
         val sdk = readySdk()
-        var callbackStatus: Int? = null
+        var callbackStatus: com.ikolvi.tracelet.sdk.model.AuthorizationStatus? = null
         sdk.pendingPermissionCallback = { status -> callbackStatus = status }
 
         sdk.handlePermissionResult(
@@ -586,7 +586,7 @@ internal class TraceletSdkTest {
     @Test
     fun pendingPermissionCallback_invoked_onActivityDetach() {
         val sdk = readySdk()
-        var callbackStatus: Int? = null
+        var callbackStatus: com.ikolvi.tracelet.sdk.model.AuthorizationStatus? = null
         sdk.pendingPermissionCallback = { status -> callbackStatus = status }
 
         // Simulate permanent Activity destroy
@@ -671,6 +671,7 @@ internal class TraceletSdkTest {
 
     private class NoOpEventSender : TraceletEventSender {
         override fun sendLocation(data: Map<String, Any?>) {}
+        override fun sendSpeedMotionChange(data: Map<String, Any?>) {}
         override fun sendMotionChange(data: Map<String, Any?>) {}
         override fun sendActivityChange(data: Map<String, Any?>) {}
         override fun sendGeofencesChange(data: Map<String, Any?>) {}

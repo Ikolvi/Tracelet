@@ -52,6 +52,7 @@ public final class TraceletSdk {
     public private(set) var database: TraceletDatabase!
     public private(set) var locationEngine: LocationEngine!
     public private(set) var motionDetector: MotionDetector!
+    public private(set) var speedMotionManager: SpeedMotionManager?
     public private(set) var geofenceManager: GeofenceManager!
     public private(set) var httpSyncManager: HttpSyncManager!
     public private(set) var scheduleManager: ScheduleManager!
@@ -237,7 +238,12 @@ public final class TraceletSdk {
             )
         }
 
-        motionDetector.start()
+        let isSpeedMotionMode = configManager.getMotionDetectionMode() == "speed"
+        if isSpeedMotionMode {
+            startSpeedMotionManager()
+        } else {
+            motionDetector.start()
+        }
         startHeartbeat()
         startStopAfterElapsedTimer()
         startBatteryBudgetSampling()
@@ -263,8 +269,10 @@ public final class TraceletSdk {
             stateManager.isMoving = false
 
             locationEngine.stop()
-            locationEngine.onLocationUpdate = nil
+            locationEngine.speedSink = nil
             motionDetector.stop()
+            speedMotionManager?.stop()
+            speedMotionManager = nil
             geofenceManager.destroy()
             stopHeartbeat()
             cancelStopAfterElapsedTimer()
@@ -297,8 +305,11 @@ public final class TraceletSdk {
         stateManager.enabled = true
         stateManager.trackingMode = .geofences
 
+        locationEngine.speedSink = nil
         locationEngine.stop()
         motionDetector.stop()
+        speedMotionManager?.stop()
+        speedMotionManager = nil
 
         geofenceManager.reRegisterAll()
 
@@ -353,8 +364,11 @@ public final class TraceletSdk {
         precondition(isReady, "TraceletSdk.ready() must be called before startPeriodic()")
 
         // Stop continuous tracking before switching to periodic mode.
+        locationEngine.speedSink = nil
         locationEngine.stop()
         motionDetector.stop()
+        speedMotionManager?.stop()
+        speedMotionManager = nil
 
         stateManager.enabled = true
         stateManager.trackingMode = .periodic
@@ -476,7 +490,10 @@ public final class TraceletSdk {
         BackgroundTaskHelper.shared.run("reset") { [self] in
             locationEngine.destroy()
             locationEngine.onLocationUpdate = nil
+            locationEngine.speedSink = nil
             motionDetector.stop()
+            speedMotionManager?.stop()
+            speedMotionManager = nil
             stopHeartbeat()
             cancelStopAfterElapsedTimer()
             periodicRefreshScheduler.stop()
@@ -1586,5 +1603,134 @@ public final class TraceletSdk {
         if !keepPeriodicAlive {
             periodicRefreshScheduler.stop()
         }
+    }
+
+    private func startSpeedMotionManager() {
+        let smm = SpeedMotionManager(stateManager: stateManager)
+        smm.speedMovingThreshold = configManager.getSpeedMovingThreshold()
+        smm.speedStationaryDelay = configManager.getSpeedStationaryDelay()
+        smm.stationaryTrackingMode = configManager.getStationaryTrackingMode()
+        smm.stationaryPeriodicInterval = configManager.getStationaryPeriodicInterval()
+        smm.speedWakeConfirmCount = configManager.getSpeedWakeConfirmCount()
+        smm.delegate = self
+        smm.start()
+        speedMotionManager = smm
+
+        // Feed CLLocation.speed to the state machine on every fix
+        locationEngine.speedSink = { [weak smm] speed in
+            smm?.onLocation(speed: speed)
+        }
+
+        NSLog("[Tracelet] Speed motion mode started (threshold=%.1f, delay=%ds, stationary=%@)",
+              smm.speedMovingThreshold, smm.speedStationaryDelay, smm.stationaryTrackingMode)
+
+        // If we're resuming in stationary state, switch immediately
+        if smm.state == .stationary {
+            if smm.stationaryTrackingMode == "geofences" {
+                locationEngine.switchToStationaryGeofences()
+            } else {
+                locationEngine.switchToStationaryPeriodic()
+            }
+        }
+    }
+}
+
+// MARK: - SpeedMotionDelegate
+
+extension TraceletSdk: SpeedMotionDelegate {
+
+    public func switchToContinuous() {
+        BackgroundTaskHelper.shared.run("speedSwitchContinuous") { [self] in
+            stateManager.isMoving = true
+            locationEngine.switchToContinuous()
+
+            // Emit motionchange event for backward compatibility
+            let lastLoc = locationEngine.getLastLocation()
+            tripManager.onMotionStateChanged(
+                isMoving: true,
+                latitude: lastLoc?.coordinate.latitude,
+                longitude: lastLoc?.coordinate.longitude,
+                timestamp: lastLoc.map { ISO8601DateFormatter().string(from: $0.timestamp) }
+            )
+
+            if let loc = lastLoc {
+                var map = locationEngine.buildLocationMap(loc, speed: locationEngine.lastEffectiveSpeed)
+                map["isMoving"] = true
+                map["event"] = "motionchange"
+                eventSender.sendMotionChange(map)
+            } else {
+                eventSender.sendMotionChange(["isMoving": true])
+            }
+        }
+    }
+
+    public func switchToStationaryPeriodic() {
+        BackgroundTaskHelper.shared.run("speedSwitchStationary") { [self] in
+            stateManager.isMoving = false
+            locationEngine.switchToStationaryPeriodic()
+
+            // Emit motionchange event for backward compatibility
+            let lastLoc = locationEngine.getLastLocation()
+            tripManager.onMotionStateChanged(
+                isMoving: false,
+                latitude: lastLoc?.coordinate.latitude,
+                longitude: lastLoc?.coordinate.longitude,
+                timestamp: lastLoc.map { ISO8601DateFormatter().string(from: $0.timestamp) }
+            )
+
+            if let loc = lastLoc {
+                var map = locationEngine.buildLocationMap(loc, speed: locationEngine.lastEffectiveSpeed)
+                map["isMoving"] = false
+                map["event"] = "motionchange"
+                eventSender.sendMotionChange(map)
+            } else {
+                eventSender.sendMotionChange(["isMoving": false])
+            }
+
+            // Handle stopOnStationary
+            if configManager.getStopOnStationary() {
+                stop()
+            }
+        }
+    }
+
+    public func switchToStationaryGeofences() {
+        BackgroundTaskHelper.shared.run("speedSwitchGeofences") { [self] in
+            stateManager.isMoving = false
+            locationEngine.switchToStationaryGeofences()
+            geofenceManager.reRegisterAll()
+
+            // Emit motionchange event for backward compatibility
+            let lastLoc = locationEngine.getLastLocation()
+            tripManager.onMotionStateChanged(
+                isMoving: false,
+                latitude: lastLoc?.coordinate.latitude,
+                longitude: lastLoc?.coordinate.longitude,
+                timestamp: lastLoc.map { ISO8601DateFormatter().string(from: $0.timestamp) }
+            )
+
+            if let loc = lastLoc {
+                var map = locationEngine.buildLocationMap(loc, speed: locationEngine.lastEffectiveSpeed)
+                map["isMoving"] = false
+                map["event"] = "motionchange"
+                eventSender.sendMotionChange(map)
+            } else {
+                eventSender.sendMotionChange(["isMoving": false])
+            }
+
+            // Handle stopOnStationary
+            if configManager.getStopOnStationary() {
+                stop()
+            }
+        }
+    }
+
+    public func emitSpeedMotionEvent(state: String, previousState: String, trackingMode: String) {
+        let data: [String: Any] = [
+            "state": state,
+            "previousState": previousState,
+            "trackingMode": trackingMode,
+        ]
+        eventSender.sendSpeedMotionEvent(data)
     }
 }

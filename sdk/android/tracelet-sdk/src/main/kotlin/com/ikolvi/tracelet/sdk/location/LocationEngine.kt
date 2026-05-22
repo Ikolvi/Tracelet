@@ -118,6 +118,9 @@ class LocationEngine(
     /** Optional privacy zone manager (Enterprise). Set by the plugin after construction. */
     var privacyZoneManager: PrivacyZoneManager? = null
 
+    /** Optional callback invoked to feed effective speed to SpeedMotionManager. */
+    var speedMotionSpeedSink: ((Double) -> Unit)? = null
+
     // watchPosition watchers: watchId -> LocationCallback
     private val watchers = ConcurrentHashMap<Int, TraceletLocationCallback>()
     private var nextWatchId = 1
@@ -721,6 +724,7 @@ class LocationEngine(
             lastGpsLocation = location
         }
         lastEffectiveSpeed = effectiveSpeed
+        speedMotionSpeedSink?.invoke(effectiveSpeed)
         state.lastLocationTime = location.time
 
         val enriched = enrichLocation(location, event, effectiveSpeed)

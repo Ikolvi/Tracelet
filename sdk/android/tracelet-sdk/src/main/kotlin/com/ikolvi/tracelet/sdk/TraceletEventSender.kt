@@ -13,6 +13,8 @@ interface TraceletEventSender {
 
     fun sendMotionChange(data: Map<String, Any?>)
 
+    fun sendSpeedMotionChange(data: Map<String, Any?>)
+
     fun sendActivityChange(data: Map<String, Any?>)
 
     fun sendProviderChange(data: Map<String, Any?>)
