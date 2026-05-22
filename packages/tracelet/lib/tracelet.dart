@@ -79,6 +79,7 @@ export 'src/models/health_check.dart';
 export 'src/models/connectivity_change_event.dart';
 export 'src/models/authorization_event.dart';
 export 'src/models/sql_query.dart';
+export 'src/models/speed_motion_event.dart';
 export 'src/models/trip_event.dart';
 
 // Main API

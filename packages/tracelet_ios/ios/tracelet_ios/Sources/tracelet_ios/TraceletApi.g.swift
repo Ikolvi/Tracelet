@@ -146,6 +146,16 @@ enum TlTrackingMode: Int {
   case periodic = 2
 }
 
+enum TlMotionDetectionMode: Int {
+  case accelerometer = 0
+  case speed = 1
+}
+
+enum TlStationaryTrackingMode: Int {
+  case periodic = 0
+  case geofences = 1
+}
+
 enum TlGeofenceAction: Int {
   case enter = 0
   case exit = 1
@@ -766,6 +776,13 @@ struct TlMotionConfig: Hashable {
   var shakeThreshold: Double
   var stillThreshold: Double
   var stillSampleCount: Int64
+  var motionDetectionMode: TlMotionDetectionMode
+  var speedMovingThreshold: Double
+  var speedStationaryDelay: Int64
+  var stationaryTrackingMode: TlStationaryTrackingMode
+  var stationaryPeriodicInterval: Int64
+  var stationaryPeriodicAccuracy: TlDesiredAccuracy
+  var speedWakeConfirmCount: Int64
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -785,6 +802,13 @@ struct TlMotionConfig: Hashable {
     let shakeThreshold = pigeonVar_list[12] as! Double
     let stillThreshold = pigeonVar_list[13] as! Double
     let stillSampleCount = pigeonVar_list[14] as! Int64
+    let motionDetectionMode = pigeonVar_list[15] as! TlMotionDetectionMode
+    let speedMovingThreshold = pigeonVar_list[16] as! Double
+    let speedStationaryDelay = pigeonVar_list[17] as! Int64
+    let stationaryTrackingMode = pigeonVar_list[18] as! TlStationaryTrackingMode
+    let stationaryPeriodicInterval = pigeonVar_list[19] as! Int64
+    let stationaryPeriodicAccuracy = pigeonVar_list[20] as! TlDesiredAccuracy
+    let speedWakeConfirmCount = pigeonVar_list[21] as! Int64
 
     return TlMotionConfig(
       stopTimeout: stopTimeout,
@@ -801,7 +825,14 @@ struct TlMotionConfig: Hashable {
       useSignificantChangesOnly: useSignificantChangesOnly,
       shakeThreshold: shakeThreshold,
       stillThreshold: stillThreshold,
-      stillSampleCount: stillSampleCount
+      stillSampleCount: stillSampleCount,
+      motionDetectionMode: motionDetectionMode,
+      speedMovingThreshold: speedMovingThreshold,
+      speedStationaryDelay: speedStationaryDelay,
+      stationaryTrackingMode: stationaryTrackingMode,
+      stationaryPeriodicInterval: stationaryPeriodicInterval,
+      stationaryPeriodicAccuracy: stationaryPeriodicAccuracy,
+      speedWakeConfirmCount: speedWakeConfirmCount
     )
   }
   func toList() -> [Any?] {
@@ -821,6 +852,13 @@ struct TlMotionConfig: Hashable {
       shakeThreshold,
       stillThreshold,
       stillSampleCount,
+      motionDetectionMode,
+      speedMovingThreshold,
+      speedStationaryDelay,
+      stationaryTrackingMode,
+      stationaryPeriodicInterval,
+      stationaryPeriodicAccuracy,
+      speedWakeConfirmCount,
     ]
   }
   static func == (lhs: TlMotionConfig, rhs: TlMotionConfig) -> Bool {
@@ -1538,6 +1576,43 @@ struct TlHeartbeatEvent: Hashable {
 }
 
 /// Generated class from Pigeon that represents data sent in messages.
+struct TlSpeedMotionEvent: Hashable {
+  /// New state: `"moving"`, `"slowing"`, or `"stationary"`.
+  var state: String
+  /// Previous state before this transition.
+  var previousState: String
+  /// Underlying tracking mode after the transition: `"continuous"`,
+  /// `"periodic"`, or `"geofences"`.
+  var trackingMode: String
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> TlSpeedMotionEvent? {
+    let state = pigeonVar_list[0] as! String
+    let previousState = pigeonVar_list[1] as! String
+    let trackingMode = pigeonVar_list[2] as! String
+
+    return TlSpeedMotionEvent(
+      state: state,
+      previousState: previousState,
+      trackingMode: trackingMode
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      state,
+      previousState,
+      trackingMode,
+    ]
+  }
+  static func == (lhs: TlSpeedMotionEvent, rhs: TlSpeedMotionEvent) -> Bool {
+    return deepEqualsTraceletApi(lhs.toList(), rhs.toList())  }
+  func hash(into hasher: inout Hasher) {
+    deepHashTraceletApi(value: toList(), hasher: &hasher)
+  }
+}
+
+/// Generated class from Pigeon that represents data sent in messages.
 struct TlAuthorizationEvent: Hashable {
   var success: Bool
   var status: Int64
@@ -1613,128 +1688,142 @@ private class TraceletApiPigeonCodecReader: FlutterStandardReader {
     case 131:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return TlGeofenceAction(rawValue: enumResultAsInt)
+        return TlMotionDetectionMode(rawValue: enumResultAsInt)
       }
       return nil
     case 132:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return TlAuthorizationStatus(rawValue: enumResultAsInt)
+        return TlStationaryTrackingMode(rawValue: enumResultAsInt)
       }
       return nil
     case 133:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return TlHttpMethod(rawValue: enumResultAsInt)
+        return TlGeofenceAction(rawValue: enumResultAsInt)
       }
       return nil
     case 134:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return TlIosActivityType(rawValue: enumResultAsInt)
+        return TlAuthorizationStatus(rawValue: enumResultAsInt)
       }
       return nil
     case 135:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return TlNotificationPriority(rawValue: enumResultAsInt)
+        return TlHttpMethod(rawValue: enumResultAsInt)
       }
       return nil
     case 136:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return TlLocationOrderDirection(rawValue: enumResultAsInt)
+        return TlIosActivityType(rawValue: enumResultAsInt)
       }
       return nil
     case 137:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return TlLocationActivityType(rawValue: enumResultAsInt)
+        return TlNotificationPriority(rawValue: enumResultAsInt)
       }
       return nil
     case 138:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return TlLogLevel(rawValue: enumResultAsInt)
+        return TlLocationOrderDirection(rawValue: enumResultAsInt)
       }
       return nil
     case 139:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return TlPersistMode(rawValue: enumResultAsInt)
+        return TlLocationActivityType(rawValue: enumResultAsInt)
       }
       return nil
     case 140:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return TlHashAlgorithm(rawValue: enumResultAsInt)
+        return TlLogLevel(rawValue: enumResultAsInt)
       }
       return nil
     case 141:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return TlAuthorizationRequest(rawValue: enumResultAsInt)
+        return TlPersistMode(rawValue: enumResultAsInt)
       }
       return nil
     case 142:
-      return TlGeoConfig.fromList(self.readValue() as! [Any?])
+      let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
+      if let enumResultAsInt = enumResultAsInt {
+        return TlHashAlgorithm(rawValue: enumResultAsInt)
+      }
+      return nil
     case 143:
-      return TlAppConfig.fromList(self.readValue() as! [Any?])
+      let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
+      if let enumResultAsInt = enumResultAsInt {
+        return TlAuthorizationRequest(rawValue: enumResultAsInt)
+      }
+      return nil
     case 144:
-      return TlForegroundServiceConfig.fromList(self.readValue() as! [Any?])
+      return TlGeoConfig.fromList(self.readValue() as! [Any?])
     case 145:
-      return TlAndroidConfig.fromList(self.readValue() as! [Any?])
+      return TlAppConfig.fromList(self.readValue() as! [Any?])
     case 146:
-      return TlIosConfig.fromList(self.readValue() as! [Any?])
+      return TlForegroundServiceConfig.fromList(self.readValue() as! [Any?])
     case 147:
-      return TlHttpConfig.fromList(self.readValue() as! [Any?])
+      return TlAndroidConfig.fromList(self.readValue() as! [Any?])
     case 148:
-      return TlConfig.fromList(self.readValue() as! [Any?])
+      return TlIosConfig.fromList(self.readValue() as! [Any?])
     case 149:
-      return TlLoggerConfig.fromList(self.readValue() as! [Any?])
+      return TlHttpConfig.fromList(self.readValue() as! [Any?])
     case 150:
-      return TlMotionConfig.fromList(self.readValue() as! [Any?])
+      return TlConfig.fromList(self.readValue() as! [Any?])
     case 151:
-      return TlGeofenceConfig.fromList(self.readValue() as! [Any?])
+      return TlLoggerConfig.fromList(self.readValue() as! [Any?])
     case 152:
-      return TlPersistenceConfig.fromList(self.readValue() as! [Any?])
+      return TlMotionConfig.fromList(self.readValue() as! [Any?])
     case 153:
-      return TlAuditConfig.fromList(self.readValue() as! [Any?])
+      return TlGeofenceConfig.fromList(self.readValue() as! [Any?])
     case 154:
-      return TlPrivacyZoneConfig.fromList(self.readValue() as! [Any?])
+      return TlPersistenceConfig.fromList(self.readValue() as! [Any?])
     case 155:
-      return TlSecurityConfig.fromList(self.readValue() as! [Any?])
+      return TlAuditConfig.fromList(self.readValue() as! [Any?])
     case 156:
-      return TlAttestationConfig.fromList(self.readValue() as! [Any?])
+      return TlPrivacyZoneConfig.fromList(self.readValue() as! [Any?])
     case 157:
-      return TlCoords.fromList(self.readValue() as! [Any?])
+      return TlSecurityConfig.fromList(self.readValue() as! [Any?])
     case 158:
-      return TlBattery.fromList(self.readValue() as! [Any?])
+      return TlAttestationConfig.fromList(self.readValue() as! [Any?])
     case 159:
-      return TlLocation.fromList(self.readValue() as! [Any?])
+      return TlCoords.fromList(self.readValue() as! [Any?])
     case 160:
-      return TlActivity.fromList(self.readValue() as! [Any?])
+      return TlBattery.fromList(self.readValue() as! [Any?])
     case 161:
-      return TlState.fromList(self.readValue() as! [Any?])
+      return TlLocation.fromList(self.readValue() as! [Any?])
     case 162:
-      return TlGeofence.fromList(self.readValue() as! [Any?])
+      return TlActivity.fromList(self.readValue() as! [Any?])
     case 163:
-      return TlGeofenceEvent.fromList(self.readValue() as! [Any?])
+      return TlState.fromList(self.readValue() as! [Any?])
     case 164:
-      return TlHttpEvent.fromList(self.readValue() as! [Any?])
+      return TlGeofence.fromList(self.readValue() as! [Any?])
     case 165:
-      return TlProviderChangeEvent.fromList(self.readValue() as! [Any?])
+      return TlGeofenceEvent.fromList(self.readValue() as! [Any?])
     case 166:
-      return TlCurrentPositionOptions.fromList(self.readValue() as! [Any?])
+      return TlHttpEvent.fromList(self.readValue() as! [Any?])
     case 167:
-      return TlActivityChangeEvent.fromList(self.readValue() as! [Any?])
+      return TlProviderChangeEvent.fromList(self.readValue() as! [Any?])
     case 168:
-      return TlGeofencesChangeEvent.fromList(self.readValue() as! [Any?])
+      return TlCurrentPositionOptions.fromList(self.readValue() as! [Any?])
     case 169:
-      return TlHeartbeatEvent.fromList(self.readValue() as! [Any?])
+      return TlActivityChangeEvent.fromList(self.readValue() as! [Any?])
     case 170:
-      return TlAuthorizationEvent.fromList(self.readValue() as! [Any?])
+      return TlGeofencesChangeEvent.fromList(self.readValue() as! [Any?])
     case 171:
+      return TlHeartbeatEvent.fromList(self.readValue() as! [Any?])
+    case 172:
+      return TlSpeedMotionEvent.fromList(self.readValue() as! [Any?])
+    case 173:
+      return TlAuthorizationEvent.fromList(self.readValue() as! [Any?])
+    case 174:
       return TlConnectivityChangeEvent.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
@@ -1750,128 +1839,137 @@ private class TraceletApiPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? TlTrackingMode {
       super.writeByte(130)
       super.writeValue(value.rawValue)
-    } else if let value = value as? TlGeofenceAction {
+    } else if let value = value as? TlMotionDetectionMode {
       super.writeByte(131)
       super.writeValue(value.rawValue)
-    } else if let value = value as? TlAuthorizationStatus {
+    } else if let value = value as? TlStationaryTrackingMode {
       super.writeByte(132)
       super.writeValue(value.rawValue)
-    } else if let value = value as? TlHttpMethod {
+    } else if let value = value as? TlGeofenceAction {
       super.writeByte(133)
       super.writeValue(value.rawValue)
-    } else if let value = value as? TlIosActivityType {
+    } else if let value = value as? TlAuthorizationStatus {
       super.writeByte(134)
       super.writeValue(value.rawValue)
-    } else if let value = value as? TlNotificationPriority {
+    } else if let value = value as? TlHttpMethod {
       super.writeByte(135)
       super.writeValue(value.rawValue)
-    } else if let value = value as? TlLocationOrderDirection {
+    } else if let value = value as? TlIosActivityType {
       super.writeByte(136)
       super.writeValue(value.rawValue)
-    } else if let value = value as? TlLocationActivityType {
+    } else if let value = value as? TlNotificationPriority {
       super.writeByte(137)
       super.writeValue(value.rawValue)
-    } else if let value = value as? TlLogLevel {
+    } else if let value = value as? TlLocationOrderDirection {
       super.writeByte(138)
       super.writeValue(value.rawValue)
-    } else if let value = value as? TlPersistMode {
+    } else if let value = value as? TlLocationActivityType {
       super.writeByte(139)
       super.writeValue(value.rawValue)
-    } else if let value = value as? TlHashAlgorithm {
+    } else if let value = value as? TlLogLevel {
       super.writeByte(140)
       super.writeValue(value.rawValue)
-    } else if let value = value as? TlAuthorizationRequest {
+    } else if let value = value as? TlPersistMode {
       super.writeByte(141)
       super.writeValue(value.rawValue)
-    } else if let value = value as? TlGeoConfig {
+    } else if let value = value as? TlHashAlgorithm {
       super.writeByte(142)
-      super.writeValue(value.toList())
-    } else if let value = value as? TlAppConfig {
+      super.writeValue(value.rawValue)
+    } else if let value = value as? TlAuthorizationRequest {
       super.writeByte(143)
-      super.writeValue(value.toList())
-    } else if let value = value as? TlForegroundServiceConfig {
+      super.writeValue(value.rawValue)
+    } else if let value = value as? TlGeoConfig {
       super.writeByte(144)
       super.writeValue(value.toList())
-    } else if let value = value as? TlAndroidConfig {
+    } else if let value = value as? TlAppConfig {
       super.writeByte(145)
       super.writeValue(value.toList())
-    } else if let value = value as? TlIosConfig {
+    } else if let value = value as? TlForegroundServiceConfig {
       super.writeByte(146)
       super.writeValue(value.toList())
-    } else if let value = value as? TlHttpConfig {
+    } else if let value = value as? TlAndroidConfig {
       super.writeByte(147)
       super.writeValue(value.toList())
-    } else if let value = value as? TlConfig {
+    } else if let value = value as? TlIosConfig {
       super.writeByte(148)
       super.writeValue(value.toList())
-    } else if let value = value as? TlLoggerConfig {
+    } else if let value = value as? TlHttpConfig {
       super.writeByte(149)
       super.writeValue(value.toList())
-    } else if let value = value as? TlMotionConfig {
+    } else if let value = value as? TlConfig {
       super.writeByte(150)
       super.writeValue(value.toList())
-    } else if let value = value as? TlGeofenceConfig {
+    } else if let value = value as? TlLoggerConfig {
       super.writeByte(151)
       super.writeValue(value.toList())
-    } else if let value = value as? TlPersistenceConfig {
+    } else if let value = value as? TlMotionConfig {
       super.writeByte(152)
       super.writeValue(value.toList())
-    } else if let value = value as? TlAuditConfig {
+    } else if let value = value as? TlGeofenceConfig {
       super.writeByte(153)
       super.writeValue(value.toList())
-    } else if let value = value as? TlPrivacyZoneConfig {
+    } else if let value = value as? TlPersistenceConfig {
       super.writeByte(154)
       super.writeValue(value.toList())
-    } else if let value = value as? TlSecurityConfig {
+    } else if let value = value as? TlAuditConfig {
       super.writeByte(155)
       super.writeValue(value.toList())
-    } else if let value = value as? TlAttestationConfig {
+    } else if let value = value as? TlPrivacyZoneConfig {
       super.writeByte(156)
       super.writeValue(value.toList())
-    } else if let value = value as? TlCoords {
+    } else if let value = value as? TlSecurityConfig {
       super.writeByte(157)
       super.writeValue(value.toList())
-    } else if let value = value as? TlBattery {
+    } else if let value = value as? TlAttestationConfig {
       super.writeByte(158)
       super.writeValue(value.toList())
-    } else if let value = value as? TlLocation {
+    } else if let value = value as? TlCoords {
       super.writeByte(159)
       super.writeValue(value.toList())
-    } else if let value = value as? TlActivity {
+    } else if let value = value as? TlBattery {
       super.writeByte(160)
       super.writeValue(value.toList())
-    } else if let value = value as? TlState {
+    } else if let value = value as? TlLocation {
       super.writeByte(161)
       super.writeValue(value.toList())
-    } else if let value = value as? TlGeofence {
+    } else if let value = value as? TlActivity {
       super.writeByte(162)
       super.writeValue(value.toList())
-    } else if let value = value as? TlGeofenceEvent {
+    } else if let value = value as? TlState {
       super.writeByte(163)
       super.writeValue(value.toList())
-    } else if let value = value as? TlHttpEvent {
+    } else if let value = value as? TlGeofence {
       super.writeByte(164)
       super.writeValue(value.toList())
-    } else if let value = value as? TlProviderChangeEvent {
+    } else if let value = value as? TlGeofenceEvent {
       super.writeByte(165)
       super.writeValue(value.toList())
-    } else if let value = value as? TlCurrentPositionOptions {
+    } else if let value = value as? TlHttpEvent {
       super.writeByte(166)
       super.writeValue(value.toList())
-    } else if let value = value as? TlActivityChangeEvent {
+    } else if let value = value as? TlProviderChangeEvent {
       super.writeByte(167)
       super.writeValue(value.toList())
-    } else if let value = value as? TlGeofencesChangeEvent {
+    } else if let value = value as? TlCurrentPositionOptions {
       super.writeByte(168)
       super.writeValue(value.toList())
-    } else if let value = value as? TlHeartbeatEvent {
+    } else if let value = value as? TlActivityChangeEvent {
       super.writeByte(169)
       super.writeValue(value.toList())
-    } else if let value = value as? TlAuthorizationEvent {
+    } else if let value = value as? TlGeofencesChangeEvent {
       super.writeByte(170)
       super.writeValue(value.toList())
-    } else if let value = value as? TlConnectivityChangeEvent {
+    } else if let value = value as? TlHeartbeatEvent {
       super.writeByte(171)
+      super.writeValue(value.toList())
+    } else if let value = value as? TlSpeedMotionEvent {
+      super.writeByte(172)
+      super.writeValue(value.toList())
+    } else if let value = value as? TlAuthorizationEvent {
+      super.writeByte(173)
+      super.writeValue(value.toList())
+    } else if let value = value as? TlConnectivityChangeEvent {
+      super.writeByte(174)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -3224,6 +3322,7 @@ class TraceletFlutterApi: TraceletFlutterApiProtocol {
 protocol TraceletEventApiProtocol {
   func onLocation(location locationArg: TlLocation, completion: @escaping (Result<Void, PigeonError>) -> Void)
   func onMotionChange(location locationArg: TlLocation, completion: @escaping (Result<Void, PigeonError>) -> Void)
+  func onMotionModeChange(event eventArg: TlSpeedMotionEvent, completion: @escaping (Result<Void, PigeonError>) -> Void)
   func onActivityChange(event eventArg: TlActivityChangeEvent, completion: @escaping (Result<Void, PigeonError>) -> Void)
   func onProviderChange(event eventArg: TlProviderChangeEvent, completion: @escaping (Result<Void, PigeonError>) -> Void)
   func onGeofence(event eventArg: TlGeofenceEvent, completion: @escaping (Result<Void, PigeonError>) -> Void)
@@ -3270,6 +3369,24 @@ class TraceletEventApi: TraceletEventApiProtocol {
     let channelName: String = "dev.flutter.pigeon.tracelet_platform_interface.TraceletEventApi.onMotionChange\(messageChannelSuffix)"
     let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
     channel.sendMessage([locationArg] as [Any?]) { response in
+      guard let listResponse = response as? [Any?] else {
+        completion(.failure(createConnectionError(withChannelName: channelName)))
+        return
+      }
+      if listResponse.count > 1 {
+        let code: String = listResponse[0] as! String
+        let message: String? = nilOrValue(listResponse[1])
+        let details: String? = nilOrValue(listResponse[2])
+        completion(.failure(PigeonError(code: code, message: message, details: details)))
+      } else {
+        completion(.success(()))
+      }
+    }
+  }
+  func onMotionModeChange(event eventArg: TlSpeedMotionEvent, completion: @escaping (Result<Void, PigeonError>) -> Void) {
+    let channelName: String = "dev.flutter.pigeon.tracelet_platform_interface.TraceletEventApi.onMotionModeChange\(messageChannelSuffix)"
+    let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
+    channel.sendMessage([eventArg] as [Any?]) { response in
       guard let listResponse = response as? [Any?] else {
         completion(.failure(createConnectionError(withChannelName: channelName)))
         return

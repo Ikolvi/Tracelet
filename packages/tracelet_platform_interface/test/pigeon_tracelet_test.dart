@@ -640,6 +640,13 @@ void main() {
         shakeThreshold: 2.5,
         stillThreshold: 0.4,
         stillSampleCount: 25,
+        motionDetectionMode: TlMotionDetectionMode.accelerometer,
+        speedMovingThreshold: 1.5,
+        speedStationaryDelay: 180,
+        stationaryTrackingMode: TlStationaryTrackingMode.periodic,
+        stationaryPeriodicInterval: 120,
+        stationaryPeriodicAccuracy: TlDesiredAccuracy.high,
+        speedWakeConfirmCount: 1,
       ),
       geofence: TlGeofenceConfig(
         geofenceModeHighAccuracy: false,

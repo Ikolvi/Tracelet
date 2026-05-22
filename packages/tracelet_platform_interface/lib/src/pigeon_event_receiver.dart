@@ -15,6 +15,8 @@ class PigeonEventReceiver implements TraceletEventApi {
 
   final _locationCtrl = StreamController<TlLocation>.broadcast();
   final _motionChangeCtrl = StreamController<TlLocation>.broadcast();
+  /// Controller for speed-mode state machine transitions.
+  final _motionModeChangeCtrl = StreamController<TlSpeedMotionEvent>.broadcast();
   final _activityChangeCtrl =
       StreamController<TlActivityChangeEvent>.broadcast();
   final _providerChangeCtrl =
@@ -39,6 +41,14 @@ class PigeonEventReceiver implements TraceletEventApi {
 
   Stream<TlLocation> get locationEvents => _locationCtrl.stream;
   Stream<TlLocation> get motionChangeEvents => _motionChangeCtrl.stream;
+
+  /// Fires each time the speed-based motion state machine transitions
+  /// between `moving`, `slowing`, and `stationary` states.
+  ///
+  /// Only active when [TlMotionDetectionMode.speed] is configured.
+  Stream<TlSpeedMotionEvent> get motionModeChangeEvents =>
+      _motionModeChangeCtrl.stream;
+
   Stream<TlActivityChangeEvent> get activityChangeEvents =>
       _activityChangeCtrl.stream;
   Stream<TlProviderChangeEvent> get providerChangeEvents =>
@@ -114,6 +124,14 @@ class PigeonEventReceiver implements TraceletEventApi {
   @override
   void onWatchPosition(TlLocation location) => _watchPositionCtrl.add(location);
 
+  /// Called by native when the speed-based motion state machine transitions.
+  ///
+  /// Forwards the typed [TlSpeedMotionEvent] (state, previousState,
+  /// trackingMode) to [motionModeChangeEvents] subscribers.
+  @override
+  void onMotionModeChange(TlSpeedMotionEvent event) =>
+      _motionModeChangeCtrl.add(event);
+
   /// Closes all stream controllers. Call on plugin detach.
   void dispose() {
     _locationCtrl.close();
@@ -131,5 +149,6 @@ class PigeonEventReceiver implements TraceletEventApi {
     _notificationActionCtrl.close();
     _authorizationCtrl.close();
     _watchPositionCtrl.close();
+    _motionModeChangeCtrl.close();
   }
 }

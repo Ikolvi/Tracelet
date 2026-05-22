@@ -8,6 +8,7 @@ import 'attestation_config.dart';
 import 'audit_config.dart';
 import 'privacy_zone_config.dart';
 import 'security_config.dart';
+import 'speed_motion_event.dart';
 
 export 'android_config.dart';
 export 'ios_config.dart';
@@ -1014,7 +1015,16 @@ class MotionConfig {
     this.shakeThreshold = 2.5,
     this.stillThreshold = 0.4,
     this.stillSampleCount = 25,
-  });
+    this.motionDetectionMode = MotionDetectionMode.accelerometer,
+    this.speedMovingThreshold = 1.5,
+    this.speedStationaryDelay = 180,
+    this.stationaryTrackingMode = StationaryTrackingMode.periodic,
+    this.stationaryPeriodicInterval = 120,
+    this.stationaryPeriodicAccuracy = DesiredAccuracy.high,
+    this.speedWakeConfirmCount = 1,
+  }) : assert(speedStationaryDelay >= 0, 'speedStationaryDelay must be >= 0'),
+       assert(speedWakeConfirmCount >= 1, 'speedWakeConfirmCount must be >= 1'),
+       assert(speedMovingThreshold > 0, 'speedMovingThreshold must be > 0');
 
   /// The amount of time (in minutes) the device must be stationary before declaring the stationary state.
   /// Defaults to `5`.
@@ -1076,6 +1086,74 @@ class MotionConfig {
   /// Defaults to `25`.
   final int stillSampleCount;
 
+  /// Selects the motion detection strategy.
+  ///
+  /// - [MotionDetectionMode.accelerometer] (default): the legacy accelerometer-
+  ///   driven stop detection. All of `shakeThreshold`, `stillThreshold`,
+  ///   `stillSampleCount`, `stopTimeout`, and the Activity Recognition
+  ///   settings apply to this mode.
+  /// - [MotionDetectionMode.speed]: a GPS-speed-driven state machine. Use
+  ///   this for vehicle-tracking scenarios where a phone on a dashboard
+  ///   reads near-zero accelerometer values at highway speed. The state
+  ///   machine switches the native location engine between continuous
+  ///   tracking and low-power periodic fixes automatically. All `speed*`
+  ///   and `stationary*` fields below apply to this mode.
+  ///
+  /// When `speed` is selected, the accelerometer and Activity Recognition
+  /// detection paths are disabled entirely.
+  final MotionDetectionMode motionDetectionMode;
+
+  /// [Speed mode] Speed (m/s) below which a location fix counts as
+  /// "not moving."
+  ///
+  /// `1.5 m/s` ≈ 5.4 km/h — filters GPS drift while still catching
+  /// parking-lot crawl. Defaults to `1.5`.
+  final double speedMovingThreshold;
+
+  /// [Speed mode] Seconds of continuous low-speed fixes before the state
+  /// machine declares stationary and switches to the
+  /// [stationaryTrackingMode].
+  ///
+  /// Acts as a "red-light buffer" so stops at traffic lights don't trigger
+  /// a mode switch. Defaults to `180` (3 minutes).
+  final int speedStationaryDelay;
+
+  /// [Speed mode] Tracking mode to enter when stationary.
+  ///
+  /// - [StationaryTrackingMode.periodic] (default): schedule one-shot
+  ///   fixes at [stationaryPeriodicInterval] seconds. GPS radio is off
+  ///   between fixes.
+  /// - [StationaryTrackingMode.geofences]: stop continuous tracking and
+  ///   rely on existing geofence monitoring. Wake speed is evaluated on
+  ///   any geofence-triggered fix.
+  final StationaryTrackingMode stationaryTrackingMode;
+
+  /// [Speed mode] Interval (in seconds) between periodic fixes while
+  /// stationary.
+  ///
+  /// Defaults to `120` (2 minutes). On Android, sub-15-minute intervals
+  /// are driven by an in-process timer on the foreground location service
+  /// — no `SCHEDULE_EXACT_ALARM` permission is required.
+  final int stationaryPeriodicInterval;
+
+  /// [Speed mode] Desired accuracy for periodic stationary fixes.
+  ///
+  /// Should be [DesiredAccuracy.high] so that the GPS speed value is
+  /// reliable for wake detection. If set to a lower accuracy, consider
+  /// raising [speedWakeConfirmCount] to filter phantom speed from
+  /// WiFi/cell position jitter. Defaults to [DesiredAccuracy.high].
+  final DesiredAccuracy stationaryPeriodicAccuracy;
+
+  /// [Speed mode] Number of consecutive periodic fixes with
+  /// `speed >= speedMovingThreshold` required before transitioning back
+  /// to continuous tracking.
+  ///
+  /// `1` (default) gives instant wake and is safe when
+  /// [stationaryPeriodicAccuracy] is [DesiredAccuracy.high] because true
+  /// GPS speed is jitter-free. Increase to `3+` if you lower the
+  /// stationary accuracy.
+  final int speedWakeConfirmCount;
+
   factory MotionConfig.fromMap(Map<String, Object?> map) {
     // Parse activityTypes from the map if present.
     final rawActivityTypes = map['activityTypes'];
@@ -1123,7 +1201,68 @@ class MotionConfig {
       shakeThreshold: ensureDouble(map['shakeThreshold'], fallback: 2.5),
       stillThreshold: ensureDouble(map['stillThreshold'], fallback: 0.4),
       stillSampleCount: ensureInt(map['stillSampleCount'], fallback: 25),
+      motionDetectionMode: _parseMotionDetectionMode(
+        map['motionDetectionMode'],
+      ),
+      speedMovingThreshold: ensureDouble(
+        map['speedMovingThreshold'],
+        fallback: 1.5,
+      ),
+      speedStationaryDelay: ensureInt(
+        map['speedStationaryDelay'],
+        fallback: 180,
+      ),
+      stationaryTrackingMode: _parseStationaryTrackingMode(
+        map['stationaryTrackingMode'],
+      ),
+      stationaryPeriodicInterval: ensureInt(
+        map['stationaryPeriodicInterval'],
+        fallback: 120,
+      ),
+      stationaryPeriodicAccuracy:
+          DesiredAccuracy.values[ensureInt(
+            map['stationaryPeriodicAccuracy'],
+            fallback: DesiredAccuracy.high.index,
+          ).clamp(0, DesiredAccuracy.values.length - 1)],
+      speedWakeConfirmCount: ensureInt(
+        map['speedWakeConfirmCount'],
+        fallback: 1,
+      ),
     );
+  }
+
+  /// Parses [MotionDetectionMode] from a String name or int index.
+  static MotionDetectionMode _parseMotionDetectionMode(Object? raw) {
+    if (raw is String) {
+      return MotionDetectionMode.values.firstWhere(
+        (e) => e.name == raw,
+        orElse: () => MotionDetectionMode.accelerometer,
+      );
+    }
+    if (raw is int) {
+      return MotionDetectionMode.values[raw.clamp(
+        0,
+        MotionDetectionMode.values.length - 1,
+      )];
+    }
+    return MotionDetectionMode.accelerometer;
+  }
+
+  /// Parses [StationaryTrackingMode] from a String name or int index.
+  static StationaryTrackingMode _parseStationaryTrackingMode(Object? raw) {
+    if (raw is String) {
+      return StationaryTrackingMode.values.firstWhere(
+        (e) => e.name == raw,
+        orElse: () => StationaryTrackingMode.periodic,
+      );
+    }
+    if (raw is int) {
+      return StationaryTrackingMode.values[raw.clamp(
+        0,
+        StationaryTrackingMode.values.length - 1,
+      )];
+    }
+    return StationaryTrackingMode.periodic;
   }
 
   Map<String, Object?> toMap() {
@@ -1145,6 +1284,13 @@ class MotionConfig {
       'shakeThreshold': shakeThreshold,
       'stillThreshold': stillThreshold,
       'stillSampleCount': stillSampleCount,
+      'motionDetectionMode': motionDetectionMode.name,
+      'speedMovingThreshold': speedMovingThreshold,
+      'speedStationaryDelay': speedStationaryDelay,
+      'stationaryTrackingMode': stationaryTrackingMode.name,
+      'stationaryPeriodicInterval': stationaryPeriodicInterval,
+      'stationaryPeriodicAccuracy': stationaryPeriodicAccuracy.index,
+      'speedWakeConfirmCount': speedWakeConfirmCount,
     };
   }
 
@@ -1166,6 +1312,16 @@ class MotionConfig {
     activityTypes: activityTypes
         ?.map((e) => TlLocationActivityType.values[e.index])
         .toList(),
+    motionDetectionMode:
+        TlMotionDetectionMode.values[motionDetectionMode.index],
+    speedMovingThreshold: speedMovingThreshold,
+    speedStationaryDelay: speedStationaryDelay,
+    stationaryTrackingMode:
+        TlStationaryTrackingMode.values[stationaryTrackingMode.index],
+    stationaryPeriodicInterval: stationaryPeriodicInterval,
+    stationaryPeriodicAccuracy:
+        TlDesiredAccuracy.values[stationaryPeriodicAccuracy.index],
+    speedWakeConfirmCount: speedWakeConfirmCount,
   );
 
   @override
@@ -1188,10 +1344,24 @@ class MotionConfig {
           useSignificantChangesOnly == other.useSignificantChangesOnly &&
           shakeThreshold == other.shakeThreshold &&
           stillThreshold == other.stillThreshold &&
-          stillSampleCount == other.stillSampleCount;
+          stillSampleCount == other.stillSampleCount &&
+          motionDetectionMode == other.motionDetectionMode &&
+          speedMovingThreshold == other.speedMovingThreshold &&
+          speedStationaryDelay == other.speedStationaryDelay &&
+          stationaryTrackingMode == other.stationaryTrackingMode &&
+          stationaryPeriodicInterval == other.stationaryPeriodicInterval &&
+          stationaryPeriodicAccuracy == other.stationaryPeriodicAccuracy &&
+          speedWakeConfirmCount == other.speedWakeConfirmCount;
 
   @override
-  int get hashCode => Object.hash(
+  String toString() =>
+      'MotionConfig(stopTimeout: $stopTimeout, '
+      'disableMotionActivityUpdates: $disableMotionActivityUpdates, '
+      'isMoving: $isMoving, '
+      'motionDetectionMode: $motionDetectionMode)';
+
+  @override
+  int get hashCode => Object.hashAll([
     stopTimeout,
     motionTriggerDelay,
     disableMotionActivityUpdates,
@@ -1207,7 +1377,14 @@ class MotionConfig {
     shakeThreshold,
     stillThreshold,
     stillSampleCount,
-  );
+    motionDetectionMode,
+    speedMovingThreshold,
+    speedStationaryDelay,
+    stationaryTrackingMode,
+    stationaryPeriodicInterval,
+    stationaryPeriodicAccuracy,
+    speedWakeConfirmCount,
+  ]);
 }
 
 @immutable

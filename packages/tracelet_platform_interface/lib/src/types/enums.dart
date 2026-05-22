@@ -106,21 +106,90 @@ enum GeofenceAction {
 }
 
 /// Authorization status for location permissions.
+///
+/// Returned by [Tracelet.getLocationAuthorization] and
+/// [Tracelet.requestLocationAuthorization]. The raw integer codes
+/// exchanged over the platform channel are:
+/// `0` notDetermined, `1` denied, `2` whenInUse, `3` always, `4` deniedForever.
 enum AuthorizationStatus {
   /// Permission has not been requested.
   notDetermined,
 
-  /// Permission denied by user.
+  /// Permission denied by user (can ask again on Android).
   denied,
 
-  /// Authorized for when-in-use only.
+  /// Authorized for when-in-use (foreground) only.
   whenInUse,
 
   /// Authorized for always (background) access.
   always,
 
-  /// Permanently denied (user chose "Don't ask again").
+  /// Permanently denied — user must open Settings manually.
   deniedForever,
+}
+
+/// Authorization status for notification permissions.
+///
+/// Returned by [Tracelet.getNotificationAuthorization] and
+/// [Tracelet.requestNotificationAuthorization]. Semantically identical
+/// to [AuthorizationStatus] but modelled as a separate type to make
+/// call-sites self-documenting and to avoid implicit index aliasing.
+///
+/// Raw channel values: `0` notDetermined, `1` denied, `3` granted, `4` deniedForever.
+/// (`2` is unused for notifications.)
+enum NotificationAuthorizationStatus {
+  /// Notification permission has not been requested.
+  notDetermined,
+
+  /// Denied — the user dismissed the dialog without granting.
+  denied,
+
+  /// Granted — notifications are enabled.
+  ///
+  /// On Android < 13 and on iOS (when authorized), this is always returned.
+  granted,
+
+  /// Permanently denied — the user chose "Don't ask again", or the
+  /// permission was restricted by device policy. Must open Settings.
+  deniedForever,
+}
+
+/// Authorization status for motion & fitness / activity recognition
+/// permissions.
+///
+/// Returned by [Tracelet.getMotionAuthorization] and
+/// [Tracelet.requestMotionAuthorization].
+///
+/// Raw channel values: `0` notDetermined, `3` granted, `4` deniedForever.
+/// (`1` denied is not used on iOS; Android only uses `0`, `3`, and `4`.)
+enum MotionAuthorizationStatus {
+  /// Permission has not been requested.
+  notDetermined,
+
+  /// Granted — motion/activity recognition is enabled.
+  ///
+  /// On Android < 10 (API < 29) no runtime permission is required;
+  /// this value is always returned in that case.
+  granted,
+
+  /// Permanently denied — must open Settings.
+  ///
+  /// On iOS: CMAuthorizationStatus.denied or .restricted.
+  /// On Android: permission denied with "don't ask again".
+  deniedForever,
+}
+
+/// Temporary full accuracy authorization status (iOS 14+).
+///
+/// Returned by [Tracelet.requestTemporaryFullAccuracyAuthorization].
+/// On Android and iOS < 14, always returns [FullAccuracyStatus.full].
+enum FullAccuracyStatus {
+  /// Full precision location is authorized.
+  full,
+
+  /// Location is returned at reduced (approximate) precision.
+  /// The user has not granted temporary full accuracy for the given purpose.
+  reduced,
 }
 
 /// Accuracy authorization (iOS 14+).
