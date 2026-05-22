@@ -1,6 +1,6 @@
 name: tracelet_web
 description: Web implementation of the Tracelet background geolocation plugin.
-version: 2.0.7
+version: 2.0.8
 license: Apache-2.0
 homepage: https://github.com/Ikolvi/Tracelet
 repository: https://github.com/Ikolvi/Tracelet/tree/main/packages/tracelet_web
@@ -15,7 +15,7 @@ dependencies:
     sdk: flutter
   flutter_web_plugins:
     sdk: flutter
-  tracelet_platform_interface: ^2.0.7
+  tracelet_platform_interface: ^2.0.8
   web: ^1.1.1
 
 dev_dependencies:

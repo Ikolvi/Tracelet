@@ -1,3 +1,7 @@
+## 2.0.9
+
+ - Update a dependency to the latest release.
+
 ## 2.0.8
 
  - **FIX**(ios): Resolved type casting bug for 64-bit Pigeon `Int64` integer values across all iOS config mappings. This ensures that integer configurations (such as `stopTimeout`) sent from Dart are correctly applied on iOS.

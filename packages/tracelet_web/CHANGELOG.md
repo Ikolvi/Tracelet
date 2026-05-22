@@ -1,3 +1,7 @@
+## 2.0.8
+
+ - Bump "tracelet_web" to `2.0.8`.
+
 ## 2.0.7
 
 - **CHORE**: Version bump for monorepo consistency and package lockstep alignment.

@@ -15,6 +15,48 @@ Packages with breaking changes:
 
 Packages with other changes:
 
+ - [`tracelet_platform_interface` - `v2.0.8`](#tracelet_platform_interface---v208)
+ - [`tracelet_android` - `v2.0.8`](#tracelet_android---v208)
+ - [`tracelet_web` - `v2.0.8`](#tracelet_web---v208)
+ - [`tracelet` - `v2.0.9`](#tracelet---v209)
+ - [`tracelet_ios` - `v2.0.9`](#tracelet_ios---v209)
+ - [`tracelet_doctor` - `v1.0.4`](#tracelet_doctor---v104)
+
+Packages with dependency updates only:
+
+> Packages listed below depend on other packages in this workspace that have had changes. Their versions have been incremented to bump the minimum dependency versions of the packages they depend upon in this project.
+
+ - `tracelet` - `v2.0.9`
+ - `tracelet_ios` - `v2.0.9`
+ - `tracelet_doctor` - `v1.0.4`
+
+---
+
+#### `tracelet_platform_interface` - `v2.0.8`
+
+ - Bump "tracelet_platform_interface" to `2.0.8`.
+
+#### `tracelet_android` - `v2.0.8`
+
+ - Bump "tracelet_android" to `2.0.8`.
+
+#### `tracelet_web` - `v2.0.8`
+
+ - Bump "tracelet_web" to `2.0.8`.
+
+
+## 2026-05-22
+
+### Changes
+
+---
+
+Packages with breaking changes:
+
+ - There are no breaking changes in this release.
+
+Packages with other changes:
+
  - [`tracelet_ios` - `v2.0.8`](#tracelet_ios---v208)
  - [`tracelet` - `v2.0.8`](#tracelet---v208)
  - [`tracelet_doctor` - `v1.0.3`](#tracelet_doctor---v103)

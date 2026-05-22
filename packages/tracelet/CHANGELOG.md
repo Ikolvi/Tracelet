@@ -1,3 +1,7 @@
+## 2.0.9
+
+ - Update a dependency to the latest release.
+
 ## 2.0.8
 
 - **FIX**(ios): Resolved type casting bug for 64-bit Pigeon `Int64` integer values across all iOS config mappings. Integer configurations (such as `stopTimeout`, `locationUpdateInterval`, etc.) are now correctly applied on iOS instead of silently falling back to defaults.
