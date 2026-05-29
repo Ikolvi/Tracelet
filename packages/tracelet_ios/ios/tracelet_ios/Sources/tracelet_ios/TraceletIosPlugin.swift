@@ -7,7 +7,7 @@ import TraceletSDK
 /// TraceletIosPlugin — Thin Flutter bridge that delegates all work to ``TraceletSdk``.
 ///
 /// This plugin owns only Flutter-specific concerns:
-/// - ``EventDispatcher`` (Pigeon FlutterApi → Dart)
+/// - ``PluginEventDispatcher`` (Pigeon FlutterApi → Dart)
 /// - ``HeadlessRunner`` (background Dart execution)
 /// - Pigeon HostApi dispatch
 /// - Killed-state auto-resume via `UIApplicationDelegate`
@@ -32,7 +32,7 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
     /// in PluginSecondaryEngineGuardTests.
     static var primaryInstance: TraceletIosPlugin?
 
-    private var eventDispatcher: EventDispatcher!
+    private var eventDispatcher: PluginEventDispatcher!
     private var headlessRunner: HeadlessRunner!
 
     /// Shorthand for the SDK singleton.
@@ -65,13 +65,13 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
             primaryInstance = instance
 
             // Flutter-specific event channels
-            instance.eventDispatcher = EventDispatcher()
+            instance.eventDispatcher = PluginEventDispatcher()
             instance.eventDispatcher.register(messenger: registrar.messenger())
 
             // Headless runner for background Dart execution
             instance.headlessRunner = HeadlessRunner()
 
-            // Inject Flutter EventDispatcher as the SDK's event sender
+            // Inject Flutter PluginEventDispatcher as the SDK's event sender
             TraceletSdk.shared.setEventSender(instance.eventDispatcher)
 
             // Initialize SDK subsystems so httpSyncManager (and others) exist
@@ -87,7 +87,7 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin {
             // Wire headlessFallback so any future consumer of the factory
             // (e.g. SDK background bootstrap) gets a properly routed dispatcher.
             TraceletBootstrapIOS.eventSenderFactory = {
-                let dispatcher = EventDispatcher()
+                let dispatcher = PluginEventDispatcher()
                 let runner = HeadlessRunner()
                 dispatcher.headlessFallback = { eventName, eventData in
                     runner.dispatchEvent(["name": eventName, "event": eventData])

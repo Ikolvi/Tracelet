@@ -36,8 +36,12 @@ mkdir -p "$OUT_DIR/Headers"
 cp "$OUT_DIR/tracelet_coreFFI.h" "$OUT_DIR/Headers/"
 cp "$OUT_DIR/tracelet_coreFFI.modulemap" "$OUT_DIR/Headers/module.modulemap"
 
-# Rename module to TraceletCore so Xcode loads it properly from TraceletCore.xcframework
-sed -i '' 's/module tracelet_coreFFI/framework module TraceletCore/g' "$OUT_DIR/Headers/module.modulemap"
+# Rename module to TraceletCore so Xcode/SPM loads it properly from TraceletCore.xcframework
+sed -i '' 's/module tracelet_coreFFI/module TraceletCore/g' "$OUT_DIR/Headers/module.modulemap"
+
+# Replace canImport with SWIFT_PACKAGE to support both CocoaPods and SPM
+sed -i '' 's/canImport(tracelet_coreFFI)/SWIFT_PACKAGE/g' "$OUT_DIR/tracelet_core.swift"
+sed -i '' 's/import tracelet_coreFFI/import TraceletCore/g' "$OUT_DIR/tracelet_core.swift"
 
 # Copy generated Swift bindings to the iOS SDK sources
 cp "$OUT_DIR/tracelet_core.swift" "../../sdk/ios/Sources/TraceletSDK/"

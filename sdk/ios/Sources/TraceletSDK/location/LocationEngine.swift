@@ -60,8 +60,8 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// Rust-backed Kalman filter for smoothing lat/lng.
     private var kalmanFilter: KalmanLocationFilter?
 
-    /// Rust-backed EventDispatcher for DB persistence + auto HTTP sync
-    public var rustEventDispatcher: EventDispatcher?
+    /// Rust-backed PluginEventDispatcher for DB persistence + auto HTTP sync
+    public var rustPluginEventDispatcher: EventDispatcher?
 
     /// Build (or rebuild) the Rust LocationProcessor from current config.
     public func rebuildProcessor() {
@@ -1221,8 +1221,8 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         // Skip provider change records if disabled
         if event == "providerchange" && configManager.getDisableProviderChangeRecord() { return }
 
-        // Route through Rust EventDispatcher for DB persistence + auto HTTP sync
-        if let dispatcher = rustEventDispatcher {
+        // Route through Rust PluginEventDispatcher for DB persistence + auto HTTP sync
+        if let dispatcher = rustPluginEventDispatcher {
             let coords = location["coords"] as? [String: Any]
             let lat = coords?["latitude"] as? Double ?? 0.0
             let lng = coords?["longitude"] as? Double ?? 0.0

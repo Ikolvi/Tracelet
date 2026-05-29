@@ -12,7 +12,7 @@ import TraceletSDK
 /// When no Flutter engine is attached, the dispatcher falls back to
 /// `headlessFallback` (if set) so events can be routed to a background
 /// Dart isolate via HeadlessRunner.
-final class EventDispatcher: NSObject, TraceletEventSending {
+public final class PluginEventDispatcher: NSObject, TraceletEventSending {
     private var eventApi: TraceletEventApi?
 
     /// Optional headless fallback. When no Flutter engine is attached,
@@ -20,29 +20,29 @@ final class EventDispatcher: NSObject, TraceletEventSending {
     /// HeadlessRunner.
     var headlessFallback: ((_ eventName: String, _ data: [String: Any]) -> Void)?
 
-    func register(messenger: FlutterBinaryMessenger) {
+    public func register(messenger: FlutterBinaryMessenger) {
         eventApi = TraceletEventApi(binaryMessenger: messenger)
     }
 
-    func unregister() {
+    public func unregister() {
         eventApi = nil
     }
 
     // MARK: - TraceletEventSending
 
-    func sendLocation(_ data: [String: Any]) {
+    public func sendLocation(_ data: [String: Any]) {
         guard let api = eventApi else { return fallback("location", data) }
         let location = mapToTlLocation(data)
         DispatchQueue.main.async { api.onLocation(location: location) { _ in } }
     }
 
-    func sendMotionChange(_ data: [String: Any]) {
+    public func sendMotionChange(_ data: [String: Any]) {
         guard let api = eventApi else { return fallback("motionchange", data) }
         let location = mapToTlLocation(data)
         DispatchQueue.main.async { api.onMotionChange(location: location) { _ in } }
     }
 
-    func sendSpeedMotionEvent(_ data: [String: Any]) {
+    public func sendSpeedMotionEvent(_ data: [String: Any]) {
         guard let api = eventApi else { return fallback("speedmotion", data) }
         let event = TlSpeedMotionEvent(
             state: TlSpeedMotionState(rawValue: data["state"] as? Int ?? 0) ?? .moving,
@@ -52,7 +52,7 @@ final class EventDispatcher: NSObject, TraceletEventSending {
         DispatchQueue.main.async { api.onMotionModeChange(event: event) { _ in } }
     }
 
-    func sendActivityChange(_ data: [String: Any]) {
+    public func sendActivityChange(_ data: [String: Any]) {
         guard let api = eventApi else { return fallback("activitychange", data) }
         let event = TlActivityChangeEvent(
             activity: data["activity"] as? String ?? "unknown",
@@ -61,7 +61,7 @@ final class EventDispatcher: NSObject, TraceletEventSending {
         DispatchQueue.main.async { api.onActivityChange(event: event) { _ in } }
     }
 
-    func sendProviderChange(_ data: [String: Any]) {
+    public func sendProviderChange(_ data: [String: Any]) {
         guard let api = eventApi else { return fallback("providerchange", data) }
         let event = TlProviderChangeEvent(
             enabled: data["enabled"] as? Bool ?? false,
@@ -73,7 +73,7 @@ final class EventDispatcher: NSObject, TraceletEventSending {
         DispatchQueue.main.async { api.onProviderChange(event: event) { _ in } }
     }
 
-    func sendGeofence(_ data: [String: Any]) {
+    public func sendGeofence(_ data: [String: Any]) {
         guard let api = eventApi else { return fallback("geofence", data) }
         let locMap = data["location"] as? [String: Any] ?? [:]
         let actionStr = (data["action"] as? String ?? "ENTER").uppercased()
@@ -92,7 +92,7 @@ final class EventDispatcher: NSObject, TraceletEventSending {
         DispatchQueue.main.async { api.onGeofence(event: event) { _ in } }
     }
 
-    func sendGeofencesChange(_ data: [String: Any]) {
+    public func sendGeofencesChange(_ data: [String: Any]) {
         guard let api = eventApi else { return fallback("geofenceschange", data) }
         let onList = (data["on"] as? [[String: Any]])?.map { mapToTlGeofence($0) }
         let offList = (data["off"] as? [[String: Any]])?.map { mapToTlGeofence($0) }
@@ -100,14 +100,14 @@ final class EventDispatcher: NSObject, TraceletEventSending {
         DispatchQueue.main.async { api.onGeofencesChange(event: event) { _ in } }
     }
 
-    func sendHeartbeat(_ data: [String: Any]) {
+    public func sendHeartbeat(_ data: [String: Any]) {
         guard let api = eventApi else { return fallback("heartbeat", data) }
         let locMap = data["location"] as? [String: Any] ?? [:]
         let event = TlHeartbeatEvent(location: mapToTlLocation(locMap))
         DispatchQueue.main.async { api.onHeartbeat(event: event) { _ in } }
     }
 
-    func sendHttp(_ data: [String: Any]) {
+    public func sendHttp(_ data: [String: Any]) {
         guard let api = eventApi else { return fallback("http", data) }
         let event = TlHttpEvent(
             isSuccess: data["success"] as? Bool ?? false,
@@ -117,35 +117,35 @@ final class EventDispatcher: NSObject, TraceletEventSending {
         DispatchQueue.main.async { api.onHttp(event: event) { _ in } }
     }
 
-    func sendSchedule(_ data: [String: Any]) {
+    public func sendSchedule(_ data: [String: Any]) {
         guard let api = eventApi else { return fallback("schedule", data) }
         let state = mapToTlState(data)
         DispatchQueue.main.async { api.onSchedule(state: state) { _ in } }
     }
 
-    func sendPowerSaveChange(_ isPowerSave: Bool) {
+    public func sendPowerSaveChange(_ isPowerSave: Bool) {
         guard let api = eventApi else { return fallback("powersavechange", ["value": isPowerSave]) }
         DispatchQueue.main.async { api.onPowerSaveChange(isPowerSaveMode: isPowerSave) { _ in } }
     }
 
-    func sendConnectivityChange(_ data: [String: Any]) {
+    public func sendConnectivityChange(_ data: [String: Any]) {
         guard let api = eventApi else { return fallback("connectivitychange", data) }
         let event = TlConnectivityChangeEvent(connected: data["connected"] as? Bool ?? false)
         DispatchQueue.main.async { api.onConnectivityChange(event: event) { _ in } }
     }
 
-    func sendEnabledChange(_ enabled: Bool) {
+    public func sendEnabledChange(_ enabled: Bool) {
         guard let api = eventApi else { return fallback("enabledchange", ["value": enabled]) }
         DispatchQueue.main.async { api.onEnabledChange(enabled: enabled) { _ in } }
     }
 
-    func sendNotificationAction(_ data: [String: Any]) {
+    public func sendNotificationAction(_ data: [String: Any]) {
         guard let api = eventApi else { return fallback("notificationaction", data) }
         let action = data["action"] as? String ?? ""
         DispatchQueue.main.async { api.onNotificationAction(action: action) { _ in } }
     }
 
-    func sendAuthorization(_ data: [String: Any]) {
+    public func sendAuthorization(_ data: [String: Any]) {
         guard let api = eventApi else { return fallback("authorization", data) }
         let event = TlAuthorizationEvent(
             success: data["success"] as? Bool ?? false,
@@ -155,25 +155,25 @@ final class EventDispatcher: NSObject, TraceletEventSending {
         DispatchQueue.main.async { api.onAuthorization(event: event) { _ in } }
     }
 
-    func sendWatchPosition(_ data: [String: Any]) {
+    public func sendWatchPosition(_ data: [String: Any]) {
         guard let api = eventApi else { return fallback("watchposition", data) }
         let location = mapToTlLocation(data)
         DispatchQueue.main.async { api.onWatchPosition(location: location) { _ in } }
     }
 
-    func sendRemoteConfigEvent(_ data: [String: Any]) {
+    public func sendRemoteConfigEvent(_ data: [String: Any]) {
         fallback("remoteconfig", data)
     }
 
-    func sendTrip(_ data: [String: Any]) {
+    public func sendTrip(_ data: [String: Any]) {
         fallback("trip", data)
     }
 
-    func sendBudgetAdjustment(_ data: [String: Any]) {
+    public func sendBudgetAdjustment(_ data: [String: Any]) {
         fallback("budgetadjustment", data)
     }
 
-    func hasListener(eventName: String) -> Bool {
+    public func hasListener(eventName: String) -> Bool {
         return eventApi != nil
     }
 

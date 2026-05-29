@@ -71,7 +71,7 @@ public final class TraceletSdk {
     public private(set) var rustDatabase: DatabaseManager?
     public private(set) var rustSyncManager: SyncManager?
     public private(set) var rustEngineState: EngineState?
-    public private(set) var rustEventDispatcher: EventDispatcher?
+    public private(set) var rustPluginEventDispatcher: EventDispatcher?
 
     private let delegateEventSender = DelegateEventSender()
     private var eventSender: TraceletEventSending
@@ -1294,7 +1294,7 @@ public final class TraceletSdk {
             self.rustDatabase = db
             self.rustSyncManager = sync
             self.rustEngineState = state
-            self.rustEventDispatcher = dispatcher
+            self.rustPluginEventDispatcher = dispatcher
             syncConfigToRustFlat()
             NSLog("Tracelet: Rust Core initialized at \(dbPath)")
         } catch {
@@ -1316,7 +1316,7 @@ public final class TraceletSdk {
             eventDispatcher: eventSender,
             database: database
         )
-        locationEngine.rustEventDispatcher = rustEventDispatcher
+        locationEngine.rustPluginEventDispatcher = rustPluginEventDispatcher
         locationEngine.auditTrailManager = auditTrailManager
         locationEngine.privacyZoneManager = privacyZoneManager
         locationEngine.onLocationPersisted = { [weak self] in
@@ -1359,7 +1359,7 @@ public final class TraceletSdk {
         // Smart motion coordinator
         smartMotionCoordinator = TraceletSmartMotionCoordinator(sdk: self)
 
-        // HTTP sync is handled natively by Rust Core via EventDispatcher
+        // HTTP sync is handled natively by Rust Core via PluginEventDispatcher
 
 
         // Scheduling
