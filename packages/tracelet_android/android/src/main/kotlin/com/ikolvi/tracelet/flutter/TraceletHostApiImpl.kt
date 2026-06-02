@@ -207,7 +207,7 @@ class TraceletHostApiImpl(
                 put("notificationColor", c.android.foregroundService.notificationColor)
                 put("notificationSmallIcon", c.android.foregroundService.notificationSmallIcon)
                 put("notificationLargeIcon", c.android.foregroundService.notificationLargeIcon)
-                put("notificationPriority", c.android.foregroundService.notificationPriority.raw)
+                put("notificationPriority", c.android.foregroundService.notificationPriority.raw - 2)
                 put("notificationOngoing", c.android.foregroundService.notificationOngoing)
                 put("showNotificationOnPauseOnly", c.android.foregroundService.showNotificationOnPauseOnly)
                 put("actions", c.android.foregroundService.actions)
