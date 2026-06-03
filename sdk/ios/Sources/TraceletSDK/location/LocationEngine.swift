@@ -357,7 +357,9 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         ) { [weak self] _ in
             self?.performPeriodicFix()
         }
-        timer.tolerance = 0
+        // Allow iOS to coalesce timer fires with other system work for
+        // energy efficiency. 10% tolerance is Apple's recommendation.
+        timer.tolerance = interval * 0.1
         periodicTimer = timer
     }
 
@@ -1049,11 +1051,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             state.finished = true
             self.sampleState = nil
 
-            if !self.isTracking {
-                self.locationManager.stopUpdatingLocation()
-            }
-            // Restore configured distance filter.
-            self.locationManager.distanceFilter = self.configManager.getDistanceFilter()
+            self.restoreAfterSampling()
 
             if !state.collected.isEmpty {
                 self.deliverBest(samples: state.collected, persist: state.persist, extras: state.extras, callback: state.callback)
@@ -1076,16 +1074,32 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             state.finished = true
             sampleState = nil
 
-            // Stop updates if we started them only for sampling and tracking isn't active
-            if !isTracking {
-                locationManager.stopUpdatingLocation()
-            }
-            // Restore configured distance filter.
-            locationManager.distanceFilter = configManager.getDistanceFilter()
+            restoreAfterSampling()
 
             deliverBest(samples: state.collected, persist: state.persist, extras: state.extras, callback: state.callback)
         }
         return true
+    }
+
+    /// Restores CLLocationManager to the correct state after sample collection.
+    ///
+    /// If periodic tracking is active, stops continuous updates and restores
+    /// the low-power periodic configuration. If continuous tracking is active,
+    /// restores the configured distance filter and accuracy. If tracking is
+    /// not active at all, stops updates entirely.
+    private func restoreAfterSampling() {
+        if isPeriodicTracking {
+            // Stop the continuous GPS that collectSamples started and
+            // restore the low-power periodic configuration.
+            locationManager.stopUpdatingLocation()
+            configureLocationManagerForPeriodic()
+        } else if isTracking {
+            // Continuous tracking — restore configured filter & accuracy.
+            configureLocationManager()
+        } else {
+            // Not tracking at all — shut down updates.
+            locationManager.stopUpdatingLocation()
+        }
     }
 
     private func deliverBest(samples: [CLLocation], persist: Bool, extras: [String: Any], callback: @escaping ([String: Any]?) -> Void) {
