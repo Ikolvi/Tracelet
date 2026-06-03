@@ -64,6 +64,7 @@ sed -i '' 's/canImport(tracelet_syncFFI)/SWIFT_PACKAGE/g' "$OUT_DIR/sync/tracele
 sed -i '' 's/import tracelet_syncFFI/import TraceletSyncFFI\
 import TraceletSDK/g' "$OUT_DIR/sync/tracelet_sync.swift"
 
+mkdir -p "../../packages/tracelet_sync/ios/tracelet_sync/Sources/tracelet_sync"
 cp "$OUT_DIR/sync/tracelet_sync.swift" "../../packages/tracelet_sync/ios/tracelet_sync/Sources/tracelet_sync/"
 cp "$OUT_DIR/sync/tracelet_syncFFI.h" "../../packages/tracelet_sync/ios/tracelet_sync/Sources/tracelet_sync/"
 

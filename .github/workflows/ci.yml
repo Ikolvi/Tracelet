@@ -94,7 +94,12 @@ jobs:
         run: melos bootstrap
       - name: Run tests
         working-directory: packages/${{ matrix.package }}
-        run: flutter test --coverage
+        run: |
+          if [ -d "test" ]; then
+            flutter test --coverage
+          else
+            echo "No test directory found, skipping tests."
+          fi
       - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@v7
