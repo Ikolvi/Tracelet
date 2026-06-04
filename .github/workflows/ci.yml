@@ -194,9 +194,14 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios, aarch64-apple-ios-sim, x86_64-apple-ios
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sdk/rust-core
       - name: Install cargo-binstall
         run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
       - name: Install flutter_rust_bridge_codegen
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: cargo binstall -y cargo-expand flutter_rust_bridge_codegen
       - name: Generate Rust Bindings
         working-directory: packages/tracelet_platform_interface
@@ -419,9 +424,11 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 33
-          target: playstore
+          target: google_apis
           arch: arm64-v8a
           profile: pixel_6
+          emulator-boot-timeout: 600
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-metrics
           script: cd example && flutter test integration_test
 
   integration-test-ios:
