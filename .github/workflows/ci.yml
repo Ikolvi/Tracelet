@@ -53,7 +53,9 @@ jobs:
         run: melos bootstrap
       - name: Generate Rust Bindings
         working-directory: packages/tracelet_platform_interface
-        run: flutter_rust_bridge_codegen generate
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          flutter_rust_bridge_codegen generate
       - name: Check for uncommitted generated files
         run: |
           if [ -n "$(git status --porcelain)" ]; then
@@ -140,7 +142,9 @@ jobs:
         run: melos bootstrap
       - name: Generate Rust Bindings
         working-directory: packages/tracelet_platform_interface
-        run: flutter_rust_bridge_codegen generate
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          flutter_rust_bridge_codegen generate
       - name: Build Host Rust Library
         working-directory: sdk/rust-core
         run: cargo build --release
@@ -209,7 +213,9 @@ jobs:
         run: melos bootstrap
       - name: Generate Rust Bindings
         working-directory: packages/tracelet_platform_interface
-        run: flutter_rust_bridge_codegen generate
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          flutter_rust_bridge_codegen generate
 
       - name: Build Android Rust Core
         run: ./sdk/rust-core/build-android.sh
@@ -279,7 +285,9 @@ jobs:
         run: melos bootstrap
       - name: Generate Rust Bindings
         working-directory: packages/tracelet_platform_interface
-        run: flutter_rust_bridge_codegen generate
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          flutter_rust_bridge_codegen generate
 
       - name: Build iOS Rust Core
         run: ./sdk/rust-core/build-ios.sh
@@ -373,7 +381,9 @@ jobs:
         run: melos bootstrap
       - name: Generate Rust Bindings
         working-directory: packages/tracelet_platform_interface
-        run: flutter_rust_bridge_codegen generate
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          flutter_rust_bridge_codegen generate
       - name: Build example Web
         working-directory: example
         run: flutter build web
@@ -530,7 +540,9 @@ jobs:
         run: melos bootstrap
       - name: Generate Rust Bindings
         working-directory: packages/tracelet_platform_interface
-        run: flutter_rust_bridge_codegen generate
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          flutter_rust_bridge_codegen generate
       - name: Build Android Rust Core
         run: ./sdk/rust-core/build-android.sh
       - name: Run Integration Tests
@@ -583,7 +595,9 @@ jobs:
         run: melos bootstrap
       - name: Generate Rust Bindings
         working-directory: packages/tracelet_platform_interface
-        run: flutter_rust_bridge_codegen generate
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          flutter_rust_bridge_codegen generate
       - name: Build iOS Rust Core
         run: ./sdk/rust-core/build-ios.sh
       - name: Boot Simulator
