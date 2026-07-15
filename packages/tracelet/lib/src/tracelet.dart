@@ -569,6 +569,51 @@ class Tracelet {
     return _platform.changePace(isMoving);
   }
 
+  /// Temporarily overrides the active OS location-provider options.
+  ///
+  /// This is intended for short-lived acquisition policies such as reducing
+  /// iOS GPS power while the device is known to be stationary. It updates the
+  /// running provider without calling [stop] or [start]. The persisted [Config],
+  /// [activeConfig], and the accepted-point filtering pipeline are unchanged.
+  ///
+  /// Passing no arguments clears the override and restores the options from
+  /// [activeConfig]. The override is also cleared when tracking stops. Returns
+  /// `false` when tracking is not active or the platform does not support live
+  /// provider updates. Currently supported on iOS.
+  ///
+  /// [distanceFilter] must be finite and non-negative. A value of zero requests
+  /// all provider updates (`kCLDistanceFilterNone` on iOS).
+  ///
+  /// ```dart
+  /// await Tracelet.updateLocationProviderOptions(
+  ///   desiredAccuracy: DesiredAccuracy.medium,
+  ///   distanceFilter: 25,
+  /// );
+  ///
+  /// // Restore the configured provider options without restarting tracking.
+  /// await Tracelet.updateLocationProviderOptions();
+  /// ```
+  static Future<bool> updateLocationProviderOptions({
+    DesiredAccuracy? desiredAccuracy,
+    double? distanceFilter,
+  }) {
+    if (distanceFilter != null &&
+        (!distanceFilter.isFinite || distanceFilter < 0)) {
+      throw RangeError.value(
+        distanceFilter,
+        'distanceFilter',
+        'Must be finite and non-negative',
+      );
+    }
+
+    return _platform.updateLocationProviderOptions(
+      desiredAccuracy == null
+          ? null
+          : TlDesiredAccuracy.values[desiredAccuracy.index],
+      distanceFilter,
+    );
+  }
+
   /// Confirms a pending impact candidate ([ImpactEvent.id]) as a real
   /// emergency, firing its confirmed `crash`/`fall` event immediately.
   static Future<bool> confirmImpact(int id) {

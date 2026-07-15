@@ -29,6 +29,13 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     private var nextWatchId = 0
     public private(set) var isTracking = false
 
+    /// Temporary OS-provider overrides. These intentionally do not mutate
+    /// ConfigManager or the Rust accepted-point filter. They only control how
+    /// Core Location acquires and delivers fixes while continuous tracking is
+    /// active, and are cleared by stop().
+    private var runtimeDesiredAccuracy: Int?
+    private var runtimeDistanceFilter: Double?
+
     /// Background task ID for the current periodic fix request.
     /// Ended in didUpdateLocations/didFailWithError when periodic mode is active.
     private var periodicFixBgTaskId: UIBackgroundTaskIdentifier?
@@ -229,6 +236,8 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         deactivateDeadReckoning()
         cancelGpsLossTimer()
         stopPeriodicTimer()
+        runtimeDesiredAccuracy = nil
+        runtimeDistanceFilter = nil
         
         if #available(iOS 17.0, *) {
             #if canImport(ActivityKit)
@@ -486,7 +495,37 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         locationManager.showsBackgroundLocationIndicator = configManager.getShowsBackgroundLocationIndicator()
         locationManager.pausesLocationUpdatesAutomatically = configManager.getPausesLocationUpdatesAutomatically()
 
-        let accuracy = configManager.getDesiredAccuracy()
+        applyLocationProviderOptions()
+        locationManager.activityType = configManager.getActivityType()
+    }
+
+    /// Replaces the active, temporary provider override without stopping or
+    /// restarting Core Location. Passing nil for both values restores the
+    /// persisted provider options. Returns false when continuous tracking is
+    /// inactive or the distance filter is invalid.
+    @discardableResult
+    public func updateLocationProviderOptions(
+        desiredAccuracy: Int?,
+        distanceFilter: Double?
+    ) -> Bool {
+        guard isTracking, !isPeriodicTracking else { return false }
+        if let distanceFilter = distanceFilter,
+           (!distanceFilter.isFinite || distanceFilter < 0) {
+            return false
+        }
+
+        runtimeDesiredAccuracy = desiredAccuracy
+        runtimeDistanceFilter = distanceFilter
+        applyLocationProviderOptions()
+        return true
+    }
+
+    /// Applies only the location provider's live acquisition policy. Keeping
+    /// this separate from ConfigManager and LocationProcessor lets callers
+    /// throttle GPS acquisition temporarily without resetting track/odometer
+    /// continuity or changing which delivered points are accepted.
+    private func applyLocationProviderOptions() {
+        let accuracy = runtimeDesiredAccuracy ?? configManager.getDesiredAccuracy()
         switch accuracy {
         case 0: locationManager.desiredAccuracy = kCLLocationAccuracyBest
         case 1: locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
@@ -495,15 +534,13 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         default: locationManager.desiredAccuracy = kCLLocationAccuracyBest
         }
 
-        let distanceFilter = configManager.getDistanceFilter()
+        let distanceFilter = runtimeDistanceFilter ?? configManager.getDistanceFilter()
         let isSpeedMode = configManager.getMotionDetectionMode() == .speed
         if isStopTimeoutActive {
             locationManager.distanceFilter = kCLDistanceFilterNone
         } else {
             locationManager.distanceFilter = (distanceFilter > 0 && !isSpeedMode) ? distanceFilter : kCLDistanceFilterNone
         }
-
-        locationManager.activityType = configManager.getActivityType()
     }
 
     private var activeStopTimeouts: Set<String> = []
@@ -533,9 +570,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             }
             locationManager.distanceFilter = kCLDistanceFilterNone
         } else {
-            let distanceFilter = configManager.getDistanceFilter()
-            let isSpeedMode = configManager.getMotionDetectionMode() == .speed
-            locationManager.distanceFilter = (distanceFilter > 0 && !isSpeedMode) ? distanceFilter : kCLDistanceFilterNone
+            applyLocationProviderOptions()
         }
     }
 

@@ -4004,6 +4004,36 @@ class TraceletHostApi {
     return pigeonVar_replyValue! as bool;
   }
 
+  /// Temporarily overrides active OS-provider acquisition options.
+  ///
+  /// This does not change the persisted Tracelet config or the Rust location
+  /// processor. Passing null for both values clears the override and restores
+  /// the configured provider options. Currently supported on iOS; other
+  /// platforms return false.
+  Future<bool> updateLocationProviderOptions(
+    TlDesiredAccuracy? desiredAccuracy,
+    double? distanceFilter,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.updateLocationProviderOptions$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[desiredAccuracy, distanceFilter],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as bool;
+  }
+
   /// Confirms a pending impact candidate (by [id]) as a real emergency now.
   Future<bool> confirmImpact(int id) async {
     final pigeonVar_channelName =

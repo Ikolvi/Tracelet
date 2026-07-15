@@ -3296,6 +3296,13 @@ protocol TraceletHostApi {
   func watchPosition(options: TlCurrentPositionOptions, completion: @escaping (Result<Int64, Error>) -> Void)
   func stopWatchPosition(watchId: Int64, completion: @escaping (Result<Bool, Error>) -> Void)
   func changePace(isMoving: Bool, completion: @escaping (Result<Bool, Error>) -> Void)
+  /// Temporarily overrides active OS-provider acquisition options.
+  ///
+  /// This does not change the persisted Tracelet config or the Rust location
+  /// processor. Passing null for both values clears the override and restores
+  /// the configured provider options. Currently supported on iOS; other
+  /// platforms return false.
+  func updateLocationProviderOptions(desiredAccuracy: TlDesiredAccuracy?, distanceFilter: Double?, completion: @escaping (Result<Bool, Error>) -> Void)
   /// Confirms a pending impact candidate (by [id]) as a real emergency now.
   func confirmImpact(id: Int64) throws -> Bool
   /// Cancels a pending impact candidate (by [id]) — no confirmed event fires.
@@ -3606,6 +3613,30 @@ class TraceletHostApiSetup {
       }
     } else {
       changePaceChannel.setMessageHandler(nil)
+    }
+    /// Temporarily overrides active OS-provider acquisition options.
+    ///
+    /// This does not change the persisted Tracelet config or the Rust location
+    /// processor. Passing null for both values clears the override and restores
+    /// the configured provider options. Currently supported on iOS; other
+    /// platforms return false.
+    let updateLocationProviderOptionsChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.updateLocationProviderOptions\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      updateLocationProviderOptionsChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let desiredAccuracyArg: TlDesiredAccuracy? = nilOrValue(args[0])
+        let distanceFilterArg: Double? = nilOrValue(args[1])
+        api.updateLocationProviderOptions(desiredAccuracy: desiredAccuracyArg, distanceFilter: distanceFilterArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      updateLocationProviderOptionsChannel.setMessageHandler(nil)
     }
     /// Confirms a pending impact candidate (by [id]) as a real emergency now.
     let confirmImpactChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.confirmImpact\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
