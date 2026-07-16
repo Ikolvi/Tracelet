@@ -19,6 +19,7 @@ import 'package:tracelet_example/issues/issue_231_card.dart';
 import 'package:tracelet_example/issues/issue_237_card.dart';
 import 'package:tracelet_example/issues/issue_238_card.dart';
 import 'package:tracelet_example/issues/issue_243_card.dart';
+import 'package:tracelet_example/issues/issue_244_card.dart';
 import 'package:tracelet_example/issues/mock_rejection_card.dart';
 
 @pragma('vm:entry-point')
@@ -1740,6 +1741,7 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
                     ),
                   ],
                 ),
+                const Issue244Card(),
                 const Issue243Card(),
                 const MockRejectionCard(),
                 const Issue238Card(),

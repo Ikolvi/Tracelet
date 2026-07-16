@@ -70,6 +70,20 @@ void main() {
       expect(loc.activity.confidence, ActivityConfidence.high);
     });
 
+    test('parses snake_case activity types from the native layers', () {
+      // Native emits snake_case; these collapsed to `unknown` before the
+      // parser accepted both spellings (#244 follow-up).
+      Location fromType(String type) => Location.fromMap(<String, Object?>{
+        ...canonicalMap,
+        'activity': <String, Object?>{'type': type, 'confidence': 80},
+      });
+      expect(fromType('in_vehicle').activity.type, ActivityType.inVehicle);
+      expect(fromType('on_bicycle').activity.type, ActivityType.onBicycle);
+      expect(fromType('on_foot').activity.type, ActivityType.onFoot);
+      expect(fromType('still').activity.type, ActivityType.still);
+      expect(fromType('bogus').activity.type, ActivityType.unknown);
+    });
+
     test('parses is_moving snake_case key', () {
       final loc = Location.fromMap(canonicalMap);
       expect(loc.isMoving, isTrue);

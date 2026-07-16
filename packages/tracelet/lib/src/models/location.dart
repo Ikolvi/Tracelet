@@ -706,17 +706,13 @@ class LocationActivity {
 
   /// Creates a [LocationActivity] from a Pigeon [TlActivity].
   factory LocationActivity.fromTl(TlActivity tl) {
-    final actType = ActivityType.values.firstWhere(
-      (e) => e.name == tl.type,
-      orElse: () => ActivityType.unknown,
-    );
     var conf = ActivityConfidence.low;
     if (tl.confidence >= 75) {
       conf = ActivityConfidence.high;
     } else if (tl.confidence >= 50) {
       conf = ActivityConfidence.medium;
     }
-    return LocationActivity(type: actType, confidence: conf);
+    return LocationActivity(type: parseActivityType(tl.type), confidence: conf);
   }
 
   /// Creates a [LocationActivity] from a platform map.
@@ -728,10 +724,7 @@ class LocationActivity {
       actType =
           ActivityType.values[rawType.clamp(0, ActivityType.values.length - 1)];
     } else if (rawType is String) {
-      actType = ActivityType.values.firstWhere(
-        (e) => e.name == rawType,
-        orElse: () => ActivityType.unknown,
-      );
+      actType = parseActivityType(rawType);
     }
 
     var conf = ActivityConfidence.low;
@@ -753,6 +746,27 @@ class LocationActivity {
     }
 
     return LocationActivity(type: actType, confidence: conf);
+  }
+
+  /// Parses a native activity type string into an [ActivityType].
+  ///
+  /// Native layers emit snake_case (`in_vehicle`, `on_bicycle`, `on_foot`),
+  /// which never matched the camelCase Dart enum names — those types silently
+  /// collapsed to [ActivityType.unknown]. Accepts both spellings.
+  static ActivityType parseActivityType(String raw) {
+    switch (raw) {
+      case 'in_vehicle':
+        return ActivityType.inVehicle;
+      case 'on_bicycle':
+        return ActivityType.onBicycle;
+      case 'on_foot':
+        return ActivityType.onFoot;
+      default:
+        return ActivityType.values.firstWhere(
+          (e) => e.name == raw,
+          orElse: () => ActivityType.unknown,
+        );
+    }
   }
 
   /// The detected activity type.
