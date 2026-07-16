@@ -215,10 +215,7 @@ class _ProviderOptionsPageState extends State<ProviderOptionsPage> {
           FilledButton.tonalIcon(
             onPressed: _busy
                 ? null
-                : () => _apply(
-                    accuracy: tl.DesiredAccuracy.medium,
-                    filter: 25,
-                  ),
+                : () => _apply(accuracy: tl.DesiredAccuracy.medium, filter: 25),
             icon: const Icon(Icons.battery_saver),
             label: const Text('Stationary preset (medium / 25 m)'),
           ),

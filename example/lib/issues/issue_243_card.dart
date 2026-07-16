@@ -47,13 +47,14 @@ class _Issue243CardState extends State<Issue243Card> {
       await Tracelet.ready(
         Config.balanced().copyWith(
           geo: const GeoConfig(
-            periodicLocationInterval: 900,
+            // periodicLocationInterval: 900 and
+            // periodicUseForegroundService/periodicUseExactAlarms: false are
+            // the defaults — the reporter set them explicitly; kept implicit
+            // here to satisfy avoid_redundant_argument_values.
             periodicDesiredAccuracy: DesiredAccuracy.low,
           ),
           app: const AppConfig(stopOnTerminate: false, startOnBoot: true),
           android: const AndroidConfig(
-            periodicUseForegroundService: false,
-            periodicUseExactAlarms: false,
             foregroundService: ForegroundServiceConfig(enabled: false),
           ),
         ),
@@ -62,7 +63,8 @@ class _Issue243CardState extends State<Issue243Card> {
       final state = await Tracelet.startPeriodic();
 
       final config = Tracelet.activeConfig;
-      final fgDisabled = !config.android.foregroundService.enabled &&
+      final fgDisabled =
+          !config.android.foregroundService.enabled &&
           !config.android.periodicUseForegroundService;
 
       if (!state.enabled) {

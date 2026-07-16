@@ -50,10 +50,8 @@ class _MockRejectionCardState extends State<MockRejectionCard> {
       await Tracelet.ready(
         const Config(
           geo: GeoConfig(
-            filter: LocationFilter(
-              rejectMockLocations: true,
-              mockDetectionLevel: 1,
-            ),
+            // mockDetectionLevel defaults to 1 (platform mock flag).
+            filter: LocationFilter(rejectMockLocations: true),
           ),
         ),
       );
