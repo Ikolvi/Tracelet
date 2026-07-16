@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' as tl;
 import 'package:tracelet_doctor/tracelet_doctor.dart';
 import 'package:tracelet_example/behavior_page.dart';
+import 'package:tracelet_example/provider_options_page.dart';
 import 'package:tracelet_example/map_page.dart';
 import 'package:tracelet_example/issues_page.dart';
 import 'package:tracelet_example/scanner_page.dart';
@@ -3946,6 +3947,33 @@ class _DashboardPageState extends State<DashboardPage>
                     icon: const Icon(Icons.drive_eta),
                     label: const Text(
                       'Driving & Safety',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+                // ── Live Provider Options (PR #241) Button ──
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.indigo,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(50),
+                    ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => const ProviderOptionsPage(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.tune),
+                    label: const Text(
+                      'Live Provider Options',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,

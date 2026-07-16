@@ -340,6 +340,16 @@ class TraceletWebPlugin extends TraceletPlatform {
   }
 
   @override
+  Future<bool> updateLocationProviderOptions(
+    TlDesiredAccuracy? desiredAccuracy,
+    double? distanceFilter,
+  ) async {
+    // The Web Geolocation API cannot change accuracy or filtering on an
+    // active watch — live provider updates are unsupported here.
+    return false;
+  }
+
+  @override
   Future<double> getOdometer() async {
     return _locationEngine.odometer;
   }
