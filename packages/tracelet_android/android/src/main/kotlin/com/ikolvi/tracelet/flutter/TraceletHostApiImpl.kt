@@ -500,6 +500,17 @@ class TraceletHostApiImpl(
         } catch (e: Exception) { callback(Result.failure(e)) }
     }
 
+    override fun updateLocationProviderOptions(
+        desiredAccuracy: TlDesiredAccuracy?,
+        distanceFilter: Double?,
+        callback: (Result<Boolean>) -> Unit,
+    ) {
+        // Android LocationRequest instances cannot be mutated in place. Keep
+        // this API side-effect free until Android gets an independently tested
+        // callback-preserving re-subscription implementation.
+        callback(Result.success(false))
+    }
+
     override fun confirmImpact(id: Long): Boolean =
         if (sdk.isReady) sdk.confirmImpact(id) else false
 
@@ -1112,4 +1123,3 @@ class TraceletHostApiImpl(
         } catch (e: Exception) { callback(Result.failure(e)) }
     }
 }
-

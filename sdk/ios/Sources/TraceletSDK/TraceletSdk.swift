@@ -856,6 +856,23 @@ public final class TraceletSdk {
         }
     }
 
+    /// Temporarily overrides the active Core Location acquisition policy.
+    ///
+    /// Unlike `setConfig`, this does not persist configuration, rebuild the
+    /// location processor, or restart the tracking pipeline. Passing nil for
+    /// both values restores the configured provider options.
+    @discardableResult
+    public func updateLocationProviderOptions(
+        desiredAccuracy: TraceletDesiredAccuracy?,
+        distanceFilter: Double?
+    ) -> Bool {
+        guard isReady else { return false }
+        return locationEngine.updateLocationProviderOptions(
+            desiredAccuracy: desiredAccuracy?.rawValue,
+            distanceFilter: distanceFilter
+        )
+    }
+
     /// Get the current odometer value in meters.
     public func getOdometer() -> Double {
         guard isReady else { return 0.0 }
@@ -3311,4 +3328,3 @@ private struct TelematicsSinkWrapper: LocationDataSink {
         return ""
     }
 }
-

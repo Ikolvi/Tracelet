@@ -447,6 +447,24 @@ class TraceletHostApiImpl: TraceletHostApi {
         completion(.success(result))
     }
 
+    func updateLocationProviderOptions(
+        desiredAccuracy: TlDesiredAccuracy?,
+        distanceFilter: Double?,
+        completion: @escaping (Result<Bool, Error>) -> Void
+    ) {
+        guard sdk.isReadyState else {
+            completion(.failure(PigeonError(code: "NOT_READY", message: "Call ready() before updateLocationProviderOptions()", details: nil)))
+            return
+        }
+        let result = sdk.updateLocationProviderOptions(
+            desiredAccuracy: desiredAccuracy.flatMap {
+                TraceletDesiredAccuracy(rawValue: $0.rawValue)
+            },
+            distanceFilter: distanceFilter
+        )
+        completion(.success(result))
+    }
+
     func confirmImpact(id: Int64) throws -> Bool {
         return sdk.isReadyState ? sdk.confirmImpact(id) : false
     }

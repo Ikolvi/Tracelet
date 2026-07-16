@@ -141,6 +141,17 @@ abstract class TraceletPlatform extends PlatformInterface {
     throw UnimplementedError('changePace() has not been implemented.');
   }
 
+  /// Temporarily overrides active OS-provider acquisition options.
+  ///
+  /// The override is provider-only: it does not mutate the persisted config or
+  /// the accepted-point filtering pipeline. Passing null for both values clears
+  /// the override. Platforms that do not support live provider updates return
+  /// `false`.
+  Future<bool> updateLocationProviderOptions(
+    TlDesiredAccuracy? desiredAccuracy,
+    double? distanceFilter,
+  ) async => false;
+
   /// Confirms a pending impact candidate as a real emergency.
   Future<bool> confirmImpact(int id) {
     throw UnimplementedError('confirmImpact() has not been implemented.');

@@ -3490,6 +3490,15 @@ interface TraceletHostApi {
   fun watchPosition(options: TlCurrentPositionOptions, callback: (Result<Long>) -> Unit)
   fun stopWatchPosition(watchId: Long, callback: (Result<Boolean>) -> Unit)
   fun changePace(isMoving: Boolean, callback: (Result<Boolean>) -> Unit)
+  /**
+   * Temporarily overrides active OS-provider acquisition options.
+   *
+   * This does not change the persisted Tracelet config or the Rust location
+   * processor. Passing null for both values clears the override and restores
+   * the configured provider options. Currently supported on iOS; other
+   * platforms return false.
+   */
+  fun updateLocationProviderOptions(desiredAccuracy: TlDesiredAccuracy?, distanceFilter: Double?, callback: (Result<Boolean>) -> Unit)
   /** Confirms a pending impact candidate (by [id]) as a real emergency now. */
   fun confirmImpact(id: Long): Boolean
   /** Cancels a pending impact candidate (by [id]) — no confirmed event fires. */
@@ -3834,6 +3843,27 @@ interface TraceletHostApi {
             val args = message as List<Any?>
             val isMovingArg = args[0] as Boolean
             api.changePace(isMovingArg) { result: Result<Boolean> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(TraceletApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(TraceletApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.updateLocationProviderOptions$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val desiredAccuracyArg = args[0] as TlDesiredAccuracy?
+            val distanceFilterArg = args[1] as Double?
+            api.updateLocationProviderOptions(desiredAccuracyArg, distanceFilterArg) { result: Result<Boolean> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(TraceletApiPigeonUtils.wrapError(error))

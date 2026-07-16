@@ -22,6 +22,56 @@ void main() {
     expect(restored.app.heartbeatInterval, 120);
   });
 
+  group('Tracelet runtime provider options', () {
+    late MockTraceletPlatform mockPlatform;
+
+    setUp(() {
+      mockPlatform = MockTraceletPlatform();
+      TraceletPlatform.instance = mockPlatform;
+    });
+
+    test(
+      'delegates temporary provider options without changing config',
+      () async {
+        final config = Tracelet.activeConfig;
+
+        final updated = await Tracelet.updateLocationProviderOptions(
+          desiredAccuracy: DesiredAccuracy.medium,
+          distanceFilter: 25,
+        );
+
+        expect(updated, isTrue);
+        expect(
+          mockPlatform.lastProviderDesiredAccuracy,
+          TlDesiredAccuracy.medium,
+        );
+        expect(mockPlatform.lastProviderDistanceFilter, 25);
+        expect(Tracelet.activeConfig, same(config));
+      },
+    );
+
+    test('no arguments clear the provider override', () async {
+      final updated = await Tracelet.updateLocationProviderOptions();
+
+      expect(updated, isTrue);
+      expect(mockPlatform.lastProviderDesiredAccuracy, isNull);
+      expect(mockPlatform.lastProviderDistanceFilter, isNull);
+    });
+
+    test('rejects invalid distance filters before calling the platform', () {
+      expect(
+        () => Tracelet.updateLocationProviderOptions(distanceFilter: -1),
+        throwsRangeError,
+      );
+      expect(
+        () =>
+            Tracelet.updateLocationProviderOptions(distanceFilter: double.nan),
+        throwsRangeError,
+      );
+      expect(mockPlatform.providerOptionsCallCount, 0);
+    });
+  });
+
   group('Tracelet Kalman Filter integration', () {
     late MockTraceletPlatform mockPlatform;
 
@@ -71,6 +121,10 @@ void main() {
 
 class MockTraceletPlatform extends TraceletPlatform
     with EmptyEventStreamsMixin {
+  TlDesiredAccuracy? lastProviderDesiredAccuracy;
+  double? lastProviderDistanceFilter;
+  int providerOptionsCallCount = 0;
+
   final Map<String, Object?> stateResult = {
     'enabled': false,
     'trackingMode': 0,
@@ -87,6 +141,17 @@ class MockTraceletPlatform extends TraceletPlatform
   @override
   Future<Map<String, Object?>> setConfig(TlConfig config) async {
     return Map<String, Object?>.from(stateResult);
+  }
+
+  @override
+  Future<bool> updateLocationProviderOptions(
+    TlDesiredAccuracy? desiredAccuracy,
+    double? distanceFilter,
+  ) async {
+    providerOptionsCallCount++;
+    lastProviderDesiredAccuracy = desiredAccuracy;
+    lastProviderDistanceFilter = distanceFilter;
+    return true;
   }
 }
 

@@ -33,7 +33,10 @@ let package = Package(
             path: "Tests/TraceletSDKTests",
             // Only the actively-maintained suite is wired up; the other files in
             // this directory are stale against the current SDK API.
-            sources: ["MotionDetectorTests.swift"]
+            sources: [
+                "LocationEngineRuntimeProviderOptionsTests.swift",
+                "MotionDetectorTests.swift",
+            ]
         ),
     ]
 )

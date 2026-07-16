@@ -229,5 +229,8 @@ class DummyEventDispatcher: TraceletEventSending {
     func sendTrip(_ data: [String : Any]) {}
     func sendBudgetAdjustment(_ data: [String : Any]) {}
     func sendSpeedMotionEvent(_ data: [String : Any]) {}
+    func sendDrivingEvent(_ data: [String : Any]) {}
+    func sendImpact(_ data: [String : Any]) {}
+    func sendModeChange(_ data: [String : Any]) {}
     func hasListener(eventName: String) -> Bool { return false }
 }

@@ -888,6 +888,18 @@ abstract class TraceletHostApi {
   @async
   bool changePace(bool isMoving);
 
+  /// Temporarily overrides active OS-provider acquisition options.
+  ///
+  /// This does not change the persisted Tracelet config or the Rust location
+  /// processor. Passing null for both values clears the override and restores
+  /// the configured provider options. Currently supported on iOS; other
+  /// platforms return false.
+  @async
+  bool updateLocationProviderOptions(
+    TlDesiredAccuracy? desiredAccuracy,
+    double? distanceFilter,
+  );
+
   /// Confirms a pending impact candidate (by [id]) as a real emergency now.
   bool confirmImpact(int id);
 

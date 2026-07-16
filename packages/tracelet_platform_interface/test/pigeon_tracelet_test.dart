@@ -146,6 +146,15 @@ class FakeHostApi extends TraceletHostApi {
   }
 
   @override
+  Future<bool> updateLocationProviderOptions(
+    TlDesiredAccuracy? desiredAccuracy,
+    double? distanceFilter,
+  ) async {
+    _record('updateLocationProviderOptions', [desiredAccuracy, distanceFilter]);
+    return true;
+  }
+
+  @override
   Future<double> getOdometer() async {
     _record('getOdometer');
     return 456.7;
@@ -814,6 +823,20 @@ void main() {
     test('changePace() delegates', () async {
       expect(await pigeon.changePace(true), true);
       expect(fakeApi.wasCalled('changePace'), true);
+    });
+
+    test('updateLocationProviderOptions() delegates typed values', () async {
+      expect(
+        await pigeon.updateLocationProviderOptions(
+          TlDesiredAccuracy.medium,
+          25,
+        ),
+        true,
+      );
+      expect(fakeApi.lastCallArgs('updateLocationProviderOptions'), [
+        TlDesiredAccuracy.medium,
+        25.0,
+      ]);
     });
 
     test('getOdometer() returns value', () async {

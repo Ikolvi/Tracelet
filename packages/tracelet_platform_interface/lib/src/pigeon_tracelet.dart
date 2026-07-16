@@ -174,6 +174,12 @@ class PigeonTracelet extends TraceletPlatform {
   Future<bool> changePace(bool isMoving) => _api.changePace(isMoving);
 
   @override
+  Future<bool> updateLocationProviderOptions(
+    TlDesiredAccuracy? desiredAccuracy,
+    double? distanceFilter,
+  ) => _api.updateLocationProviderOptions(desiredAccuracy, distanceFilter);
+
+  @override
   Future<bool> confirmImpact(int id) => _api.confirmImpact(id);
 
   @override
