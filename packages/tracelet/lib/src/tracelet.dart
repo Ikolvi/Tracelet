@@ -572,14 +572,16 @@ class Tracelet {
   /// Temporarily overrides the active OS location-provider options.
   ///
   /// This is intended for short-lived acquisition policies such as reducing
-  /// iOS GPS power while the device is known to be stationary. It updates the
+  /// GPS power while the device is known to be stationary. It updates the
   /// running provider without calling [stop] or [start]. The persisted [Config],
   /// [activeConfig], and the accepted-point filtering pipeline are unchanged.
   ///
   /// Passing no arguments clears the override and restores the options from
   /// [activeConfig]. The override is also cleared when tracking stops. Returns
   /// `false` when tracking is not active or the platform does not support live
-  /// provider updates. Currently supported on iOS.
+  /// provider updates. Supported on iOS (live `CLLocationManager` property
+  /// update) and Android (callback-preserving fused-request re-subscription);
+  /// web returns `false`.
   ///
   /// [distanceFilter] must be finite and non-negative. A value of zero requests
   /// all provider updates (`kCLDistanceFilterNone` on iOS).

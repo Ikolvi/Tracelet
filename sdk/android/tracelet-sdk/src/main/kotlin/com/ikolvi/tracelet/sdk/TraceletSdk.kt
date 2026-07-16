@@ -1247,6 +1247,21 @@ class TraceletSdk private constructor(private val context: Context) {
         return stateManager.toMap(configManager.getConfig())
     }
 
+    /**
+     * Temporarily overrides the active location provider's acquisition policy.
+     *
+     * Unlike setConfig, this does not persist configuration, rebuild the
+     * location processor, or restart the tracking pipeline — the existing
+     * tracking callback is re-subscribed in place with the new request.
+     * [desiredAccuracy] uses the config accuracy codes (0=high … 4=passive).
+     * Passing null for both values restores the configured provider options;
+     * stop() also clears the override.
+     */
+    fun updateLocationProviderOptions(desiredAccuracy: Int?, distanceFilter: Double?): Boolean {
+        if (!isReady || !::locationEngine.isInitialized) return false
+        return locationEngine.updateLocationProviderOptions(desiredAccuracy, distanceFilter)
+    }
+
     fun getOdometer(): Double {
         if (!isReady) return 0.0
         return locationEngine.getOdometer()

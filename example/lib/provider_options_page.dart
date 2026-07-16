@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -13,7 +12,7 @@ import 'package:tracelet/tracelet.dart' as tl;
 /// `setConfig`, which persists and does a clean full-pipeline restart when
 /// tracking-relevant keys change. The override is ephemeral: it never touches
 /// the persisted config or the accepted-point filter, and it is cleared by
-/// `stop()`. Currently live on iOS only; Android and web return `false`.
+/// `stop()`. Live on iOS and Android; web returns `false`.
 class ProviderOptionsPage extends StatefulWidget {
   const ProviderOptionsPage({super.key});
 
@@ -116,7 +115,7 @@ class _ProviderOptionsPageState extends State<ProviderOptionsPage> {
           _logLine(
             _tracking
                 ? 'returned false — periodic mode active or platform '
-                      'has no live provider updates (iOS only)'
+                      'has no live provider updates'
                 : 'returned false — start continuous tracking first',
           );
         }
@@ -135,7 +134,7 @@ class _ProviderOptionsPageState extends State<ProviderOptionsPage> {
   @override
   Widget build(BuildContext context) {
     final geo = tl.Tracelet.activeConfig.geo;
-    final liveSupported = !kIsWeb && Platform.isIOS;
+    const liveSupported = !kIsWeb;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Live Provider Options')),
@@ -153,8 +152,8 @@ class _ProviderOptionsPageState extends State<ProviderOptionsPage> {
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Text(
-                'Live updates are iOS-only for now — this platform always '
-                'returns false.',
+                'Live provider updates are not supported on web — this '
+                'platform always returns false.',
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ),

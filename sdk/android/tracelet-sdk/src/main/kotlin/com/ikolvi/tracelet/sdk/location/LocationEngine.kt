@@ -243,6 +243,16 @@ class LocationEngine(
      */
     private var gpsFallbackActive = false
 
+    /**
+     * Temporary OS-provider overrides. These intentionally do not mutate
+     * ConfigManager or the Rust accepted-point filter. They only control how
+     * the fused provider acquires and delivers fixes while continuous tracking
+     * is active, and are cleared by stop(). Mirrors the iOS
+     * LocationEngine.runtimeDesiredAccuracy/runtimeDistanceFilter overrides.
+     */
+    private var runtimeDesiredAccuracy: Int? = null
+    private var runtimeDistanceFilter: Double? = null
+
     /** Whether continuous tracking is active. */
     val isTracking: Boolean get() = trackingCallback != null
 
@@ -312,6 +322,8 @@ class LocationEngine(
     /** Stops continuous location tracking. */
     fun stop() {
         gpsFallbackActive = false
+        runtimeDesiredAccuracy = null
+        runtimeDistanceFilter = null
         trackingCallback?.let {
             fusedClient.removeLocationUpdates(it)
             trackingCallback = null
@@ -1170,13 +1182,24 @@ class LocationEngine(
         }
     }
 
+    /**
+     * Effective provider options: the temporary runtime override when one is
+     * active (see [updateLocationProviderOptions]), otherwise the persisted
+     * config values.
+     */
+    private fun effectiveDesiredAccuracy(): Int =
+        runtimeDesiredAccuracy ?: config.getDesiredAccuracy()
+
+    private fun effectiveDistanceFilter(): Double =
+        runtimeDistanceFilter ?: config.getDistanceFilter()
+
     private fun buildLocationRequest(): TraceletLocationRequest {
-        val priority = accuracyToPriority(config.getDesiredAccuracy())
+        val priority = accuracyToPriority(effectiveDesiredAccuracy())
         val deferTime = config.getDeferTime().toLong()
-        
+
         val isSpeedMode = config.getMotionDetectionMode() == com.ikolvi.tracelet.sdk.model.MotionDetectionMode.SPEED
-        val distanceFilter = if (isSpeedMode) 0f else config.getDistanceFilter().toFloat()
-        
+        val distanceFilter = if (isSpeedMode) 0f else effectiveDistanceFilter().toFloat()
+
         return TraceletLocationRequest(
             priority = priority,
             intervalMillis = config.getLocationUpdateInterval(),
@@ -1184,6 +1207,41 @@ class LocationEngine(
             minUpdateIntervalMillis = config.getFastestLocationUpdateInterval(),
             maxUpdateDelayMillis = if (deferTime > 0) deferTime else 0L
         )
+    }
+
+    /**
+     * Replaces the active, temporary provider override without dropping the
+     * tracking callback — the Android analogue of the iOS live update in
+     * `LocationEngine.updateLocationProviderOptions`. Re-registering the same
+     * callback replaces the fused request in place (the same mechanism
+     * [activateGpsFallback]/[restoreOriginalPriority] already rely on), so
+     * processor state, odometer continuity, and accepted-point filtering are
+     * untouched. Passing null for both values restores the configured provider
+     * options. Returns false when continuous tracking is inactive, periodic
+     * mode is active, or the distance filter is invalid.
+     */
+    fun updateLocationProviderOptions(desiredAccuracy: Int?, distanceFilter: Double?): Boolean {
+        if (!isTracking || isPeriodicTracking) return false
+        if (distanceFilter != null && (!distanceFilter.isFinite() || distanceFilter < 0)) return false
+        val callback = trackingCallback ?: return false
+
+        val previousAccuracy = runtimeDesiredAccuracy
+        val previousFilter = runtimeDistanceFilter
+        runtimeDesiredAccuracy = desiredAccuracy
+        runtimeDistanceFilter = distanceFilter
+
+        return try {
+            fusedClient.requestLocationUpdates(
+                buildLocationRequestWithGpsFallback(), callback, Looper.getMainLooper()
+            )
+            true
+        } catch (e: SecurityException) {
+            // Subscription unchanged — don't leave a stored override that the
+            // next rebuild would silently apply.
+            runtimeDesiredAccuracy = previousAccuracy
+            runtimeDistanceFilter = previousFilter
+            false
+        }
     }
 
     /**
@@ -1195,7 +1253,7 @@ class LocationEngine(
      * Wi-Fi / cell-tower fixes instead of timing out.
      */
     private fun buildLocationRequestWithGpsFallback(): TraceletLocationRequest {
-        val configuredPriority = accuracyToPriority(config.getDesiredAccuracy())
+        val configuredPriority = accuracyToPriority(effectiveDesiredAccuracy())
         val effectivePriority = if (configuredPriority == TraceletLocationPriority.PRIORITY_HIGH_ACCURACY &&
             !isGpsProviderEnabled(context)
         ) {
@@ -1209,8 +1267,8 @@ class LocationEngine(
 
         val deferTime = config.getDeferTime().toLong()
         val isSpeedMode = config.getMotionDetectionMode() == com.ikolvi.tracelet.sdk.model.MotionDetectionMode.SPEED
-        val distanceFilter = if (isSpeedMode) 0f else config.getDistanceFilter().toFloat()
-        
+        val distanceFilter = if (isSpeedMode) 0f else effectiveDistanceFilter().toFloat()
+
         return TraceletLocationRequest(
             priority = effectivePriority,
             intervalMillis = config.getLocationUpdateInterval(),
@@ -1220,9 +1278,9 @@ class LocationEngine(
         )
     }
 
-    /** Returns true if the configured desired accuracy requires GPS hardware. */
+    /** Returns true if the effective desired accuracy requires GPS hardware. */
     private fun isHighAccuracyConfigured(): Boolean {
-        return config.getDesiredAccuracy() == 0 // 0 = high accuracy (GPS)
+        return effectiveDesiredAccuracy() == 0 // 0 = high accuracy (GPS)
     }
 
     /**
@@ -1237,7 +1295,7 @@ class LocationEngine(
         val fallbackRequest = TraceletLocationRequest(
             priority = TraceletLocationPriority.PRIORITY_BALANCED_POWER_ACCURACY,
             intervalMillis = config.getLocationUpdateInterval(),
-            minUpdateDistanceMeters = config.getDistanceFilter().toFloat(),
+            minUpdateDistanceMeters = effectiveDistanceFilter().toFloat(),
             minUpdateIntervalMillis = config.getFastestLocationUpdateInterval()
         )
 

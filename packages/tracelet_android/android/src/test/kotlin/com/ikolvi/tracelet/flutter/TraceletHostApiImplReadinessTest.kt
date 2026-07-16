@@ -81,6 +81,13 @@ class TraceletHostApiImplReadinessTest {
         assertNotReady(capture<Boolean> { changePace(true, it) }, "Call ready() before changePace()")
 
     @Test
+    fun updateLocationProviderOptions_notReady() =
+        assertNotReady(
+            capture<Boolean> { updateLocationProviderOptions(null, null, it) },
+            "Call ready() before updateLocationProviderOptions()",
+        )
+
+    @Test
     fun getCurrentPosition_notReady() =
         assertNotReady(
             capture<TlLocation> { getCurrentPosition(mock(TlCurrentPositionOptions::class.java), it) },

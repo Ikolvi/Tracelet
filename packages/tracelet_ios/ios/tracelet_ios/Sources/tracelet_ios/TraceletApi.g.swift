@@ -3300,8 +3300,8 @@ protocol TraceletHostApi {
   ///
   /// This does not change the persisted Tracelet config or the Rust location
   /// processor. Passing null for both values clears the override and restores
-  /// the configured provider options. Currently supported on iOS; other
-  /// platforms return false.
+  /// the configured provider options. Supported on iOS and Android; platforms
+  /// without live provider updates (e.g. web) return false.
   func updateLocationProviderOptions(desiredAccuracy: TlDesiredAccuracy?, distanceFilter: Double?, completion: @escaping (Result<Bool, Error>) -> Void)
   /// Confirms a pending impact candidate (by [id]) as a real emergency now.
   func confirmImpact(id: Int64) throws -> Bool
@@ -3618,8 +3618,8 @@ class TraceletHostApiSetup {
     ///
     /// This does not change the persisted Tracelet config or the Rust location
     /// processor. Passing null for both values clears the override and restores
-    /// the configured provider options. Currently supported on iOS; other
-    /// platforms return false.
+    /// the configured provider options. Supported on iOS and Android; platforms
+    /// without live provider updates (e.g. web) return false.
     let updateLocationProviderOptionsChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.updateLocationProviderOptions\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       updateLocationProviderOptionsChannel.setMessageHandler { message, reply in

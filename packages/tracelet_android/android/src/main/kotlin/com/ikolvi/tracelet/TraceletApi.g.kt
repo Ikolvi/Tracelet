@@ -3495,8 +3495,8 @@ interface TraceletHostApi {
    *
    * This does not change the persisted Tracelet config or the Rust location
    * processor. Passing null for both values clears the override and restores
-   * the configured provider options. Currently supported on iOS; other
-   * platforms return false.
+   * the configured provider options. Supported on iOS and Android; platforms
+   * without live provider updates (e.g. web) return false.
    */
   fun updateLocationProviderOptions(desiredAccuracy: TlDesiredAccuracy?, distanceFilter: Double?, callback: (Result<Boolean>) -> Unit)
   /** Confirms a pending impact candidate (by [id]) as a real emergency now. */

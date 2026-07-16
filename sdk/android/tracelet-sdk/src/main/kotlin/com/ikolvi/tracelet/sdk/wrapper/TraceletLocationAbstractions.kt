@@ -176,13 +176,17 @@ class AospLocationClient(context: Context) : TraceletLocationClient {
             override fun onProviderEnabled(provider: String) { callback.onLocationAvailability(true) }
             override fun onProviderDisabled(provider: String) { callback.onLocationAvailability(false) }
         }
-        listeners[callback] = listener
+        // Re-registering an existing callback replaces its subscription (the
+        // fused client's documented behavior, which the engine's live
+        // re-subscription paths rely on) — unregister the superseded listener.
+        val previous = listeners.put(callback, listener)
         val providers = if (request.priority == TraceletLocationPriority.PRIORITY_HIGH_ACCURACY) listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER) else listOf(LocationManager.NETWORK_PROVIDER)
         providers.forEach { provider ->
             if (locationManager.isProviderEnabled(provider)) {
                 locationManager.requestLocationUpdates(provider, request.intervalMillis, request.minUpdateDistanceMeters, listener, looper)
             }
         }
+        if (previous != null) locationManager.removeUpdates(previous)
         callback.onLocationAvailability(true)
     }
 
