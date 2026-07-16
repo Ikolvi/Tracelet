@@ -99,3 +99,55 @@ final config = Config.lowPower(
   ),
 );
 ```
+
+---
+
+## 6. Live Provider Options (Runtime Overrides)
+
+Sometimes your app knows something the SDK can't: a delivery driver just clocked a 30-minute break, a rider is waiting inside a venue, or your own stationary heuristics fired. You want to ease off the GPS *right now* — and snap back to full accuracy the moment things change.
+
+Until now the only knob was `setConfig()`. But `desiredAccuracy` and `distanceFilter` are tracking-relevant keys, so changing them through config **persists the new values and performs a clean full-pipeline restart** — correct for permanent configuration, but it creates an avoidable tracking gap and rebuilds processor state just to apply a temporary power policy. Worse, because the change is persisted, an app killed and relaunched during the "low power" phase would wake up permanently tracking at degraded accuracy.
+
+### How it works
+
+`Tracelet.updateLocationProviderOptions()` updates the **running** OS location provider in place — no `stop()`, no `start()`, no gap in the fix stream:
+
+- **iOS** assigns the new values directly to the live `CLLocationManager` (`desiredAccuracy` / `distanceFilter` are mutable on an active manager).
+- **Android** re-subscribes the existing fused-provider callback with a new `LocationRequest`. Re-registering the same callback *replaces* the request in place, so the subscription never drops.
+- **Web** has no live provider controls and always returns `false`.
+
+The override is deliberately **ephemeral and provider-only**:
+
+- The persisted `Config` and `Tracelet.activeConfig` are never touched — nothing is written to storage, so a process restart always comes back on your real configuration.
+- The Rust accepted-point filter and processor state are unchanged: track continuity, odometer, and which delivered points get accepted all keep working exactly as configured.
+- Calling `stop()` clears the override automatically.
+
+```dart
+// Device confirmed stationary — drop Core Location to ~100m accuracy
+// and only deliver a fix every 25 meters:
+await Tracelet.updateLocationProviderOptions(
+  desiredAccuracy: DesiredAccuracy.medium,
+  distanceFilter: 25,
+);
+
+// Movement detected — restore the configured provider options.
+// No arguments = clear the override:
+await Tracelet.updateLocationProviderOptions();
+```
+
+### Return value & validation
+
+The call returns `true` when the live update was applied, and `false` when it could not be — it never restarts the pipeline as a fallback:
+
+| Situation | Result |
+| --- | --- |
+| Continuous tracking active (iOS / Android) | `true` — options applied live |
+| Tracking not started, or `stop()` was called | `false` |
+| Periodic tracking mode active | `false` — periodic fixes manage their own acquisition |
+| Web | `false` — no live provider updates |
+
+`distanceFilter` must be finite and non-negative (a `RangeError` is thrown otherwise). A value of `0` requests every fix the provider produces (`kCLDistanceFilterNone` on iOS).
+
+<Callout type="info">
+**Runtime override vs. Adaptive Mode** — `enableAdaptiveMode` (section 4) is the *automatic* version of this: the SDK watches the battery and downgrades for you. Use `updateLocationProviderOptions()` when the policy is **yours** — stationary detection, shift breaks, geofence dwell, custom battery thresholds — and you need it applied instantly without persisting anything or interrupting the track.
+</Callout>
