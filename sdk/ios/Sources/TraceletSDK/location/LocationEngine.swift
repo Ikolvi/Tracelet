@@ -1308,7 +1308,13 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             "mock": mock,
             "mockHeuristics": mockHeuristics as Any,
             "activity": [
-                "type": "unknown",
+                // #214 pt3: use the effective activity — the fused transport mode
+                // when the classifier is authoritative (falls back to the platform
+                // Activity Recognition value). Previously hardcoded "unknown", so
+                // every persisted/dispatched location dropped the classified mode
+                // even with fusedClassifierAuthoritative=true (the dead-reckoning
+                // path below already did this; buildLocationMap was missed).
+                "type": effectiveActivityType(),
                 "confidence": -1,
             ],
             "battery": battery,
