@@ -30,6 +30,7 @@ public enum LocationMapper {
         accuracy: Double,
         isMock: Bool,
         activity: String,
+        activityConfidence: Int32 = -1,
         routeContext: String?,
         isMoving: Bool,
         odometer: Double,
@@ -53,8 +54,10 @@ public enum LocationMapper {
                 "accuracy": accuracy,
             ],
             "activity": [
+                // #245: the persisted confidence — was hardcoded 100, masking
+                // the real AR/fused value on every DB-sourced read.
                 "type": activity,
-                "confidence": 100,
+                "confidence": Int(activityConfidence),
             ],
             "battery": [
                 "level": -1.0,

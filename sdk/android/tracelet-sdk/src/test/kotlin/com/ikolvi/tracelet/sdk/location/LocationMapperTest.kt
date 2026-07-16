@@ -31,6 +31,7 @@ class LocationMapperTest {
         accuracy = 5.0,
         isMock = false,
         activity = "walking",
+        activityConfidence = 75,
         routeContext = routeContext,
         isMoving = isMoving,
         odometer = odometer,
@@ -57,7 +58,8 @@ class LocationMapperTest {
         @Suppress("UNCHECKED_CAST")
         val activity = map["activity"] as Map<String, Any?>
         assertEquals("walking", activity["type"])
-        assertEquals(100, activity["confidence"])
+        // #245: the record's persisted confidence, no longer hardcoded 100.
+        assertEquals(75, activity["confidence"])
     }
 
     @Test

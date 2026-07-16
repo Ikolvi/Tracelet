@@ -1031,6 +1031,7 @@ public final class TraceletSdk {
             accuracy: record.accuracy,
             isMock: record.isMock,
             activity: record.activity,
+            activityConfidence: record.activityConfidence,
             routeContext: record.routeContext,
             isMoving: record.isMoving,
             odometer: locationEngine.getOdometer(),
@@ -1154,6 +1155,7 @@ public final class TraceletSdk {
         let isMoving = params["is_moving"] as? Bool ?? false
         let activityMap = params["activity"] as? [String: Any]
         let activity = activityMap?["type"] as? String ?? "unknown"
+        let activityConfidence = activityMap?["confidence"] as? Int ?? -1
         let timestamp = params["timestamp"] as? String
         let uuid = params["uuid"] as? String
         
@@ -1244,6 +1246,7 @@ public final class TraceletSdk {
                 isMock: isMock,
                 isMoving: isMoving,
                 activity: activity,
+                activityConfidence: Int32(clamping: activityConfidence),
                 routeContext: routeContext,
                 timestampOverride: timestamp,
                 eventType: eventType,

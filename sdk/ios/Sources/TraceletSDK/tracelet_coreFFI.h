@@ -708,7 +708,7 @@ void uniffi_tracelet_core_fn_method_databasemanager_insert_geofence(uint64_t ptr
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRACELET_CORE_FN_METHOD_DATABASEMANAGER_INSERT_LOCATION
 #define UNIFFI_FFIDEF_UNIFFI_TRACELET_CORE_FN_METHOD_DATABASEMANAGER_INSERT_LOCATION
-int64_t uniffi_tracelet_core_fn_method_databasemanager_insert_location(uint64_t ptr, RustBuffer uuid, double lat, double lng, double acc, double speed, double heading, double altitude, int8_t is_mock, int8_t is_moving, RustBuffer activity, RustBuffer route_context, RustBuffer timestamp_override, RustBuffer event_type, RustBuffer event_payload, RustBuffer address, RustCallStatus *_Nonnull out_status
+int64_t uniffi_tracelet_core_fn_method_databasemanager_insert_location(uint64_t ptr, RustBuffer uuid, double lat, double lng, double acc, double speed, double heading, double altitude, int8_t is_mock, int8_t is_moving, RustBuffer activity, int32_t activity_confidence, RustBuffer route_context, RustBuffer timestamp_override, RustBuffer event_type, RustBuffer event_payload, RustBuffer address, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRACELET_CORE_FN_METHOD_DATABASEMANAGER_INSERT_LOG

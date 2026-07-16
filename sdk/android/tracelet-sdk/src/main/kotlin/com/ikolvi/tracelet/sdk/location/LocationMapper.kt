@@ -37,6 +37,7 @@ object LocationMapper {
         accuracy: Double,
         isMock: Boolean,
         activity: String,
+        activityConfidence: Int = -1,
         routeContext: String?,
         isMoving: Boolean,
         odometer: Double,
@@ -60,8 +61,10 @@ object LocationMapper {
                 "accuracy" to accuracy,
             ),
             "activity" to mapOf(
+                // #245: the persisted confidence — was hardcoded 100, masking
+                // the real AR/fused value on every DB-sourced read.
                 "type" to activity,
-                "confidence" to 100,
+                "confidence" to activityConfidence,
             ),
             "battery" to mapOf(
                 "level" to -1.0,

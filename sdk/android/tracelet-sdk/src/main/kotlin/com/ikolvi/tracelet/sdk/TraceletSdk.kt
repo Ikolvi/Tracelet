@@ -1393,6 +1393,7 @@ class TraceletSdk private constructor(private val context: Context) {
             accuracy = record.accuracy,
             isMock = record.isMock,
             activity = record.activity,
+            activityConfidence = record.activityConfidence,
             routeContext = record.routeContext,
             isMoving = record.isMoving,
             odometer = odometer,
@@ -1505,6 +1506,7 @@ class TraceletSdk private constructor(private val context: Context) {
         val isMoving = params["is_moving"] == true
         val activityMap = params["activity"] as? Map<*, *>
         val activity = (activityMap?.get("type") as? String) ?: "unknown"
+        val activityConfidence = (activityMap?.get("confidence") as? Number)?.toInt() ?: -1
         val timestamp = params["timestamp"] as? String
         val uuid = params["uuid"] as? String
         val eventType = (params["event"] as? String) ?: "location"
@@ -1580,7 +1582,7 @@ class TraceletSdk private constructor(private val context: Context) {
         }
 
         return try {
-            val newRowId = db.insertLocation(uuid, lat, lng, acc, speed, heading, altitude, isMock, isMoving, activity, routeContext, timestamp, eventType, eventPayload, address)
+            val newRowId = db.insertLocation(uuid, lat, lng, acc, speed, heading, altitude, isMock, isMoving, activity, activityConfidence, routeContext, timestamp, eventType, eventPayload, address)
             // Notify the sync plugin so it can trigger auto-sync
             (syncProvider as? com.ikolvi.tracelet.sdk.location.LocationDataSink)?.insertLocation(params)
             newRowId.toString()
