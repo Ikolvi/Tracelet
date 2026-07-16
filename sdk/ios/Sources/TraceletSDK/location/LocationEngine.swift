@@ -131,11 +131,18 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// Current activity type — set by MotionDetector for DR algorithm selection.
     public var currentActivityType: String = "unknown"
 
+    /// Confidence (0–100) of `currentActivityType`, from the platform Activity
+    /// Recognition. -1 when unknown/unset.
+    public var currentActivityConfidence: Int = -1
+
     /// Latest fused transport mode (e.g. "driving") from the transport classifier,
     /// kept fresh by the SDK. When `fusedClassifierAuthoritative` is enabled it
     /// becomes the persisted `activity.type`, so the classified mode survives
     /// process termination and syncs historically (#214 part 3).
     public var fusedTransportMode: String?
+
+    /// Confidence (0.0–1.0) of `fusedTransportMode`, kept fresh alongside it.
+    public var fusedTransportModeConfidence: Double = 0
 
     /// The activity type to persist/dispatch: the fused transport mode when the
     /// classifier is authoritative (and available), otherwise the raw AR activity.
@@ -144,6 +151,16 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             return fusedTransportMode ?? currentActivityType
         }
         return currentActivityType
+    }
+
+    /// The activity confidence to persist/dispatch (0–100), matching
+    /// `effectiveActivityType()`: the fused mode confidence (scaled from 0.0–1.0)
+    /// when authoritative and available, otherwise the platform AR confidence.
+    private func effectiveActivityConfidence() -> Int {
+        if configManager.getFusedClassifierAuthoritative(), fusedTransportMode != nil {
+            return Int((fusedTransportModeConfidence * 100).rounded())
+        }
+        return currentActivityConfidence
     }
 
     public init(configManager: ConfigManager,
@@ -1315,7 +1332,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
                 // even with fusedClassifierAuthoritative=true (the dead-reckoning
                 // path below already did this; buildLocationMap was missed).
                 "type": effectiveActivityType(),
-                "confidence": -1,
+                "confidence": effectiveActivityConfidence(),
             ],
             "battery": battery,
             "event": "",
