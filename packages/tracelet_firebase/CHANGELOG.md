@@ -1,3 +1,9 @@
+## 3.6.0
+
+**FEAT**: `Tracelet.updateLocationProviderOptions()` — live provider-options override without a pipeline restart, on iOS and Android ([#241](https://github.com/Ikolvi/Tracelet/pull/241)).
+
+Version alignment with tracelet 3.6.0.
+
 ## 3.5.7
 
 **FIX**: Build fails without AGP built-in Kotlin (AGP <9 / builtInKotlin=false) ([#239](https://github.com/Ikolvi/Tracelet/issues/239)).

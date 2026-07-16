@@ -13,6 +13,8 @@ Controls physical location, accuracy, and sampling logic. [See Geo Story 📖](/
   The target hardware accuracy. Use `high` for GPS, `low` for Cellular/Wi-Fi to save battery.
 - **`distanceFilter`**: `double` *(Default: `10.0`)*
   Minimum horizontal meters to move before a point is recorded.
+
+> ℹ️ Changing `desiredAccuracy` or `distanceFilter` via `setConfig()` persists the values and restarts the tracking pipeline. For a *temporary* override while tracking (e.g. easing off GPS during a confirmed stationary period), use [`updateLocationProviderOptions()`](/en/core/advanced-geo#6-live-provider-options-runtime-overrides) — it updates the running provider live, without a restart, and never touches the persisted config.
 - **`stationaryRadius`**: `double` *(Default: `25.0`)*
   Radius around the user to be considered stationary (stops GPS drain).
 - **`locationTimeout`**: `int` *(Default: `60`)*

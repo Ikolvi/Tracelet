@@ -485,7 +485,31 @@ class LocationService : Service(), DefaultLifecycleObserver {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         TraceletLog.debug("onStartCommand: action=${intent?.action}")
-        
+
+        // START_STICKY restart after process death delivers a null intent.
+        // Re-validate against the persisted state/config before resurrecting
+        // the foreground notification: tracking may have been stopped, or the
+        // active strategy may not use a foreground service at all (periodic
+        // WorkManager mode, or foregroundService.enabled=false — #243).
+        if (intent == null) {
+            val state = StateManager(applicationContext)
+            val periodicWithoutService =
+                state.trackingMode == com.ikolvi.tracelet.sdk.model.TrackingMode.PERIODIC &&
+                    !configManager.getPeriodicUseForegroundService()
+            val wantsService = state.enabled &&
+                configManager.isForegroundServiceEnabled() &&
+                !periodicWithoutService
+            if (!wantsService) {
+                TraceletLog.debug(
+                    "Sticky restart — current state/config does not use a " +
+                        "foreground service; stopping without notification"
+                )
+                stopSelf()
+                isRunning = false
+                return START_NOT_STICKY
+            }
+        }
+
         // Initial setup for the very first start command
         if (lastInForeground == null) {
             lastInForeground = isAppInForeground()

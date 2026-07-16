@@ -4,7 +4,6 @@ import android.content.Context
 import android.os.Build
 import androidx.test.core.app.ApplicationProvider
 import org.junit.After
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -35,29 +34,44 @@ class OemConfigOverrideTest {
         ReflectionHelpers.setStaticField(Build::class.java, "MANUFACTURER", "unknown")
     }
 
+    /**
+     * #243: the foreground-service flags are authoritative. Aggressive OEMs no
+     * longer silently force the service (and its notification) back on — the
+     * SDK logs a reliability warning at start()/startPeriodic() instead.
+     * Geofence high-accuracy mode keeps its OEM override (no notification
+     * involved; plain geofences are unreliable on these devices).
+     */
     @Test
-    fun testRestrictedOem_Oppo_ForcesForegroundServiceAndHighAccuracy() {
-        ReflectionHelpers.setStaticField(Build::class.java, "MANUFACTURER", "OPPO")
-        
-        // Even if default is false, it should return true
-        assertTrue(configManager.isForegroundServiceEnabled())
-        assertTrue(configManager.getGeofenceModeHighAccuracy())
-        assertTrue(configManager.getPeriodicUseForegroundService())
+    fun testRestrictedOem_ExplicitForegroundDisable_IsHonored() {
+        ReflectionHelpers.setStaticField(Build::class.java, "MANUFACTURER", "Xiaomi")
+
+        configManager.setConfig(mapOf(
+            "android" to mapOf(
+                "foregroundService" to mapOf("enabled" to false),
+                "periodicUseForegroundService" to false,
+            )
+        ))
+
+        assertFalse(configManager.isForegroundServiceEnabled())
+        assertFalse(configManager.getPeriodicUseForegroundService())
     }
 
     @Test
-    fun testRestrictedOem_Xiaomi_ForcesForegroundServiceAndHighAccuracy() {
-        ReflectionHelpers.setStaticField(Build::class.java, "MANUFACTURER", "Xiaomi")
-        
+    fun testRestrictedOem_Defaults_AreNotForced() {
+        ReflectionHelpers.setStaticField(Build::class.java, "MANUFACTURER", "OPPO")
+
+        // Defaults apply as-is: FG service defaults to true on its own merits,
+        // periodic mode defaults to the WorkManager (no-service) strategy.
         assertTrue(configManager.isForegroundServiceEnabled())
+        assertFalse(configManager.getPeriodicUseForegroundService())
+        // Geofence high-accuracy override is intentionally kept for OEMs.
         assertTrue(configManager.getGeofenceModeHighAccuracy())
-        assertTrue(configManager.getPeriodicUseForegroundService())
     }
 
     @Test
     fun testStandardOem_Google_ReturnsConfiguredValue() {
         ReflectionHelpers.setStaticField(Build::class.java, "MANUFACTURER", "Google")
-        
+
         // Should return defaults (true for FG, false for geofence mode)
         assertTrue(configManager.isForegroundServiceEnabled()) // Default is true
         assertFalse(configManager.getGeofenceModeHighAccuracy()) // Default is false
@@ -80,7 +94,7 @@ class OemConfigOverrideTest {
     @Test
     fun testRestrictedOem_DoesNotOverrideShowNotificationOnPauseOnly() {
         ReflectionHelpers.setStaticField(Build::class.java, "MANUFACTURER", "vivo")
-        
+
         // Default is false
         assertFalse(configManager.getShowNotificationOnPauseOnly())
 

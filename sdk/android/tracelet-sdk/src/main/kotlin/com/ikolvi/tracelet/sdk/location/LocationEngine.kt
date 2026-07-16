@@ -650,6 +650,12 @@ class LocationEngine(
         val watchCallback = object : TraceletLocationCallback {
             override fun onLocationResult(locations: List<Location>) {
                 for (location in locations) {
+                    // Mock rejection applies to watched fixes too — they bypass
+                    // onLocationReceived()'s defense-in-depth check.
+                    if (config.getRejectMockLocations() && isLocationMock(location)) {
+                        TraceletLog.warning("watchPosition: rejected mock location")
+                        continue
+                    }
                     // enrichLocation() already returns a MutableMap; avoid
                     // unnecessary shallow copy from toMutableMap() (A-L3).
                     val data = enrichLocation(location, "watchPosition") as MutableMap<String, Any?>
@@ -1118,8 +1124,12 @@ class LocationEngine(
                 if (collected.isNotEmpty()) {
                     deliver(collected, persist, extras, callback)
                 } else {
-                    // Fallback to last known location (e.g. emulator with no GPS)
-                    val fallback = lastLocation
+                    // Fallback to last known location (e.g. emulator with no GPS).
+                    // lastLocation can come from getLastKnownLocation()'s system
+                    // caches, which are unvetted — apply mock rejection here too.
+                    val fallback = lastLocation?.takeUnless {
+                        config.getRejectMockLocations() && isLocationMock(it)
+                    }
                     if (fallback != null) {
                         deliver(listOf(fallback), persist, extras, callback)
                     } else {
@@ -1136,7 +1146,16 @@ class LocationEngine(
                 fusedClient.getCurrentLocation(priority, null, onSuccess = { location ->
                         if (finished) return@getCurrentLocation
                         if (location != null) {
-                            collected.add(location)
+                            // Mock rejection applies to one-shot fixes too — the
+                            // tracking path already drops mocks in
+                            // onLocationReceived(), but getCurrentPosition()
+                            // bypasses it. Skip the sample and keep collecting
+                            // until a genuine fix arrives or the timeout fires.
+                            if (config.getRejectMockLocations() && isLocationMock(location)) {
+                                TraceletLog.warning("getCurrentPosition: rejected mock location sample")
+                            } else {
+                                collected.add(location)
+                            }
                         }
                         if (collected.size >= count) {
                             finished = true
@@ -1398,66 +1417,8 @@ class LocationEngine(
      * **Note:** On rooted devices with Xposed/Magisk modules, platform flags
      * can be stripped. Heuristic checks partially compensate for this.
      */
-    @Suppress("DEPRECATION")
-    private fun isLocationMock(location: Location): Boolean {
-        val level = config.getMockDetectionLevel()
-        if (level == 0) return false
-
-        // Level 1+ (basic): Platform API flag
-        val platformFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            location.isMock
-        } else {
-            location.isFromMockProvider
-        }
-        
-        TraceletLog.debug("isLocationMock: platformFlag=$platformFlag, level=$level")
-        
-        if (platformFlag) return true
-        if (level < 2) return false
-
-        // Level 2 (heuristic): Additional native-side checks
-        val gpsEnabled = isGpsProviderEnabled(context)
-        val extras = location.extras
-        val satellites = extras?.getInt("satellites", -1) ?: -1
-        
-        TraceletLog.debug("isLocationMock: heuristic check — satellites=$satellites, gpsEnabled=$gpsEnabled, accuracy=${location.accuracy}")
-
-        if (gpsEnabled && satellites == 0 && location.accuracy < 50.0) {
-            TraceletLog.debug("isLocationMock: detected via 0 satellites")
-            return true
-        }
-
-        val locationElapsedNanos = location.elapsedRealtimeNanos
-        val currentElapsedNanos = SystemClock.elapsedRealtimeNanos()
-        val driftNanos = currentElapsedNanos - locationElapsedNanos
-        val driftMs = driftNanos / 1_000_000.0
-        
-        TraceletLog.debug("isLocationMock: driftMs=$driftMs ms")
-
-        if (driftMs < -500.0) {
-            TraceletLog.debug("isLocationMock: detected via negative elapsedRealtime drift (location from the future: $driftMs ms)")
-            return true
-        }
-        
-        // 3. Timestamp vs ElapsedRealtime mismatch
-        val locationTimeMs = location.time
-        val currentTimeMs = System.currentTimeMillis()
-        val ageByWallClockMs = currentTimeMs - locationTimeMs
-        val ageByMonotonicMs = driftMs.toLong()
-
-        // If the location age according to the monotonic clock differs significantly
-        // from the wall clock age (e.g., > 10 seconds), the location was likely replayed
-        // or the elapsedRealtime was manipulated (common in mock location apps).
-        val discrepancyMs = kotlin.math.abs(ageByWallClockMs - ageByMonotonicMs)
-        val maxDriftMs = 10000L + config.getDeferTime()
-        TraceletLog.debug("isLocationMock: discrepancyMs=$discrepancyMs ms, maxDriftMs=$maxDriftMs ms")
-        if (discrepancyMs > maxDriftMs) {
-            TraceletLog.debug("isLocationMock: detected via timestamp/elapsed mismatch (>10s)")
-            return true
-        }
-
-        return false
-    }
+    private fun isLocationMock(location: Location): Boolean =
+        isLocationMock(location, config.getMockDetectionLevel(), config.getDeferTime(), context)
 
     // =========================================================================
     // Dead Reckoning (Enterprise) — IMU sensor fusion
@@ -1657,4 +1618,81 @@ class LocationEngine(
             dispatch(enriched)
         }
     }
+}
+
+/**
+ * Detects whether a [Location] was produced by a mock/spoofing provider.
+ *
+ * Top-level so it is shared by [LocationEngine] and [PeriodicLocationWorker]
+ * (which has no engine instance in its background process).
+ *
+ * Detection [level] (from `mockDetectionLevel` in config):
+ * - **0 (disabled)**: Always returns `false`.
+ * - **1 (basic)**: Uses `Location.isMock()` (API 31+) or
+ *   `Location.isFromMockProvider()` (API 18–30).
+ * - **2 (heuristic)**: Basic + satellite count check + elapsed realtime
+ *   drift check. [deferTimeMs] widens the timestamp-mismatch tolerance for
+ *   batched delivery.
+ *
+ * **Note:** On rooted devices with Xposed/Magisk modules, platform flags
+ * can be stripped. Heuristic checks partially compensate for this.
+ */
+@Suppress("DEPRECATION")
+internal fun isLocationMock(location: Location, level: Int, deferTimeMs: Int, context: Context): Boolean {
+    if (level == 0) return false
+
+    // Level 1+ (basic): Platform API flag
+    val platformFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        location.isMock
+    } else {
+        location.isFromMockProvider
+    }
+
+    TraceletLog.debug("isLocationMock: platformFlag=$platformFlag, level=$level")
+
+    if (platformFlag) return true
+    if (level < 2) return false
+
+    // Level 2 (heuristic): Additional native-side checks
+    val gpsEnabled = LocationEngine.isGpsProviderEnabled(context)
+    val extras = location.extras
+    val satellites = extras?.getInt("satellites", -1) ?: -1
+
+    TraceletLog.debug("isLocationMock: heuristic check — satellites=$satellites, gpsEnabled=$gpsEnabled, accuracy=${location.accuracy}")
+
+    if (gpsEnabled && satellites == 0 && location.accuracy < 50.0) {
+        TraceletLog.debug("isLocationMock: detected via 0 satellites")
+        return true
+    }
+
+    val locationElapsedNanos = location.elapsedRealtimeNanos
+    val currentElapsedNanos = SystemClock.elapsedRealtimeNanos()
+    val driftNanos = currentElapsedNanos - locationElapsedNanos
+    val driftMs = driftNanos / 1_000_000.0
+
+    TraceletLog.debug("isLocationMock: driftMs=$driftMs ms")
+
+    if (driftMs < -500.0) {
+        TraceletLog.debug("isLocationMock: detected via negative elapsedRealtime drift (location from the future: $driftMs ms)")
+        return true
+    }
+
+    // 3. Timestamp vs ElapsedRealtime mismatch
+    val locationTimeMs = location.time
+    val currentTimeMs = System.currentTimeMillis()
+    val ageByWallClockMs = currentTimeMs - locationTimeMs
+    val ageByMonotonicMs = driftMs.toLong()
+
+    // If the location age according to the monotonic clock differs significantly
+    // from the wall clock age (e.g., > 10 seconds), the location was likely replayed
+    // or the elapsedRealtime was manipulated (common in mock location apps).
+    val discrepancyMs = kotlin.math.abs(ageByWallClockMs - ageByMonotonicMs)
+    val maxDriftMs = 10000L + deferTimeMs
+    TraceletLog.debug("isLocationMock: discrepancyMs=$discrepancyMs ms, maxDriftMs=$maxDriftMs ms")
+    if (discrepancyMs > maxDriftMs) {
+        TraceletLog.debug("isLocationMock: detected via timestamp/elapsed mismatch (>10s)")
+        return true
+    }
+
+    return false
 }

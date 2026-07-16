@@ -307,10 +307,16 @@ class ConfigManager(context: Context) {
     fun getPeriodicDesiredAccuracy(): Int =
         getInt("periodicDesiredAccuracy", DEFAULT_PERIODIC_DESIRED_ACCURACY)
 
-    fun getPeriodicUseForegroundService(): Boolean {
-        val configured = getBool("periodicUseForegroundService", DEFAULT_PERIODIC_USE_FOREGROUND_SERVICE)
-        return if (isRestrictedOem()) true else configured
-    }
+    /**
+     * Whether periodic mode runs inside the foreground service.
+     *
+     * The configured value is authoritative (#243): it is never silently
+     * overridden for aggressive OEMs anymore. TraceletSdk.startPeriodic()
+     * logs a reliability warning instead when the foreground service is
+     * disabled on such devices.
+     */
+    fun getPeriodicUseForegroundService(): Boolean =
+        getBool("periodicUseForegroundService", DEFAULT_PERIODIC_USE_FOREGROUND_SERVICE)
 
     fun getPeriodicUseExactAlarms(): Boolean =
         getBool("periodicUseExactAlarms", DEFAULT_PERIODIC_USE_EXACT_ALARMS)
@@ -482,10 +488,17 @@ class ConfigManager(context: Context) {
     }
 
     // ForegroundService config
-    fun isForegroundServiceEnabled(): Boolean {
-        val configured = getBool("fg_enabled", DEFAULT_FG_ENABLED)
-        return if (isRestrictedOem()) true else configured
-    }
+    /**
+     * Whether the persistent foreground service (and its notification) is
+     * enabled.
+     *
+     * The configured value is authoritative (#243): explicitly disabling the
+     * foreground service is honored even on aggressive OEMs. TraceletSdk logs
+     * a reliability warning at start()/startPeriodic() instead of silently
+     * forcing the service (and its notification) back on.
+     */
+    fun isForegroundServiceEnabled(): Boolean =
+        getBool("fg_enabled", DEFAULT_FG_ENABLED)
 
     fun getFgChannelId(): String =
         getString("fg_channelId", DEFAULT_CHANNEL_ID)
