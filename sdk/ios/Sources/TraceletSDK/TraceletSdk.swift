@@ -1887,8 +1887,9 @@ public final class TraceletSdk {
         }
         // Keep the LocationEngine's activity in sync so enriched locations don't
         // report a permanent "unknown" (#155).
-        motionDetector.onActivityChanged = { [weak self] type, _ in
+        motionDetector.onActivityChanged = { [weak self] type, confidence in
             self?.locationEngine.currentActivityType = type
+            self?.locationEngine.currentActivityConfidence = confidence
         }
         // 3.3.0: feed accelerometer samples (g) to the classifier/impact keystone.
         motionDetector.onAccelSample = { [weak self] magnitudeG in
@@ -2377,6 +2378,7 @@ public final class TraceletSdk {
             // #214 pt3: keep the engine's fused mode fresh every window so it can be
             // persisted into the location's activity column when authoritative.
             locationEngine?.fusedTransportMode = String(describing: result.mode).lowercased()
+            locationEngine?.fusedTransportModeConfidence = result.confidence
             if result.changed {
                 eventSender.sendModeChange([
                     "mode": String(describing: result.mode).lowercased(),
