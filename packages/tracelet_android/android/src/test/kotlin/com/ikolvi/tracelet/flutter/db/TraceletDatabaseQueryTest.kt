@@ -38,6 +38,7 @@ class TraceletDatabaseQueryTest {
             isMock = false,
             isMoving = false,
             activity = "still",
+            activityConfidence = -1,
             routeContext = null,
             timestampOverride = java.time.Instant.ofEpochMilli(timestamp).toString(),
             eventType = null,
