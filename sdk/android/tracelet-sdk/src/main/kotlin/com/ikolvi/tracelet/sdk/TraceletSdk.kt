@@ -2769,6 +2769,7 @@ class TraceletSdk private constructor(private val context: Context) {
             // is what survives termination / syncs historically.
             if (::locationEngine.isInitialized) {
                 locationEngine.fusedTransportMode = result.mode.name.lowercase()
+                locationEngine.fusedTransportModeConfidence = result.confidence
             }
             if (result.changed) {
                 eventSender.sendModeChange(

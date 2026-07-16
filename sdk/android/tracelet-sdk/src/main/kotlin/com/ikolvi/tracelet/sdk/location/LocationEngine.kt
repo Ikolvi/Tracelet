@@ -20,6 +20,7 @@ import com.ikolvi.tracelet.sdk.audit.AuditTrailManager
 import com.ikolvi.tracelet.sdk.privacy.PrivacyZoneManager
 
 import com.ikolvi.tracelet.sdk.util.BatteryUtils
+import kotlin.math.roundToInt
 import uniffi.tracelet_core.LocationProcessor as RustLocationProcessor
 import uniffi.tracelet_core.KalmanLocationFilter as RustKalmanFilter
 import uniffi.tracelet_core.LocationProcessorResult
@@ -115,15 +116,47 @@ class LocationEngine(
     @Volatile
     var fusedTransportMode: String? = null
 
+    /** Confidence (0.0–1.0) of [fusedTransportMode], kept fresh alongside it. */
+    @Volatile
+    var fusedTransportModeConfidence: Double = 0.0
+
     /**
      * The activity type to persist/dispatch: the fused transport mode when the
      * classifier is authoritative (and available), otherwise the raw AR activity.
+     * Always expressed in the Activity Recognition vocabulary so `activity.type`
+     * stays a single vocabulary for consumers regardless of the source.
      */
-    private fun effectiveActivityType(): String =
-        if (config.getFusedClassifierAuthoritative()) {
-            fusedTransportMode ?: currentActivityType
+    private fun effectiveActivityType(): String {
+        val fused = fusedTransportMode
+        return if (config.getFusedClassifierAuthoritative() && fused != null) {
+            arActivityName(fused)
         } else {
             currentActivityType
+        }
+    }
+
+    /**
+     * Maps the transport classifier's mode names to the Activity Recognition
+     * vocabulary persisted in `activity.type` ("cycling" → "on_bicycle",
+     * "vehicle" → "in_vehicle"); the remaining modes (still/walking/running/
+     * unknown) are already identical in both.
+     */
+    private fun arActivityName(fusedMode: String): String = when (fusedMode) {
+        "cycling" -> "on_bicycle"
+        "vehicle" -> "in_vehicle"
+        else -> fusedMode
+    }
+
+    /**
+     * The activity confidence to persist/dispatch (0–100), matching
+     * [effectiveActivityType]: the fused mode confidence (scaled from 0.0–1.0)
+     * when authoritative and available, otherwise the platform AR confidence.
+     */
+    private fun effectiveActivityConfidence(): Int =
+        if (config.getFusedClassifierAuthoritative() && fusedTransportMode != null) {
+            (fusedTransportModeConfidence * 100).roundToInt()
+        } else {
+            currentActivityConfidence
         }
 
     /** Force accept the next location (even if distance is 0) to guarantee a motion change sync on wakeup. */
@@ -1074,7 +1107,7 @@ class LocationEngine(
                 // #214 pt3: persist the fused transport mode when authoritative so
                 // it survives termination and syncs historically (falls back to AR).
                 "type" to effectiveActivityType(),
-                "confidence" to currentActivityConfidence,
+                "confidence" to effectiveActivityConfidence(),
             ),
             "battery" to battery,
         )
@@ -1533,7 +1566,7 @@ class LocationEngine(
                 // #214 pt3: persist the fused transport mode when authoritative so
                 // it survives termination and syncs historically (falls back to AR).
                 "type" to effectiveActivityType(),
-                "confidence" to currentActivityConfidence,
+                "confidence" to effectiveActivityConfidence(),
             ),
             "battery" to battery,
         )
