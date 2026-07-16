@@ -180,7 +180,17 @@ class PeriodicLocationWorker(
                 return Result.success()
             }
 
-            val location = fetchLocation(config)
+            var location = fetchLocation(config)
+
+            // Mock rejection applies to periodic fixes too — they bypass the
+            // engine's onLocationReceived() defense-in-depth check.
+            if (location != null &&
+                config.getRejectMockLocations() &&
+                isLocationMock(location, config.getMockDetectionLevel(), config.getDeferTime(), applicationContext)
+            ) {
+                TraceletLog.warning("Periodic fix rejected: mock location")
+                location = null
+            }
 
             if (location != null) {
                 var effectiveSpeed = location.speed.toDouble()

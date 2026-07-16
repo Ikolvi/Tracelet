@@ -746,6 +746,12 @@ class TraceletSdk private constructor(private val context: Context) {
 
         if (configManager.isForegroundServiceEnabled()) {
             LocationService.start(context)
+        } else if (configManager.isRestrictedOem()) {
+            logger.warning(
+                "Continuous tracking without a foreground service on an aggressive OEM " +
+                    "(${android.os.Build.MANUFACTURER}) — the OS may kill tracking in the " +
+                    "background. Consider foregroundService.enabled: true for reliability."
+            )
         }
 
         // Wire proximity-based geofence monitoring + trip waypoints
@@ -982,6 +988,14 @@ class TraceletSdk private constructor(private val context: Context) {
         val useExactAlarms = configManager.getPeriodicUseExactAlarms() ||
             (!useForeground && interval < 900)
 
+        if (!useForeground && configManager.isRestrictedOem()) {
+            logger.warning(
+                "startPeriodic() without a foreground service on an aggressive OEM " +
+                    "(${android.os.Build.MANUFACTURER}) — WorkManager/alarm delivery may be " +
+                    "throttled or killed. Consider periodicUseForegroundService: true for reliability."
+            )
+        }
+
         if (useForeground) {
             if (configManager.isForegroundServiceEnabled()) {
                 // Idempotent: re-delivers ACTION_START; if the service is already
@@ -991,8 +1005,11 @@ class TraceletSdk private constructor(private val context: Context) {
             locationEngine.startPeriodic()
         } else if (useExactAlarms) {
             // No foreground service in this strategy — tear down any left over
-            // from a previous continuous/foreground-periodic session.
-            if (configManager.isForegroundServiceEnabled() && LocationService.isServiceRunning()) {
+            // from a previous continuous/foreground-periodic session. This must
+            // not be gated on isForegroundServiceEnabled(): when the new config
+            // just disabled the service, the leftover from the previous config
+            // still needs stopping (#243).
+            if (LocationService.isServiceRunning()) {
                 LocationService.stop(context)
             }
             if (!PeriodicLocationWorker.canScheduleExactAlarms(context)) {
@@ -1009,8 +1026,10 @@ class TraceletSdk private constructor(private val context: Context) {
             PeriodicLocationWorker.scheduleExactAlarm(context, interval)
         } else {
             // WorkManager strategy — no foreground service; tear down any left
-            // over from a previous continuous/foreground-periodic session.
-            if (configManager.isForegroundServiceEnabled() && LocationService.isServiceRunning()) {
+            // over from a previous continuous/foreground-periodic session. Not
+            // gated on isForegroundServiceEnabled() — see the exact-alarms
+            // branch above (#243).
+            if (LocationService.isServiceRunning()) {
                 LocationService.stop(context)
             }
             PeriodicLocationWorker.schedule(context, interval)
