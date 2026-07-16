@@ -146,11 +146,25 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
 
     /// The activity type to persist/dispatch: the fused transport mode when the
     /// classifier is authoritative (and available), otherwise the raw AR activity.
+    /// Always expressed in the Activity Recognition vocabulary so `activity.type`
+    /// stays a single vocabulary for consumers regardless of the source.
     private func effectiveActivityType() -> String {
-        if configManager.getFusedClassifierAuthoritative() {
-            return fusedTransportMode ?? currentActivityType
+        if configManager.getFusedClassifierAuthoritative(), let fused = fusedTransportMode {
+            return Self.arActivityName(forFusedMode: fused)
         }
         return currentActivityType
+    }
+
+    /// Maps the transport classifier's mode names to the Activity Recognition
+    /// vocabulary persisted in `activity.type` ("cycling" → "on_bicycle",
+    /// "vehicle" → "in_vehicle"); the remaining modes (still/walking/running/
+    /// unknown) are already identical in both.
+    private static func arActivityName(forFusedMode mode: String) -> String {
+        switch mode {
+        case "cycling": return "on_bicycle"
+        case "vehicle": return "in_vehicle"
+        default: return mode
+        }
     }
 
     /// The activity confidence to persist/dispatch (0–100), matching
@@ -1540,7 +1554,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
                 // #214 pt3: persist the fused transport mode when authoritative so
                 // it survives termination and syncs historically (falls back to AR).
                 "type": effectiveActivityType(),
-                "confidence": -1,
+                "confidence": effectiveActivityConfidence(),
             ],
             "battery": [
                 "level": -1.0,
