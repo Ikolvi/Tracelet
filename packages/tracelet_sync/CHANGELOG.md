@@ -1,3 +1,7 @@
+## 3.6.1
+
+Version alignment with tracelet 3.6.1.
+
 ## 3.6.0
 
 **FEAT**: `Tracelet.updateLocationProviderOptions()` — live provider-options override without a pipeline restart, on iOS and Android ([#241](https://github.com/Ikolvi/Tracelet/pull/241)).
