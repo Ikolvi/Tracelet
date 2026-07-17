@@ -22,6 +22,16 @@
 
 Battery-conscious motion-detection intelligence, geofencing, SQLite persistence, HTTP sync, and headless Dart execution for iOS & Android.
 
+### 🎬 Video Tutorial
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=KCF7mfIOaFo">
+    <img src="https://img.youtube.com/vi/KCF7mfIOaFo/maxresdefault.jpg" alt="Tracelet Tutorial — watch on YouTube" width="600"/>
+  </a>
+</p>
+
+▶️ **[Watch the Tracelet tutorial on YouTube](https://www.youtube.com/watch?v=KCF7mfIOaFo)** — full setup and integration walkthrough.
+
 ---
 
 ## 🆕 New in 3.5.0 — Stable AI Crash Detection
