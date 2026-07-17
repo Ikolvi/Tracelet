@@ -289,10 +289,18 @@ class ConfigManager(context: Context) {
     fun getAllowIdenticalLocations(): Boolean =
         getBool("allowIdenticalLocations", DEFAULT_ALLOW_IDENTICAL_LOCATIONS)
 
-    fun getGeofenceModeHighAccuracy(): Boolean {
-        val configured = getBool("geofenceModeHighAccuracy", DEFAULT_GEOFENCE_MODE_HIGH_ACCURACY)
-        return if (isRestrictedOem()) true else configured
-    }
+    /**
+     * Whether geofences-only mode runs continuous GPS (and with it the
+     * foreground service) for in-app proximity detection.
+     *
+     * The configured value is authoritative (#247, consistent with #243): it
+     * is never silently overridden for aggressive OEMs anymore — forcing
+     * high-accuracy mode also forced the foreground-service notification that
+     * low-accuracy geofences-only mode exists to avoid. TraceletSdk
+     * .startGeofences() logs a reliability warning instead on such devices.
+     */
+    fun getGeofenceModeHighAccuracy(): Boolean =
+        getBool("geofenceModeHighAccuracy", DEFAULT_GEOFENCE_MODE_HIGH_ACCURACY)
 
     fun getMaxMonitoredGeofences(): Int =
         getInt("maxMonitoredGeofences", DEFAULT_MAX_MONITORED_GEOFENCES)

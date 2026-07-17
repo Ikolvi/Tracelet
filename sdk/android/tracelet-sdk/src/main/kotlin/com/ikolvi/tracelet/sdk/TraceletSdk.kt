@@ -937,6 +937,13 @@ class TraceletSdk private constructor(private val context: Context) {
                 LocationService.start(context)
             }
         } else {
+            if (configManager.isRestrictedOem()) {
+                logger.warning(
+                    "startGeofences() in low-accuracy mode on an aggressive OEM " +
+                        "(${android.os.Build.MANUFACTURER}) — native geofence delivery may be " +
+                        "delayed or dropped. Consider geofenceModeHighAccuracy: true for reliability."
+                )
+            }
             locationEngine.stop()
             if (LocationService.isServiceRunning()) {
                 LocationService.stop(context)
