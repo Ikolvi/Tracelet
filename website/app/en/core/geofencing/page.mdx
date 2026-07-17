@@ -122,6 +122,16 @@ headless task — while the app is suspended or terminated, **without** a
 foreground service. Calling `startGeofences()` in standard mode does **not** start
 a foreground service (as of `3.5.x`), so it is compliant by default.
 
+<Callout type="info">
+**Aggressive OEMs (Samsung/Xiaomi/Huawei/OnePlus/Oppo/Vivo):** as of `3.6.1`,
+an explicit `geofenceModeHighAccuracy: false` is honored on every device. Before
+`3.6.1` these OEMs silently forced high-accuracy mode — and with it the
+foreground service and its persistent notification — even when you set `false`,
+which broke the compliant standard-mode path above. If you target these devices,
+use `3.6.1` or later. On an aggressive OEM the SDK now logs a reliability warning
+(native geofence delivery can be delayed there) instead of overriding your config.
+</Callout>
+
 ### If you use Tracelet only for geofencing
 
 1. Do **not** enable the foreground service:
