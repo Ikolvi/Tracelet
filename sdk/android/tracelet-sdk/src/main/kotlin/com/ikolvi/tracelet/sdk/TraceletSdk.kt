@@ -84,6 +84,14 @@ class TraceletSdk private constructor(private val context: Context) {
     val configManager: ConfigManager by lazy { ConfigManager.getInstance(context) }
     val stateManager: StateManager by lazy { StateManager(context) }
 
+    /**
+     * Fetches + applies remote config overrides (Enterprise `remoteConfigUrl`).
+     * Created lazily so apps that never set a remote URL pay nothing.
+     */
+    val remoteConfigManager: RemoteConfigManager by lazy {
+        RemoteConfigManager(context, configManager) { msg -> logger.info(msg) }
+    }
+
     lateinit var locationEngine: LocationEngine
         internal set
     lateinit var motionDetector: MotionDetector
@@ -593,33 +601,28 @@ class TraceletSdk private constructor(private val context: Context) {
             encryptDatabase()
         }
 
-        // Remote config
+        // Remote config (Enterprise): fetch overrides from a remote HTTPS
+        // endpoint. Apply the last-good cached copy synchronously so a restart
+        // resumes on the freshest known config instantly and offline, complete
+        // ready() without waiting on the network, then fetch a fresh copy in the
+        // background and keep it refreshed on the configured interval.
         val remoteUrl = configManager.getRemoteConfigUrl()
+        val effective = if (!remoteUrl.isNullOrEmpty()) {
+            remoteConfigManager.cachedConfig()?.let { configManager.setConfig(it) } ?: merged
+        } else {
+            merged
+        }
+
+        completeReady(effective, callback)
+
         if (!remoteUrl.isNullOrEmpty()) {
-            fetchRemoteConfig(remoteUrl, merged, callback)
-            return
+            remoteConfigManager.start(remoteUrl) { remote ->
+                // Apply on the main thread: setConfig() may restart the active
+                // tracking pipeline (location engine, motion sensors), which must
+                // run off the background fetch thread.
+                mainHandler.post { setConfig(remote) }
+            }
         }
-
-        completeReady(merged, callback)
-    }
-
-    private fun fetchRemoteConfig(
-        url: String,
-        localConfig: Map<String, Any?>,
-        callback: (Map<String, Any?>) -> Unit,
-    ) {
-        // Reject non-HTTPS URLs
-        if (!url.startsWith("https://")) {
-            logger.warning("Remote config URL rejected: only HTTPS is allowed")
-            completeReady(localConfig, callback)
-            return
-        }
-
-        val timeout = configManager.getRemoteConfigTimeout()
-        val headers = configManager.getRemoteConfigHeaders()
-        // TODO: Port remote config fetch to Rust
-        // For now, proceed with localConfig
-        completeReady(localConfig, callback)
     }
 
     private fun completeReady(
@@ -1199,6 +1202,7 @@ class TraceletSdk private constructor(private val context: Context) {
         motionDetector.stop()
         stopHeartbeat()
         stopSyncIntervalTimer()
+        remoteConfigManager.stop()
         geofenceManager.destroy()
         LocationService.stop(context)
 

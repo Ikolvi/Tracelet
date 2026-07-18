@@ -83,6 +83,7 @@ public final class TraceletSdk {
     public private(set) var auditTrailManager: AuditTrailManager!
     public private(set) var privacyZoneManager: PrivacyZoneManager!
     public private(set) var deviceAttestor: DeviceAttestor!
+    public private(set) var remoteConfigManager: RemoteConfigManager!
     public private(set) var preventSuspendManager: PreventSuspendManager!
     public private(set) var backgroundActivitySessionManager: BackgroundActivitySessionManager!
     public private(set) var serviceSessionManager: ServiceSessionManager!
@@ -250,7 +251,9 @@ public final class TraceletSdk {
     public func ready(config: [String: Any]) -> [String: Any] {
         initialize()  // no-op if already initialized
 
-        let merged = configManager.setConfig(config)
+        // Merge the incoming config; the effective config (with any cached remote
+        // overrides applied below) is read back from configManager at return.
+        _ = configManager.setConfig(config)
 
         if config["encryptDatabase"] as? Bool == true {
             let key = config["encryptionKey"] as? String ?? ""
@@ -289,10 +292,13 @@ public final class TraceletSdk {
             deviceAttestor.startRefresh(intervalSeconds: configManager.getAttestationRefreshInterval())
         }
 
-        // [Enterprise] Fetch remote config if configured.
-        // TODO: Port fetchRemoteConfig to Rust Core or standalone networking
-        if let remoteUrl = configManager.getRemoteConfigUrl() {
-            // Port to Rust Networking
+        // [Enterprise] Remote config: apply the last-good cached copy synchronously
+        // so a restart resumes on the freshest known config instantly and offline.
+        // The fresh background fetch + periodic refresh is started at the end of
+        // ready(), once isReady is set.
+        let remoteConfigUrl = configManager.getRemoteConfigUrl()
+        if remoteConfigUrl != nil, let cached = remoteConfigManager.cachedConfig() {
+            _ = configManager.setConfig(cached)
         }
 
         // Initialize battery budget engine from config
@@ -335,8 +341,17 @@ public final class TraceletSdk {
             }
         }
 
+        // [Enterprise] Start the remote-config background fetch + periodic refresh
+        // now that isReady is true, so setConfig() can apply fresh overrides at
+        // runtime (restarting the tracking pipeline if needed).
+        if let remoteUrl = remoteConfigUrl {
+            remoteConfigManager.start(url: remoteUrl) { [weak self] remote in
+                _ = self?.setConfig(remote)
+            }
+        }
+
         logger.info("ready() called")
-        return stateManager.toMap(merged)
+        return stateManager.toMap(configManager.getConfig())
     }
 
     /// Start continuous location tracking.
@@ -760,6 +775,7 @@ public final class TraceletSdk {
             stopSyncIntervalTimer()
             cancelStopAfterElapsedTimer()
             periodicRefreshScheduler.stop()
+            remoteConfigManager?.stop()
 
             let keepGeofencesAlive = !configManager.getStopOnTerminate()
                 && stateManager.enabled
@@ -1853,6 +1869,9 @@ public final class TraceletSdk {
         auditTrailManager = AuditTrailManager(configManager: configManager, rustDatabase: rustDatabase)
         privacyZoneManager = PrivacyZoneManager(configManager: configManager, rustDatabase: rustDatabase)
         deviceAttestor = DeviceAttestor()
+        remoteConfigManager = RemoteConfigManager(configManager: configManager) { [weak self] msg in
+            self?.logger.info(msg)
+        }
 
         // Location engine
         locationEngine = LocationEngine(

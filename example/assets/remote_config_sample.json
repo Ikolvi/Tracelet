@@ -1,0 +1,12 @@
+{
+  "geo": {
+    "distanceFilter": 42.0,
+    "desiredAccuracy": 0
+  },
+  "app": {
+    "heartbeatInterval": 120
+  },
+  "http": {
+    "autoSync": true
+  }
+}
