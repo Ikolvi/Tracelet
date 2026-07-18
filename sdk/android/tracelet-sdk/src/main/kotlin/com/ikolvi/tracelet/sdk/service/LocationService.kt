@@ -145,7 +145,11 @@ class LocationService : Service(), DefaultLifecycleObserver {
                         stopStationaryTimer()
                         return
                     }
-                    engine.getCurrentPosition(mapOf("desiredAccuracy" to accuracy, "skipCache" to true)) { locationMap ->
+                    // persist=false: this timer inserts the enriched "periodic" record
+                    // itself below. Letting getCurrentPosition() persist too stored the
+                    // same map (same uuid) first, so the insert below failed every tick
+                    // with "UNIQUE constraint failed: location_events.uuid" (#248).
+                    engine.getCurrentPosition(mapOf("desiredAccuracy" to accuracy, "skipCache" to true, "persist" to false)) { locationMap ->
                         if (locationMap != null) {
                             val coords = locationMap["coords"] as? Map<*, *>
                             var speed = (coords?.get("speed") as? Number)?.toDouble() ?: 0.0
