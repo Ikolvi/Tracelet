@@ -84,7 +84,7 @@ Controls overall app lifecycle behavior.
 - **`schedule`**: `List<String>` *(Default: `[]`)*
   CRON-like strings to automatically start/stop tracking at specific times.
 - **`remoteConfigUrl`**: `String?` *(Default: `null`)*
-  URL to fetch remote JSON configurations overriding local ones.
+  HTTPS URL the SDK fetches a JSON config map from on `ready()`, applying it over the local config and refreshing in the background. Cached on-device for instant offline apply. See [Remote Configuration](/en/config/enterprise-features).
 - **`remoteConfigHeaders`**: `Map<String, String>?` *(Default: `null`)*
   HTTP Headers for the remote config fetch.
 - **`remoteConfigTimeout`**: `int` *(Default: `60000`)*
