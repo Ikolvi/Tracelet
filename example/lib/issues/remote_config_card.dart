@@ -42,8 +42,9 @@ class _RemoteConfigCardState extends State<RemoteConfigCard> {
       'https://gist.githubusercontent.com/GalacticTitan/'
       '8500881a62f429d00f4b10d4cf7fe55a/raw/remote_config_sample.json';
 
-  final TextEditingController _urlController =
-      TextEditingController(text: _defaultUrl);
+  final TextEditingController _urlController = TextEditingController(
+    text: _defaultUrl,
+  );
 
   String _status = 'Idle';
   bool _running = false;
@@ -188,8 +189,7 @@ class _RemoteConfigCardState extends State<RemoteConfigCard> {
               ),
               child: Text(
                 _status,
-                style:
-                    const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
               ),
             ),
             const SizedBox(height: 16),
