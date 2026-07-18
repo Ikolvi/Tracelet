@@ -1,39 +1,45 @@
-package com.ikolvi.tracelet.sdk.service
+package com.ikolvi.tracelet.flutter.service
 
 import android.content.Context
 import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import com.ikolvi.tracelet.sdk.ConfigManager
-import com.ikolvi.tracelet.sdk.ListenerEventSender
 import com.ikolvi.tracelet.sdk.StateManager
+import com.ikolvi.tracelet.sdk.TraceletEventSender
 import com.ikolvi.tracelet.sdk.location.LocationEngine
+import com.ikolvi.tracelet.sdk.service.LocationService
 import java.time.Duration
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.Shadows.shadowOf
-import org.robolectric.annotation.Config
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /**
- * Regression tests for the "stop() doesn't stop" bug: the stationary
- * periodic timer lives in [LocationService]'s companion (not in the
- * SDK's LocationEngine), so it kept fetching/persisting/syncing
- * locations after the user pressed stop. The timer must cancel itself
- * as soon as it observes the persisted `enabled == false` state.
+ * CI copy of the SDK's LocationServiceStationaryTimerTest (see
+ * sdk/android/tracelet-sdk/src/test) — this module's test task is the one
+ * gated in CI, so SDK-behavior regressions are duplicated here.
+ *
+ * Covers the stationary periodic timer in [LocationService]'s companion:
+ * - it must cancel itself once the persisted `enabled` flag flips false
+ *   (the "stop() doesn't stop" bug), and
+ * - its ticks must request fixes with `persist=false` so the engine does
+ *   not insert the same map (same uuid) the timer inserts itself — the
+ *   "UNIQUE constraint failed: location_events.uuid" every ~120s bug (#248).
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(manifest = Config.NONE, sdk = [33])
-class LocationServiceStationaryTimerTest {
+internal class LocationServiceStationaryTimerTest {
 
     private lateinit var context: Context
     private lateinit var config: ConfigManager
@@ -47,7 +53,9 @@ class LocationServiceStationaryTimerTest {
         config.setConfig(mapOf("stationaryPeriodicInterval" to 1)) // 1s ticks
         state = StateManager(context)
         state.enabled = true
-        engine = LocationEngine(context, config, state, ListenerEventSender())
+        // ListenerEventSender is internal to the SDK module; a mocked
+        // TraceletEventSender is equivalent for these tests.
+        engine = LocationEngine(context, config, state, mock<TraceletEventSender>())
     }
 
     @After
@@ -66,9 +74,6 @@ class LocationServiceStationaryTimerTest {
             "Timer should be scheduled after switching to stationary periodic",
         )
 
-        // Simulate stop(): only the persisted flag flips; the timer's own
-        // guard must cancel it on the next tick even if no one called
-        // stopStationaryTimer() explicitly.
         state.enabled = false
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
 
