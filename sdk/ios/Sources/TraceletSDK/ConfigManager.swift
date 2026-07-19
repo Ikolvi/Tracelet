@@ -96,17 +96,40 @@ public final class ConfigManager {
     public func getMaxMonitoredGeofences() -> Int { (cache["maxMonitoredGeofences"] as? NSNumber)?.intValue ?? -1 }
     public func getEnableTimestampMeta() -> Bool { cache["enableTimestampMeta"] as? Bool ?? false }
 
-    /// Maps the `activityType` config string to a `CLActivityType` (I-M2).
+    /// Maps the `activityType` config value to a `CLActivityType` (I-M2).
+    ///
+    /// The Flutter bridge sends `activityType` as the raw enum index (an Int,
+    /// matching `TraceletActivityType`); older persisted caches may still hold
+    /// the string name. Reading it as an `Int` first (with a string fallback)
+    /// makes the configured value actually take effect — previously the value
+    /// was stored as an Int but read as a String, so it always fell through to
+    /// `.otherNavigation` regardless of what was configured. See issue #250.
     public func getActivityType() -> CLActivityType {
-        let value = cache["activityType"] as? String ?? "other"
-        switch value {
-        case "automotiveNavigation": return .automotiveNavigation
-        case "fitness": return .fitness
-        case "otherNavigation": return .otherNavigation
-        case "airborne":
+        let resolved: TraceletActivityType
+        if let number = cache["activityType"] as? NSNumber,
+           let t = TraceletActivityType(rawValue: number.intValue) {
+            resolved = t
+        } else if let name = cache["activityType"] as? String {
+            switch name {
+            case "automotiveNavigation": resolved = .automotiveNavigation
+            case "fitness": resolved = .fitness
+            case "otherNavigation": resolved = .otherNavigation
+            case "airborne": resolved = .airborne
+            case "other": resolved = .other
+            default: resolved = .otherNavigation
+            }
+        } else {
+            resolved = .otherNavigation
+        }
+
+        switch resolved {
+        case .other: return .other
+        case .automotiveNavigation: return .automotiveNavigation
+        case .fitness: return .fitness
+        case .otherNavigation: return .otherNavigation
+        case .airborne:
             if #available(iOS 12.0, *) { return .airborne }
             return .otherNavigation
-        default: return .otherNavigation
         }
     }
     // Periodic mode config

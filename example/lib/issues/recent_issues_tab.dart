@@ -22,6 +22,7 @@ import 'package:tracelet_example/issues/issue_243_card.dart';
 import 'package:tracelet_example/issues/issue_244_card.dart';
 import 'package:tracelet_example/issues/issue_247_card.dart';
 import 'package:tracelet_example/issues/issue_248_card.dart';
+import 'package:tracelet_example/issues/issue_250_card.dart';
 import 'package:tracelet_example/issues/mock_rejection_card.dart';
 import 'package:tracelet_example/issues/remote_config_card.dart';
 
@@ -1745,6 +1746,7 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
                   ],
                 ),
                 const RemoteConfigCard(),
+                const Issue250Card(),
                 const Issue248Card(),
                 const Issue247Card(),
                 const Issue244Card(),

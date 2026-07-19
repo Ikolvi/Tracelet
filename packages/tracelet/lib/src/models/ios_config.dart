@@ -141,9 +141,24 @@ class IosConfig {
   /// If provided, Tracelet will use `CLLiveUpdate` for highly battery-optimized location tracking.
   final LiveActivityConfig? liveActivityConfig;
 
+  /// Maps a [LocationActivityType] to its Pigeon [TlIosActivityType] by name.
+  ///
+  /// The two enums are declared with *different member orderings*, so mapping
+  /// by raw `.index` silently sent the wrong value (e.g. `otherNavigation`
+  /// arrived as `fitness`). Always map explicitly by name. See issue #250.
+  static TlIosActivityType _toTlActivityType(LocationActivityType t) =>
+      switch (t) {
+        LocationActivityType.other => TlIosActivityType.other,
+        LocationActivityType.automotiveNavigation =>
+          TlIosActivityType.automotive,
+        LocationActivityType.otherNavigation => TlIosActivityType.otherNavigation,
+        LocationActivityType.fitness => TlIosActivityType.fitness,
+        LocationActivityType.airborne => TlIosActivityType.airborne,
+      };
+
   /// Converts to Pigeon [TlIosConfig].
   TlIosConfig toTlConfig() => TlIosConfig(
-    activityType: TlIosActivityType.values[activityType.index],
+    activityType: _toTlActivityType(activityType),
     useSignificantChangesOnly: useSignificantChangesOnly,
     showsBackgroundLocationIndicator: showsBackgroundLocationIndicator,
     pausesLocationUpdatesAutomatically: pausesLocationUpdatesAutomatically,
