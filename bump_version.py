@@ -1,7 +1,7 @@
 import os
 
-version_from = "3.6.3"
-version_to = "3.6.4"
+version_from = "3.6.2"
+version_to = "3.6.3"
 
 # 1. Bump version strings
 exact_replacements = [
@@ -86,10 +86,12 @@ changelog_addition = f"""## {version_to}
 
 **FIX**: `destroyLocation(uuid)` now deletes the record addressed by its public UUID on both Android and iOS. Previously both native SDKs parsed the UUID string as a numeric database id (`toLongOrNull()` / `Int64(uuid)`), so any real UUID failed to parse and the call returned `false` without deleting anything — pending locations could never be acknowledged and the queue never drained. The UUID is now resolved to its row id before deletion, with the legacy numeric-id path kept for backward compatibility ([#251](https://github.com/Ikolvi/Tracelet/issues/251)).
 
+**FIX**: `IosConfig.activityType` is now applied to `CLLocationManager` as configured on iOS. Two independent bugs previously made every value resolve to `.otherNavigation`: the Dart bridge mapped between two differently-ordered enums by raw index (so e.g. `otherNavigation` was sent as `fitness`), and the native side stored the value as an Int but read it back as a String and always fell through to the default. Both sides now agree, so `automotiveNavigation`/`fitness`/`airborne` take effect ([#250](https://github.com/Ikolvi/Tracelet/issues/250)).
+
 """
 generic_addition = f"""## {version_to}
 
-Version alignment with tracelet 3.6.2.
+Version alignment with tracelet {version_to}.
 
 """
 
