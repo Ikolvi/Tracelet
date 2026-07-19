@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'TraceletSDK'
-  s.version = '3.6.3'
+  s.version = '3.6.4'
   s.summary          = 'Production-grade background geolocation SDK for iOS.'
   s.homepage         = 'https://github.com/Ikolvi/Tracelet/tree/main/sdk/ios'
   s.license          = { :type => 'Apache-2.0', :file => '../../LICENSE' }
