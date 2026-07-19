@@ -146,15 +146,15 @@ class IosConfig {
   /// The two enums are declared with *different member orderings*, so mapping
   /// by raw `.index` silently sent the wrong value (e.g. `otherNavigation`
   /// arrived as `fitness`). Always map explicitly by name. See issue #250.
-  static TlIosActivityType _toTlActivityType(LocationActivityType t) =>
-      switch (t) {
-        LocationActivityType.other => TlIosActivityType.other,
-        LocationActivityType.automotiveNavigation =>
-          TlIosActivityType.automotive,
-        LocationActivityType.otherNavigation => TlIosActivityType.otherNavigation,
-        LocationActivityType.fitness => TlIosActivityType.fitness,
-        LocationActivityType.airborne => TlIosActivityType.airborne,
-      };
+  static TlIosActivityType _toTlActivityType(
+    LocationActivityType t,
+  ) => switch (t) {
+    LocationActivityType.other => TlIosActivityType.other,
+    LocationActivityType.automotiveNavigation => TlIosActivityType.automotive,
+    LocationActivityType.otherNavigation => TlIosActivityType.otherNavigation,
+    LocationActivityType.fitness => TlIosActivityType.fitness,
+    LocationActivityType.airborne => TlIosActivityType.airborne,
+  };
 
   /// Converts to Pigeon [TlIosConfig].
   TlIosConfig toTlConfig() => TlIosConfig(

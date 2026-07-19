@@ -337,7 +337,10 @@ void main() {
       const config = IosConfig(
         activityType: LocationActivityType.otherNavigation,
       );
-      expect(config.toTlConfig().activityType, TlIosActivityType.otherNavigation);
+      expect(
+        config.toTlConfig().activityType,
+        TlIosActivityType.otherNavigation,
+      );
       expect(
         config.toTlConfig().activityType,
         isNot(TlIosActivityType.fitness),

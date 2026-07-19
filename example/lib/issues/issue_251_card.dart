@@ -66,7 +66,7 @@ class _Issue251CardState extends State<Issue251Card> {
           'gone (${after.length} left, was $beforeCount). A standard UUID is '
           'now resolved to its row id instead of being rejected as non-numeric.'
           '${isNumeric ? '' : '\nNote the identifier is a real UUID — exactly '
-              'the case that used to fail on both platforms.'}',
+                    'the case that used to fail on both platforms.'}',
         );
       } else if (!deleted) {
         _set(
