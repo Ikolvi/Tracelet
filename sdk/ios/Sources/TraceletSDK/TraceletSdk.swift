@@ -1126,7 +1126,14 @@ public final class TraceletSdk {
         return removed
     }
 
-    /// Destroy a single location by UUID.
+    /// Destroy a single location by its public UUID (#251).
+    ///
+    /// The public location identifier is a UUID string, not the internal numeric
+    /// database id. Previously this parsed the argument with `Int64(uuid)` and
+    /// bailed out for any real UUID (e.g. `36ef46cf-…`), so pending locations
+    /// could never be acknowledged. We now resolve the UUID to its row id via
+    /// the database and delete that record. A purely numeric argument still
+    /// works (treated as a raw row id) for backward compatibility.
     ///
     /// - Parameter uuid: The location UUID.
     /// - Returns: `true` if the location was destroyed.
@@ -1134,8 +1141,16 @@ public final class TraceletSdk {
     public func destroyLocation(_ uuid: String) -> Bool {
         guard isReady else { return false }
         guard let db = rustDatabase else { return false }
-        guard let id = Int64(uuid) else { return false }
         do {
+            let id: Int64
+            if let record = try db.getLocationForAudit(uuid: uuid) {
+                id = record.id
+            } else if let numeric = Int64(uuid) {
+                id = numeric
+            } else {
+                TraceletLog.error("destroyLocation: no location found for uuid=\(uuid)")
+                return false
+            }
             try db.destroyLocation(id: id)
             return true
         } catch {

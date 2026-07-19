@@ -1474,11 +1474,25 @@ class TraceletSdk private constructor(private val context: Context) {
         return syncedLocationsRemoved.getAndSet(0L).toInt()
     }
 
+    /**
+     * Destroys a single persisted location identified by its public UUID (#251).
+     *
+     * The public location identifier is a UUID string, not the internal numeric
+     * database id. Previously this parsed the argument with `toLongOrNull()` and
+     * bailed out for any real UUID (e.g. `36ef46cf-…`), so pending locations
+     * could never be acknowledged. We now resolve the UUID to its row id via the
+     * database and delete that record. A purely numeric argument still works
+     * (treated as a raw row id) for backward compatibility.
+     */
     fun destroyLocation(uuid: String): Boolean {
         if (!isReady) return false
         val db = rustDatabase ?: return false
-        val id = uuid.toLongOrNull() ?: return false
         return try {
+            val id = db.getLocationForAudit(uuid)?.id ?: uuid.toLongOrNull()
+            if (id == null) {
+                logger.warning("destroyLocation: no location found for uuid=$uuid")
+                return false
+            }
             db.destroyLocation(id)
             true
         } catch (e: Exception) {

@@ -1271,6 +1271,37 @@ mod tests {
         assert_eq!(db.get_locations_count().unwrap(), 0);
     }
 
+    /// Regression for #251: the public location identifier is a UUID string, not
+    /// the numeric row id. The native SDKs resolve that UUID to its id via
+    /// `get_location_for_audit(uuid)` and then call `destroy_location(id)`.
+    /// This verifies that end-to-end flow with a real UUID.
+    #[test]
+    fn test_destroy_location_resolved_by_uuid() {
+        let db = DatabaseManager::new(":memory:").expect("Failed to create in-memory db");
+
+        let uuid = "36ef46cf-b797-460e-afba-b6687af0f5bb";
+        db.insert_location(Some(uuid.to_string()), 1.0, 1.0, 10.0, 1.5, 90.0, 15.0, false, false, "walking", -1, None, None, None, None, None).unwrap();
+        db.insert_location(Some("other-uuid".to_string()), 2.0, 2.0, 10.0, 1.5, 90.0, 15.0, false, false, "walking", -1, None, None, None, None, None).unwrap();
+        assert_eq!(db.get_locations_count().unwrap(), 2);
+
+        // A real UUID is not a numeric row id — deleting requires resolving it.
+        assert!(uuid.parse::<i64>().is_err());
+
+        let record = db
+            .get_location_for_audit(uuid)
+            .unwrap()
+            .expect("location should be resolvable by uuid");
+        assert_eq!(record.uuid.as_deref(), Some(uuid));
+
+        db.destroy_location(record.id).unwrap();
+
+        assert_eq!(db.get_locations_count().unwrap(), 1);
+        assert!(
+            db.get_location_for_audit(uuid).unwrap().is_none(),
+            "the location addressed by uuid must be gone"
+        );
+    }
+
     #[test]
     fn test_delete_synced_locations() {
         let db = DatabaseManager::new(":memory:").expect("Failed to create in-memory db");
