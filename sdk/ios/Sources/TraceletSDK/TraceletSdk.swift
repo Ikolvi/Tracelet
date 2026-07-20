@@ -1209,11 +1209,17 @@ public final class TraceletSdk {
             }
         }
         
-        // Prevent duplicate insertions of the exact same GPS fix
-        if eventType == "location", let ts = timestamp, ts == lastInsertedTimestamp {
+        // Prevent duplicate insertions of the exact same GPS fix. The heartbeat
+        // writer (startHeartbeat) tags the last GPS fix with event="heartbeat"
+        // and calls insertLocation too, so it must share the location writer's
+        // dedup key. Otherwise a fix already persisted by the normal dispatch is
+        // re-inserted by the heartbeat (identical timestamp), producing
+        // byte-identical duplicate rows that getLocations() then returns twice.
+        let persistsGpsFix = eventType == "location" || eventType == "heartbeat"
+        if persistsGpsFix, let ts = timestamp, ts == lastInsertedTimestamp {
             return ""
         }
-        if eventType == "location" { lastInsertedTimestamp = timestamp }
+        if persistsGpsFix { lastInsertedTimestamp = timestamp }
         
         var routeContext = rustEngineState?.getRouteContext()
 
