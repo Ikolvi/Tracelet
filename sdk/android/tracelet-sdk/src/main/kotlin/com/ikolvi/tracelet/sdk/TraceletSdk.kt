@@ -1542,11 +1542,17 @@ class TraceletSdk private constructor(private val context: Context) {
         val address: String? = (params["address"] as? String)
             ?: (params["address"] as? Map<*, *>)?.let { org.json.JSONObject(it as Map<String, Any?>).toString() }
         
-        // Prevent duplicate insertions of the exact same GPS fix (e.g. from PeriodicLocationWorker)
-        if (eventType == "location" && timestamp != null && timestamp == lastInsertedTimestamp) {
+        // Prevent duplicate insertions of the exact same GPS fix (e.g. from
+        // PeriodicLocationWorker). The heartbeat writer tags the last GPS fix
+        // with event="heartbeat"; it must share the location writer's dedup key
+        // so a fix already persisted by the normal dispatch is never re-inserted
+        // as a byte-identical duplicate row (the iOS #252 gap — kept in parity
+        // here even though the Android heartbeat currently does not persist).
+        val persistsGpsFix = eventType == "location" || eventType == "heartbeat"
+        if (persistsGpsFix && timestamp != null && timestamp == lastInsertedTimestamp) {
             return ""
         }
-        if (eventType == "location") { lastInsertedTimestamp = timestamp }
+        if (persistsGpsFix) { lastInsertedTimestamp = timestamp }
         
         var routeContext = rustEngineState?.getRouteContext()
 
