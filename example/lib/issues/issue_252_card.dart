@@ -63,26 +63,29 @@ class _Issue252CardState extends State<Issue252Card> {
         'event': 'heartbeat',
       });
 
-      final locations = await Tracelet.getLocations();
-      final atTs = locations.where((l) => l.timestamp == ts).length;
+      // The store was cleared and no tracking is running, so every row present
+      // came from the two inserts above. The native side normalizes the stored
+      // timestamp string (so a raw `l.timestamp == ts` match is unreliable) —
+      // the total row count is the honest signal: 1 = the heartbeat write was
+      // deduped, 2 = the byte-identical duplicate is back.
+      final total = (await Tracelet.getLocations()).length;
 
-      if (atTs == 1) {
+      if (total == 1) {
         _set(
-          '✅ PASSED: exactly one row stored for the shared timestamp '
-          '(${locations.length} total). The heartbeat writer now shares the '
-          "location writer's dedup key, so it no longer re-inserts a fix the "
-          'normal dispatch already persisted.',
+          '✅ PASSED: only one row stored for the two inserts. The heartbeat '
+          "writer now shares the location writer's dedup key, so it no longer "
+          're-inserts a fix the normal dispatch already persisted.',
         );
-      } else if (atTs == 2) {
+      } else if (total >= 2) {
         _set(
-          '❌ FAILED: $atTs rows stored for the same timestamp — the heartbeat '
-          'writer re-inserted a byte-identical duplicate (#252 not fixed). '
-          'getLocations() would return the fix twice.',
+          '❌ FAILED: $total rows stored — the heartbeat writer re-inserted a '
+          'byte-identical duplicate (#252 not fixed). getLocations() would '
+          'return the fix twice.',
         );
       } else {
         _set(
-          '❌ FAILED: expected 1 row for the timestamp but found $atTs '
-          '(${locations.length} total).',
+          '❌ FAILED: no rows stored ($total total) — the initial "location" '
+          'insert did not persist, so the dedup path was never exercised.',
         );
       }
     } catch (e) {
