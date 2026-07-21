@@ -527,8 +527,7 @@ class LocationService : Service(), DefaultLifecycleObserver {
 
         if (!isForegroundService) {
             TraceletLog.debug("Satisfying foreground contract...")
-            startForegroundWithNotification()
-            isForegroundService = true
+            isForegroundService = startForegroundWithNotification()
         }
 
         updateNotificationVisibility()
@@ -1128,11 +1127,19 @@ class LocationService : Service(), DefaultLifecycleObserver {
     // Notification
     // =========================================================================
 
-    private fun startForegroundWithNotification() {
+    /**
+     * Promote the service to the foreground with its notification.
+     *
+     * @return `true` if `startForeground()` succeeded, `false` if it threw and the
+     *         service was torn down. Callers MUST gate `isForegroundService` on this
+     *         result — on failure the service is stopping, so marking it as a running
+     *         foreground service would leave the internal state inconsistent (see #253).
+     */
+    private fun startForegroundWithNotification(): Boolean {
         createNotificationChannel()
         val notification = buildNotification()
 
-        try {
+        return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(
                     NOTIFICATION_ID,
@@ -1142,16 +1149,19 @@ class LocationService : Service(), DefaultLifecycleObserver {
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
+            true
         } catch (e: SecurityException) {
             TraceletLog.warning("SecurityException starting foreground service (missing permissions?): ${e.message}")
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             isRunning = false
+            false
         } catch (e: Exception) {
             TraceletLog.error("Error starting foreground service: ${e.message}")
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             isRunning = false
+            false
         }
     }
 
@@ -1270,22 +1280,19 @@ class LocationService : Service(), DefaultLifecycleObserver {
                 // Show in background if not already shown OR if we just transitioned.
                 if (!isForegroundService || changed) {
                     TraceletLog.debug("Showing notification (App in background)")
-                    startForegroundWithNotification()
-                    isForegroundService = true
+                    isForegroundService = startForegroundWithNotification()
                 }
             }
         } else {
             // Persistent mode: Always ensure it's shown.
             if (!isForegroundService) {
                 TraceletLog.debug("Showing persistent notification")
-                startForegroundWithNotification()
-                isForegroundService = true
+                isForegroundService = startForegroundWithNotification()
             } else if (changed && !inForeground) {
                 // Optimization: Re-show when moving to background in case it was
                 // manually dismissed while the app was in the foreground.
                 TraceletLog.debug("Restoring persistent notification on background transition")
-                startForegroundWithNotification()
-                isForegroundService = true
+                isForegroundService = startForegroundWithNotification()
             }
         }
     }

@@ -150,6 +150,40 @@ class MainActivity : FlutterActivity() {
                     } catch (e: Exception) {
                         result.error("IMPACT_GATE_ERROR", e.message, null)
                     }
+                } else if (call.method == "debugForegroundPromotionGuard") {
+                    // #253: a failed foreground promotion must NOT leave the
+                    // service marked as a running foreground service.
+                    // startForegroundWithNotification() catches the exception,
+                    // tears the service down (stopSelf + isRunning=false), and
+                    // now RETURNS whether the promotion succeeded, so every
+                    // caller assigns `isForegroundService = <result>` instead of
+                    // the old unconditional `= true`. The buggy build compiled
+                    // the method as Unit (JVM void); the fixed build compiles it
+                    // as Boolean. We verify the shipped byte-code directly.
+                    try {
+                        val svcClass = Class.forName(
+                            "com.ikolvi.tracelet.sdk.service.LocationService",
+                        )
+                        val method = svcClass.getDeclaredMethod(
+                            "startForegroundWithNotification",
+                        )
+                        val returnsBoolean =
+                            method.returnType == java.lang.Boolean.TYPE
+                        result.success(
+                            mapOf(
+                                "returnType" to method.returnType.name,
+                                "gated" to returnsBoolean,
+                            ),
+                        )
+                    } catch (e: ClassNotFoundException) {
+                        result.error(
+                            "CLASS_NOT_FOUND",
+                            "LocationService not found. Is the plugin installed?",
+                            e.message,
+                        )
+                    } catch (e: Exception) {
+                        result.error("FG_GUARD_ERROR", e.message, null)
+                    }
                 } else {
                     result.notImplemented()
                 }
