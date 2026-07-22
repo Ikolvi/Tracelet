@@ -19,6 +19,10 @@
 - [Geofencing](https://tracelet.ikolvi.com/en/core/geofencing): circular & polygon geofences
 - [Data persistence](https://tracelet.ikolvi.com/en/core/persistence): the location database
 - [Tracelet Sync](https://tracelet.ikolvi.com/en/core/tracelet-sync): HTTP upload of the offline queue
+- [Supabase adapter](https://tracelet.ikolvi.com/en/reference/adapters/supabase): `tracelet_supabase` — sync to Supabase Postgres via an RPC/Edge Function (native token refresh)
+- [Firebase adapter](https://tracelet.ikolvi.com/en/reference/adapters/firebase): `tracelet_firebase` — sync to the Firebase Realtime Database REST API (native token refresh)
+- [Packages / ecosystem](https://tracelet.ikolvi.com/en/core/packages): every package and what it does
+- [Diagnostics & Tracelet Doctor](https://tracelet.ikolvi.com/en/core/diagnostics): `tracelet_doctor` in-app diagnostic overlay + bug reports (add as a **dev dependency**, guard with `kDebugMode`)
 - [OEM power management](https://tracelet.ikolvi.com/en/core/oem-power-management): surviving aggressive OEMs
 - [API reference](https://tracelet.ikolvi.com/en/api-reference): all public methods & streams
 - [FAQ](https://tracelet.ikolvi.com/en/reference/faq): common questions
@@ -119,11 +123,18 @@ Compound top-level configuration.
 ## class IosConfig
 - `activityType`: LocationActivityType (Default: LocationActivityType.other)
 - `useSignificantChangesOnly`: bool (Default: false)
-- `showsBackgroundLocationIndicator`: bool (Default: false)
+- `showsBackgroundLocationIndicator`: bool (Default: false)  // blue status-bar pill / Dynamic Island while tracking in background
 - `pausesLocationUpdatesAutomatically`: bool (Default: false)
 - `locationAuthorizationRequest`: LocationAuthorizationRequest (Default: LocationAuthorizationRequest.always)
 - `disableLocationAuthorizationAlert`: bool (Default: false)
 - `preventSuspend`: bool (Default: false)
+- `useBackgroundActivitySession`: bool (Default: false)  // CLBackgroundActivitySession (iOS 17+); prominent Dynamic Island indicator + formal OS session
+- `liveActivityConfig`: LiveActivityConfig? (Default: null)  // iOS 17+ ActivityKit Live Activity for "tracking on" status — parity with the Android foreground notification
+
+## class LiveActivityConfig
+iOS 17+ ActivityKit Live Activity shown on the Lock Screen / Dynamic Island while tracking is active (parity with the Android foreground-service notification). Tracelet auto-starts it on `start()` and ends it on `stop()`. Requires a one-time Xcode **Widget Extension** (defining a `TraceletActivityAttributes` struct) and `NSSupportsLiveActivities` set to `true` in Info.plist. It is a UI layer only — battery efficiency comes from the core engine, not the widget.
+- `title`: String (Default: 'Tracking Location')  // static title
+- `body`: String (Default: 'Your location is being updated in the background.')  // dynamic status text
 
 ## class HttpConfig
 - `url`: String? (Default: null)
