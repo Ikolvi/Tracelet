@@ -1,3 +1,7 @@
+## 3.6.6
+
+Version alignment with tracelet 3.6.6.
+
 ## 3.6.5
 
 Version alignment with tracelet 3.6.5.
