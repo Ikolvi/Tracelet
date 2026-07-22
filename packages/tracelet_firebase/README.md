@@ -11,6 +11,14 @@
 
 > **The official Firebase Realtime Database (RTDB) adapter for Tracelet.**
 
+<p align="left">
+  <a href="https://tracelet.ikolvi.com/copy-prompt?utm_source=pubdev&utm_medium=readme&utm_campaign=copy_prompt&utm_content=tracelet_firebase">
+    <img src="https://img.shields.io/badge/%E2%9C%A8%20Copy%20AI%20Setup%20Prompt-0F9D58?style=for-the-badge&logoColor=white" alt="Copy AI Setup Prompt"/>
+  </a>
+</p>
+
+> ⚡ **Set up Tracelet with AI.** Click the badge to copy a ready-made prompt, then paste it into your AI coding assistant (Cursor, Claude Code, Kiro, Copilot Chat…) — it interviews you, then installs and configures Tracelet with the Firebase adapter in your Flutter app.
+
 This adapter seamlessly connects Tracelet's battery-efficient native HTTP sync engine directly to the Firebase Realtime Database (RTDB) REST API. By pushing locations natively to the RTDB, you achieve 100% serverless, zero-cost background location tracking without the need to deploy Cloud Functions.
 
 ## 🚀 Features

@@ -19,19 +19,34 @@ import LottiePlayer from '../../../../components/LottiePlayer'
 
 ### Installation
 
+Tracelet Doctor is a **debugging tool**, so add it as a **dev dependency** — not a
+regular dependency. Flutter excludes dev-dependency packages from release builds, so
+the Doctor is automatically kept out of what you ship to users:
+
 ```bash
-flutter pub add tracelet_doctor
+flutter pub add dev:tracelet_doctor
+```
+
+This adds it under `dev_dependencies` in your `pubspec.yaml`:
+
+```yaml
+dev_dependencies:
+  tracelet_doctor: ^3.6.6
 ```
 
 ### Integration
 
-Push the dashboard onto your navigation stack:
+Because it's a dev dependency, guard every reference to it behind `kDebugMode` so the
+import is tree-shaken out of release builds and your app still compiles in release mode:
 
 ```dart
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:tracelet_doctor/tracelet_doctor.dart';
 
-// Show the interactive diagnostic overlay
-TraceletDoctor.show(context);
+// Show the interactive diagnostic overlay — debug builds only:
+if (kDebugMode) {
+  TraceletDoctor.show(context);
+}
 ```
 
 ### Core Features

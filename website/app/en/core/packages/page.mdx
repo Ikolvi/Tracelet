@@ -29,20 +29,20 @@ Tracelet strictly separates "Location Tracking" from "Network Syncing." If you w
 The core native networking engine. It provides the `TraceletSync` API. Instead of waking up the Dart engine to send HTTP requests, it runs a native WorkManager (Android) or BGTask (iOS) to flush SQLite locations to your HTTP backend automatically, even when your app is force-quit. 
 
 ### `tracelet_supabase`
-A pre-built wrapper around `tracelet_sync` specifically designed for [Supabase](https://supabase.com/). It automatically points the sync URL to your Supabase project, handles authentication headers, and writes directly to your Postgres database without you needing to write a backend API.
+A pre-built adapter for [Supabase](https://supabase.com/). It points Tracelet's native HTTP sync engine at a Supabase Postgres **RPC function** (or an **Edge Function**), sets the `apikey`/`Authorization` headers for you, and refreshes the Supabase session token in the background so syncing keeps working when the app is terminated.
 
 ### `tracelet_firebase`
-A pre-built wrapper around `tracelet_sync` specifically designed for [Firebase Firestore](https://firebase.google.com/). It batches writes to Firestore and utilizes Firebase's native offline-cache persistence.
+A pre-built adapter for the [Firebase Realtime Database (RTDB)](https://firebase.google.com/docs/database). It points Tracelet's native HTTP sync engine at the RTDB REST API — 100% serverless, no Cloud Functions — and refreshes the Firebase Auth ID token in the background so syncing keeps working when the app is terminated.
 
 ---
 
 ## Diagnostic & Debugging Tools
 
 ### `tracelet_doctor`
-A drop-in UI overlay package for developers. By adding `tracelet_doctor` to your app during testing, you get a beautiful diagnostic overlay that displays:
+A drop-in UI overlay package for developers. Add it as a **dev dependency** (`flutter pub add dev:tracelet_doctor`), not a regular dependency — Flutter excludes dev-dependency packages from release builds, so it's automatically stripped from what you ship. By adding `tracelet_doctor` to your app during testing, you get a beautiful diagnostic overlay that displays:
 - Real-time GPS accuracy rings
 - The current motion state (STATIONARY vs MOVING)
 - Native SQLite database row counts
 - The underlying battery drain
 
-It is highly recommended to use `tracelet_doctor` during QA and testing, and strip it from your release builds.
+It is highly recommended to use `tracelet_doctor` during QA and testing. Keep it under `dev_dependencies` and guard usage behind `kDebugMode` so it's tree-shaken out of your release builds.

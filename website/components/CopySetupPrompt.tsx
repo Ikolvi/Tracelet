@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { buildAiSetupPrompt, LOCALE_LANGUAGE_NAMES } from "../lib/aiSetupPrompt";
+import { trackEvent } from "../lib/analytics";
 
 type Variant = "hero" | "inline";
 
@@ -54,9 +55,7 @@ export default function CopySetupPrompt({ variant = "hero" }: { variant?: Varian
       document.body.removeChild(textarea);
     }
 
-    if (typeof window !== "undefined" && (window as any).zaraz) {
-      (window as any).zaraz.track("copy_ai_setup_prompt", { variant, locale });
-    }
+    trackEvent("copy_ai_setup_prompt", { variant, locale, trigger: "button" });
 
     setCopied(true);
     if (timerRef.current) clearTimeout(timerRef.current);

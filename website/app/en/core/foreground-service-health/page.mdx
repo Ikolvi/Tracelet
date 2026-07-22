@@ -175,10 +175,16 @@ Service** card that renders exactly this information — desired vs. actual,
 promotion result, and any failure class/message — with a color-coded status
 (Healthy / Deferred / Failed / Inactive).
 
+`tracelet_doctor` is a **dev dependency** (`flutter pub add dev:tracelet_doctor`), so
+guard it with `kDebugMode`:
+
 ```dart
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:tracelet_doctor/tracelet_doctor.dart';
 
-TraceletDoctor.show(context); // includes the Foreground Service card
+if (kDebugMode) {
+  TraceletDoctor.show(context); // includes the Foreground Service card
+}
 ```
 
 The same fields are also captured in the **bug report** (`TraceletBugReport.build()`),

@@ -19,11 +19,23 @@ a new *Share* button lets you download/email it as a `.md` file. There's also a
 
 ## The 30-second version
 
+Add `tracelet_doctor` as a **dev dependency** (not a regular one) — it's a debugging
+tool, and Flutter excludes dev-dependency packages from release builds:
+
+```bash
+flutter pub add dev:tracelet_doctor
+```
+
+Then guard usage behind `kDebugMode` so it's tree-shaken out of release builds:
+
 ```dart
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:tracelet_doctor/tracelet_doctor.dart';
 
 // Open the diagnostic screen from a debug menu, button, or shake gesture:
-TraceletDoctor.show(context);
+if (kDebugMode) {
+  TraceletDoctor.show(context);
+}
 ```
 
 That opens a sheet with:
