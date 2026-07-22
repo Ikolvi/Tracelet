@@ -854,7 +854,22 @@ class TraceletSdk private constructor(private val context: Context) {
         return null // success
     }
 
-    fun stop() {
+    /**
+     * Stops all tracking.
+     *
+     * @param preserveForegroundService when true, the active foreground
+     * [LocationService] is NOT torn down. This exists for the in-place restart
+     * performed by [setConfig]: sending `ACTION_STOP` here and immediately
+     * `ACTION_START` from the following start*() races the service commands —
+     * the `ACTION_STOP` handler's `stopSelf()` can win and destroy the service
+     * right after `ACTION_START` promoted it, leaving NO foreground service at
+     * all (#254, same race fixed for startPeriodic() in #237). When the restart
+     * lands in a mode that still needs the service, the caller keeps it alive
+     * and lets the idempotent `ACTION_START` re-assert foreground; when it lands
+     * in a mode that does not, the caller passes false so the service is stopped
+     * here cleanly (no immediately-following start ⇒ no race).
+     */
+    fun stop(preserveForegroundService: Boolean = false) {
         stateManager.enabled = false
         stateManager.isMoving = false
 
@@ -889,12 +904,20 @@ class TraceletSdk private constructor(private val context: Context) {
         LocationService.stopStationaryTimer()
         LocationService.stopBootTracking()
 
-        if (configManager.isForegroundServiceEnabled() || LocationService.isServiceRunning()) {
+        // #254: skip the ACTION_STOP when the caller is about to restart into a
+        // mode that keeps the foreground service — otherwise stopSelf() races the
+        // follow-up ACTION_START and can kill the just-promoted service.
+        if (!preserveForegroundService &&
+            (configManager.isForegroundServiceEnabled() || LocationService.isServiceRunning())
+        ) {
             LocationService.stop(context)
         }
 
         if (::eventSender.isInitialized) eventSender.sendEnabledChange(false)
-        logger.info("stop() — tracking stopped")
+        logger.info(
+            "stop() — tracking stopped" +
+                if (preserveForegroundService) " (foreground service preserved for restart)" else ""
+        )
     }
 
     fun getState(): Map<String, Any?> {
@@ -1119,7 +1142,22 @@ class TraceletSdk private constructor(private val context: Context) {
                 val currentMode = stateManager.trackingMode
                 val wasMoving = stateManager.isMoving
 
-                stop()
+                // #254: if the restart lands back in a mode that still needs the
+                // foreground service, DON'T let stop() send ACTION_STOP — the
+                // immediately-following ACTION_START from the start*() below would
+                // race it and stopSelf() could destroy the freshly-promoted
+                // service, leaving no foreground service at all (same race as
+                // #237). Keep it alive and let the idempotent ACTION_START
+                // re-assert foreground. When the target mode does NOT use the
+                // service (periodic-without-fg / standard geofences / fg disabled)
+                // we stop it here cleanly — there's no follow-up start to race.
+                val keepForegroundService = configManager.isForegroundServiceEnabled() && when (currentMode) {
+                    TrackingMode.CONTINUOUS -> true
+                    TrackingMode.PERIODIC -> configManager.getPeriodicUseForegroundService()
+                    TrackingMode.GEOFENCES -> configManager.getGeofenceModeHighAccuracy()
+                }
+
+                stop(preserveForegroundService = keepForegroundService)
 
                 stateManager.enabled = true
                 stateManager.trackingMode = currentMode
