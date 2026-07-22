@@ -8,6 +8,7 @@ export default {
   "geofencing": "Geofencing",
   "persistence": "Data Persistence",
   "diagnostics": "Diagnostics & Bug Reports",
+  "foreground-service-health": "Foreground Service Health",
   "rust-architecture": "Rust Core Architecture",
   "oem-power-management": "OEM Power Management"
 }

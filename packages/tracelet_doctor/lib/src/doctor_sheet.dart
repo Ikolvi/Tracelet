@@ -10,6 +10,7 @@ import 'package:tracelet_doctor/src/doctor_theme.dart';
 import 'package:tracelet_doctor/src/widgets/battery_oem_card.dart';
 import 'package:tracelet_doctor/src/widgets/config_review_card.dart';
 import 'package:tracelet_doctor/src/widgets/database_card.dart';
+import 'package:tracelet_doctor/src/widgets/foreground_service_card.dart';
 import 'package:tracelet_doctor/src/widgets/log_viewer_sheet.dart';
 import 'package:tracelet_doctor/src/widgets/permission_card.dart';
 import 'package:tracelet_doctor/src/widgets/sensor_grid.dart';
@@ -65,6 +66,10 @@ class _DoctorSheetContent extends StatefulWidget {
 class _DoctorSheetContentState extends State<_DoctorSheetContent>
     with SingleTickerProviderStateMixin {
   HealthCheck? _health;
+
+  /// Authoritative foreground-service health (#255). Fetched alongside the
+  /// main health check; null if it could not be read (e.g. not initialized).
+  Map<String, Object?>? _fgHealth;
   bool _loading = true;
   String? _error;
   bool _notInitialized = false;
@@ -104,9 +109,18 @@ class _DoctorSheetContentState extends State<_DoctorSheetContent>
     });
     try {
       final health = await Tracelet.getHealth();
+      // Foreground-service health (#255) is a separate, best-effort call — a
+      // failure here must not fail the whole diagnostic run.
+      Map<String, Object?>? fgHealth;
+      try {
+        fgHealth = await Tracelet.getForegroundServiceHealth();
+      } catch (_) {
+        fgHealth = null;
+      }
       if (mounted) {
         setState(() {
           _health = health;
+          _fgHealth = fgHealth;
           _loading = false;
         });
       }
@@ -468,6 +482,14 @@ class _DoctorSheetContentState extends State<_DoctorSheetContent>
         const SizedBox(height: 8),
         TrackingCard(health: health),
         const SizedBox(height: DoctorTheme.cardSpacing),
+
+        // Foreground service health (#255)
+        if (_fgHealth != null) ...[
+          const _SectionLabel(label: 'FOREGROUND SERVICE'),
+          const SizedBox(height: 8),
+          ForegroundServiceCard(health: _fgHealth!),
+          const SizedBox(height: DoctorTheme.cardSpacing),
+        ],
 
         // Battery & OEM
         const _SectionLabel(label: 'BATTERY & OEM'),
