@@ -835,6 +835,13 @@ class TraceletHostApiImpl(
         } catch (e: Exception) { callback(Result.failure(e)) }
     }
 
+    override fun getForegroundServiceHealth(callback: (Result<Map<String?, Any?>>) -> Unit) {
+        try {
+            @Suppress("UNCHECKED_CAST")
+            callback(Result.success(sdk.getForegroundServiceHealth() as Map<String?, Any?>))
+        } catch (e: Exception) { callback(Result.failure(e)) }
+    }
+
     override fun openOemSettings(label: String, callback: (Result<Boolean>) -> Unit) {
         try {
             callback(Result.success(sdk.openOemSettings(label)))

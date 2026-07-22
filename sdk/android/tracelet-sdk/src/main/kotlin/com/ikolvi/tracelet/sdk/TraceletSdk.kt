@@ -2149,6 +2149,41 @@ class TraceletSdk private constructor(private val context: Context) {
 
     fun getSettingsHealth(): Map<String, Any?> = OemCompat.getSettingsHealth(context)
 
+    /**
+     * Authoritative Android foreground-service health (#255).
+     *
+     * Distinguishes the *desired* tracking state ([StateManager.enabled]) from
+     * the *actual* native foreground-service state. On Android 12+ a
+     * foreground-service start can be deferred or rejected even while
+     * `enabled == true`, so `enabled` alone is not proof that background
+     * tracking is operational. Combine both to build accurate tracking-health
+     * indicators, diagnostics, and recovery behavior.
+     *
+     * Returned keys:
+     * - `desiredEnabled` (Boolean): the persisted desired tracking state.
+     * - `foregroundServiceEnabled` (Boolean): whether the active config runs a
+     *   foreground service at all.
+     * - `serviceRunning` (Boolean): whether [LocationService] is alive.
+     * - `serviceForeground` (Boolean): whether it is currently promoted to the
+     *   foreground (last `startForeground()` succeeded and not since demoted).
+     * - `foregroundNotificationId` (Long?): the notification id while promoted.
+     * - `lastForegroundPromotionResult` (String?): `success` | `deferred` |
+     *   `failed` (null before any attempt).
+     * - `lastForegroundPromotionFailureClass` (String?): exception class of the
+     *   last failed/deferred promotion.
+     * - `lastForegroundPromotionFailureMessage` (String?): its message.
+     * - `lastForegroundTransitionAt` (Long?): epoch-ms of the last promotion
+     *   transition.
+     * - `platform` (String): `android`.
+     */
+    fun getForegroundServiceHealth(): Map<String, Any?> {
+        val health = LocationService.foregroundServiceHealth().toMutableMap()
+        health["desiredEnabled"] = stateManager.enabled
+        health["foregroundServiceEnabled"] = configManager.isForegroundServiceEnabled()
+        health["platform"] = "android"
+        return health
+    }
+
     fun openOemSettings(label: String): Boolean {
         return OemCompat.openOemSettingsScreen(context, label)
     }

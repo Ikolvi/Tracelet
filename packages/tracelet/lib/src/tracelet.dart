@@ -1479,6 +1479,49 @@ class Tracelet {
     return _platform.getSettingsHealth();
   }
 
+  /// Get authoritative Android foreground-service health (#255).
+  ///
+  /// [Tracelet.getState] reports the *desired* tracking state (`enabled`), but
+  /// on Android 12+ a foreground-service start can be deferred or rejected by
+  /// the OS even while `enabled == true` — so `enabled` alone does not prove
+  /// background tracking is actually operational. This exposes the *actual*
+  /// native foreground-service state so apps can build accurate tracking-health
+  /// indicators, diagnostics, and recovery behavior.
+  ///
+  /// **Returned map keys:**
+  /// - `desiredEnabled` (`bool`): the persisted desired tracking state.
+  /// - `foregroundServiceEnabled` (`bool`): whether the active config runs a
+  ///   foreground service.
+  /// - `serviceRunning` (`bool`): whether the native location service is alive.
+  /// - `serviceForeground` (`bool`): whether it is currently promoted to the
+  ///   foreground.
+  /// - `foregroundNotificationId` (`int?`): the notification id while promoted.
+  /// - `lastForegroundPromotionResult` (`String?`): `success`, `deferred`, or
+  ///   `failed` (null before any attempt).
+  /// - `lastForegroundPromotionFailureClass` (`String?`): exception class of
+  ///   the last failed/deferred promotion.
+  /// - `lastForegroundPromotionFailureMessage` (`String?`): its message.
+  /// - `lastForegroundTransitionAt` (`int?`): epoch-ms of the last transition.
+  /// - `platform` (`String`): `android` or `ios`.
+  ///
+  /// On iOS the promotion fields are null/`false` — iOS has no foreground
+  /// service that can fail after the fact. On Web a minimal disabled map is
+  /// returned.
+  ///
+  /// ```dart
+  /// final health = await Tracelet.getForegroundServiceHealth();
+  /// if (health['desiredEnabled'] == true &&
+  ///     health['serviceForeground'] != true) {
+  ///   // Tracking is requested but the foreground service is not running —
+  ///   // e.g. promotion was deferred or failed. Surface a warning / recover.
+  ///   final reason = health['lastForegroundPromotionResult'];
+  ///   debugPrint('Foreground service not active: $reason');
+  /// }
+  /// ```
+  static Future<Map<String, Object?>> getForegroundServiceHealth() {
+    return _platform.getForegroundServiceHealth();
+  }
+
   /// Open an OEM-specific settings screen by [label].
   ///
   /// The [label] must match one of the labels from the `oemSettingsScreens`

@@ -9,6 +9,7 @@ import 'package:tracelet_example/provider_options_page.dart';
 import 'package:tracelet_example/map_page.dart';
 import 'package:tracelet_example/issues_page.dart';
 import 'package:tracelet_example/scanner_page.dart';
+import 'package:tracelet_example/service_health_page.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Headless background callback — MUST be a top-level function.
@@ -3974,6 +3975,33 @@ class _DashboardPageState extends State<DashboardPage>
                     icon: const Icon(Icons.tune),
                     label: const Text(
                       'Live Provider Options',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+                // ── Foreground Service Health (#255) Button ──
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.green.shade700,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(50),
+                    ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => const ServiceHealthPage(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.health_and_safety),
+                    label: const Text(
+                      'Service Health',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,

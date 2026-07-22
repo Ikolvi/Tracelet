@@ -274,6 +274,26 @@ class TraceletWebPlugin extends TraceletPlatform {
   }
 
   @override
+  Future<Map<String, Object?>> getForegroundServiceHealth() async {
+    // Web has no foreground service (#255). Report the desired enabled state
+    // and null/false promotion fields so cross-platform callers get a stable
+    // shape without a runtime UnimplementedError.
+    final state = _buildState();
+    return <String, Object?>{
+      'desiredEnabled': state['enabled'] ?? false,
+      'foregroundServiceEnabled': false,
+      'serviceRunning': state['enabled'] ?? false,
+      'serviceForeground': false,
+      'foregroundNotificationId': null,
+      'lastForegroundPromotionResult': null,
+      'lastForegroundPromotionFailureClass': null,
+      'lastForegroundPromotionFailureMessage': null,
+      'lastForegroundTransitionAt': null,
+      'platform': 'web',
+    };
+  }
+
+  @override
   Future<Map<String, Object?>> setConfig(TlConfig config) async {
     final map = _tlConfigToMap(config);
     _config = map;

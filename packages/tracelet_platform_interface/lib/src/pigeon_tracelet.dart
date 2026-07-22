@@ -408,6 +408,12 @@ class PigeonTracelet extends TraceletPlatform {
   }
 
   @override
+  Future<Map<String, Object?>> getForegroundServiceHealth() async {
+    final result = await _api.getForegroundServiceHealth();
+    return result.cast<String, Object?>();
+  }
+
+  @override
   Future<bool> openOemSettings(String label) => _api.openOemSettings(label);
 
   @override

@@ -499,6 +499,32 @@ abstract class TraceletPlatform extends PlatformInterface {
     throw UnimplementedError('getSettingsHealth() has not been implemented.');
   }
 
+  /// Get authoritative Android foreground-service health (#255).
+  ///
+  /// Distinguishes the *desired* tracking state (`desiredEnabled`) from the
+  /// *actual* native foreground-service state, since on Android 12+ a
+  /// foreground-service start can be deferred or rejected even while tracking
+  /// is enabled. Returns a map with:
+  /// - `desiredEnabled` (`bool`)
+  /// - `foregroundServiceEnabled` (`bool`)
+  /// - `serviceRunning` (`bool`)
+  /// - `serviceForeground` (`bool`)
+  /// - `foregroundNotificationId` (`int?`)
+  /// - `lastForegroundPromotionResult` (`String?`): `success` | `deferred` |
+  ///   `failed`
+  /// - `lastForegroundPromotionFailureClass` (`String?`)
+  /// - `lastForegroundPromotionFailureMessage` (`String?`)
+  /// - `lastForegroundTransitionAt` (`int?`): epoch-ms
+  /// - `platform` (`String`)
+  ///
+  /// On iOS the promotion fields are null/false (no foreground service exists),
+  /// and on Web a minimal disabled map is returned.
+  Future<Map<String, Object?>> getForegroundServiceHealth() {
+    throw UnimplementedError(
+      'getForegroundServiceHealth() has not been implemented.',
+    );
+  }
+
   /// Open an OEM-specific settings screen by [label].
   ///
   /// The [label] must match one of the labels returned by

@@ -3548,6 +3548,7 @@ interface TraceletHostApi {
   fun stopBackgroundTask(taskId: Long, callback: (Result<Long>) -> Unit)
   fun getSensors(callback: (Result<Map<String?, Any?>>) -> Unit)
   fun getSettingsHealth(callback: (Result<Map<String?, Any?>>) -> Unit)
+  fun getForegroundServiceHealth(callback: (Result<Map<String?, Any?>>) -> Unit)
   fun openOemSettings(label: String, callback: (Result<Boolean>) -> Unit)
   fun showPowerManager(callback: (Result<Boolean>) -> Unit)
   fun getLog(query: Map<String?, Any?>?, callback: (Result<String>) -> Unit)
@@ -4751,6 +4752,24 @@ interface TraceletHostApi {
         if (api != null) {
           channel.setMessageHandler { _, reply ->
             api.getSettingsHealth{ result: Result<Map<String?, Any?>> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(TraceletApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(TraceletApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.getForegroundServiceHealth$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            api.getForegroundServiceHealth{ result: Result<Map<String?, Any?>> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(TraceletApiPigeonUtils.wrapError(error))

@@ -1042,6 +1042,9 @@ abstract class TraceletHostApi {
   Map<String?, Object?> getSettingsHealth();
 
   @async
+  Map<String?, Object?> getForegroundServiceHealth();
+
+  @async
   bool openOemSettings(String label);
 
   @async

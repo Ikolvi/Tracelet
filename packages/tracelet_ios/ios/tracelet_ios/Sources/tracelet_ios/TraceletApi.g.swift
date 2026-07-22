@@ -3352,6 +3352,7 @@ protocol TraceletHostApi {
   func stopBackgroundTask(taskId: Int64, completion: @escaping (Result<Int64, Error>) -> Void)
   func getSensors(completion: @escaping (Result<[String?: Any?], Error>) -> Void)
   func getSettingsHealth(completion: @escaping (Result<[String?: Any?], Error>) -> Void)
+  func getForegroundServiceHealth(completion: @escaping (Result<[String?: Any?], Error>) -> Void)
   func openOemSettings(label: String, completion: @escaping (Result<Bool, Error>) -> Void)
   func showPowerManager(completion: @escaping (Result<Bool, Error>) -> Void)
   func getLog(query: [String?: Any?]?, completion: @escaping (Result<String, Error>) -> Void)
@@ -4387,6 +4388,21 @@ class TraceletHostApiSetup {
       }
     } else {
       getSettingsHealthChannel.setMessageHandler(nil)
+    }
+    let getForegroundServiceHealthChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.getForegroundServiceHealth\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      getForegroundServiceHealthChannel.setMessageHandler { _, reply in
+        api.getForegroundServiceHealth { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      getForegroundServiceHealthChannel.setMessageHandler(nil)
     }
     let openOemSettingsChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.openOemSettings\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {

@@ -719,6 +719,27 @@ class TraceletHostApiImpl: TraceletHostApi {
         ]))
     }
 
+    func getForegroundServiceHealth(completion: @escaping (Result<[String?: Any?], Error>) -> Void) {
+        // iOS has no foreground service — there is no promotion that can fail
+        // after the fact (see #253/#254). Report the desired state alongside
+        // whether location tracking is actually active, so cross-platform code
+        // can consume the same shape. `serviceForeground` and the promotion
+        // fields are always null/false on iOS.
+        let state = sdk.getState()
+        completion(.success([
+            "desiredEnabled": state["enabled"] as? Bool ?? false,
+            "foregroundServiceEnabled": false,
+            "serviceRunning": state["enabled"] as? Bool ?? false,
+            "serviceForeground": false,
+            "foregroundNotificationId": nil,
+            "lastForegroundPromotionResult": nil,
+            "lastForegroundPromotionFailureClass": nil,
+            "lastForegroundPromotionFailureMessage": nil,
+            "lastForegroundTransitionAt": nil,
+            "platform": "ios",
+        ]))
+    }
+
     func openOemSettings(label: String, completion: @escaping (Result<Bool, Error>) -> Void) {
         completion(.success(false)) // N/A on iOS
     }
