@@ -383,6 +383,23 @@ class Tracelet {
     return _stateFromMap(s);
   }
 
+  /// Refreshes the active Android foreground-service notification so it
+  /// reflects the latest [ForegroundServiceConfig] applied via [setConfig],
+  /// without restarting the tracking pipeline (#257).
+  ///
+  /// Notification-only configuration changes made through [setConfig] do not
+  /// rebuild the notification currently displayed by Android. Call this after
+  /// updating any [ForegroundServiceConfig] property (title, text, icon,
+  /// color, actions, priority, ongoing state) to repost the notification with
+  /// the new content while background tracking remains active.
+  ///
+  /// Behaves safely in edge cases: if the foreground service is not currently
+  /// running the call is a no-op. On platforms without a foreground-service
+  /// notification (iOS, web) this is a no-op.
+  static Future<void> updateNotification() {
+    return _platform.updateNotification();
+  }
+
   /// Verifies if tracelet_sync is installed/registered when HTTP URL is configured.
   /// Displays a developer warning in the console if sync is setup without the sync package.
   static void _checkSyncProvider(Config config) {

@@ -3485,6 +3485,13 @@ interface TraceletHostApi {
   fun getState(callback: (Result<TlState>) -> Unit)
   fun setConfig(config: TlConfig, callback: (Result<TlState>) -> Unit)
   fun reset(config: TlConfig?, callback: (Result<TlState>) -> Unit)
+  /**
+   * Refreshes the active foreground-service notification so it reflects the
+   * latest [ForegroundServiceConfig] applied via [setConfig], without
+   * restarting the tracking pipeline. No-op on platforms that have no
+   * foreground-service notification (e.g. iOS, web).
+   */
+  fun updateNotification(callback: (Result<Unit>) -> Unit)
   fun getCurrentPosition(options: TlCurrentPositionOptions, callback: (Result<TlLocation>) -> Unit)
   fun getLastKnownLocation(options: TlCurrentPositionOptions?, callback: (Result<TlLocation?>) -> Unit)
   fun watchPosition(options: TlCurrentPositionOptions, callback: (Result<Long>) -> Unit)
@@ -3750,6 +3757,23 @@ interface TraceletHostApi {
               } else {
                 val data = result.getOrNull()
                 reply.reply(TraceletApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.updateNotification$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            api.updateNotification{ result: Result<Unit> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(TraceletApiPigeonUtils.wrapError(error))
+              } else {
+                reply.reply(TraceletApiPigeonUtils.wrapResult(null))
               }
             }
           }

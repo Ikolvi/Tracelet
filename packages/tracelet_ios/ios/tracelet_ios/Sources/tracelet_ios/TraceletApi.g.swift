@@ -3291,6 +3291,11 @@ protocol TraceletHostApi {
   func getState(completion: @escaping (Result<TlState, Error>) -> Void)
   func setConfig(config: TlConfig, completion: @escaping (Result<TlState, Error>) -> Void)
   func reset(config: TlConfig?, completion: @escaping (Result<TlState, Error>) -> Void)
+  /// Refreshes the active foreground-service notification so it reflects the
+  /// latest [ForegroundServiceConfig] applied via [setConfig], without
+  /// restarting the tracking pipeline. No-op on platforms that have no
+  /// foreground-service notification (e.g. iOS, web).
+  func updateNotification(completion: @escaping (Result<Void, Error>) -> Void)
   func getCurrentPosition(options: TlCurrentPositionOptions, completion: @escaping (Result<TlLocation, Error>) -> Void)
   func getLastKnownLocation(options: TlCurrentPositionOptions?, completion: @escaping (Result<TlLocation?, Error>) -> Void)
   func watchPosition(options: TlCurrentPositionOptions, completion: @escaping (Result<Int64, Error>) -> Void)
@@ -3529,6 +3534,25 @@ class TraceletHostApiSetup {
       }
     } else {
       resetChannel.setMessageHandler(nil)
+    }
+    /// Refreshes the active foreground-service notification so it reflects the
+    /// latest [ForegroundServiceConfig] applied via [setConfig], without
+    /// restarting the tracking pipeline. No-op on platforms that have no
+    /// foreground-service notification (e.g. iOS, web).
+    let updateNotificationChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.updateNotification\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      updateNotificationChannel.setMessageHandler { _, reply in
+        api.updateNotification { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      updateNotificationChannel.setMessageHandler(nil)
     }
     let getCurrentPositionChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.getCurrentPosition\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {

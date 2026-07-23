@@ -448,6 +448,17 @@ class TraceletHostApiImpl(
         } catch (e: Exception) { callback(Result.failure(e)) }
     }
 
+    override fun updateNotification(callback: (Result<Unit>) -> Unit) {
+        // #257: refresh the live foreground-service notification so it reflects
+        // ForegroundServiceConfig changes applied via setConfig(), without
+        // restarting the tracking pipeline. Safe no-op if the service isn't
+        // running — LocationService only reposts when already promoted.
+        try {
+            sdk.updateNotification()
+            callback(Result.success(Unit))
+        } catch (e: Exception) { callback(Result.failure(e)) }
+    }
+
     // =========================================================================
     // Location
     // =========================================================================

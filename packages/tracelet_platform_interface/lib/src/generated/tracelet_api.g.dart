@@ -3895,6 +3895,28 @@ class TraceletHostApi {
     return pigeonVar_replyValue! as TlState;
   }
 
+  /// Refreshes the active foreground-service notification so it reflects the
+  /// latest [ForegroundServiceConfig] applied via [setConfig], without
+  /// restarting the tracking pipeline. No-op on platforms that have no
+  /// foreground-service notification (e.g. iOS, web).
+  Future<void> updateNotification() async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.updateNotification$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
   Future<TlLocation> getCurrentPosition(
     TlCurrentPositionOptions options,
   ) async {

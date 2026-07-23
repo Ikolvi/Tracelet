@@ -141,6 +141,9 @@ class PigeonTracelet extends TraceletPlatform {
     return _stateToMap(await _api.reset(config));
   }
 
+  @override
+  Future<void> updateNotification() => _api.updateNotification();
+
   // ---------------------------------------------------------------------------
   // Location
   // ---------------------------------------------------------------------------

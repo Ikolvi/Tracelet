@@ -1226,6 +1226,23 @@ class TraceletSdk private constructor(private val context: Context) {
         return stateManager.toMap(merged)
     }
 
+    /**
+     * Refreshes the active foreground-service notification so it reflects the
+     * latest ForegroundServiceConfig applied via [setConfig], without
+     * restarting the tracking pipeline (#257).
+     *
+     * Safe no-op when the foreground service is not currently running: the
+     * dispatched ACTION_UPDATE_NOTIFICATION only reposts the notification when
+     * the service is already promoted to the foreground.
+     */
+    fun updateNotification() {
+        if (!LocationService.isServiceRunning()) {
+            logger.info("updateNotification: foreground service not running — nothing to refresh")
+            return
+        }
+        LocationService.updateNotification(context)
+    }
+
     internal fun bootstrapForBackground(sender: TraceletEventSender) {
         if (!::eventSender.isInitialized) {
             setEventSender(sender)

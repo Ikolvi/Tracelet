@@ -86,6 +86,16 @@ abstract class TraceletPlatform extends PlatformInterface {
     throw UnimplementedError('reset() has not been implemented.');
   }
 
+  /// Refresh the active foreground-service notification so it reflects the
+  /// latest foreground-service configuration applied via [setConfig], without
+  /// restarting the tracking pipeline.
+  ///
+  /// No-op on platforms that have no foreground-service notification
+  /// (e.g. iOS, web).
+  Future<void> updateNotification() {
+    throw UnimplementedError('updateNotification() has not been implemented.');
+  }
+
   // ---------------------------------------------------------------------------
   // Location
   // ---------------------------------------------------------------------------

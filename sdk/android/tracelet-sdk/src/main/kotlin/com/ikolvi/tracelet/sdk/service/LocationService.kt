@@ -640,7 +640,18 @@ class LocationService : Service(), DefaultLifecycleObserver {
                 isRunning = false
             }
             ACTION_UPDATE_NOTIFICATION -> {
-                // Visibility is managed by updateNotificationVisibility()
+                // #257: repost the notification so ForegroundServiceConfig
+                // changes (title/text/icon/color/actions/priority/ongoing)
+                // applied via setConfig() take effect on the live notification
+                // without restarting tracking. Visibility (whether it should be
+                // shown at all) is still governed by updateNotificationVisibility()
+                // above, so only repost content when currently promoted — this
+                // avoids resurrecting a notification that pause-only mode just
+                // suppressed while the app is in the foreground.
+                if (isForegroundService) {
+                    createNotificationChannel()
+                    updateNotificationContent()
+                }
             }
             ACTION_BUTTON -> {
                 val action = intent.getStringExtra(EXTRA_BUTTON_ACTION)

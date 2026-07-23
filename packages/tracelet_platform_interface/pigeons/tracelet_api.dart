@@ -873,6 +873,13 @@ abstract class TraceletHostApi {
   @async
   TlState reset(TlConfig? config);
 
+  /// Refreshes the active foreground-service notification so it reflects the
+  /// latest [ForegroundServiceConfig] applied via [setConfig], without
+  /// restarting the tracking pipeline. No-op on platforms that have no
+  /// foreground-service notification (e.g. iOS, web).
+  @async
+  void updateNotification();
+
   @async
   TlLocation getCurrentPosition(TlCurrentPositionOptions options);
 

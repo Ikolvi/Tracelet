@@ -402,6 +402,14 @@ class TraceletHostApiImpl: TraceletHostApi {
         completion(.success(dictToTlState(state as? [String: Any] ?? [:])))
     }
 
+    func updateNotification(completion: @escaping (Result<Void, Error>) -> Void) {
+        // #257: iOS has no foreground-service notification (background location
+        // tracking has no user-facing persistent notification to refresh), so
+        // this is a no-op that completes successfully. Keeps the public
+        // Tracelet.updateNotification() API cross-platform.
+        completion(.success(()))
+    }
+
     // MARK: - Location
 
     func getCurrentPosition(options: TlCurrentPositionOptions, completion: @escaping (Result<TlLocation, Error>) -> Void) {
