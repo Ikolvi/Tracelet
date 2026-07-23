@@ -396,9 +396,12 @@ class Tracelet {
   ///   ongoing state). Safe no-op when the foreground service is not running.
   /// - **iOS**: if the developer opted into a Live Activity via
   ///   [LiveActivityConfig] (and added the Widget Extension), refreshes the
-  ///   running activity's body from the latest config. The title is immutable
-  ///   on a running activity. Safe no-op when no Live Activity is configured or
-  ///   running.
+  ///   Live Activity from the latest config while a tracking session is active —
+  ///   updating the running activity's body in place, or re-presenting it if it
+  ///   isn't currently on screen (the activity is bound to the moving
+  ///   sub-state, so a transient stop can dismiss it). The title is immutable on
+  ///   a running activity. Safe no-op when no Live Activity is configured or
+  ///   tracking is stopped.
   /// - **Web**: no-op.
   static Future<void> updateNotification() {
     return _platform.updateNotification();

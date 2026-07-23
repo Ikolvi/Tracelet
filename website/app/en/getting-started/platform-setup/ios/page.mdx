@@ -196,7 +196,7 @@ ios: tl.IosConfig(
 
 ### Refreshing the Live Activity While Tracking (`updateNotification()`)
 
-To change what the Live Activity shows *after* tracking has started, update `liveActivityConfig` via `setConfig()` and then call `Tracelet.updateNotification()`. Since **v3.6.8** this refreshes the running activity in place, **without restarting the tracking pipeline** — the cross-platform counterpart to refreshing the [Android foreground-service notification](/en/getting-started/platform-setup/android#refreshing-the-notification-while-tracking-updatenotification):
+To change what the Live Activity shows *after* tracking has started, update `liveActivityConfig` via `setConfig()` and then call `Tracelet.updateNotification()`. Since **v3.6.8** this refreshes the Live Activity from the latest config **without restarting the tracking pipeline** — the cross-platform counterpart to refreshing the [Android foreground-service notification](/en/getting-started/platform-setup/android#refreshing-the-notification-while-tracking-updatenotification):
 
 ```dart
 await Tracelet.setConfig(
@@ -214,7 +214,9 @@ await Tracelet.updateNotification();
 ```
 
 <Callout type="info" emoji="ℹ️">
-  Only the **body** is updated on a running activity — the `title` lives in the immutable `ActivityAttributes` and cannot change without ending and re-requesting the activity (an ActivityKit constraint). `updateNotification()` is a safe no-op when no Live Activity is configured or running.
+  Only the **body** is updated on a running activity — the `title` lives in the immutable `ActivityAttributes` and cannot change without ending and re-requesting the activity (an ActivityKit constraint).
+
+  The Live Activity is bound to the **moving sub-state** (it is dismissed when Tracelet pauses GPS on going stationary), so it may not be on screen at the moment you refresh it. While a tracking session is active, `updateNotification()` handles this for you: it updates the running activity in place, or **re-presents it** with the latest content if it was dismissed. It is a safe no-op when no `liveActivityConfig` is set or tracking is stopped.
 </Callout>
 
 ### Xcode Widget Extension Setup (Required)

@@ -701,6 +701,21 @@ public final class TraceletSdk {
                 let currentMode = stateManager.trackingMode
                 let wasMoving = stateManager.isMoving
 
+                // #257: keep any Live Activity alive across the restart. iOS
+                // cannot re-REQUEST a Live Activity while backgrounded ("Target
+                // is not foreground"), so ending and recreating it here would
+                // permanently lose it. Suppress the stop/start teardown and
+                // update the surviving activity with the new config afterwards.
+                var liveActivitySuppressed = false
+                if #available(iOS 17.0, *) {
+                    #if canImport(ActivityKit)
+                    if configManager.getLiveActivityConfig() != nil {
+                        locationEngine.suppressLiveActivityLifecycle = true
+                        liveActivitySuppressed = true
+                    }
+                    #endif
+                }
+
                 _ = stop()
 
                 stateManager.enabled = true
@@ -736,6 +751,19 @@ public final class TraceletSdk {
                         _ = startGeofences()
                     default:
                         _ = start(isResume: true)
+                    }
+                }
+
+                // Restart done — restore normal lifecycle and refresh the
+                // surviving Live Activity's content to reflect the new config.
+                if liveActivitySuppressed {
+                    locationEngine.suppressLiveActivityLifecycle = false
+                    if #available(iOS 17.0, *) {
+                        #if canImport(ActivityKit)
+                        if let lc = configManager.getLiveActivityConfig() {
+                            LiveActivityManager.shared.updateLiveActivity(title: lc.title, body: lc.body)
+                        }
+                        #endif
                     }
                 }
             }
@@ -789,7 +817,16 @@ public final class TraceletSdk {
                 logger.info("updateNotification: no liveActivityConfig set — nothing to refresh")
                 return
             }
-            LiveActivityManager.shared.updateLiveActivity(title: liveConfig.title, body: liveConfig.body)
+            // Only meaningful while a tracking session is active. Refresh the
+            // running Live Activity in place, or (re)present it with the latest
+            // config if it isn't currently on screen (it is bound to the moving
+            // sub-state, so a transient stop can tear it down). Mirrors Android's
+            // "no-op when the service isn't running" by gating on enabled.
+            guard stateManager.enabled else {
+                logger.info("updateNotification: tracking not enabled — nothing to refresh")
+                return
+            }
+            LiveActivityManager.shared.refreshLiveActivity(title: liveConfig.title, body: liveConfig.body)
             #endif
         }
     }

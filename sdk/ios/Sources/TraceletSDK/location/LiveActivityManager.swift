@@ -53,6 +53,26 @@ internal final class LiveActivityManager {
         onMain { self.updateOnMain(title: title, body: body) }
     }
 
+    /// Ensures the Live Activity reflects the latest `liveActivityConfig` while
+    /// a tracking session is active: updates the running activity in place, or
+    /// **(re)starts** one if none is currently shown. Used by
+    /// `updateNotification()` (#257).
+    ///
+    /// Re-presenting matters because the activity is bound to the moving
+    /// sub-state (it is ended on `LocationEngine.stop()`), so it may not be on
+    /// screen at the moment the app asks to refresh it (e.g. after a transient
+    /// stop/restart). Starting it here guarantees the newest content is shown
+    /// rather than silently doing nothing.
+    func refreshLiveActivity(title: String, body: String) {
+        onMain {
+            if self.currentActivity != nil {
+                self.updateOnMain(title: title, body: body)
+            } else if !self.isStarting {
+                self.startOnMain(title: title, body: body)
+            }
+        }
+    }
+
     // MARK: - Main-thread implementation
 
     private func startOnMain(title: String, body: String) {

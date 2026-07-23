@@ -167,6 +167,11 @@ class _Issue257CardState extends State<Issue257Card> {
         ),
       );
 
+      // Let the setConfig() write settle before refreshing so updateNotification
+      // reads the new config and (on iOS) re-presents the Live Activity with the
+      // latest content if it isn't currently on screen.
+      await Future<void>.delayed(const Duration(seconds: 1));
+
       _set(
         'Calling Tracelet.updateNotification() to refresh the live '
         '$platformLabel...',
