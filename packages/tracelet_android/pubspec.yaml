@@ -1,6 +1,6 @@
 name: tracelet_android
 description: Android implementation of the Tracelet background geolocation plugin.
-version: 3.6.6
+version: 3.6.7
 topics:
   - location
   - background
@@ -25,7 +25,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  tracelet_platform_interface: ^3.6.6
+  tracelet_platform_interface: ^3.6.7
 
 dev_dependencies:
   flutter_test:
