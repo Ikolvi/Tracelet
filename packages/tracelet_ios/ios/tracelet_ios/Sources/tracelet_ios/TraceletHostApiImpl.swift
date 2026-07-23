@@ -403,10 +403,13 @@ class TraceletHostApiImpl: TraceletHostApi {
     }
 
     func updateNotification(completion: @escaping (Result<Void, Error>) -> Void) {
-        // #257: iOS has no foreground-service notification (background location
-        // tracking has no user-facing persistent notification to refresh), so
-        // this is a no-op that completes successfully. Keeps the public
-        // Tracelet.updateNotification() API cross-platform.
+        // #257: iOS has no foreground-service notification. Its analogue is the
+        // optional Live Activity: if the developer opted into one via
+        // liveActivityConfig and it is currently running, refresh its content
+        // from the latest config. Otherwise this is a safe no-op. Never restarts
+        // tracking. No isReadyState guard so it degrades to a no-op rather than
+        // throwing when called before ready().
+        sdk.updateNotification()
         completion(.success(()))
     }
 

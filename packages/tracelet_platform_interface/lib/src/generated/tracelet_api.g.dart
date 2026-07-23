@@ -3895,10 +3895,15 @@ class TraceletHostApi {
     return pigeonVar_replyValue! as TlState;
   }
 
-  /// Refreshes the active foreground-service notification so it reflects the
-  /// latest [ForegroundServiceConfig] applied via [setConfig], without
-  /// restarting the tracking pipeline. No-op on platforms that have no
-  /// foreground-service notification (e.g. iOS, web).
+  /// Refreshes the active on-screen tracking indicator so it reflects the
+  /// latest configuration applied via [setConfig], without restarting the
+  /// tracking pipeline.
+  ///
+  /// - Android: reposts the foreground-service notification from the latest
+  ///   ForegroundServiceConfig. No-op if the service is not running.
+  /// - iOS: refreshes the running Live Activity body from the latest
+  ///   liveActivityConfig (if the developer opted into one). No-op otherwise.
+  /// - Web: no-op.
   Future<void> updateNotification() async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.updateNotification$pigeonVar_messageChannelSuffix';

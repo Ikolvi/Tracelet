@@ -383,19 +383,23 @@ class Tracelet {
     return _stateFromMap(s);
   }
 
-  /// Refreshes the active Android foreground-service notification so it
-  /// reflects the latest [ForegroundServiceConfig] applied via [setConfig],
-  /// without restarting the tracking pipeline (#257).
+  /// Refreshes the active on-screen tracking indicator so it reflects the
+  /// latest configuration applied via [setConfig], without restarting the
+  /// tracking pipeline (#257).
   ///
-  /// Notification-only configuration changes made through [setConfig] do not
-  /// rebuild the notification currently displayed by Android. Call this after
-  /// updating any [ForegroundServiceConfig] property (title, text, icon,
-  /// color, actions, priority, ongoing state) to repost the notification with
-  /// the new content while background tracking remains active.
-  ///
-  /// Behaves safely in edge cases: if the foreground service is not currently
-  /// running the call is a no-op. On platforms without a foreground-service
-  /// notification (iOS, web) this is a no-op.
+  /// Content-only configuration changes made through [setConfig] do not rebuild
+  /// the indicator currently displayed by the OS. Call this after updating the
+  /// relevant config to refresh it in place while background tracking remains
+  /// active:
+  /// - **Android**: reposts the foreground-service notification from the latest
+  ///   [ForegroundServiceConfig] (title, text, icon, color, actions, priority,
+  ///   ongoing state). Safe no-op when the foreground service is not running.
+  /// - **iOS**: if the developer opted into a Live Activity via
+  ///   [LiveActivityConfig] (and added the Widget Extension), refreshes the
+  ///   running activity's body from the latest config. The title is immutable
+  ///   on a running activity. Safe no-op when no Live Activity is configured or
+  ///   running.
+  /// - **Web**: no-op.
   static Future<void> updateNotification() {
     return _platform.updateNotification();
   }

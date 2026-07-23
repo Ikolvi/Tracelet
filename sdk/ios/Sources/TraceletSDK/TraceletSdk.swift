@@ -770,6 +770,30 @@ public final class TraceletSdk {
         return stateManager.toMap(configManager.getConfig())
     }
 
+    /// Refreshes the active on-screen tracking indicator so it reflects the
+    /// latest configuration, without restarting the tracking pipeline (#257).
+    ///
+    /// iOS has no foreground-service notification. Its analogue is the optional
+    /// Live Activity, which a developer opts into by supplying a
+    /// `liveActivityConfig` (title + body) and adding the Widget Extension. When
+    /// one is configured and currently running, this repost its content from the
+    /// latest `liveActivityConfig` (the dynamic body; the title is immutable on a
+    /// running activity). If no Live Activity is configured or running, this is a
+    /// safe no-op — matching the Android behavior when the foreground service is
+    /// not running.
+    public func updateNotification() {
+        guard isReady else { return }
+        if #available(iOS 17.0, *) {
+            #if canImport(ActivityKit)
+            guard let liveConfig = configManager.getLiveActivityConfig() else {
+                logger.info("updateNotification: no liveActivityConfig set — nothing to refresh")
+                return
+            }
+            LiveActivityManager.shared.updateLiveActivity(title: liveConfig.title, body: liveConfig.body)
+            #endif
+        }
+    }
+
     /// Loose equality for two heterogeneous config values, used to detect which
     /// keys changed between an old and new config snapshot. Config values are
     /// primitives (Int/Double/Bool/String) sourced from the same dictionary

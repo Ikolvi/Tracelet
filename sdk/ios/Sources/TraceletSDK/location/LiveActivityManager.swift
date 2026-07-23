@@ -40,6 +40,19 @@ internal final class LiveActivityManager {
         onMain { self.stopOnMain() }
     }
 
+    /// Refreshes the content of the currently-running Live Activity so it
+    /// reflects the latest `liveActivityConfig`. This is the iOS analogue of
+    /// refreshing the Android foreground-service notification (#257).
+    ///
+    /// Only the dynamic `body` (ContentState.status) can be updated on a
+    /// running activity — the `title` lives in the immutable ActivityAttributes
+    /// and cannot change without ending and re-requesting the activity, so a
+    /// title change is reported but not applied here. No-op if no activity is
+    /// currently running (nothing to refresh).
+    func updateLiveActivity(title: String, body: String) {
+        onMain { self.updateOnMain(title: title, body: body) }
+    }
+
     // MARK: - Main-thread implementation
 
     private func startOnMain(title: String, body: String) {
@@ -82,6 +95,30 @@ internal final class LiveActivityManager {
                 self?.isStarting = false
                 TraceletLog.error("[Tracelet-LiveActivity] Failed to start Live Activity: \(error.localizedDescription)")
             }
+        }
+    }
+
+    private func updateOnMain(title: String, body: String) {
+        guard let activity = currentActivity else {
+            TraceletLog.debug("[Tracelet-LiveActivity] No active Live Activity to refresh; skipping update.")
+            return
+        }
+
+        if title != activity.attributes.title {
+            TraceletLog.debug(
+                "[Tracelet-LiveActivity] Live Activity title is immutable on a running activity; " +
+                "only the body was refreshed. Restart tracking to apply a new title."
+            )
+        }
+
+        Task { @MainActor in
+            let newState = TraceletActivityAttributes.ContentState(status: body)
+            if #available(iOS 16.2, *) {
+                await activity.update(ActivityContent(state: newState, staleDate: nil))
+            } else {
+                await activity.update(using: newState)
+            }
+            TraceletLog.debug("[Tracelet-LiveActivity] Live Activity refreshed: \(activity.id)")
         }
     }
 

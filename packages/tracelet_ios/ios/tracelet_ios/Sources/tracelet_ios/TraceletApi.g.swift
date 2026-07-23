@@ -3291,10 +3291,15 @@ protocol TraceletHostApi {
   func getState(completion: @escaping (Result<TlState, Error>) -> Void)
   func setConfig(config: TlConfig, completion: @escaping (Result<TlState, Error>) -> Void)
   func reset(config: TlConfig?, completion: @escaping (Result<TlState, Error>) -> Void)
-  /// Refreshes the active foreground-service notification so it reflects the
-  /// latest [ForegroundServiceConfig] applied via [setConfig], without
-  /// restarting the tracking pipeline. No-op on platforms that have no
-  /// foreground-service notification (e.g. iOS, web).
+  /// Refreshes the active on-screen tracking indicator so it reflects the
+  /// latest configuration applied via [setConfig], without restarting the
+  /// tracking pipeline.
+  ///
+  /// - Android: reposts the foreground-service notification from the latest
+  ///   ForegroundServiceConfig. No-op if the service is not running.
+  /// - iOS: refreshes the running Live Activity body from the latest
+  ///   liveActivityConfig (if the developer opted into one). No-op otherwise.
+  /// - Web: no-op.
   func updateNotification(completion: @escaping (Result<Void, Error>) -> Void)
   func getCurrentPosition(options: TlCurrentPositionOptions, completion: @escaping (Result<TlLocation, Error>) -> Void)
   func getLastKnownLocation(options: TlCurrentPositionOptions?, completion: @escaping (Result<TlLocation?, Error>) -> Void)
@@ -3535,10 +3540,15 @@ class TraceletHostApiSetup {
     } else {
       resetChannel.setMessageHandler(nil)
     }
-    /// Refreshes the active foreground-service notification so it reflects the
-    /// latest [ForegroundServiceConfig] applied via [setConfig], without
-    /// restarting the tracking pipeline. No-op on platforms that have no
-    /// foreground-service notification (e.g. iOS, web).
+    /// Refreshes the active on-screen tracking indicator so it reflects the
+    /// latest configuration applied via [setConfig], without restarting the
+    /// tracking pipeline.
+    ///
+    /// - Android: reposts the foreground-service notification from the latest
+    ///   ForegroundServiceConfig. No-op if the service is not running.
+    /// - iOS: refreshes the running Live Activity body from the latest
+    ///   liveActivityConfig (if the developer opted into one). No-op otherwise.
+    /// - Web: no-op.
     let updateNotificationChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.updateNotification\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       updateNotificationChannel.setMessageHandler { _, reply in
