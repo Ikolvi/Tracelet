@@ -20,13 +20,15 @@
 
 📚 **Official Documentation:** [tracelet.ikolvi.com](https://tracelet.ikolvi.com)
 
-<p align="left">
-  <a href="https://tracelet.ikolvi.com/copy-prompt?utm_source=github&utm_medium=readme&utm_campaign=copy_prompt">
-    <img src="https://img.shields.io/badge/%E2%9C%A8%20Copy%20AI%20Setup%20Prompt-0F9D58?style=for-the-badge&logoColor=white" alt="Copy AI Setup Prompt"/>
+<p align="center">
+  <a href="https://tracelet.ikolvi.com/en?copyPrompt=1&utm_source=github&utm_medium=readme&utm_campaign=copy_prompt">
+    <img src="https://img.shields.io/badge/%E2%9C%A8%20Copy%20AI%20Setup%20Prompt-%E2%96%B6%20click%20to%20copy-0F9D58?style=for-the-badge&labelColor=0B7A43" alt="Copy AI Setup Prompt" height="42"/>
   </a>
 </p>
 
-> ⚡ **Set up with AI in minutes.** Click the badge above to copy a ready-made prompt, then paste it into your AI coding assistant (Cursor, Claude Code, Kiro, Copilot Chat…). It interviews you about your use case, then installs and configures Tracelet for your Flutter app.
+<p align="center">
+  <sub><b>⚡ Set up with AI in minutes.</b> Clicking the badge opens Tracelet and copies a ready-made prompt — paste it into your AI coding assistant (Cursor, Claude Code, Kiro, Copilot Chat…) and it interviews you about your use case, then installs and configures Tracelet for your Flutter app.</sub>
+</p>
 
 Battery-conscious motion-detection intelligence, geofencing, SQLite persistence, HTTP sync, and headless Dart execution for iOS & Android.
 

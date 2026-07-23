@@ -1551,6 +1551,36 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
       }
     }
 
+    return _buildIssueCardBody(issueNumber, title, description, actions);
+  }
+
+  /// Wraps a self-contained issue card widget (one that renders its own
+  /// `IssueCardShell`, e.g. `Issue257Card`) so it participates in search just
+  /// like the inline [_buildIssueCard] entries. Returns an empty box when the
+  /// current query matches neither the issue number nor the [keywords].
+  Widget _searchableCard({
+    required Widget child,
+    int? issueNumber,
+    String keywords = '',
+  }) {
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      final matchesNumber =
+          issueNumber != null && issueNumber.toString().contains(query);
+      final matchesKeywords = keywords.toLowerCase().contains(query);
+      if (!matchesNumber && !matchesKeywords) {
+        return const SizedBox.shrink();
+      }
+    }
+    return child;
+  }
+
+  Widget _buildIssueCardBody(
+    int issueNumber,
+    String title,
+    String description,
+    List<Widget> actions,
+  ) {
     final status = _statuses[issueNumber] ?? 'Idle';
     final isSuccess = status.contains('✅ SUCCESS');
     final isFailure = status.contains('❌ FAILED') || status.contains('Error');
@@ -1653,6 +1683,35 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
               controller: _scrollController,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               children: [
+                // Latest issues first (newest on top).
+                _searchableCard(
+                  issueNumber: 257,
+                  keywords:
+                      'notification live activity refresh updatenotification',
+                  child: const Issue257Card(),
+                ),
+                _searchableCard(issueNumber: 256, child: const Issue256Card()),
+                _searchableCard(issueNumber: 254, child: const Issue254Card()),
+                _searchableCard(issueNumber: 253, child: const Issue253Card()),
+                _searchableCard(issueNumber: 252, child: const Issue252Card()),
+                _searchableCard(issueNumber: 251, child: const Issue251Card()),
+                _searchableCard(issueNumber: 250, child: const Issue250Card()),
+                _searchableCard(issueNumber: 248, child: const Issue248Card()),
+                _searchableCard(issueNumber: 247, child: const Issue247Card()),
+                _searchableCard(issueNumber: 244, child: const Issue244Card()),
+                _searchableCard(issueNumber: 243, child: const Issue243Card()),
+                _searchableCard(issueNumber: 238, child: const Issue238Card()),
+                _searchableCard(issueNumber: 237, child: const Issue237Card()),
+                _searchableCard(issueNumber: 231, child: const Issue231Card()),
+                _searchableCard(issueNumber: 230, child: const Issue230Card()),
+                _searchableCard(issueNumber: 214, child: const Issue214Card()),
+                _searchableCard(issueNumber: 213, child: const Issue213Card()),
+                _searchableCard(issueNumber: 212, child: const Issue212Card()),
+                _searchableCard(issueNumber: 210, child: const Issue210Card()),
+                _searchableCard(issueNumber: 204, child: const Issue204Card()),
+                _searchableCard(issueNumber: 201, child: const Issue201Card()),
+                _searchableCard(issueNumber: 198, child: const Issue198Card()),
+                _searchableCard(issueNumber: 185, child: const Issue185Card()),
                 _buildIssueCard(
                   issueNumber: 147,
                   title: 'getState() drops active config',
@@ -1751,31 +1810,16 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
                     ),
                   ],
                 ),
-                const RemoteConfigCard(),
-                const Issue257Card(),
-                const Issue256Card(),
-                const Issue254Card(),
-                const Issue253Card(),
-                const Issue252Card(),
-                const Issue251Card(),
-                const Issue250Card(),
-                const Issue248Card(),
-                const Issue247Card(),
-                const Issue244Card(),
-                const Issue243Card(),
-                const MockRejectionCard(),
-                const Issue238Card(),
-                const Issue237Card(),
-                const Issue231Card(),
-                const Issue230Card(),
-                const Issue185Card(),
-                const Issue198Card(),
-                const Issue201Card(),
-                const Issue204Card(),
-                const Issue210Card(),
-                const Issue212Card(),
-                const Issue213Card(),
-                const Issue214Card(),
+                // Feature demos (not numbered issues) — searchable by keyword
+                // and kept at the bottom so they never sit above real issues.
+                _searchableCard(
+                  keywords: 'remote config remoteconfig',
+                  child: const RemoteConfigCard(),
+                ),
+                _searchableCard(
+                  keywords: 'mock rejection reject mock location',
+                  child: const MockRejectionCard(),
+                ),
               ],
             ),
           ),

@@ -47,6 +47,21 @@ class _Issue257CardState extends State<Issue257Card> {
     if (mounted) setState(() => _status = s);
   }
 
+  /// Keeps tracking alive for [seconds] while updating the status once per
+  /// second via [message] (given the remaining seconds), so the live
+  /// notification / Live Activity stays on screen long enough to observe. The
+  /// Live Activity in particular takes a moment to appear and refresh, so the
+  /// test must not tear it down immediately.
+  Future<void> _observe(
+    int seconds,
+    String Function(int remaining) message,
+  ) async {
+    for (var remaining = seconds; remaining > 0; remaining--) {
+      _set(message(remaining));
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
+  }
+
   Future<void> _test() async {
     setState(() => _running = true);
     try {
@@ -89,6 +104,19 @@ class _Issue257CardState extends State<Issue257Card> {
               body: 'Original activity content',
             ),
           ),
+          // Force and hold the MOVING state for the duration of the test.
+          //
+          // On iOS the Live Activity is bound to the moving sub-state
+          // (LocationEngine.start()/stop()): when the SDK auto-detects
+          // "stationary" it calls stop(), which ENDS the Live Activity. Without
+          // this, a stationary test device tears the activity down mid-test.
+          // `isMoving: true` starts it moving (so the activity appears
+          // immediately) and `disableStopDetection: true` keeps it up.
+          //
+          // The SAME motion config is passed to setConfig() below — motion keys
+          // are restart-sensitive, so a mismatch would restart the pipeline
+          // (stop() → end activity) instead of refreshing it in place.
+          motion: MotionConfig(isMoving: true, disableStopDetection: true),
           logger: LoggerConfig(debug: true, logLevel: LogLevel.verbose),
         ),
       );
@@ -98,14 +126,30 @@ class _Issue257CardState extends State<Issue257Card> {
         _set('❌ FAILED: tracking did not start (enabled=false).');
         return;
       }
-      await Future<void>.delayed(const Duration(seconds: 2));
 
-      _set(
-        'Applying a content-only setConfig() (new text)...\n'
-        'The live $platformLabel should still show the OLD content until '
-        'updateNotification() is called.',
+      // Belt-and-suspenders: force moving so the Live Activity is present before
+      // we try to refresh it (no-op on Android / when already moving).
+      await Tracelet.changePace(true);
+
+      // Give the OS time to actually present the notification / Live Activity
+      // (ActivityKit registration is async and can take a second or two), and
+      // hold on the ORIGINAL content long enough that the upcoming refresh is
+      // visibly a change rather than the initial appearance.
+      await _observe(
+        6,
+        (r) =>
+            'Tracking started. The $platformLabel should now show the ORIGINAL '
+            'content ("Original ${Platform.isIOS ? 'activity' : 'notification'} '
+            'content").\nRefreshing it in ${r}s — watch it change...',
       );
+
+      _set('Applying a content-only setConfig() (new text)...');
       await Tracelet.setConfig(
+        // Only the notification / Live Activity content changes here. The motion
+        // config MUST match ready() exactly — motion keys are restart-sensitive,
+        // and any diff would restart the pipeline (which on iOS ends and
+        // recreates the Live Activity) instead of leaving it running for
+        // updateNotification() to refresh in place.
         const Config(
           android: AndroidConfig(
             foregroundService: ForegroundServiceConfig(
@@ -119,16 +163,15 @@ class _Issue257CardState extends State<Issue257Card> {
               body: 'Refreshed via updateNotification()',
             ),
           ),
+          motion: MotionConfig(isMoving: true, disableStopDetection: true),
         ),
       );
-      await Future<void>.delayed(const Duration(seconds: 2));
 
       _set(
         'Calling Tracelet.updateNotification() to refresh the live '
         '$platformLabel...',
       );
       await Tracelet.updateNotification();
-      await Future<void>.delayed(const Duration(seconds: 1));
 
       final state = await Tracelet.getState();
       if (!state.enabled) {
@@ -140,15 +183,26 @@ class _Issue257CardState extends State<Issue257Card> {
       }
 
       final onDeviceNote = Platform.isIOS
-          ? 'If a Live Activity Widget Extension is installed, confirm the '
-                'activity body now reads "Refreshed via updateNotification()". '
-                'Without the extension the call is a safe no-op.'
-          : 'Confirm on-device that the notification now reads '
-                '"Tracelet #257 — after".';
+          ? 'the Live Activity body should now read "Refreshed via '
+                'updateNotification()" (Lock Screen / Dynamic Island). If it is '
+                'unchanged, ensure a Live Activity Widget Extension is installed '
+                '— without it the call is a safe no-op.'
+          : 'the notification should now read "Tracelet #257 — after / '
+                'Refreshed via updateNotification()".';
+
+      // Keep tracking alive so the refreshed indicator stays on screen long
+      // enough to visually confirm before we stop (which would tear it down).
+      await _observe(
+        10,
+        (r) =>
+            '✅ Refreshed — verify on-device: $onDeviceNote\n\n'
+            'Tracking stays enabled (no pipeline restart). Stopping in ${r}s...',
+      );
 
       _set(
-        '✅ SUCCESS: updateNotification() completed and tracking stayed enabled '
-        '(no pipeline restart). $onDeviceNote',
+        '✅ SUCCESS: updateNotification() refreshed the live $platformLabel and '
+        'tracking stayed enabled throughout (no pipeline restart). '
+        'On-device, $onDeviceNote',
       );
     } catch (e) {
       _set('❌ FAILED: $e');
