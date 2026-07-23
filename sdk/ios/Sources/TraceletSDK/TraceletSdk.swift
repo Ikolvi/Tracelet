@@ -328,16 +328,29 @@ public final class TraceletSdk {
         locationEngine.rebuildProcessor()
 
         if stateManager.enabled {
-            switch stateManager.trackingMode {
-            case .continuous:
-                TraceletLog.debug("[Tracelet] ready: Resuming continuous tracking")
+            // #256: in SPEED/SMART modes the persisted trackingMode may be a
+            // TEMPORARY stationary sub-state (.geofences/.periodic) entered by the
+            // continuous motion-aware pipeline while stationary. Resuming it as a
+            // standalone startGeofences()/startPeriodic() tears down the
+            // motion-detection pipeline that switches back to continuous on
+            // movement. Resume the continuous pipeline instead; it re-enters the
+            // stationary sub-state on its own. Matches Android's completeReady().
+            let motionMode = configManager.getMotionDetectionMode()
+            if motionMode == .smart || motionMode == .speed {
+                TraceletLog.debug("[Tracelet] ready: Resuming motion-aware tracking")
                 start(isResume: true)
-            case .periodic:
-                TraceletLog.debug("[Tracelet] ready: Resuming periodic tracking")
-                startPeriodic()
-            case .geofences:
-                TraceletLog.debug("[Tracelet] ready: Resuming geofence tracking")
-                startGeofences()
+            } else {
+                switch stateManager.trackingMode {
+                case .continuous:
+                    TraceletLog.debug("[Tracelet] ready: Resuming continuous tracking")
+                    start(isResume: true)
+                case .periodic:
+                    TraceletLog.debug("[Tracelet] ready: Resuming periodic tracking")
+                    startPeriodic()
+                case .geofences:
+                    TraceletLog.debug("[Tracelet] ready: Resuming geofence tracking")
+                    startGeofences()
+                }
             }
         }
 
@@ -698,13 +711,32 @@ public final class TraceletSdk {
                 // changes take effect on the very first fix after restart.
                 locationEngine.rebuildProcessor()
 
-                switch currentMode {
-                case .periodic:
-                    _ = startPeriodic()
-                case .geofences:
-                    _ = startGeofences()
-                default:
+                // #256: in SPEED/SMART motion-detection modes the SDK runs a single
+                // continuous motion-aware pipeline that TEMPORARILY flips
+                // trackingMode to .geofences/.periodic while the device is
+                // stationary (switchToStationaryGeofencesForce /
+                // switchToStationaryPeriodicForce). That temporary value is NOT an
+                // explicitly-started standalone mode — rebuilding it via
+                // startPeriodic()/startGeofences() tears down the very
+                // motion-detection pipeline that is supposed to switch it back to
+                // continuous once the device moves again, stranding tracking in a
+                // standalone stationary mode. Restart the continuous pipeline
+                // instead; it re-enters the stationary sub-state on its own when
+                // still stationary.
+                let motionMode = configManager.getMotionDetectionMode()
+                let motionAware = motionMode == .smart || motionMode == .speed
+
+                if motionAware {
                     _ = start(isResume: true)
+                } else {
+                    switch currentMode {
+                    case .periodic:
+                        _ = startPeriodic()
+                    case .geofences:
+                        _ = startGeofences()
+                    default:
+                        _ = start(isResume: true)
+                    }
                 }
             }
 

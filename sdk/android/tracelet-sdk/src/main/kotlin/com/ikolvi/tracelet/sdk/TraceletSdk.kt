@@ -1142,6 +1142,24 @@ class TraceletSdk private constructor(private val context: Context) {
                 val currentMode = stateManager.trackingMode
                 val wasMoving = stateManager.isMoving
 
+                // #256: in SPEED/SMART motion-detection modes the SDK runs a single
+                // continuous motion-aware pipeline that TEMPORARILY flips
+                // stateManager.trackingMode to PERIODIC/GEOFENCES while the device
+                // is stationary (LocationService.switchToStationaryPeriodic /
+                // switchToStationaryGeofences). That temporary value is NOT an
+                // explicitly-started standalone mode — rebuilding it via
+                // startPeriodic()/startGeofences() tears down the very
+                // motion-detection pipeline that is supposed to switch it back to
+                // continuous once the device moves again, stranding tracking in a
+                // standalone stationary mode. Restart the continuous pipeline via
+                // start(isResume = true) instead; it re-enters the stationary
+                // sub-state on its own when still stationary. Mirrors the
+                // resume-on-ready logic in completeReady().
+                val motionMode = configManager.getMotionDetectionMode()
+                val motionAware =
+                    motionMode == com.ikolvi.tracelet.sdk.model.MotionDetectionMode.SMART ||
+                    motionMode == com.ikolvi.tracelet.sdk.model.MotionDetectionMode.SPEED
+
                 // #254: if the restart lands back in a mode that still needs the
                 // foreground service, DON'T let stop() send ACTION_STOP — the
                 // immediately-following ACTION_START from the start*() below would
@@ -1151,10 +1169,14 @@ class TraceletSdk private constructor(private val context: Context) {
                 // re-assert foreground. When the target mode does NOT use the
                 // service (periodic-without-fg / standard geofences / fg disabled)
                 // we stop it here cleanly — there's no follow-up start to race.
-                val keepForegroundService = configManager.isForegroundServiceEnabled() && when (currentMode) {
-                    TrackingMode.CONTINUOUS -> true
-                    TrackingMode.PERIODIC -> configManager.getPeriodicUseForegroundService()
-                    TrackingMode.GEOFENCES -> configManager.getGeofenceModeHighAccuracy()
+                val keepForegroundService = configManager.isForegroundServiceEnabled() && when {
+                    // Motion-aware pipeline restarts as continuous — it runs the
+                    // foreground service exactly like TrackingMode.CONTINUOUS.
+                    motionAware -> true
+                    currentMode == TrackingMode.CONTINUOUS -> true
+                    currentMode == TrackingMode.PERIODIC -> configManager.getPeriodicUseForegroundService()
+                    currentMode == TrackingMode.GEOFENCES -> configManager.getGeofenceModeHighAccuracy()
+                    else -> false
                 }
 
                 stop(preserveForegroundService = keepForegroundService)
@@ -1167,10 +1189,14 @@ class TraceletSdk private constructor(private val context: Context) {
                 // changes take effect on the very first fix after restart (#157).
                 if (::locationEngine.isInitialized) locationEngine.rebuildProcessor()
 
-                when (currentMode) {
-                    TrackingMode.CONTINUOUS -> start(isResume = true)
-                    TrackingMode.PERIODIC -> startPeriodic()
-                    TrackingMode.GEOFENCES -> startGeofences()
+                if (motionAware) {
+                    start(isResume = true)
+                } else {
+                    when (currentMode) {
+                        TrackingMode.CONTINUOUS -> start(isResume = true)
+                        TrackingMode.PERIODIC -> startPeriodic()
+                        TrackingMode.GEOFENCES -> startGeofences()
+                    }
                 }
             }
         } else if (needsRestart && ::locationEngine.isInitialized) {
