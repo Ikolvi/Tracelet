@@ -172,6 +172,33 @@ android: tl.AndroidConfig(
   **Android 13+ Note:** You must request the `POST_NOTIFICATIONS` permission before starting the service, otherwise the notification will be silently suppressed by the OS. See the [Flutter SDK: Permissions](/en/getting-started/flutter#scenario-2-the-onboarding-flow) page for exactly how to request this from your Dart code.
 </Callout>
 
+### Refreshing the Notification While Tracking (`updateNotification()`)
+
+Need to change the notification *after* tracking has already started — e.g. update the title from "En route" to "Arriving", swap the text, or change the action buttons mid-trip? Calling `setConfig()` with a new `ForegroundServiceConfig` persists the values, but a notification-only change does **not** repost the notification that Android is already showing — the new content would only appear after an unrelated service restart or foreground transition.
+
+Since **v3.6.8**, `Tracelet.updateNotification()` refreshes the live notification in place, **without restarting the tracking pipeline**:
+
+```dart
+// 1. Apply the new notification content.
+await Tracelet.setConfig(
+  const tl.Config(
+    android: tl.AndroidConfig(
+      foregroundService: tl.ForegroundServiceConfig(
+        notificationTitle: 'Arriving',
+        notificationText: 'Your driver is 2 minutes away',
+      ),
+    ),
+  ),
+);
+
+// 2. Repost the active notification with the new content.
+await Tracelet.updateNotification();
+```
+
+<Callout type="info" emoji="✅">
+  **Safe by design.** `updateNotification()` never restarts tracking, and it is a no-op when the foreground service is not currently running (nothing to refresh). On iOS it refreshes the running [Live Activity](/en/getting-started/platform-setup/ios) instead (when you opted into one via `liveActivityConfig`); on web it is a no-op — so the same call is safe on every platform.
+</Callout>
+
 ---
 
 ## Scenario 2: The Weather App (Periodic Tracking)

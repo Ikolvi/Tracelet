@@ -194,6 +194,29 @@ ios: tl.IosConfig(
 )
 ```
 
+### Refreshing the Live Activity While Tracking (`updateNotification()`)
+
+To change what the Live Activity shows *after* tracking has started, update `liveActivityConfig` via `setConfig()` and then call `Tracelet.updateNotification()`. Since **v3.6.8** this refreshes the running activity in place, **without restarting the tracking pipeline** — the cross-platform counterpart to refreshing the [Android foreground-service notification](/en/getting-started/platform-setup/android#refreshing-the-notification-while-tracking-updatenotification):
+
+```dart
+await Tracelet.setConfig(
+  const tl.Config(
+    ios: tl.IosConfig(
+      liveActivityConfig: tl.LiveActivityConfig(
+        title: 'Ride in progress',
+        body: 'Arriving in 2 minutes',
+      ),
+    ),
+  ),
+);
+
+await Tracelet.updateNotification();
+```
+
+<Callout type="info" emoji="ℹ️">
+  Only the **body** is updated on a running activity — the `title` lives in the immutable `ActivityAttributes` and cannot change without ending and re-requesting the activity (an ActivityKit constraint). `updateNotification()` is a safe no-op when no Live Activity is configured or running.
+</Callout>
+
 ### Xcode Widget Extension Setup (Required)
 
 <Callout type="info">
