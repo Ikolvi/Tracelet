@@ -291,7 +291,34 @@ class TraceletSdk private constructor(private val context: Context) {
         check(::eventSender.isInitialized) {
             "setEventSender() must be called before initialize()"
         }
+        // Run the heavy setup — which opens the Rust DB and fsyncs it to disk —
+        // off the calling thread. onAttachedToEngine runs on the platform main
+        // thread; when a background FlutterEngine (e.g. audio_service's
+        // MediaBrowserService, spun up by the system after the app was killed)
+        // attaches, GeneratedPluginRegistrant re-attaches this plugin and this
+        // init would otherwise fsync on that service's main thread → ANR on a
+        // large DB. ready() blocks on initCompleteLatch before it uses the DB or
+        // the engines set up here.
+        synchronized(initLock) {
+            if (initStarted) return
+            initStarted = true
+        }
+        Thread({
+            try {
+                initializeInternal()
+            } catch (t: Throwable) {
+                logger.error("initializeInternal failed: ${t.message}")
+            } finally {
+                initCompleteLatch.countDown()
+            }
+        }, "tracelet-init").start()
+    }
 
+    private val initLock = Any()
+    @Volatile private var initStarted = false
+    private val initCompleteLatch = java.util.concurrent.CountDownLatch(1)
+
+    private fun initializeInternal() {
         // Bootstrap factory for headless/boot restart
         TraceletBootstrap.eventSenderFactory = { ctx ->
             getInstance(ctx).getEventSender()
@@ -587,6 +614,12 @@ class TraceletSdk private constructor(private val context: Context) {
      * @param callback Receives the current state map when ready.
      */
     fun ready(config: Map<String, Any?>, callback: (Map<String, Any?>) -> Unit) {
+        // initialize() opens the DB and wires the engines on a background thread
+        // (see its comment). Block until that finishes, otherwise completeReady()
+        // would touch not-yet-initialized lateinit engines.
+        if (!initCompleteLatch.await(15, java.util.concurrent.TimeUnit.SECONDS)) {
+            logger.error("ready() proceeded before initialize() finished (15s timeout)")
+        }
         val merged = configManager.setConfig(config)
 
         if (merged["encryptDatabase"] == true) {
