@@ -76,10 +76,10 @@ public final class ConfigManager {
 
     // GeoConfig
     public func getDesiredAccuracy() -> Int { (cache["desiredAccuracy"] as? NSNumber)?.intValue ?? -1 }
-    public func getDistanceFilter() -> Double { cache["distanceFilter"] as? Double ?? 10.0 }
+    public func getDistanceFilter() -> Double { (cache["distanceFilter"] as? NSNumber)?.doubleValue ?? 10.0 }
     public func getLocationTimeout() -> Int { (cache["locationTimeout"] as? NSNumber)?.intValue ?? 60 }
-    public func getStationaryRadius() -> Double { cache["stationaryRadius"] as? Double ?? 25.0 }
-    public func getGeofenceProximityRadius() -> Double { cache["geofenceProximityRadius"] as? Double ?? 1000.0 }
+    public func getStationaryRadius() -> Double { (cache["stationaryRadius"] as? NSNumber)?.doubleValue ?? 25.0 }
+    public func getGeofenceProximityRadius() -> Double { (cache["geofenceProximityRadius"] as? NSNumber)?.doubleValue ?? 1000.0 }
     public func getResolveAddress() -> Bool { cache["resolveAddress"] as? Bool ?? false }
     public func getMaxDaysToPersist() -> Int { (cache["maxDaysToPersist"] as? NSNumber)?.intValue ?? -1 }
     public func getMaxRecordsToPersist() -> Int { (cache["maxRecordsToPersist"] as? NSNumber)?.intValue ?? -1 }
@@ -202,7 +202,7 @@ public final class ConfigManager {
         }
         return .activity
     }
-    public func getSpeedMovingThreshold() -> Double { cache["speedMovingThreshold"] as? Double ?? 1.5 }
+    public func getSpeedMovingThreshold() -> Double { (cache["speedMovingThreshold"] as? NSNumber)?.doubleValue ?? 1.5 }
     public func getSpeedStationaryDelay() -> Int { (cache["speedStationaryDelay"] as? NSNumber)?.intValue ?? 180 }
     public func getStationaryTrackingMode() -> StationaryTrackingMode {
         if let val = cache["stationaryTrackingMode"] as? Int, let mode = StationaryTrackingMode(rawValue: val) {
@@ -218,7 +218,7 @@ public final class ConfigManager {
     ///
     /// Dart sends this value in m/s². We divide by 9.81 to convert to g-force.
     public func getShakeThreshold() -> Double {
-        if let val = cache["shakeThreshold"] as? Double {
+        if let val = (cache["shakeThreshold"] as? NSNumber)?.doubleValue {
             return val / 9.81
         }
         return 0.35
@@ -227,7 +227,7 @@ public final class ConfigManager {
     ///
     /// Dart sends this value in m/s². We divide by 9.81 to convert to g-force.
     public func getStillThreshold() -> Double {
-        if let val = cache["stillThreshold"] as? Double {
+        if let val = (cache["stillThreshold"] as? NSNumber)?.doubleValue {
             return val / 9.81
         }
         return 0.15
@@ -366,37 +366,42 @@ public final class ConfigManager {
     public func getRemoteConfigRefreshInterval() -> Int { (cache["remoteConfigRefreshInterval"] as? NSNumber)?.intValue ?? 3600 }
 
     // MARK: - Battery Budget
-    public func getBatteryBudgetPerHour() -> Double { cache["batteryBudgetPerHour"] as? Double ?? 0.0 }
+    // Read via NSNumber (not `as? Double`) so an integer-encoded value — e.g.
+    // `{"geo":{"batteryBudgetPerHour":1}}` from a remote-config endpoint, or a
+    // plain Swift Int from a caller — coerces to Double instead of silently
+    // falling back to 0.0 (which would leave the budget disabled). Matches the
+    // robust `getDouble` coercion the Android ConfigManager uses.
+    public func getBatteryBudgetPerHour() -> Double { (cache["batteryBudgetPerHour"] as? NSNumber)?.doubleValue ?? 0.0 }
 
     // MARK: - Telematics / classifier / impact (3.3.0)
     public func getEnableDrivingEvents() -> Bool { cache["enableDrivingEvents"] as? Bool ?? false }
-    public func getHarshBrakingG() -> Double { cache["harshBrakingG"] as? Double ?? 0.40 }
-    public func getHarshAccelerationG() -> Double { cache["harshAccelerationG"] as? Double ?? 0.35 }
-    public func getHarshCorneringG() -> Double { cache["harshCorneringG"] as? Double ?? 0.40 }
-    public func getSpeedLimitKmh() -> Double { cache["speedLimitKmh"] as? Double ?? 0.0 }
-    public func getSpeedingToleranceKmh() -> Double { cache["speedingToleranceKmh"] as? Double ?? 5.0 }
+    public func getHarshBrakingG() -> Double { (cache["harshBrakingG"] as? NSNumber)?.doubleValue ?? 0.40 }
+    public func getHarshAccelerationG() -> Double { (cache["harshAccelerationG"] as? NSNumber)?.doubleValue ?? 0.35 }
+    public func getHarshCorneringG() -> Double { (cache["harshCorneringG"] as? NSNumber)?.doubleValue ?? 0.40 }
+    public func getSpeedLimitKmh() -> Double { (cache["speedLimitKmh"] as? NSNumber)?.doubleValue ?? 0.0 }
+    public func getSpeedingToleranceKmh() -> Double { (cache["speedingToleranceKmh"] as? NSNumber)?.doubleValue ?? 5.0 }
     public func getSpeedingMinDurationMs() -> Int64 { (cache["speedingMinDurationMs"] as? NSNumber)?.int64Value ?? 3000 }
-    public func getMinSpeedForEventsKmh() -> Double { cache["minSpeedForEventsKmh"] as? Double ?? 5.0 }
+    public func getMinSpeedForEventsKmh() -> Double { (cache["minSpeedForEventsKmh"] as? NSNumber)?.doubleValue ?? 5.0 }
     public func getEventDebounceMs() -> Int64 { (cache["eventDebounceMs"] as? NSNumber)?.int64Value ?? 2000 }
 
     public func getEnableFusedClassifier() -> Bool { cache["enableFusedClassifier"] as? Bool ?? false }
     public func getFusedClassifierAuthoritative() -> Bool { cache["fusedClassifierAuthoritative"] as? Bool ?? false }
     public func getModeSwitchDwellMs() -> Int64 { (cache["modeSwitchDwellMs"] as? NSNumber)?.int64Value ?? 8000 }
-    public func getMinModeConfidence() -> Double { cache["minModeConfidence"] as? Double ?? 0.6 }
+    public func getMinModeConfidence() -> Double { (cache["minModeConfidence"] as? NSNumber)?.doubleValue ?? 0.6 }
 
     public func getEnableCrashDetection() -> Bool { cache["enableCrashDetection"] as? Bool ?? false }
     public func getEnableFallDetection() -> Bool { cache["enableFallDetection"] as? Bool ?? false }
-    public func getCrashGThreshold() -> Double { cache["crashGThreshold"] as? Double ?? 2.0 }
-    public func getCrashMinSpeedKmh() -> Double { cache["crashMinSpeedKmh"] as? Double ?? 25.0 }
-    public func getFallGThreshold() -> Double { cache["fallGThreshold"] as? Double ?? 2.5 }
+    public func getCrashGThreshold() -> Double { (cache["crashGThreshold"] as? NSNumber)?.doubleValue ?? 2.0 }
+    public func getCrashMinSpeedKmh() -> Double { (cache["crashMinSpeedKmh"] as? NSNumber)?.doubleValue ?? 25.0 }
+    public func getFallGThreshold() -> Double { (cache["fallGThreshold"] as? NSNumber)?.doubleValue ?? 2.5 }
     public func getConfirmWindowMs() -> Int64 { (cache["confirmWindowMs"] as? NSNumber)?.int64Value ?? 15000 }
-    public func getMinImpactConfidence() -> Double { cache["minImpactConfidence"] as? Double ?? 0.6 }
+    public func getMinImpactConfidence() -> Double { (cache["minImpactConfidence"] as? NSNumber)?.doubleValue ?? 0.6 }
 
     // #183 crash ML model (opt-in). URL/sha of the encrypted model + the
     // probability threshold; empty URL ⇒ pure rule engine.
     public func getCrashModelUrl() -> String? { (cache["crashModelUrl"] as? String).flatMap { $0.isEmpty ? nil : $0 } }
     public func getCrashModelSha256() -> String? { (cache["crashModelSha256"] as? String).flatMap { $0.isEmpty ? nil : $0 } }
-    public func getCrashModelThreshold() -> Double { cache["crashModelThreshold"] as? Double ?? 0.5 }
+    public func getCrashModelThreshold() -> Double { (cache["crashModelThreshold"] as? NSNumber)?.doubleValue ?? 0.5 }
     // Licensing unlock: when set, the SDK POSTs the license to fetch the key + URL.
     public func getCrashModelUnlockUrl() -> String? { (cache["crashModelUnlockUrl"] as? String).flatMap { $0.isEmpty ? nil : $0 } }
     public func getCrashModelLicenseKey() -> String? { (cache["crashModelLicenseKey"] as? String).flatMap { $0.isEmpty ? nil : $0 } }

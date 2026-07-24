@@ -141,6 +141,15 @@ class TraceletSdk private constructor(private val context: Context) {
     private var batteryBudgetEngine: BatteryBudgetEngine? = null
     private var batteryBudgetRunnable: Runnable? = null
 
+    /**
+     * Test seam: whether the battery-budget engine is currently built/active.
+     * Exposed so regression tests can assert that a runtime `setConfig()` (the
+     * remote-config apply path) actually (re)builds the engine when
+     * `batteryBudgetPerHour` changes — see [applyBatteryBudgetConfig].
+     */
+    internal val isBatteryBudgetEngineActive: Boolean
+        get() = batteryBudgetEngine != null
+
     // 3.3.0 behavior engines (opt-in, default off)
     private var telematicsEngine: uniffi.tracelet_core.TelematicsEngine? = null
     private var transportClassifier: uniffi.tracelet_core.TransportModeClassifier? = null
@@ -645,16 +654,7 @@ class TraceletSdk private constructor(private val context: Context) {
         }
 
         // Initialize battery budget engine from config
-        val budgetPerHour = configManager.getBatteryBudgetPerHour()
-        if (budgetPerHour > 0) {
-            batteryBudgetEngine = BatteryBudgetEngine(
-                targetBudgetPerHour = budgetPerHour,
-                initialDistanceFilter = configManager.getDistanceFilter(),
-                initialAccuracyIndex = configManager.getDesiredAccuracy(),
-            )
-        } else {
-            batteryBudgetEngine = null
-        }
+        applyBatteryBudgetConfig()
 
         initBehaviorEngines()
 
@@ -1218,6 +1218,22 @@ class TraceletSdk private constructor(private val context: Context) {
         )
         if (behaviorKeys.any { key -> oldConfig[key] != merged[key] }) {
             initBehaviorEngines()
+        }
+
+        // The battery-budget engine is built at ready() from batteryBudgetPerHour
+        // and is otherwise never touched here — so enabling/disabling/retargeting
+        // the budget at runtime (e.g. a remote-config push of
+        // {"geo":{"batteryBudgetPerHour":1.0}}) previously had no effect until the
+        // app was cold-started. Rebuild it when the target changes, and (re)start
+        // or stop sampling to match the live tracking state.
+        if (oldConfig["batteryBudgetPerHour"] != merged["batteryBudgetPerHour"]) {
+            applyBatteryBudgetConfig()
+            if (stateManager.enabled) {
+                // startBatteryBudgetSampling() removes any pending callback first
+                // and returns early when the engine is null, so this both starts a
+                // newly-enabled budget and halts a newly-disabled one.
+                startBatteryBudgetSampling()
+            }
         }
 
         updateBootReceiverState()
@@ -3234,6 +3250,28 @@ class TraceletSdk private constructor(private val context: Context) {
             "fired" to (candidate != null),
             "kind" to candidate?.kind,
         )
+    }
+
+    /**
+     * (Re)builds the battery-budget engine from the current config.
+     *
+     * A non-zero `batteryBudgetPerHour` creates the engine seeded with the
+     * current distance filter / accuracy; a zero (or negative) value disables
+     * it. Called both at [ready] and from [setConfig] so the budget can be
+     * turned on/off/retargeted at runtime — e.g. via remote config — instead of
+     * only taking effect on the next cold start.
+     */
+    private fun applyBatteryBudgetConfig() {
+        val budgetPerHour = configManager.getBatteryBudgetPerHour()
+        batteryBudgetEngine = if (budgetPerHour > 0) {
+            BatteryBudgetEngine(
+                targetBudgetPerHour = budgetPerHour,
+                initialDistanceFilter = configManager.getDistanceFilter(),
+                initialAccuracyIndex = configManager.getDesiredAccuracy(),
+            )
+        } else {
+            null
+        }
     }
 
     private fun startBatteryBudgetSampling() {

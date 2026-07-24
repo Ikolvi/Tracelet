@@ -151,6 +151,12 @@ public final class TraceletSdk {
     /// Whether ``ready(config:)`` has been called.
     public var isReadyState: Bool { isReady }
 
+    /// Test seam: whether the battery-budget engine is currently built/active.
+    /// Exposed so regression tests can assert that a runtime `setConfig()` (the
+    /// remote-config apply path) actually (re)builds the engine when
+    /// `batteryBudgetPerHour` changes — see `applyBatteryBudgetConfig()`.
+    var isBatteryBudgetEngineActive: Bool { batteryBudgetEngine != nil }
+
     private init() {
         eventSender = delegateEventSender
         delegateEventSender.sdk = self
@@ -302,16 +308,7 @@ public final class TraceletSdk {
         }
 
         // Initialize battery budget engine from config
-        let budgetPerHour = configManager.getBatteryBudgetPerHour()
-        if budgetPerHour > 0 {
-            batteryBudgetEngine = TraceletBatteryBudgetEngine(
-                targetBudgetPerHour: budgetPerHour,
-                initialDistanceFilter: configManager.getDistanceFilter(),
-                initialAccuracyIndex: configManager.getDesiredAccuracy()
-            )
-        } else {
-            batteryBudgetEngine = nil
-        }
+        applyBatteryBudgetConfig()
 
         initBehaviorEngines()
 
@@ -791,6 +788,22 @@ public final class TraceletSdk {
         ]
         if oldBehavior != newBehavior {
             initBehaviorEngines()
+        }
+
+        // The battery-budget engine is built at ready() from batteryBudgetPerHour
+        // and is otherwise never touched here — so enabling/disabling/retargeting
+        // the budget at runtime (e.g. a remote-config push of
+        // {"geo":{"batteryBudgetPerHour":1.0}}) previously had no effect until the
+        // app was cold-started. Rebuild it when the target changes, and (re)start
+        // or stop sampling to match the live tracking state.
+        if !valuesEqual(oldConfig["batteryBudgetPerHour"], merged["batteryBudgetPerHour"]) {
+            applyBatteryBudgetConfig()
+            if stateManager.enabled {
+                // startBatteryBudgetSampling() stops any running timer first and
+                // returns early when the engine is nil, so this both starts a
+                // newly-enabled budget and halts a newly-disabled one.
+                startBatteryBudgetSampling()
+            }
         }
 
         syncConfigToRustFlat()
@@ -2751,6 +2764,26 @@ public final class TraceletSdk {
     }
 
     // MARK: - Private: Battery Budget Sampling
+
+    /// (Re)builds the battery-budget engine from the current config.
+    ///
+    /// A non-zero `batteryBudgetPerHour` creates the engine seeded with the
+    /// current distance filter / accuracy; a zero (or negative) value disables
+    /// it. Called both at `ready()` and from `setConfig()` so the budget can be
+    /// turned on/off/retargeted at runtime — e.g. via remote config — instead of
+    /// only taking effect on the next cold start (#battery-budget-remote-config).
+    private func applyBatteryBudgetConfig() {
+        let budgetPerHour = configManager.getBatteryBudgetPerHour()
+        if budgetPerHour > 0 {
+            batteryBudgetEngine = TraceletBatteryBudgetEngine(
+                targetBudgetPerHour: budgetPerHour,
+                initialDistanceFilter: configManager.getDistanceFilter(),
+                initialAccuracyIndex: configManager.getDesiredAccuracy()
+            )
+        } else {
+            batteryBudgetEngine = nil
+        }
+    }
 
     private func startBatteryBudgetSampling() {
         stopBatteryBudgetSampling()
