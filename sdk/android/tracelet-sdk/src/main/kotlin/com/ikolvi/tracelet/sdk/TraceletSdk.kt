@@ -649,20 +649,32 @@ class TraceletSdk private constructor(private val context: Context) {
         // ready() without waiting on the network, then fetch a fresh copy in the
         // background and keep it refreshed on the configured interval.
         val remoteUrl = configManager.getRemoteConfigUrl()
-        val effective = if (!remoteUrl.isNullOrEmpty()) {
-            remoteConfigManager.cachedConfig()?.let { configManager.setConfig(it) } ?: merged
+        val cachedRemote = if (!remoteUrl.isNullOrEmpty()) {
+            remoteConfigManager.cachedConfig()
         } else {
-            merged
+            null
         }
+        val effective = cachedRemote?.let { configManager.setConfig(it) } ?: merged
 
         completeReady(effective, callback)
+
+        // Mirror the applied cached override to Dart so activeConfig/diagnostics
+        // reflect the cached remote config on this cold start too.
+        if (cachedRemote != null) {
+            eventSender.sendRemoteConfigEvent(cachedRemote)
+        }
 
         if (!remoteUrl.isNullOrEmpty()) {
             remoteConfigManager.start(remoteUrl) { remote ->
                 // Apply on the main thread: setConfig() may restart the active
                 // tracking pipeline (location engine, motion sensors), which must
                 // run off the background fetch thread.
-                mainHandler.post { setConfig(remote) }
+                mainHandler.post {
+                    setConfig(remote)
+                    // Notify Dart so activeConfig / diagnostics / the Dart-side
+                    // battery-budget engine reflect the freshly fetched override.
+                    eventSender.sendRemoteConfigEvent(remote)
+                }
             }
         }
     }

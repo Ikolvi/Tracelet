@@ -731,4 +731,10 @@ class PigeonTracelet extends TraceletPlatform {
     _ensureEventsRegistered();
     return _events.motionModeChangeEvents;
   }
+
+  @override
+  Stream<Map<String?, Object?>> get remoteConfigEvents {
+    _ensureEventsRegistered();
+    return _events.remoteConfigEvents;
+  }
 }

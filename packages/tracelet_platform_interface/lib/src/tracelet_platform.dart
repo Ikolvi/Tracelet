@@ -920,4 +920,11 @@ abstract class TraceletPlatform extends PlatformInterface {
       'motionModeChangeEvents has not been implemented.',
     );
   }
+
+  /// Stream of remote-config override maps applied natively at runtime
+  /// (Enterprise `remoteConfigUrl`). Each event is the raw override map the
+  /// endpoint returned, so the app layer can fold it into its active config.
+  Stream<Map<String?, Object?>> get remoteConfigEvents {
+    throw UnimplementedError('remoteConfigEvents has not been implemented.');
+  }
 }

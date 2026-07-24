@@ -305,6 +305,9 @@ public final class TraceletSdk {
         let remoteConfigUrl = configManager.getRemoteConfigUrl()
         if remoteConfigUrl != nil, let cached = remoteConfigManager.cachedConfig() {
             _ = configManager.setConfig(cached)
+            // Mirror the applied override to Dart so activeConfig/diagnostics
+            // reflect the cached remote config on this cold start too.
+            eventSender.sendRemoteConfigEvent(cached)
         }
 
         // Initialize battery budget engine from config
@@ -356,7 +359,11 @@ public final class TraceletSdk {
         // runtime (restarting the tracking pipeline if needed).
         if let remoteUrl = remoteConfigUrl {
             remoteConfigManager.start(url: remoteUrl) { [weak self] remote in
-                _ = self?.setConfig(remote)
+                guard let self = self else { return }
+                _ = self.setConfig(remote)
+                // Notify Dart so activeConfig / diagnostics / the Dart-side
+                // battery-budget engine reflect the freshly fetched override.
+                self.eventSender.sendRemoteConfigEvent(remote)
             }
         }
 

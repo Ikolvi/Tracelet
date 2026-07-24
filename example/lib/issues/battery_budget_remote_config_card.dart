@@ -3,41 +3,31 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 
-/// Battery Budget via Remote Config — verifies that `batteryBudgetPerHour`
-/// delivered *after* `ready()` (i.e. through a runtime `setConfig()`, which is
-/// exactly how a fetched remote config is applied) actually activates the
-/// battery-budget engine.
+/// Remote Config → Dart `activeConfig` sync.
 ///
 /// ## The bug this reproduces
-/// The battery-budget engine used to be built **only** inside `ready()`. A
-/// remote-config push such as `{"geo":{"batteryBudgetPerHour":1.0}}` is applied
-/// at runtime via `setConfig()` — a path that rebuilt the location/motion
-/// pipeline and the crash/telematics engines when their keys changed, but never
-/// touched the battery-budget engine. So the value landed in the config cache
-/// yet had **no effect**: no throttling, no `onBudgetAdjustment` events. It only
-/// appeared to work after a cold restart, because the cached remote config is
-/// applied *before* `ready()` builds the engine.
+/// Remote config (Enterprise `remoteConfigUrl`) is fetched and applied entirely
+/// on the native side; the fetch never round-tripped through Dart. So while the
+/// native tracking engine honoured a remote override, the Dart-facing
+/// `Tracelet.activeConfig` (and tools like tracelet_doctor, plus the Dart-side
+/// battery-budget engine) kept showing the last *locally*-set values. A remote
+/// gist of `{"geo":{"batteryBudgetPerHour":1.0}}` therefore appeared to "not
+/// work": Doctor never showed 1%.
 ///
-/// ## What this card does
-/// 1. `ready()` with the budget **off** (`batteryBudgetPerHour` unset), then
-///    `start()` — mirroring `Config.balanced()` used by the Remote Config card.
-/// 2. Applies `geo.batteryBudgetPerHour` at runtime via `setConfig()` — the same
-///    nested shape a remote endpoint returns. The motion config is kept
-///    identical to `ready()` so this is a budget-only change and does **not**
-///    restart the tracking pipeline.
-/// 3. Subscribes to `Tracelet.onBudgetAdjustment`.
+/// ## The fix
+/// Native now emits an `onRemoteConfig` event whenever it applies a remote
+/// override; the Dart layer folds it into `activeConfig` and re-inits the
+/// Dart-side battery-budget engine.
 ///
-/// After the fix the engine is (re)built on that runtime change and starts
-/// sampling, so `onBudgetAdjustment` events begin to arrive and the native log
-/// shows `BatteryBudget adjusted: …`. Before the fix, nothing ever fired no
-/// matter how long you waited.
+/// ## What this card verifies (real end-to-end)
+/// 1. `ready()` with `batteryBudgetPerHour` OFF locally + a real
+///    `remoteConfigUrl` that returns `{"geo":{"batteryBudgetPerHour":1.0}}`.
+/// 2. `start()`, then waits for `Tracelet.onRemoteConfig` to fire.
+/// 3. Asserts `Tracelet.activeConfig.geo.batteryBudgetPerHour == 1.0` — i.e. the
+///    remotely fetched value is now reflected on the Dart side.
 ///
-/// Sampling is periodic (every few minutes, and skipped while charging — unplug
-/// the device), so leave tracking running to observe adjustments. The card
-/// confirms up-front that the runtime apply is accepted, that the budget is
-/// reflected in the effective config, and that tracking stays enabled (no
-/// pipeline restart); the live counter then proves the engine is actually
-/// running.
+/// Requires network (it fetches the gist). Before the fix, the event never
+/// fired and `activeConfig` stayed at 0.
 class BatteryBudgetRemoteConfigCard extends StatefulWidget {
   const BatteryBudgetRemoteConfigCard({super.key});
 
@@ -48,15 +38,17 @@ class BatteryBudgetRemoteConfigCard extends StatefulWidget {
 
 class _BatteryBudgetRemoteConfigCardState
     extends State<BatteryBudgetRemoteConfigCard> {
-  /// Target battery budget applied at runtime (percent per hour).
-  static const double _budgetPerHour = 5;
+  /// Gist returning `{"geo":{"batteryBudgetPerHour":1.0}}`.
+  static const _remoteUrl =
+      'https://gist.githubusercontent.com/MuellerMoritz/'
+      '28b9559f12f0a7da11d13874d6b7068a/raw';
+
+  /// The value the gist should apply.
+  static const double _expectedBudget = 1;
 
   String _status = 'Idle';
-  bool _tracking = false;
   bool _busy = false;
-  int _adjustmentCount = 0;
-  String _latestAdjustment = '';
-  StreamSubscription<BudgetAdjustmentEvent>? _budgetSub;
+  StreamSubscription<Config>? _remoteSub;
 
   void _set(String s) {
     if (mounted) setState(() => _status = s);
@@ -64,29 +56,14 @@ class _BatteryBudgetRemoteConfigCardState
 
   @override
   void dispose() {
-    _budgetSub?.cancel();
+    _remoteSub?.cancel();
     super.dispose();
   }
 
-  /// Motion config shared by `ready()` and the runtime `setConfig()`.
-  ///
-  /// Kept identical between the two calls so the runtime apply is a budget-only
-  /// change: motion keys are restart-sensitive, and any diff would restart the
-  /// whole pipeline instead of exercising the battery-budget rebuild path.
-  /// `isMoving`/`disableStopDetection` also keep the session in the moving state
-  /// so sampling keeps running instead of the device dropping to stationary.
-  static const _motion = MotionConfig(
-    isMoving: true,
-    disableStopDetection: true,
-  );
-
-  Future<void> _start() async {
-    if (_busy || _tracking) return;
-    setState(() {
-      _busy = true;
-      _adjustmentCount = 0;
-      _latestAdjustment = '';
-    });
+  Future<void> _run() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final completer = Completer<Config>();
     try {
       _set('Requesting permissions...');
       final auth = await Tracelet.requestLocationAuthorization();
@@ -96,122 +73,84 @@ class _BatteryBudgetRemoteConfigCardState
         return;
       }
 
-      // 1. Start with the budget OFF — the reported starting point.
-      _set('ready() with battery budget OFF, then start()...');
+      // Listen BEFORE ready()/fetch so we catch the first onRemoteConfig event.
+      await _remoteSub?.cancel();
+      _remoteSub = Tracelet.onRemoteConfig((config) {
+        if (!completer.isCompleted) completer.complete(config);
+      });
+
+      // 1. ready() with the budget OFF locally + a real remoteConfigUrl.
+      _set('ready() with remoteConfigUrl (budget starts OFF locally)...');
       await Tracelet.ready(
-        const Config(
-          motion: _motion,
-          logger: LoggerConfig(debug: true, logLevel: LogLevel.verbose),
+        Config.balanced().copyWith(
+          app: const AppConfig(
+            remoteConfigUrl: _remoteUrl,
+            remoteConfigRefreshInterval: 15,
+          ),
+          motion: const MotionConfig(
+            isMoving: true,
+            disableStopDetection: true,
+          ),
+          logger: const LoggerConfig(debug: true, logLevel: LogLevel.verbose),
         ),
       );
 
-      // Wire the listener before the budget is enabled so we capture the very
-      // first adjustment the engine emits once it starts sampling.
-      await _budgetSub?.cancel();
-      _budgetSub = Tracelet.onBudgetAdjustment((event) {
-        if (!mounted) return;
-        setState(() {
-          _adjustmentCount++;
-          _latestAdjustment =
-              'drain: ${event.currentBatteryDrain.toStringAsFixed(2)}%/hr → '
-              'target ${event.targetBudget}%/hr\n'
-              'df=${event.newDistanceFilter}m  acc=${event.newDesiredAccuracy}'
-              '  interval=${event.newPeriodicInterval}s';
-          _status =
-              '✅ onBudgetAdjustment fired ($_adjustmentCount) — the engine '
-              'applied at runtime is ACTIVE.\n$_latestAdjustment';
-        });
-      });
-
-      final started = await Tracelet.start();
-      if (!started.enabled) {
-        _set('❌ FAILED: tracking did not start (enabled=false).');
-        return;
-      }
-
-      final before = await Tracelet.getState();
-      final budgetBefore = before.config?.geo.batteryBudgetPerHour ?? 0;
-      if (budgetBefore > 0) {
+      final beforeBudget = Tracelet.activeConfig.geo.batteryBudgetPerHour;
+      if (beforeBudget != 0) {
         _set(
-          '⚠️ Expected the budget to start at 0 but it is $budgetBefore. '
-          'Reset the SDK and retry for a clean repro.',
+          '⚠️ Expected local budget to start at 0 but activeConfig shows '
+          '$beforeBudget. Reset the app and retry for a clean repro.',
         );
       }
 
-      // 2. Deliver batteryBudgetPerHour at RUNTIME — the remote-config path.
-      //    Nested `{geo:{batteryBudgetPerHour:…}}`, exactly what an endpoint
-      //    returns. Motion is unchanged, so this must NOT restart the pipeline.
+      await Tracelet.start();
       _set(
-        'Applying batteryBudgetPerHour=$_budgetPerHour at runtime via '
-        'setConfig() (the remote-config path)...',
-      );
-      await Tracelet.setConfig(
-        const Config(
-          geo: GeoConfig(batteryBudgetPerHour: _budgetPerHour),
-          motion: _motion,
-        ),
+        'Waiting for the remote config fetch to apply '
+        '(onRemoteConfig)...\n(needs network)',
       );
 
-      // Let the write settle, then confirm the mechanical guarantees.
-      await Future<void>.delayed(const Duration(seconds: 1));
-      final after = await Tracelet.getState();
-      final budgetAfter = after.config?.geo.batteryBudgetPerHour ?? 0;
-
-      if (!after.enabled) {
+      // 2. Wait for native to fetch + apply, then emit onRemoteConfig.
+      final Config applied;
+      try {
+        applied = await completer.future.timeout(const Duration(seconds: 30));
+      } on TimeoutException {
         _set(
-          '❌ FAILED: tracking is no longer enabled — a budget-only setConfig() '
-          'must not restart or stop the pipeline.',
-        );
-        return;
-      }
-      if (budgetAfter != _budgetPerHour) {
-        _set(
-          '❌ FAILED: effective config shows batteryBudgetPerHour=$budgetAfter '
-          'after the runtime apply (expected $_budgetPerHour).',
+          '❌ FAILED: onRemoteConfig never fired within 30s. The remote config '
+          'was not fetched/applied (check connectivity and the verbose log for '
+          '"remote config: fetched …").',
         );
         return;
       }
 
-      setState(() {
-        _tracking = true;
-        _status =
-            '✅ Runtime apply accepted: batteryBudgetPerHour=$budgetAfter, '
-            'tracking still enabled (no restart).\n\n'
-            'The battery-budget engine is now running. Keep tracking (device '
-            'UNPLUGGED — sampling is skipped while charging); onBudgetAdjustment '
-            'events will arrive over the next few minutes and the count below '
-            'will climb. Watch the native log for "BatteryBudget adjusted: …".\n'
-            'Before the fix, no adjustment ever fired from a runtime-only '
-            'batteryBudgetPerHour.\n\nAdjustments so far: 0';
-      });
+      // 3. Verify the Dart side now reflects the remote value.
+      final eventBudget = applied.geo.batteryBudgetPerHour;
+      final activeBudget = Tracelet.activeConfig.geo.batteryBudgetPerHour;
+
+      if (activeBudget == _expectedBudget && eventBudget == _expectedBudget) {
+        _set(
+          '✅ PASS: remote config applied on the Dart side.\n'
+          'onRemoteConfig delivered batteryBudgetPerHour=$eventBudget, and '
+          'Tracelet.activeConfig now reports $activeBudget%/hr.\n'
+          'tracelet_doctor will now show $activeBudget% too.',
+        );
+      } else {
+        _set(
+          '❌ FAILED: expected $_expectedBudget but onRemoteConfig gave '
+          '$eventBudget and activeConfig shows $activeBudget. '
+          '(If the gist changed, update _expectedBudget.)',
+        );
+      }
     } catch (e) {
       _set('❌ FAILED: $e');
     } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _stop() async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      await _budgetSub?.cancel();
-      _budgetSub = null;
-      await Tracelet.stop();
-    } catch (_) {
-      // stopping is best-effort
-    } finally {
-      if (mounted) {
-        setState(() {
-          _tracking = false;
-          _busy = false;
-          _status = _adjustmentCount > 0
-              ? '✅ Stopped. Saw $_adjustmentCount budget adjustment(s) from a '
-                    'runtime-applied budget — the fix works.'
-              : 'Stopped. No adjustments observed yet (sampling is periodic and '
-                    'skipped while charging) — leave it running longer next time.';
-        });
+      await _remoteSub?.cancel();
+      _remoteSub = null;
+      try {
+        await Tracelet.stop();
+      } catch (_) {
+        // best-effort
       }
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -226,18 +165,17 @@ class _BatteryBudgetRemoteConfigCardState
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              'Battery Budget via Remote Config: runtime batteryBudgetPerHour',
+              'Remote Config → activeConfig sync (batteryBudgetPerHour)',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             const Text(
-              'Starts with the battery budget OFF, then delivers '
-              'geo.batteryBudgetPerHour at runtime via setConfig() — the same '
-              'path a fetched remote config uses. Confirms the runtime apply is '
-              'accepted without restarting tracking, then listens for '
-              'onBudgetAdjustment events (which never fired before the fix). '
-              'Keep the device unplugged and leave tracking running to observe '
-              'adjustments.',
+              'Starts with the battery budget OFF locally, fetches a remote '
+              'config that sets batteryBudgetPerHour=1.0, and verifies the '
+              'value now shows up in Tracelet.activeConfig via the new '
+              'onRemoteConfig event. Before the fix, remote config was applied '
+              'natively but never reflected in Dart (tracelet_doctor kept '
+              'showing the local value). Requires network.',
             ),
             const SizedBox(height: 12),
             Container(
@@ -248,19 +186,21 @@ class _BatteryBudgetRemoteConfigCardState
                 border: Border.all(color: Colors.grey.shade300),
               ),
               child: Text(
-                _tracking && _adjustmentCount > 0
-                    ? '$_status\n\nAdjustments so far: $_adjustmentCount'
-                    : _status,
+                _status,
                 style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
               ),
             ),
             const SizedBox(height: 16),
             FilledButton.icon(
-              onPressed: _busy ? null : (_tracking ? _stop : _start),
-              icon: Icon(_tracking ? Icons.stop : Icons.battery_saver),
-              label: Text(
-                _tracking ? 'Stop' : 'Start (apply budget at runtime)',
-              ),
+              onPressed: _busy ? null : _run,
+              icon: _busy
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.cloud_sync),
+              label: Text(_busy ? 'Running...' : 'Run remote config test'),
             ),
           ],
         ),

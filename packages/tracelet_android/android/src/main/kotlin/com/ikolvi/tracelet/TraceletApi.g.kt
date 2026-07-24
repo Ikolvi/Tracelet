@@ -5651,4 +5651,29 @@ class TraceletEventApi(private val binaryMessenger: BinaryMessenger, private val
       } 
     }
   }
+  /**
+   * Fired when a remotely-fetched configuration (Enterprise `remoteConfigUrl`)
+   * is applied natively at runtime. Carries the raw override map the endpoint
+   * returned (e.g. `{"geo":{"batteryBudgetPerHour":1.0}}`) so the Dart layer
+   * can fold it into its cached active config — otherwise `Tracelet.activeConfig`
+   * (and diagnostics like tracelet_doctor) would keep showing the last
+   * locally-set values, since the native fetch never round-trips through Dart.
+   */
+  fun onRemoteConfig(configArg: Map<String?, Any?>, callback: (Result<Unit>) -> Unit)
+{
+    val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+    val channelName = "dev.flutter.pigeon.tracelet_platform_interface.TraceletEventApi.onRemoteConfig$separatedMessageChannelSuffix"
+    val channel = BasicMessageChannel<Any?>(binaryMessenger, channelName, codec)
+    channel.send(listOf(configArg)) {
+      if (it is List<*>) {
+        if (it.size > 1) {
+          callback(Result.failure(FlutterError(it[0] as String, it[1] as String, it[2] as String?)))
+        } else {
+          callback(Result.success(Unit))
+        }
+      } else {
+        callback(Result.failure(TraceletApiPigeonUtils.createConnectionError(channelName)))
+      } 
+    }
+  }
 }

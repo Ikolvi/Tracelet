@@ -1229,4 +1229,12 @@ abstract class TraceletEventApi {
   void onImpact(TlImpactEvent event);
   void onModeChange(TlModeChangeEvent event);
   void onCrashModelStatus(TlCrashModelStatusEvent event);
+
+  /// Fired when a remotely-fetched configuration (Enterprise `remoteConfigUrl`)
+  /// is applied natively at runtime. Carries the raw override map the endpoint
+  /// returned (e.g. `{"geo":{"batteryBudgetPerHour":1.0}}`) so the Dart layer
+  /// can fold it into its cached active config — otherwise `Tracelet.activeConfig`
+  /// (and diagnostics like tracelet_doctor) would keep showing the last
+  /// locally-set values, since the native fetch never round-trips through Dart.
+  void onRemoteConfig(Map<String?, Object?> config);
 }

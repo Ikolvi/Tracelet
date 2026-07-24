@@ -1162,6 +1162,11 @@ class TraceletWebPlugin extends TraceletPlatform {
       // The ML crash model is a native-only feature; never fires on web.
       const Stream.empty();
 
+  @override
+  Stream<Map<String?, Object?>> get remoteConfigEvents =>
+      // Remote config is a native-only (Enterprise) feature; never fires on web.
+      const Stream.empty();
+
   void _assertReady() {
     if (!_isReady) {
       throw StateError(

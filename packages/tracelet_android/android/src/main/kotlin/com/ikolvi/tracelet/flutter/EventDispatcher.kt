@@ -284,7 +284,15 @@ class EventDispatcher : TraceletEventSender {
     }
 
     // Events without Pigeon FlutterApi counterparts — route to headless only.
-    override fun sendRemoteConfigEvent(data: Map<String, Any?>) = fallback("remoteconfig", data)
+    override fun sendRemoteConfigEvent(data: Map<String, Any?>) {
+        val api = eventApi
+        if (api != null) {
+            @Suppress("UNCHECKED_CAST")
+            postToMain { api.onRemoteConfig(data as Map<String?, Any?>) {} }
+        } else {
+            fallback("remoteconfig", data)
+        }
+    }
     override fun sendTrip(data: Map<String, Any?>) = fallback("trip", data)
     override fun sendBudgetAdjustment(data: Map<String, Any?>) = fallback("budgetadjustment", data)
 
