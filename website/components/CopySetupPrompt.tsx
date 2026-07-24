@@ -54,23 +54,26 @@ async function writeClipboard(text: string): Promise<boolean> {
   }
 }
 
-// True when the visitor arrived from the README badge, e.g.
-// /en?copyPrompt=1  or  /en#copy-ai-setup-prompt
+// True when the visitor landed on the in-page anchor, e.g.
+// /en#copy-ai-setup-prompt — we auto-copy in place for this case.
 function landedForCopy(): boolean {
   if (typeof window === "undefined") return false;
-  const params = new URLSearchParams(window.location.search);
-  if (params.get("copyPrompt") === "1") return true;
   return window.location.hash === `#${COPY_ANCHOR_ID}`;
 }
 
-// Resolves the given promise, or `fallback` if it hasn't settled within `ms`.
-// A gesture-less clipboard write can hang indefinitely in some browsers when
-// the tab isn't focused, so we never await it unguarded.
-function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
-  ]);
+// The README badges point at the dedicated /copy-prompt landing page, but links
+// already published to pub.dev / GitHub still carry /en?copyPrompt=1. That
+// loads this heavy docs homepage where a gesture-less clipboard write is
+// unreliable and third-party scripts / the video make the tab look stuck. When
+// we see that legacy marker, hand off to /copy-prompt, preserving utm params.
+function legacyCopyPromptRedirect(): boolean {
+  if (typeof window === "undefined") return false;
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("copyPrompt") !== "1") return false;
+  params.delete("copyPrompt");
+  const query = params.toString();
+  window.location.replace(`/copy-prompt${query ? `?${query}` : ""}`);
+  return true;
 }
 
 export default function CopySetupPrompt({ variant = "hero" }: { variant?: Variant }) {
@@ -111,37 +114,33 @@ export default function CopySetupPrompt({ variant = "hero" }: { variant?: Varian
     };
   }, []);
 
-  // README landing flow: only the hero button (home page) reacts to the badge
-  // marker. Browsers block a clipboard write that isn't tied to a user gesture
-  // on our own page (the click happened on pub.dev / GitHub), so we can't rely
-  // on auto-copy. Instead we immediately scroll the button into view and pulse
-  // it so a single click copies — then attempt a best-effort auto-copy in the
-  // background for the browsers that do allow it.
+  // Landing flow for the hero button (home page).
   useEffect(() => {
-    if (variant !== "hero" || !landedForCopy()) return;
+    if (variant !== "hero") return;
+    // Legacy README links (?copyPrompt=1) get handed off to /copy-prompt.
+    if (legacyCopyPromptRedirect()) return;
+    // In-page hash anchor (#copy-ai-setup-prompt): scroll to the button, pulse
+    // it, and attempt a best-effort auto-copy. If the browser blocks the
+    // gesture-less write the button keeps pulsing for a one-click copy.
+    if (!landedForCopy()) return;
 
     let cancelled = false;
-
-    // Guide the visitor to the button first, no matter what the clipboard does.
     setAttention(true);
     buttonRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
 
-    // Clean the marker out of the URL so a refresh doesn't re-trigger this.
-    try {
-      const url = new URL(window.location.href);
-      url.searchParams.delete("copyPrompt");
-      if (url.hash === `#${COPY_ANCHOR_ID}`) url.hash = "";
-      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
-    } catch {
-      // non-fatal
-    }
+    (async () => {
+      const ok = await doCopy("auto");
+      if (cancelled) return;
+      if (ok) setAttention(false);
 
-    // Best-effort auto-copy, guarded so a hung clipboard promise can't stall.
-    // On success doCopy() clears the pulse and shows the "copied" state; on
-    // failure the button keeps pulsing for the visitor to click.
-    void withTimeout(doCopy("auto"), 1500, false).then((ok) => {
-      if (!cancelled && ok) setAttention(false);
-    });
+      try {
+        const url = new URL(window.location.href);
+        if (url.hash === `#${COPY_ANCHOR_ID}`) url.hash = "";
+        window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+      } catch {
+        // non-fatal
+      }
+    })();
 
     return () => {
       cancelled = true;

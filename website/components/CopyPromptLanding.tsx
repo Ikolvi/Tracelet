@@ -160,27 +160,51 @@ export default function CopyPromptLanding() {
             : "Copy the prompt below and paste it into your AI coding assistant (Cursor, Claude Code, Kiro, Copilot Chat, etc.). It will interview you, then install and configure Tracelet for your exact use case."}
         </p>
 
-        <button
-          type="button"
-          onClick={handleCopy}
-          aria-live="polite"
-          style={{
-            padding: "0.85rem 1.6rem",
-            fontWeight: 700,
-            fontSize: "1.05rem",
-            borderRadius: "0.6rem",
-            border: `1px solid ${ACCENT}`,
-            color: copied ? "#ffffff" : ACCENT,
-            backgroundColor: copied ? ACCENT : "transparent",
-            cursor: "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "0.55rem",
-            transition: "background-color 0.2s, color 0.2s",
-          }}
-        >
-          {copied ? <>✓ Prompt copied — paste it into your AI</> : <>✨ Copy AI Setup Prompt</>}
-        </button>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.75rem" }}>
+          <button
+            type="button"
+            onClick={handleCopy}
+            aria-live="polite"
+            style={{
+              padding: "0.85rem 1.6rem",
+              fontWeight: 700,
+              fontSize: "1.05rem",
+              borderRadius: "0.6rem",
+              border: `1px solid ${ACCENT}`,
+              color: copied ? "#ffffff" : ACCENT,
+              backgroundColor: copied ? ACCENT : "transparent",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.55rem",
+              transition: "background-color 0.2s, color 0.2s",
+            }}
+          >
+            {copied ? <>✓ Prompt copied — paste it into your AI</> : <>✨ Copy AI Setup Prompt</>}
+          </button>
+
+          {/* Escape hatch for visitors who'd rather wire Tracelet up by hand
+              instead of using the AI prompt — send them straight to the docs. */}
+          <a
+            href="https://tracelet.ikolvi.com/en/quick-start"
+            style={{
+              padding: "0.85rem 1.5rem",
+              fontWeight: 600,
+              fontSize: "1rem",
+              borderRadius: "0.6rem",
+              border: `1px solid ${t.border}`,
+              color: t.subtext,
+              backgroundColor: t.panelBg,
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              transition: "opacity 0.2s",
+            }}
+          >
+            🛠️ Set up manually (read the docs)
+          </a>
+        </div>
 
         {state === "manual" && (
           <p style={{ marginTop: "0.75rem", color: "#b45309", fontSize: "0.9rem" }}>
