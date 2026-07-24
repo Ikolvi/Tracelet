@@ -92,6 +92,7 @@ Compound top-level configuration.
 - `remoteConfigHeaders`: Map<String, String>? (Default: null)
 - `remoteConfigTimeout`: int (Default: 60000)
 - `remoteConfigRefreshInterval`: int (Default: 1440)
+- Remote config is fetched/applied natively; since 3.6.10 applied overrides also propagate to Dart, so `Tracelet.activeConfig` (and tracelet_doctor) reflect fetched values. Subscribe via `Tracelet.onRemoteConfig((Config config) {...})` or `Tracelet.remoteConfigStream` (Stream<Config>) to react when a remote override is applied.
 
 ## class AndroidConfig
 - `locationUpdateInterval`: int (Default: 1000)

@@ -167,7 +167,7 @@ final safe = TraceletBugReport.redactConfig(Tracelet.activeConfig.toMap());
 |---|---|---|
 | Health check | `Tracelet.getHealth()` | Permissions, OEM/battery, sensors, device — the usual suspects |
 | Warnings | computed | The likely *cause* of "tracking stops in the background" |
-| Active configuration | `Tracelet.activeConfig` (redacted) | Confirms the settings actually in effect |
+| Active configuration | `Tracelet.activeConfig` (redacted) | Confirms the settings actually in effect — including any applied [remote config](/en/config/enterprise-features) (3.6.10+) |
 | Telematics events | `Tracelet.getTelematicsEvents()` | Recent driving/impact events (3.3.0) |
 | Logs | `Tracelet.getLogs()` | A timeline of what the SDK did, including in the background |
 
