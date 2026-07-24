@@ -63,6 +63,16 @@ function landedForCopy(): boolean {
   return window.location.hash === `#${COPY_ANCHOR_ID}`;
 }
 
+// Resolves the given promise, or `fallback` if it hasn't settled within `ms`.
+// A gesture-less clipboard write can hang indefinitely in some browsers when
+// the tab isn't focused, so we never await it unguarded.
+function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
 export default function CopySetupPrompt({ variant = "hero" }: { variant?: Variant }) {
   const [copied, setCopied] = useState(false);
   // "attention" = the browser blocked the automatic copy on landing, so we
@@ -101,31 +111,37 @@ export default function CopySetupPrompt({ variant = "hero" }: { variant?: Varian
     };
   }, []);
 
-  // Auto-copy flow: only the hero button (home page) reacts to the README
-  // landing marker. Browsers frequently block a clipboard write that isn't tied
-  // to a user gesture, so if the automatic attempt fails we scroll to the
-  // button and pulse it instead of leaving the visitor with nothing.
+  // README landing flow: only the hero button (home page) reacts to the badge
+  // marker. Browsers block a clipboard write that isn't tied to a user gesture
+  // on our own page (the click happened on pub.dev / GitHub), so we can't rely
+  // on auto-copy. Instead we immediately scroll the button into view and pulse
+  // it so a single click copies — then attempt a best-effort auto-copy in the
+  // background for the browsers that do allow it.
   useEffect(() => {
     if (variant !== "hero" || !landedForCopy()) return;
 
     let cancelled = false;
-    (async () => {
-      const ok = await doCopy("auto");
-      if (cancelled) return;
-      if (!ok) setAttention(true);
 
-      buttonRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    // Guide the visitor to the button first, no matter what the clipboard does.
+    setAttention(true);
+    buttonRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
 
-      // Clean the marker out of the URL so a refresh doesn't re-trigger this.
-      try {
-        const url = new URL(window.location.href);
-        url.searchParams.delete("copyPrompt");
-        if (url.hash === `#${COPY_ANCHOR_ID}`) url.hash = "";
-        window.history.replaceState(null, "", url.pathname + url.search + url.hash);
-      } catch {
-        // non-fatal
-      }
-    })();
+    // Clean the marker out of the URL so a refresh doesn't re-trigger this.
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("copyPrompt");
+      if (url.hash === `#${COPY_ANCHOR_ID}`) url.hash = "";
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    } catch {
+      // non-fatal
+    }
+
+    // Best-effort auto-copy, guarded so a hung clipboard promise can't stall.
+    // On success doCopy() clears the pulse and shows the "copied" state; on
+    // failure the button keeps pulsing for the visitor to click.
+    void withTimeout(doCopy("auto"), 1500, false).then((ok) => {
+      if (!cancelled && ok) setAttention(false);
+    });
 
     return () => {
       cancelled = true;
