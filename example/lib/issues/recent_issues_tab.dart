@@ -29,6 +29,7 @@ import 'package:tracelet_example/issues/issue_253_card.dart';
 import 'package:tracelet_example/issues/issue_254_card.dart';
 import 'package:tracelet_example/issues/issue_256_card.dart';
 import 'package:tracelet_example/issues/issue_257_card.dart';
+import 'package:tracelet_example/issues/battery_budget_remote_config_card.dart';
 import 'package:tracelet_example/issues/mock_rejection_card.dart';
 import 'package:tracelet_example/issues/remote_config_card.dart';
 
@@ -1684,6 +1685,12 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               children: [
                 // Latest issues first (newest on top).
+                _searchableCard(
+                  keywords:
+                      'battery budget remote config batterybudgetperhour '
+                      'runtime setconfig onbudgetadjustment',
+                  child: const BatteryBudgetRemoteConfigCard(),
+                ),
                 _searchableCard(
                   issueNumber: 257,
                   keywords:
