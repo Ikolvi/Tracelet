@@ -3275,7 +3275,11 @@ extension TraceletSdk: SpeedMotionDelegate {
             stateManager.isMoving = true
             stateManager.trackingMode = .continuous
             locationEngine.switchToContinuous()
-            backgroundActivitySessionManager.start()
+            // #261: honor useSignificantChangesOnly here too. This is the path
+            // the speed/smart motion pipeline takes when it confirms movement,
+            // independent of start()'s moving branch — so it must apply the same
+            // guard or the persistent location indicator comes back.
+            startBackgroundActivitySessionIfNeeded()
 
             // Emit motionchange event for backward compatibility
             let lastLoc = locationEngine.getLastLocation()

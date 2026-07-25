@@ -86,4 +86,26 @@ final class SignificantChangesBackgroundSessionTests: XCTestCase {
             XCTAssertFalse(sdk.backgroundActivitySessionManager.isActive)
         }
     }
+
+    /// The path that actually reproduced #261 in the app: the speed/smart
+    /// motion pipeline confirms movement and calls `switchToContinuousForce()`,
+    /// which switches to continuous GPS and (before the fix) unconditionally
+    /// opened a `CLBackgroundActivitySession` — independent of start()'s moving
+    /// branch. It must honor `useSignificantChangesOnly` too.
+    func testSwitchToContinuousForceWithSignificantChangesOnlyDoesNotStartSession() {
+        let sdk = TraceletSdk.shared
+        sdk.ready(config: [
+            "useSignificantChangesOnly": true,
+            "motion": ["isMoving": true, "disableStopDetection": true] as [String: Any],
+        ])
+        sdk.start()
+
+        // Simulate the motion pipeline confirming real movement.
+        sdk.switchToContinuousForce()
+
+        XCTAssertFalse(
+            sdk.backgroundActivitySessionManager.isActive,
+            "switchToContinuousForce() must not open a session under useSignificantChangesOnly (#261)"
+        )
+    }
 }

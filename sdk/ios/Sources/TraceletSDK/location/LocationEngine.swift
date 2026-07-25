@@ -396,6 +396,19 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         stopPeriodicTimer()
         isPeriodicTracking = false
 
+        // #261: in significant-changes-only mode we must NOT start continuous
+        // GPS. startUpdatingLocation() (with allowsBackgroundLocationUpdates)
+        // itself shows the persistent system location indicator — independent
+        // of CLBackgroundActivitySession — which defeats significant-change
+        // monitoring. The motion pipeline can call this on a confirmed
+        // movement, so honor the flag here just like start() does and keep
+        // significant-change monitoring (registered in start()) as the sole
+        // wake-up mechanism.
+        if configManager.getUseSignificantChangesOnly() {
+            TraceletLog.debug("[Tracelet] switchToContinuous: useSignificantChangesOnly enabled — staying on significant-change monitoring, not starting continuous GPS (#261)")
+            return
+        }
+
         configureLocationManager()
         locationManager.startUpdatingLocation()
         startGpsLossTimer()
