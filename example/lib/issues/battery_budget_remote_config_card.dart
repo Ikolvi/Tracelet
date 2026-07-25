@@ -187,7 +187,11 @@ class _BatteryBudgetRemoteConfigCardState
               ),
               child: Text(
                 _status,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  color: Colors.black87,
+                ),
               ),
             ),
             const SizedBox(height: 16),

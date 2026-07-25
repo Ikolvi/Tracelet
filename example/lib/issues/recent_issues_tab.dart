@@ -1703,12 +1703,6 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
                   // own title/description/keywords via IssueSearchScope, so they
                   // are rendered directly. Cards with a bespoke layout (no shell)
                   // stay wrapped in _searchableCard with explicit keywords.
-                  _searchableCard(
-                    keywords:
-                        'battery budget remote config batterybudgetperhour '
-                        'runtime setconfig onbudgetadjustment activeconfig sync',
-                    child: const BatteryBudgetRemoteConfigCard(),
-                  ),
                   const Issue261Card(),
                   const Issue257Card(),
                   const Issue256Card(),
@@ -1859,6 +1853,12 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
                   ),
                   // Feature demos (not numbered issues) — searchable by keyword
                   // and kept at the bottom so they never sit above real issues.
+                  _searchableCard(
+                    keywords:
+                        'battery budget remote config batterybudgetperhour '
+                        'runtime setconfig onbudgetadjustment activeconfig sync',
+                    child: const BatteryBudgetRemoteConfigCard(),
+                  ),
                   _searchableCard(
                     keywords:
                         'remote config remoteconfig native background fetch '

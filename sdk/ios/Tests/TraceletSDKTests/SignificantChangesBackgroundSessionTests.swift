@@ -108,4 +108,14 @@ final class SignificantChangesBackgroundSessionTests: XCTestCase {
             "switchToContinuousForce() must not open a session under useSignificantChangesOnly (#261)"
         )
     }
+
+    /// A flat top-level `useSignificantChangesOnly` must be honored by the
+    /// getter (the shape `tlConfigToDict` produces after combining the ios and
+    /// motion sources — see #261).
+    func testSetConfigTopLevelSignificantChangesIsHonored() {
+        let config = ConfigManager()
+        config.reset(nil)
+        _ = config.setConfig(["useSignificantChangesOnly": true])
+        XCTAssertTrue(config.getUseSignificantChangesOnly())
+    }
 }

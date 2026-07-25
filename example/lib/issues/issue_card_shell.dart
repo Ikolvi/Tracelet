@@ -98,7 +98,14 @@ class IssueCardShell extends StatelessWidget {
               ),
               child: Text(
                 status,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                // Explicit dark text: the box background is always light
+                // (grey.shade100), so without this the status is invisible in
+                // dark mode (default text color becomes light → white-on-white).
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  color: Colors.black87,
+                ),
               ),
             ),
             const SizedBox(height: 16),

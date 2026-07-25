@@ -137,7 +137,15 @@ class TraceletHostApiImpl: TraceletHostApi {
         dict["stopOnStationary"] = c.motion.stopOnStationary
         if let activityTypes = c.motion.activityTypes { dict["activityTypes"] = activityTypes.compactMap { $0?.rawValue } }
         dict["stationaryRadius"] = c.motion.stationaryRadius
-        dict["useSignificantChangesOnly"] = c.motion.useSignificantChangesOnly
+        // #261: `useSignificantChangesOnly` is defined on BOTH IosConfig and
+        // MotionConfig, and both flatten to this same native key. The iOS
+        // section already wrote `c.ios.useSignificantChangesOnly` above; writing
+        // the motion value here unconditionally CLOBBERED it, so a user-set
+        // `ios: IosConfig(useSignificantChangesOnly: true)` was overwritten by a
+        // default-false MotionConfig. Combine them so a `true` from either
+        // source is honored (the native SDK exposes a single flag).
+        dict["useSignificantChangesOnly"] =
+            c.ios.useSignificantChangesOnly || c.motion.useSignificantChangesOnly
         dict["shakeThreshold"] = c.motion.shakeThreshold
         dict["stillThreshold"] = c.motion.stillThreshold
         dict["stillSampleCount"] = c.motion.stillSampleCount
