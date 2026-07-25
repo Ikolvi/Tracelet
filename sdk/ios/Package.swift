@@ -38,6 +38,7 @@ let package = Package(
                 "MotionDetectorTests.swift",
                 "BatteryBudgetRemoteConfigTests.swift",
                 "ConfigManagerNumericCoercionTests.swift",
+                "SignificantChangesBackgroundSessionTests.swift",
             ]
         ),
     ]

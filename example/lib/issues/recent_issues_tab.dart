@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:crypto/crypto.dart';
 import 'package:tracelet/tracelet.dart' hide State;
+import 'package:tracelet_example/issues/issue_card_shell.dart';
 import 'package:tracelet_example/issues/issue_185_card.dart';
 import 'package:tracelet_example/issues/issue_198_card.dart';
 import 'package:tracelet_example/issues/issue_201_card.dart';
@@ -29,6 +30,7 @@ import 'package:tracelet_example/issues/issue_253_card.dart';
 import 'package:tracelet_example/issues/issue_254_card.dart';
 import 'package:tracelet_example/issues/issue_256_card.dart';
 import 'package:tracelet_example/issues/issue_257_card.dart';
+import 'package:tracelet_example/issues/issue_261_card.dart';
 import 'package:tracelet_example/issues/battery_budget_remote_config_card.dart';
 import 'package:tracelet_example/issues/mock_rejection_card.dart';
 import 'package:tracelet_example/issues/remote_config_card.dart';
@@ -1648,8 +1650,16 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
                   child: TextField(
                     controller: _searchController,
                     decoration: InputDecoration(
-                      labelText: 'Search by Issue Number',
+                      labelText: 'Search issues (number or text)',
+                      hintText: 'e.g. 257, notification, geofence',
                       prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _searchQuery.isEmpty
+                          ? null
+                          : IconButton(
+                              icon: const Icon(Icons.clear),
+                              tooltip: 'Clear search',
+                              onPressed: _searchController.clear,
+                            ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -1658,7 +1668,8 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
                         vertical: 12,
                       ),
                     ),
-                    keyboardType: TextInputType.number,
+                    keyboardType: TextInputType.text,
+                    textInputAction: TextInputAction.search,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1680,154 +1691,185 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
             ),
           ),
           Expanded(
-            child: ListView(
-              controller: _scrollController,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              children: [
-                // Latest issues first (newest on top).
-                _searchableCard(
-                  keywords:
-                      'battery budget remote config batterybudgetperhour '
-                      'runtime setconfig onbudgetadjustment',
-                  child: const BatteryBudgetRemoteConfigCard(),
-                ),
-                _searchableCard(
-                  issueNumber: 257,
-                  keywords:
-                      'notification live activity refresh updatenotification',
-                  child: const Issue257Card(),
-                ),
-                _searchableCard(issueNumber: 256, child: const Issue256Card()),
-                _searchableCard(issueNumber: 254, child: const Issue254Card()),
-                _searchableCard(issueNumber: 253, child: const Issue253Card()),
-                _searchableCard(issueNumber: 252, child: const Issue252Card()),
-                _searchableCard(issueNumber: 251, child: const Issue251Card()),
-                _searchableCard(issueNumber: 250, child: const Issue250Card()),
-                _searchableCard(issueNumber: 248, child: const Issue248Card()),
-                _searchableCard(issueNumber: 247, child: const Issue247Card()),
-                _searchableCard(issueNumber: 244, child: const Issue244Card()),
-                _searchableCard(issueNumber: 243, child: const Issue243Card()),
-                _searchableCard(issueNumber: 238, child: const Issue238Card()),
-                _searchableCard(issueNumber: 237, child: const Issue237Card()),
-                _searchableCard(issueNumber: 231, child: const Issue231Card()),
-                _searchableCard(issueNumber: 230, child: const Issue230Card()),
-                _searchableCard(issueNumber: 214, child: const Issue214Card()),
-                _searchableCard(issueNumber: 213, child: const Issue213Card()),
-                _searchableCard(issueNumber: 212, child: const Issue212Card()),
-                _searchableCard(issueNumber: 210, child: const Issue210Card()),
-                _searchableCard(issueNumber: 204, child: const Issue204Card()),
-                _searchableCard(issueNumber: 201, child: const Issue201Card()),
-                _searchableCard(issueNumber: 198, child: const Issue198Card()),
-                _searchableCard(issueNumber: 185, child: const Issue185Card()),
-                _buildIssueCard(
-                  issueNumber: 147,
-                  title: 'getState() drops active config',
-                  description:
-                      'The Pigeon TlState FFI struct had no config field, so '
-                      'State.config was permanently null from ready()/getState(). '
-                      'Now backfilled from the active config. Scan a Test Server '
-                      'QR code first.',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _testIssue147,
-                      icon: const Icon(Icons.settings_backup_restore),
-                      label: const Text('Run Test'),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 149,
-                  title: 'Missing syncInterval in HttpConfig',
-                  description:
-                      'HttpConfig.syncInterval (interval-based sync) was missing '
-                      'from the Dart class and Pigeon struct, causing compile '
-                      'failures. Now present, serialized, and round-trips through '
-                      'native. Scan a Test Server QR code first.',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _testIssue149,
-                      icon: const Icon(Icons.timelapse),
-                      label: const Text('Run Test'),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 154,
-                  title: 'Dummy destroySyncedLocations stub',
-                  description:
-                      'destroySyncedLocations() always returned a hardcoded 0. It '
-                      'now reports the real count of locations synced-and-pruned. '
-                      'Syncs 3 records to a loopback server and asserts the count. '
-                      'Deterministic.',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _testIssue154,
-                      icon: const Icon(Icons.delete_sweep),
-                      label: const Text('Run Test'),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 159,
-                  title: 'Offline queue metrics',
-                  description:
-                      'Adds getPendingLocations()/getPendingLocationCount() to '
-                      'expose the offline (pending-sync) queue. Inserts 4 records '
-                      'and asserts both APIs report them. Deterministic.',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _testIssue159,
-                      icon: const Icon(Icons.inbox),
-                      label: const Text('Run Test'),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 162,
-                  title: 'Battery Budget & Wakelock',
-                  description:
-                      'Test dynamic battery budgeting (adjusts distanceFilter, '
-                      'desiredAccuracy, and periodic interval based on target %/hr) '
-                      'and stationary OEM Wakelock release.\n\n'
-                      '$_issue162Details',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _toggleIssue162,
-                      icon: Icon(
-                        _isIssue162Tracking ? Icons.stop : Icons.play_arrow,
+            child: IssueSearchScope(
+              query: _searchQuery.trim().toLowerCase(),
+              child: ListView(
+                controller: _scrollController,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: [
+                  // Latest issues first (newest on top).
+                  //
+                  // Cards built on IssueCardShell filter themselves against their
+                  // own title/description/keywords via IssueSearchScope, so they
+                  // are rendered directly. Cards with a bespoke layout (no shell)
+                  // stay wrapped in _searchableCard with explicit keywords.
+                  _searchableCard(
+                    keywords:
+                        'battery budget remote config batterybudgetperhour '
+                        'runtime setconfig onbudgetadjustment activeconfig sync',
+                    child: const BatteryBudgetRemoteConfigCard(),
+                  ),
+                  const Issue261Card(),
+                  const Issue257Card(),
+                  const Issue256Card(),
+                  const Issue254Card(),
+                  const Issue253Card(),
+                  const Issue252Card(),
+                  const Issue251Card(),
+                  const Issue250Card(),
+                  const Issue248Card(),
+                  const Issue247Card(),
+                  const Issue244Card(),
+                  const Issue243Card(),
+                  const Issue238Card(),
+                  const Issue237Card(),
+                  const Issue231Card(),
+                  const Issue230Card(),
+                  const Issue214Card(),
+                  const Issue213Card(),
+                  const Issue212Card(),
+                  _searchableCard(
+                    issueNumber: 210,
+                    keywords:
+                        'ios blue location indicator geofence mode region '
+                        'monitoring background location high accuracy',
+                    child: const Issue210Card(),
+                  ),
+                  _searchableCard(
+                    issueNumber: 204,
+                    keywords:
+                        'duplicate requestsyncbody sync body builder batch',
+                    child: const Issue204Card(),
+                  ),
+                  _searchableCard(
+                    issueNumber: 201,
+                    keywords:
+                        'local extras getcurrentposition merge global httpconfig',
+                    child: const Issue201Card(),
+                  ),
+                  _searchableCard(
+                    issueNumber: 198,
+                    keywords:
+                        'passive profile battery optimization ios background '
+                        'activity session dynamic island status bar pill',
+                    child: const Issue198Card(),
+                  ),
+                  _searchableCard(
+                    issueNumber: 185,
+                    keywords: 'high accuracy geofence transitions reboot dwell',
+                    child: const Issue185Card(),
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 147,
+                    title: 'getState() drops active config',
+                    description:
+                        'The Pigeon TlState FFI struct had no config field, so '
+                        'State.config was permanently null from ready()/getState(). '
+                        'Now backfilled from the active config. Scan a Test Server '
+                        'QR code first.',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _testIssue147,
+                        icon: const Icon(Icons.settings_backup_restore),
+                        label: const Text('Run Test'),
                       ),
-                      label: Text(
-                        _isIssue162Tracking ? 'Stop' : 'Start tracking',
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 149,
+                    title: 'Missing syncInterval in HttpConfig',
+                    description:
+                        'HttpConfig.syncInterval (interval-based sync) was missing '
+                        'from the Dart class and Pigeon struct, causing compile '
+                        'failures. Now present, serialized, and round-trips through '
+                        'native. Scan a Test Server QR code first.',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _testIssue149,
+                        icon: const Icon(Icons.timelapse),
+                        label: const Text('Run Test'),
                       ),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 175,
-                  title: 'Battery & Extras DB Persistence',
-                  description:
-                      'Verifies that custom battery levels and globally configured extras '
-                      'are correctly serialized into the SQLite DB (via route_context) '
-                      'and successfully restored on retrieval instead of falling back to default values.',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _testIssue175,
-                      icon: const Icon(Icons.play_arrow),
-                      label: const Text('Run Test'),
-                    ),
-                  ],
-                ),
-                // Feature demos (not numbered issues) — searchable by keyword
-                // and kept at the bottom so they never sit above real issues.
-                _searchableCard(
-                  keywords: 'remote config remoteconfig',
-                  child: const RemoteConfigCard(),
-                ),
-                _searchableCard(
-                  keywords: 'mock rejection reject mock location',
-                  child: const MockRejectionCard(),
-                ),
-              ],
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 154,
+                    title: 'Dummy destroySyncedLocations stub',
+                    description:
+                        'destroySyncedLocations() always returned a hardcoded 0. It '
+                        'now reports the real count of locations synced-and-pruned. '
+                        'Syncs 3 records to a loopback server and asserts the count. '
+                        'Deterministic.',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _testIssue154,
+                        icon: const Icon(Icons.delete_sweep),
+                        label: const Text('Run Test'),
+                      ),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 159,
+                    title: 'Offline queue metrics',
+                    description:
+                        'Adds getPendingLocations()/getPendingLocationCount() to '
+                        'expose the offline (pending-sync) queue. Inserts 4 records '
+                        'and asserts both APIs report them. Deterministic.',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _testIssue159,
+                        icon: const Icon(Icons.inbox),
+                        label: const Text('Run Test'),
+                      ),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 162,
+                    title: 'Battery Budget & Wakelock',
+                    description:
+                        'Test dynamic battery budgeting (adjusts distanceFilter, '
+                        'desiredAccuracy, and periodic interval based on target %/hr) '
+                        'and stationary OEM Wakelock release.\n\n'
+                        '$_issue162Details',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _toggleIssue162,
+                        icon: Icon(
+                          _isIssue162Tracking ? Icons.stop : Icons.play_arrow,
+                        ),
+                        label: Text(
+                          _isIssue162Tracking ? 'Stop' : 'Start tracking',
+                        ),
+                      ),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 175,
+                    title: 'Battery & Extras DB Persistence',
+                    description:
+                        'Verifies that custom battery levels and globally configured extras '
+                        'are correctly serialized into the SQLite DB (via route_context) '
+                        'and successfully restored on retrieval instead of falling back to default values.',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _testIssue175,
+                        icon: const Icon(Icons.play_arrow),
+                        label: const Text('Run Test'),
+                      ),
+                    ],
+                  ),
+                  // Feature demos (not numbered issues) — searchable by keyword
+                  // and kept at the bottom so they never sit above real issues.
+                  _searchableCard(
+                    keywords:
+                        'remote config remoteconfig native background fetch '
+                        'remoteconfigurl https cache setconfig',
+                    child: const RemoteConfigCard(),
+                  ),
+                  // MockRejectionCard uses IssueCardShell, so it self-filters via
+                  // IssueSearchScope (title/description/keywords).
+                  const MockRejectionCard(),
+                ],
+              ),
             ),
           ),
         ],

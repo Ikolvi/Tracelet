@@ -222,6 +222,7 @@ class _Issue257CardState extends State<Issue257Card> {
   @override
   Widget build(BuildContext context) {
     return IssueCardShell(
+      keywords: 'notification live activity refresh updatenotification',
       title: '#257: refresh the active foreground notification / Live Activity',
       description:
           'Starts tracking with an initial Android foreground-service '

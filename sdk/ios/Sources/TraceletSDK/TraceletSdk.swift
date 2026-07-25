@@ -432,7 +432,7 @@ public final class TraceletSdk {
 
         if stateManager.isMoving {
             locationEngine.start()
-            backgroundActivitySessionManager.start()
+            startBackgroundActivitySessionIfNeeded()
         } else {
             _ = changePace(false)
         }
@@ -2132,6 +2132,32 @@ public final class TraceletSdk {
         drainDueConfirmations()
     }
 
+    // MARK: - Private: Background activity session
+
+    /// Opens the iOS 17+ `CLBackgroundActivitySession` for continuous tracking —
+    /// unless `useSignificantChangesOnly` is enabled.
+    ///
+    /// `CLBackgroundActivitySession` keeps a background location activity alive
+    /// and auto-shows the system location indicator (Dynamic Island / status-bar
+    /// pill), even when continuous GPS is not running. That defeats
+    /// significant-change monitoring, whose entire purpose is low-power
+    /// background location WITHOUT a persistent "ongoing location" indicator
+    /// (Issue #261). Periodic mode and low-accuracy geofence-only mode already
+    /// avoid the session for the same reason; this brings significant-changes-
+    /// only into line with them.
+    ///
+    /// The indicator may still blink briefly when a significant-change event is
+    /// delivered — that is normal iOS behavior and not a persistent session.
+    private func startBackgroundActivitySessionIfNeeded() {
+        if configManager.getUseSignificantChangesOnly() {
+            logger.debug(
+                "Not starting CLBackgroundActivitySession — useSignificantChangesOnly is enabled (#261)"
+            )
+            return
+        }
+        backgroundActivitySessionManager.start()
+    }
+
     // MARK: - Private: Motion State
 
     private func handleMotionStateChange(_ isMoving: Bool) {
@@ -2163,7 +2189,7 @@ public final class TraceletSdk {
             self.locationEngine.changePace(isMoving)
 
             if isMoving {
-                self.backgroundActivitySessionManager.start()
+                self.startBackgroundActivitySessionIfNeeded()
             } else {
                 self.backgroundActivitySessionManager.stop()
             }
@@ -3008,7 +3034,7 @@ public final class TraceletSdk {
             }
             startHeartbeat()
             preventSuspendManager.start()
-            backgroundActivitySessionManager.start()
+            startBackgroundActivitySessionIfNeeded()
             serviceSessionManager.start()
 
         case .geofences:
