@@ -48,7 +48,7 @@ android {
         // Tracelet SDK — standalone geolocation engine
         // Resolved from Maven Central when published, substituted with local
         // module via includeBuild during development.
-        api("com.ikolvi:tracelet-sdk:3.6.11")
+        api("com.ikolvi:tracelet-sdk:3.6.12")
 
         // Testing
         // Real org.json so ConfigManager's JSON persistence works under unit

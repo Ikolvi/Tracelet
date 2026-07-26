@@ -89,8 +89,8 @@ tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile::class.java).conf
 }
 
 dependencies {
-    compileOnly("com.ikolvi:tracelet-sdk:3.6.11")
-    implementation("com.ikolvi:tracelet-sync-sdk:3.6.11")
+    compileOnly("com.ikolvi:tracelet-sdk:3.6.12")
+    implementation("com.ikolvi:tracelet-sync-sdk:3.6.12")
     testImplementation("com.ikolvi:tracelet-sdk:3.5.6")
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     testImplementation("org.mockito:mockito-core:5.0.0")
