@@ -57,7 +57,7 @@ Everything is **default-off** and side-channel — when disabled, your existing 
 
 ### 💬 Community & Support
 
-Join our official [Discord Channel](https://discord.gg/B9TApeYEH)! It's the best place to:
+Join our official [Discord Channel](https://discord.gg/hb5zeACxhm)! It's the best place to:
 - Request new features and customizations.
 - Get help from the maintainers and the community.
 - Discuss best practices for background geolocation in Flutter.
