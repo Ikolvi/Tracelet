@@ -873,6 +873,18 @@ abstract class TraceletHostApi {
   @async
   TlState reset(TlConfig? config);
 
+  /// Refreshes the active on-screen tracking indicator so it reflects the
+  /// latest configuration applied via [setConfig], without restarting the
+  /// tracking pipeline.
+  ///
+  /// - Android: reposts the foreground-service notification from the latest
+  ///   ForegroundServiceConfig. No-op if the service is not running.
+  /// - iOS: refreshes the running Live Activity body from the latest
+  ///   liveActivityConfig (if the developer opted into one). No-op otherwise.
+  /// - Web: no-op.
+  @async
+  void updateNotification();
+
   @async
   TlLocation getCurrentPosition(TlCurrentPositionOptions options);
 
@@ -1040,6 +1052,9 @@ abstract class TraceletHostApi {
 
   @async
   Map<String?, Object?> getSettingsHealth();
+
+  @async
+  Map<String?, Object?> getForegroundServiceHealth();
 
   @async
   bool openOemSettings(String label);
@@ -1214,4 +1229,12 @@ abstract class TraceletEventApi {
   void onImpact(TlImpactEvent event);
   void onModeChange(TlModeChangeEvent event);
   void onCrashModelStatus(TlCrashModelStatusEvent event);
+
+  /// Fired when a remotely-fetched configuration (Enterprise `remoteConfigUrl`)
+  /// is applied natively at runtime. Carries the raw override map the endpoint
+  /// returned (e.g. `{"geo":{"batteryBudgetPerHour":1.0}}`) so the Dart layer
+  /// can fold it into its cached active config — otherwise `Tracelet.activeConfig`
+  /// (and diagnostics like tracelet_doctor) would keep showing the last
+  /// locally-set values, since the native fetch never round-trips through Dart.
+  void onRemoteConfig(Map<String?, Object?> config);
 }

@@ -3895,6 +3895,33 @@ class TraceletHostApi {
     return pigeonVar_replyValue! as TlState;
   }
 
+  /// Refreshes the active on-screen tracking indicator so it reflects the
+  /// latest configuration applied via [setConfig], without restarting the
+  /// tracking pipeline.
+  ///
+  /// - Android: reposts the foreground-service notification from the latest
+  ///   ForegroundServiceConfig. No-op if the service is not running.
+  /// - iOS: refreshes the running Live Activity body from the latest
+  ///   liveActivityConfig (if the developer opted into one). No-op otherwise.
+  /// - Web: no-op.
+  Future<void> updateNotification() async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.updateNotification$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
   Future<TlLocation> getCurrentPosition(
     TlCurrentPositionOptions options,
   ) async {
@@ -4980,6 +5007,26 @@ class TraceletHostApi {
         .cast<String?, Object?>();
   }
 
+  Future<Map<String?, Object?>> getForegroundServiceHealth() async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.getForegroundServiceHealth$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return (pigeonVar_replyValue! as Map<Object?, Object?>)
+        .cast<String?, Object?>();
+  }
+
   Future<bool> openOemSettings(String label) async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.openOemSettings$pigeonVar_messageChannelSuffix';
@@ -5575,6 +5622,14 @@ abstract class TraceletEventApi {
 
   void onCrashModelStatus(TlCrashModelStatusEvent event);
 
+  /// Fired when a remotely-fetched configuration (Enterprise `remoteConfigUrl`)
+  /// is applied natively at runtime. Carries the raw override map the endpoint
+  /// returned (e.g. `{"geo":{"batteryBudgetPerHour":1.0}}`) so the Dart layer
+  /// can fold it into its cached active config — otherwise `Tracelet.activeConfig`
+  /// (and diagnostics like tracelet_doctor) would keep showing the last
+  /// locally-set values, since the native fetch never round-trips through Dart.
+  void onRemoteConfig(Map<String?, Object?> config);
+
   static void setUp(
     TraceletEventApi? api, {
     BinaryMessenger? binaryMessenger,
@@ -6078,6 +6133,32 @@ abstract class TraceletEventApi {
               args[0]! as TlCrashModelStatusEvent;
           try {
             api.onCrashModelStatus(arg_event);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+        'dev.flutter.pigeon.tracelet_platform_interface.TraceletEventApi.onRemoteConfig$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final Map<String?, Object?> arg_config =
+              (args[0]! as Map<Object?, Object?>).cast<String?, Object?>();
+          try {
+            api.onRemoteConfig(arg_config);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);

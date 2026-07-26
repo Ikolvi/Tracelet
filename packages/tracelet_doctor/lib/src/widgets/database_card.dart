@@ -230,18 +230,62 @@ class DatabaseCard extends StatelessWidget {
               if (data == null || data.isEmpty) {
                 return const InfoRow(label: 'No stats available', value: '—');
               }
-              return Column(
-                children: data.entries.map((e) {
-                  return InfoRow(
-                    label: e.key?.toString() ?? 'Unknown',
-                    value: e.value?.toString() ?? '—',
-                  );
-                }).toList(),
-              );
+              return _LifetimeStats(report: data);
             },
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Renders the carbon report as a compact, human-readable summary.
+///
+/// The raw report contains huge unformatted doubles (grams, meters) and
+/// per-mode maps; dumping them verbatim overflowed the card and was unreadable.
+/// This shows totals in friendly units (CO₂ in g/kg, distance in km, trips).
+class _LifetimeStats extends StatelessWidget {
+  const _LifetimeStats({required this.report});
+
+  final Map<String?, Object?> report;
+
+  static double _asDouble(Object? v) => v is num ? v.toDouble() : 0.0;
+  static int _asInt(Object? v) => v is num ? v.toInt() : 0;
+
+  static double _sumValues(Object? map) {
+    if (map is! Map) return 0;
+    var total = 0.0;
+    for (final v in map.values) {
+      total += _asDouble(v);
+    }
+    return total;
+  }
+
+  static String _formatCarbon(double grams) {
+    if (grams >= 1000) return '${(grams / 1000).toStringAsFixed(2)} kg';
+    return '${grams.toStringAsFixed(1)} g';
+  }
+
+  static String _formatDistance(double meters) {
+    if (meters >= 1000) return '${(meters / 1000).toStringAsFixed(2)} km';
+    return '${meters.toStringAsFixed(0)} m';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final carbonGrams = _asDouble(report['totalCarbonGrams']);
+    final distanceMeters = _sumValues(report['distanceByMode']);
+    final trips = _asInt(report['totalTrips']);
+
+    return Column(
+      children: [
+        InfoRow(label: 'Total CO₂', value: _formatCarbon(carbonGrams)),
+        InfoRow(
+          label: 'Total Distance',
+          value: _formatDistance(distanceMeters),
+        ),
+        InfoRow(label: 'Total Trips', value: '$trips'),
+      ],
     );
   }
 }

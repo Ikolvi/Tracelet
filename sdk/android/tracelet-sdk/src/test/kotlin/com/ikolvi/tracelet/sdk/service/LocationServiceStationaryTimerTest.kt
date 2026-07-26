@@ -15,6 +15,12 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.atLeastOnce
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
+import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
@@ -70,6 +76,22 @@ class LocationServiceStationaryTimerTest {
             LocationService.stationaryTimerRunnable,
             "Timer must cancel itself once tracking is disabled",
         )
+    }
+
+    @Test
+    fun `stationary periodic tick requests fixes without engine-side persistence`() {
+        // Regression for #248: the tick callback inserts the enriched
+        // "periodic" record itself, so getCurrentPosition() must not persist
+        // the same map (same uuid) first — that made every tick's insert fail
+        // with "UNIQUE constraint failed: location_events.uuid".
+        val mockEngine = mock<LocationEngine>()
+        LocationService.switchToStationaryPeriodic(mockEngine, config, state)
+
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+
+        val options = argumentCaptor<Map<String, Any?>>()
+        verify(mockEngine, atLeastOnce()).getCurrentPosition(options.capture(), any())
+        assertEquals(false, options.firstValue["persist"])
     }
 
     @Test

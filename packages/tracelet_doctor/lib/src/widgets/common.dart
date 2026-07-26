@@ -117,15 +117,22 @@ class InfoRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
+      // Both label and value are Flexible so a long value (e.g. lifetime
+      // stats) wraps or shrinks instead of overflowing the card (fixes the
+      // RenderFlex right-overflow seen in the Database card's stats).
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: DoctorTheme.cardBodyStyle),
-          Text(
-            value,
-            style: DoctorTheme.cardBodyStyle.copyWith(
-              color: valueColor ?? DoctorTheme.textPrimary,
-              fontWeight: FontWeight.w500,
+          Flexible(child: Text(label, style: DoctorTheme.cardBodyStyle)),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: DoctorTheme.cardBodyStyle.copyWith(
+                color: valueColor ?? DoctorTheme.textPrimary,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],

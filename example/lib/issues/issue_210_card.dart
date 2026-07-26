@@ -206,7 +206,11 @@ class _Issue210CardState extends State<Issue210Card> {
               ),
               child: Text(
                 _status,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  color: Colors.black87,
+                ),
               ),
             ),
             const SizedBox(height: 4),

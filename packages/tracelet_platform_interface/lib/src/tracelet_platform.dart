@@ -86,6 +86,17 @@ abstract class TraceletPlatform extends PlatformInterface {
     throw UnimplementedError('reset() has not been implemented.');
   }
 
+  /// Refresh the active on-screen tracking indicator so it reflects the latest
+  /// configuration applied via [setConfig], without restarting the tracking
+  /// pipeline.
+  ///
+  /// - Android: reposts the foreground-service notification.
+  /// - iOS: refreshes the running Live Activity body (if one is configured).
+  /// - Web: no-op.
+  Future<void> updateNotification() {
+    throw UnimplementedError('updateNotification() has not been implemented.');
+  }
+
   // ---------------------------------------------------------------------------
   // Location
   // ---------------------------------------------------------------------------
@@ -499,6 +510,32 @@ abstract class TraceletPlatform extends PlatformInterface {
     throw UnimplementedError('getSettingsHealth() has not been implemented.');
   }
 
+  /// Get authoritative Android foreground-service health (#255).
+  ///
+  /// Distinguishes the *desired* tracking state (`desiredEnabled`) from the
+  /// *actual* native foreground-service state, since on Android 12+ a
+  /// foreground-service start can be deferred or rejected even while tracking
+  /// is enabled. Returns a map with:
+  /// - `desiredEnabled` (`bool`)
+  /// - `foregroundServiceEnabled` (`bool`)
+  /// - `serviceRunning` (`bool`)
+  /// - `serviceForeground` (`bool`)
+  /// - `foregroundNotificationId` (`int?`)
+  /// - `lastForegroundPromotionResult` (`String?`): `success` | `deferred` |
+  ///   `failed`
+  /// - `lastForegroundPromotionFailureClass` (`String?`)
+  /// - `lastForegroundPromotionFailureMessage` (`String?`)
+  /// - `lastForegroundTransitionAt` (`int?`): epoch-ms
+  /// - `platform` (`String`)
+  ///
+  /// On iOS the promotion fields are null/false (no foreground service exists),
+  /// and on Web a minimal disabled map is returned.
+  Future<Map<String, Object?>> getForegroundServiceHealth() {
+    throw UnimplementedError(
+      'getForegroundServiceHealth() has not been implemented.',
+    );
+  }
+
   /// Open an OEM-specific settings screen by [label].
   ///
   /// The [label] must match one of the labels returned by
@@ -882,5 +919,12 @@ abstract class TraceletPlatform extends PlatformInterface {
     throw UnimplementedError(
       'motionModeChangeEvents has not been implemented.',
     );
+  }
+
+  /// Stream of remote-config override maps applied natively at runtime
+  /// (Enterprise `remoteConfigUrl`). Each event is the raw override map the
+  /// endpoint returned, so the app layer can fold it into its active config.
+  Stream<Map<String?, Object?>> get remoteConfigEvents {
+    throw UnimplementedError('remoteConfigEvents has not been implemented.');
   }
 }

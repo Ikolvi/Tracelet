@@ -19,6 +19,16 @@
 
 📚 **Official Documentation:** [tracelet.ikolvi.com](https://tracelet.ikolvi.com)
 
+<p align="center">
+  <a href="https://tracelet.ikolvi.com/copy-prompt?utm_source=pubdev&utm_medium=readme&utm_campaign=copy_prompt&utm_content=tracelet">
+    <img src="https://img.shields.io/badge/%E2%9C%A8%20Copy%20AI%20Setup%20Prompt-%E2%96%B6%20click%20to%20copy-0F9D58?style=for-the-badge&labelColor=0B7A43" alt="Copy AI Setup Prompt" height="42"/>
+  </a>
+</p>
+
+<p align="center">
+  <sub><b>⚡ Set up with AI in minutes.</b> Clicking the badge opens Tracelet and copies a ready-made prompt — paste it into your AI coding assistant (Cursor, Claude Code, Kiro, Copilot Chat…) and it interviews you about your use case, then installs and configures Tracelet for your Flutter app.</sub>
+</p>
+
 Battery-conscious motion-detection intelligence, geofencing, SQLite persistence, HTTP sync, and headless Dart execution for iOS & Android.
 
 ### 🎬 Video Tutorial
@@ -361,17 +371,26 @@ Polygon containment uses the ray-casting algorithm for efficient point-in-polygo
 
 Visualize and troubleshoot permissions, tracking state, active sensors, SQLite database queue size, and OEM battery optimizations with a single line of code using the `tracelet_doctor` package:
 
+Add it under `dev_dependencies` (it's a debug tool — Flutter excludes dev-dependency packages from release builds):
+
 ```yaml
 dependencies:
   tracelet: ^2.0.6
+
+dev_dependencies:
   tracelet_doctor: ^1.0.1
 ```
 
+Guard usage behind `kDebugMode` so it's tree-shaken out of release builds:
+
 ```dart
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:tracelet_doctor/tracelet_doctor.dart';
 
-// Show the premium diagnostic dashboard overlay:
-TraceletDoctor.show(context);
+// Show the premium diagnostic dashboard overlay — debug builds only:
+if (kDebugMode) {
+  TraceletDoctor.show(context);
+}
 ```
 
 For more details, see the [Tracelet Doctor Package README](../../packages/tracelet_doctor/README.md) or go directly to the [tracelet_doctor pub.dev page](https://pub.dev/packages/tracelet_doctor).

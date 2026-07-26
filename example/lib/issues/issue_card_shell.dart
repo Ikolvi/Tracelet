@@ -1,7 +1,42 @@
 import 'package:flutter/material.dart';
 
-/// Shared visual shell for the issue verification cards (#212/#213/#214):
+/// Propagates the current issue-search query down to every [IssueCardShell] so
+/// each card can filter itself against its own on-screen text (title +
+/// description + [IssueCardShell.keywords]) — not just an issue number.
+///
+/// The tab wraps the issue list in one of these; because [IssueCardShell]
+/// depends on it via [of], changing [query] rebuilds only the shells (even
+/// `const` cards), which then show or hide themselves.
+class IssueSearchScope extends InheritedWidget {
+  const IssueSearchScope({
+    required this.query,
+    required super.child,
+    super.key,
+  });
+
+  /// The active, already-lowercased search query. Empty means "show all".
+  final String query;
+
+  /// Returns the nearest scope's query, or an empty string when there is none
+  /// (so cards used outside a search context simply always render).
+  static String of(BuildContext context) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<IssueSearchScope>();
+    return scope?.query ?? '';
+  }
+
+  @override
+  bool updateShouldNotify(IssueSearchScope oldWidget) =>
+      query != oldWidget.query;
+}
+
+/// Shared visual shell for the issue verification cards (#212/#213/#214…):
 /// title, description, a monospace status box, and a single Run button.
+///
+/// The shell also participates in search: when an [IssueSearchScope] is present
+/// and its query matches neither the [title], [description], nor [keywords],
+/// the card hides itself. This makes free-text search work against the real
+/// text shown on the card, with no per-card wiring.
 class IssueCardShell extends StatelessWidget {
   const IssueCardShell({
     required this.title,
@@ -11,6 +46,7 @@ class IssueCardShell extends StatelessWidget {
     required this.onRun,
     super.key,
     this.runLabel = 'Run Test',
+    this.keywords = '',
   });
 
   final String title;
@@ -23,8 +59,21 @@ class IssueCardShell extends StatelessWidget {
   final VoidCallback onRun;
   final String runLabel;
 
+  /// Extra search terms that are not already present in [title]/[description]
+  /// (e.g. API names or symptoms a user might search for). Matched in addition
+  /// to the visible text.
+  final String keywords;
+
   @override
   Widget build(BuildContext context) {
+    final query = IssueSearchScope.of(context);
+    if (query.isNotEmpty) {
+      final haystack = '$title $description $keywords'.toLowerCase();
+      if (!haystack.contains(query)) {
+        return const SizedBox.shrink();
+      }
+    }
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       elevation: 2,
@@ -49,7 +98,14 @@ class IssueCardShell extends StatelessWidget {
               ),
               child: Text(
                 status,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                // Explicit dark text: the box background is always light
+                // (grey.shade100), so without this the status is invisible in
+                // dark mode (default text color becomes light → white-on-white).
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  color: Colors.black87,
+                ),
               ),
             ),
             const SizedBox(height: 16),

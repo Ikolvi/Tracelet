@@ -84,6 +84,14 @@ class TraceletSdk private constructor(private val context: Context) {
     val configManager: ConfigManager by lazy { ConfigManager.getInstance(context) }
     val stateManager: StateManager by lazy { StateManager(context) }
 
+    /**
+     * Fetches + applies remote config overrides (Enterprise `remoteConfigUrl`).
+     * Created lazily so apps that never set a remote URL pay nothing.
+     */
+    val remoteConfigManager: RemoteConfigManager by lazy {
+        RemoteConfigManager(context, configManager) { msg -> logger.info(msg) }
+    }
+
     lateinit var locationEngine: LocationEngine
         internal set
     lateinit var motionDetector: MotionDetector
@@ -132,6 +140,15 @@ class TraceletSdk private constructor(private val context: Context) {
         internal set
     private var batteryBudgetEngine: BatteryBudgetEngine? = null
     private var batteryBudgetRunnable: Runnable? = null
+
+    /**
+     * Test seam: whether the battery-budget engine is currently built/active.
+     * Exposed so regression tests can assert that a runtime `setConfig()` (the
+     * remote-config apply path) actually (re)builds the engine when
+     * `batteryBudgetPerHour` changes — see [applyBatteryBudgetConfig].
+     */
+    internal val isBatteryBudgetEngineActive: Boolean
+        get() = batteryBudgetEngine != null
 
     // 3.3.0 behavior engines (opt-in, default off)
     private var telematicsEngine: uniffi.tracelet_core.TelematicsEngine? = null
@@ -283,7 +300,34 @@ class TraceletSdk private constructor(private val context: Context) {
         check(::eventSender.isInitialized) {
             "setEventSender() must be called before initialize()"
         }
+        // Run the heavy setup — which opens the Rust DB and fsyncs it to disk —
+        // off the calling thread. onAttachedToEngine runs on the platform main
+        // thread; when a background FlutterEngine (e.g. audio_service's
+        // MediaBrowserService, spun up by the system after the app was killed)
+        // attaches, GeneratedPluginRegistrant re-attaches this plugin and this
+        // init would otherwise fsync on that service's main thread → ANR on a
+        // large DB. ready() blocks on initCompleteLatch before it uses the DB or
+        // the engines set up here.
+        synchronized(initLock) {
+            if (initStarted) return
+            initStarted = true
+        }
+        Thread({
+            try {
+                initializeInternal()
+            } catch (t: Throwable) {
+                logger.error("initializeInternal failed: ${t.message}")
+            } finally {
+                initCompleteLatch.countDown()
+            }
+        }, "tracelet-init").start()
+    }
 
+    private val initLock = Any()
+    @Volatile private var initStarted = false
+    private val initCompleteLatch = java.util.concurrent.CountDownLatch(1)
+
+    private fun initializeInternal() {
         // Bootstrap factory for headless/boot restart
         TraceletBootstrap.eventSenderFactory = { ctx ->
             getInstance(ctx).getEventSender()
@@ -579,6 +623,12 @@ class TraceletSdk private constructor(private val context: Context) {
      * @param callback Receives the current state map when ready.
      */
     fun ready(config: Map<String, Any?>, callback: (Map<String, Any?>) -> Unit) {
+        // initialize() opens the DB and wires the engines on a background thread
+        // (see its comment). Block until that finishes, otherwise completeReady()
+        // would touch not-yet-initialized lateinit engines.
+        if (!initCompleteLatch.await(15, java.util.concurrent.TimeUnit.SECONDS)) {
+            logger.error("ready() proceeded before initialize() finished (15s timeout)")
+        }
         val merged = configManager.setConfig(config)
 
         if (merged["encryptDatabase"] == true) {
@@ -593,33 +643,40 @@ class TraceletSdk private constructor(private val context: Context) {
             encryptDatabase()
         }
 
-        // Remote config
+        // Remote config (Enterprise): fetch overrides from a remote HTTPS
+        // endpoint. Apply the last-good cached copy synchronously so a restart
+        // resumes on the freshest known config instantly and offline, complete
+        // ready() without waiting on the network, then fetch a fresh copy in the
+        // background and keep it refreshed on the configured interval.
         val remoteUrl = configManager.getRemoteConfigUrl()
+        val cachedRemote = if (!remoteUrl.isNullOrEmpty()) {
+            remoteConfigManager.cachedConfig()
+        } else {
+            null
+        }
+        val effective = cachedRemote?.let { configManager.setConfig(it) } ?: merged
+
+        completeReady(effective, callback)
+
+        // Mirror the applied cached override to Dart so activeConfig/diagnostics
+        // reflect the cached remote config on this cold start too.
+        if (cachedRemote != null) {
+            eventSender.sendRemoteConfigEvent(cachedRemote)
+        }
+
         if (!remoteUrl.isNullOrEmpty()) {
-            fetchRemoteConfig(remoteUrl, merged, callback)
-            return
+            remoteConfigManager.start(remoteUrl) { remote ->
+                // Apply on the main thread: setConfig() may restart the active
+                // tracking pipeline (location engine, motion sensors), which must
+                // run off the background fetch thread.
+                mainHandler.post {
+                    setConfig(remote)
+                    // Notify Dart so activeConfig / diagnostics / the Dart-side
+                    // battery-budget engine reflect the freshly fetched override.
+                    eventSender.sendRemoteConfigEvent(remote)
+                }
+            }
         }
-
-        completeReady(merged, callback)
-    }
-
-    private fun fetchRemoteConfig(
-        url: String,
-        localConfig: Map<String, Any?>,
-        callback: (Map<String, Any?>) -> Unit,
-    ) {
-        // Reject non-HTTPS URLs
-        if (!url.startsWith("https://")) {
-            logger.warning("Remote config URL rejected: only HTTPS is allowed")
-            completeReady(localConfig, callback)
-            return
-        }
-
-        val timeout = configManager.getRemoteConfigTimeout()
-        val headers = configManager.getRemoteConfigHeaders()
-        // TODO: Port remote config fetch to Rust
-        // For now, proceed with localConfig
-        completeReady(localConfig, callback)
     }
 
     private fun completeReady(
@@ -642,16 +699,7 @@ class TraceletSdk private constructor(private val context: Context) {
         }
 
         // Initialize battery budget engine from config
-        val budgetPerHour = configManager.getBatteryBudgetPerHour()
-        if (budgetPerHour > 0) {
-            batteryBudgetEngine = BatteryBudgetEngine(
-                targetBudgetPerHour = budgetPerHour,
-                initialDistanceFilter = configManager.getDistanceFilter(),
-                initialAccuracyIndex = configManager.getDesiredAccuracy(),
-            )
-        } else {
-            batteryBudgetEngine = null
-        }
+        applyBatteryBudgetConfig()
 
         initBehaviorEngines()
 
@@ -851,7 +899,22 @@ class TraceletSdk private constructor(private val context: Context) {
         return null // success
     }
 
-    fun stop() {
+    /**
+     * Stops all tracking.
+     *
+     * @param preserveForegroundService when true, the active foreground
+     * [LocationService] is NOT torn down. This exists for the in-place restart
+     * performed by [setConfig]: sending `ACTION_STOP` here and immediately
+     * `ACTION_START` from the following start*() races the service commands —
+     * the `ACTION_STOP` handler's `stopSelf()` can win and destroy the service
+     * right after `ACTION_START` promoted it, leaving NO foreground service at
+     * all (#254, same race fixed for startPeriodic() in #237). When the restart
+     * lands in a mode that still needs the service, the caller keeps it alive
+     * and lets the idempotent `ACTION_START` re-assert foreground; when it lands
+     * in a mode that does not, the caller passes false so the service is stopped
+     * here cleanly (no immediately-following start ⇒ no race).
+     */
+    fun stop(preserveForegroundService: Boolean = false) {
         stateManager.enabled = false
         stateManager.isMoving = false
 
@@ -886,12 +949,20 @@ class TraceletSdk private constructor(private val context: Context) {
         LocationService.stopStationaryTimer()
         LocationService.stopBootTracking()
 
-        if (configManager.isForegroundServiceEnabled() || LocationService.isServiceRunning()) {
+        // #254: skip the ACTION_STOP when the caller is about to restart into a
+        // mode that keeps the foreground service — otherwise stopSelf() races the
+        // follow-up ACTION_START and can kill the just-promoted service.
+        if (!preserveForegroundService &&
+            (configManager.isForegroundServiceEnabled() || LocationService.isServiceRunning())
+        ) {
             LocationService.stop(context)
         }
 
         if (::eventSender.isInitialized) eventSender.sendEnabledChange(false)
-        logger.info("stop() — tracking stopped")
+        logger.info(
+            "stop() — tracking stopped" +
+                if (preserveForegroundService) " (foreground service preserved for restart)" else ""
+        )
     }
 
     fun getState(): Map<String, Any?> {
@@ -1116,7 +1187,44 @@ class TraceletSdk private constructor(private val context: Context) {
                 val currentMode = stateManager.trackingMode
                 val wasMoving = stateManager.isMoving
 
-                stop()
+                // #256: in SPEED/SMART motion-detection modes the SDK runs a single
+                // continuous motion-aware pipeline that TEMPORARILY flips
+                // stateManager.trackingMode to PERIODIC/GEOFENCES while the device
+                // is stationary (LocationService.switchToStationaryPeriodic /
+                // switchToStationaryGeofences). That temporary value is NOT an
+                // explicitly-started standalone mode — rebuilding it via
+                // startPeriodic()/startGeofences() tears down the very
+                // motion-detection pipeline that is supposed to switch it back to
+                // continuous once the device moves again, stranding tracking in a
+                // standalone stationary mode. Restart the continuous pipeline via
+                // start(isResume = true) instead; it re-enters the stationary
+                // sub-state on its own when still stationary. Mirrors the
+                // resume-on-ready logic in completeReady().
+                val motionMode = configManager.getMotionDetectionMode()
+                val motionAware =
+                    motionMode == com.ikolvi.tracelet.sdk.model.MotionDetectionMode.SMART ||
+                    motionMode == com.ikolvi.tracelet.sdk.model.MotionDetectionMode.SPEED
+
+                // #254: if the restart lands back in a mode that still needs the
+                // foreground service, DON'T let stop() send ACTION_STOP — the
+                // immediately-following ACTION_START from the start*() below would
+                // race it and stopSelf() could destroy the freshly-promoted
+                // service, leaving no foreground service at all (same race as
+                // #237). Keep it alive and let the idempotent ACTION_START
+                // re-assert foreground. When the target mode does NOT use the
+                // service (periodic-without-fg / standard geofences / fg disabled)
+                // we stop it here cleanly — there's no follow-up start to race.
+                val keepForegroundService = configManager.isForegroundServiceEnabled() && when {
+                    // Motion-aware pipeline restarts as continuous — it runs the
+                    // foreground service exactly like TrackingMode.CONTINUOUS.
+                    motionAware -> true
+                    currentMode == TrackingMode.CONTINUOUS -> true
+                    currentMode == TrackingMode.PERIODIC -> configManager.getPeriodicUseForegroundService()
+                    currentMode == TrackingMode.GEOFENCES -> configManager.getGeofenceModeHighAccuracy()
+                    else -> false
+                }
+
+                stop(preserveForegroundService = keepForegroundService)
 
                 stateManager.enabled = true
                 stateManager.trackingMode = currentMode
@@ -1126,10 +1234,14 @@ class TraceletSdk private constructor(private val context: Context) {
                 // changes take effect on the very first fix after restart (#157).
                 if (::locationEngine.isInitialized) locationEngine.rebuildProcessor()
 
-                when (currentMode) {
-                    TrackingMode.CONTINUOUS -> start(isResume = true)
-                    TrackingMode.PERIODIC -> startPeriodic()
-                    TrackingMode.GEOFENCES -> startGeofences()
+                if (motionAware) {
+                    start(isResume = true)
+                } else {
+                    when (currentMode) {
+                        TrackingMode.CONTINUOUS -> start(isResume = true)
+                        TrackingMode.PERIODIC -> startPeriodic()
+                        TrackingMode.GEOFENCES -> startGeofences()
+                    }
                 }
             }
         } else if (needsRestart && ::locationEngine.isInitialized) {
@@ -1153,10 +1265,43 @@ class TraceletSdk private constructor(private val context: Context) {
             initBehaviorEngines()
         }
 
+        // The battery-budget engine is built at ready() from batteryBudgetPerHour
+        // and is otherwise never touched here — so enabling/disabling/retargeting
+        // the budget at runtime (e.g. a remote-config push of
+        // {"geo":{"batteryBudgetPerHour":1.0}}) previously had no effect until the
+        // app was cold-started. Rebuild it when the target changes, and (re)start
+        // or stop sampling to match the live tracking state.
+        if (oldConfig["batteryBudgetPerHour"] != merged["batteryBudgetPerHour"]) {
+            applyBatteryBudgetConfig()
+            if (stateManager.enabled) {
+                // startBatteryBudgetSampling() removes any pending callback first
+                // and returns early when the engine is null, so this both starts a
+                // newly-enabled budget and halts a newly-disabled one.
+                startBatteryBudgetSampling()
+            }
+        }
+
         updateBootReceiverState()
         syncConfigToRustFlat()
         checkSyncProvider()
         return stateManager.toMap(merged)
+    }
+
+    /**
+     * Refreshes the active foreground-service notification so it reflects the
+     * latest ForegroundServiceConfig applied via [setConfig], without
+     * restarting the tracking pipeline (#257).
+     *
+     * Safe no-op when the foreground service is not currently running: the
+     * dispatched ACTION_UPDATE_NOTIFICATION only reposts the notification when
+     * the service is already promoted to the foreground.
+     */
+    fun updateNotification() {
+        if (!LocationService.isServiceRunning()) {
+            logger.info("updateNotification: foreground service not running — nothing to refresh")
+            return
+        }
+        LocationService.updateNotification(context)
     }
 
     internal fun bootstrapForBackground(sender: TraceletEventSender) {
@@ -1199,6 +1344,7 @@ class TraceletSdk private constructor(private val context: Context) {
         motionDetector.stop()
         stopHeartbeat()
         stopSyncIntervalTimer()
+        remoteConfigManager.stop()
         geofenceManager.destroy()
         LocationService.stop(context)
 
@@ -1470,11 +1616,25 @@ class TraceletSdk private constructor(private val context: Context) {
         return syncedLocationsRemoved.getAndSet(0L).toInt()
     }
 
+    /**
+     * Destroys a single persisted location identified by its public UUID (#251).
+     *
+     * The public location identifier is a UUID string, not the internal numeric
+     * database id. Previously this parsed the argument with `toLongOrNull()` and
+     * bailed out for any real UUID (e.g. `36ef46cf-…`), so pending locations
+     * could never be acknowledged. We now resolve the UUID to its row id via the
+     * database and delete that record. A purely numeric argument still works
+     * (treated as a raw row id) for backward compatibility.
+     */
     fun destroyLocation(uuid: String): Boolean {
         if (!isReady) return false
         val db = rustDatabase ?: return false
-        val id = uuid.toLongOrNull() ?: return false
         return try {
+            val id = db.getLocationForAudit(uuid)?.id ?: uuid.toLongOrNull()
+            if (id == null) {
+                logger.warning("destroyLocation: no location found for uuid=$uuid")
+                return false
+            }
             db.destroyLocation(id)
             true
         } catch (e: Exception) {
@@ -1524,11 +1684,17 @@ class TraceletSdk private constructor(private val context: Context) {
         val address: String? = (params["address"] as? String)
             ?: (params["address"] as? Map<*, *>)?.let { org.json.JSONObject(it as Map<String, Any?>).toString() }
         
-        // Prevent duplicate insertions of the exact same GPS fix (e.g. from PeriodicLocationWorker)
-        if (eventType == "location" && timestamp != null && timestamp == lastInsertedTimestamp) {
+        // Prevent duplicate insertions of the exact same GPS fix (e.g. from
+        // PeriodicLocationWorker). The heartbeat writer tags the last GPS fix
+        // with event="heartbeat"; it must share the location writer's dedup key
+        // so a fix already persisted by the normal dispatch is never re-inserted
+        // as a byte-identical duplicate row (the iOS #252 gap — kept in parity
+        // here even though the Android heartbeat currently does not persist).
+        val persistsGpsFix = eventType == "location" || eventType == "heartbeat"
+        if (persistsGpsFix && timestamp != null && timestamp == lastInsertedTimestamp) {
             return ""
         }
-        if (eventType == "location") { lastInsertedTimestamp = timestamp }
+        if (persistsGpsFix) { lastInsertedTimestamp = timestamp }
         
         var routeContext = rustEngineState?.getRouteContext()
 
@@ -2086,6 +2252,41 @@ class TraceletSdk private constructor(private val context: Context) {
     // =========================================================================
 
     fun getSettingsHealth(): Map<String, Any?> = OemCompat.getSettingsHealth(context)
+
+    /**
+     * Authoritative Android foreground-service health (#255).
+     *
+     * Distinguishes the *desired* tracking state ([StateManager.enabled]) from
+     * the *actual* native foreground-service state. On Android 12+ a
+     * foreground-service start can be deferred or rejected even while
+     * `enabled == true`, so `enabled` alone is not proof that background
+     * tracking is operational. Combine both to build accurate tracking-health
+     * indicators, diagnostics, and recovery behavior.
+     *
+     * Returned keys:
+     * - `desiredEnabled` (Boolean): the persisted desired tracking state.
+     * - `foregroundServiceEnabled` (Boolean): whether the active config runs a
+     *   foreground service at all.
+     * - `serviceRunning` (Boolean): whether [LocationService] is alive.
+     * - `serviceForeground` (Boolean): whether it is currently promoted to the
+     *   foreground (last `startForeground()` succeeded and not since demoted).
+     * - `foregroundNotificationId` (Long?): the notification id while promoted.
+     * - `lastForegroundPromotionResult` (String?): `success` | `deferred` |
+     *   `failed` (null before any attempt).
+     * - `lastForegroundPromotionFailureClass` (String?): exception class of the
+     *   last failed/deferred promotion.
+     * - `lastForegroundPromotionFailureMessage` (String?): its message.
+     * - `lastForegroundTransitionAt` (Long?): epoch-ms of the last promotion
+     *   transition.
+     * - `platform` (String): `android`.
+     */
+    fun getForegroundServiceHealth(): Map<String, Any?> {
+        val health = LocationService.foregroundServiceHealth().toMutableMap()
+        health["desiredEnabled"] = stateManager.enabled
+        health["foregroundServiceEnabled"] = configManager.isForegroundServiceEnabled()
+        health["platform"] = "android"
+        return health
+    }
 
     fun openOemSettings(label: String): Boolean {
         return OemCompat.openOemSettingsScreen(context, label)
@@ -3094,6 +3295,28 @@ class TraceletSdk private constructor(private val context: Context) {
             "fired" to (candidate != null),
             "kind" to candidate?.kind,
         )
+    }
+
+    /**
+     * (Re)builds the battery-budget engine from the current config.
+     *
+     * A non-zero `batteryBudgetPerHour` creates the engine seeded with the
+     * current distance filter / accuracy; a zero (or negative) value disables
+     * it. Called both at [ready] and from [setConfig] so the budget can be
+     * turned on/off/retargeted at runtime — e.g. via remote config — instead of
+     * only taking effect on the next cold start.
+     */
+    private fun applyBatteryBudgetConfig() {
+        val budgetPerHour = configManager.getBatteryBudgetPerHour()
+        batteryBudgetEngine = if (budgetPerHour > 0) {
+            BatteryBudgetEngine(
+                targetBudgetPerHour = budgetPerHour,
+                initialDistanceFilter = configManager.getDistanceFilter(),
+                initialAccuracyIndex = configManager.getDesiredAccuracy(),
+            )
+        } else {
+            null
+        }
     }
 
     private fun startBatteryBudgetSampling() {

@@ -11,6 +11,16 @@
 
 > **The official Supabase adapter for Tracelet.**
 
+<p align="center">
+  <a href="https://tracelet.ikolvi.com/copy-prompt?utm_source=pubdev&utm_medium=readme&utm_campaign=copy_prompt&utm_content=tracelet_supabase">
+    <img src="https://img.shields.io/badge/%E2%9C%A8%20Copy%20AI%20Setup%20Prompt-%E2%96%B6%20click%20to%20copy-0F9D58?style=for-the-badge&labelColor=0B7A43" alt="Copy AI Setup Prompt" height="42"/>
+  </a>
+</p>
+
+<p align="center">
+  <sub><b>⚡ Set up Tracelet with AI.</b> Clicking the badge opens Tracelet and copies a ready-made prompt — paste it into your AI coding assistant (Cursor, Claude Code, Kiro, Copilot Chat…) and it interviews you, then installs and configures Tracelet with the Supabase adapter in your Flutter app.</sub>
+</p>
+
 This adapter seamlessly connects Tracelet's battery-efficient native HTTP sync engine directly to your Supabase project. It automatically configures Tracelet to push locations to a Postgres RPC function or Edge Function, and manages background auth token (JWT) refresh natively.
 
 ## 🚀 Features

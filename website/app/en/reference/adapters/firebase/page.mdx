@@ -1,6 +1,6 @@
-# Firebase Firestore Adapter
+# Firebase Realtime Database Adapter
 
-The `tracelet_firebase` package provides a seamless, drop-in adapter to sync your background locations directly to Google Cloud Firestore.
+The `tracelet_firebase` package provides a seamless, drop-in adapter to sync your background locations directly to the **Firebase Realtime Database (RTDB)** — 100% serverless, with no Cloud Functions to deploy.
 
 import { Steps, Callout } from 'nextra/components'
 
@@ -13,14 +13,20 @@ flutter pub add tracelet_firebase
 ```
 
 <Callout type="info">
-  This package automatically depends on `cloud_firestore` and `firebase_core`. You must configure your Flutter app for Firebase (using `flutterfire configure`) before using this adapter.
+  This adapter uses `firebase_core` and `firebase_auth`. You must configure your Flutter app for Firebase (using `flutterfire configure`) and **create a Realtime Database** in the Firebase console before using it.
 </Callout>
+
+## How it Works
+
+Unlike a Firestore SDK integration, this adapter does **not** open a separate write path. It plugs into Tracelet's battery-efficient **native HTTP sync engine**: `buildHttpConfig` produces an `HttpConfig` pointing at your RTDB's REST endpoint (`<database>/<path>.json`), authenticated with the Firebase Auth ID token as the `?auth=` query parameter.
+
+Because syncing runs in the native engine, batches are uploaded with exponential backoff and offline queuing **even when the app is force-quit**. When a token expires and the RTDB returns `401`, `configureTokenRefresh` transparently refreshes the Firebase ID token — in the foreground *and* in a headless background isolate — and retries.
 
 ## Setup & Configuration
 
 <Steps>
 ### Initialize Firebase
-Ensure Firebase is initialized in your `main.dart` before calling Tracelet:
+Initialize Firebase in your `main.dart` before calling Tracelet:
 
 ```dart
 import 'package:firebase_core/firebase_core.dart';
@@ -35,49 +41,67 @@ void main() async {
 }
 ```
 
-### Configure the Adapter
-When initializing Tracelet, you don't need to configure the `HttpConfig` for syncing. Instead, you mount the Firebase Adapter.
+### Configure token refresh & build the HTTP config
+Call `configureTokenRefresh()` once, then build the `HttpConfig` for your RTDB path and pass it to `Tracelet.ready`:
 
 ```dart
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:tracelet_firebase/tracelet_firebase.dart';
-import 'package:tracelet/tracelet.dart' as tl;
+import 'package:tracelet/tracelet.dart';
 
-// 1. Create the adapter
-final firebaseAdapter = TraceletFirebase(
-  collectionPath: 'users/123/locations', // The Firestore collection to write to
-  batchSize: 500, // Number of documents per Firestore batch write
-  autoSync: true, // Automatically listen to Tracelet's SQLite DB and flush
+// 1. Your Realtime Database URL (from FirebaseOptions).
+final databaseUrl = Firebase.app().options.databaseURL;
+
+// 2. Keep the Firebase ID token fresh in the background (resolves 401s).
+await TraceletFirebase.configureTokenRefresh();
+
+// 3. Get the signed-in user's id for a per-user write path.
+final uid = FirebaseAuth.instance.currentUser?.uid ?? 'anonymous_device';
+
+// 4. Build the native HTTP config for RTDB.
+final httpConfig = await TraceletFirebase.buildHttpConfig(
+  databaseUrl: databaseUrl!,        // e.g. https://my-project-default-rtdb.firebaseio.com
+  path: 'locations/$uid',           // secure this path in your RTDB rules
+  // autoSync: true, batchSync: true, maxBatchSize: 250 are the defaults
 );
 
-// 2. Start the adapter
-await firebaseAdapter.start();
-
-// 3. Start Tracelet
-await tl.Tracelet.ready(tl.Config.balanced());
-await tl.Tracelet.start();
+// 5. Start Tracelet with the adapter's HTTP config.
+await Tracelet.ready(Config(
+  geo: const GeoConfig(distanceFilter: 50),
+  http: httpConfig,
+));
+await Tracelet.start();
 ```
+
+<Callout type="warning">
+  The user must be authenticated for the write to succeed against secured rules. If you don't have a real sign-in flow yet, `FirebaseAuth.instance.signInAnonymously()` is enough to get a `uid` while testing.
+</Callout>
 </Steps>
 
-## How it Works
+## Attaching custom metadata
 
-The Firebase Adapter bypasses the standard HTTP Sync engine. 
+To tag every location with business data (e.g. an `order_id` or `trip_id`), use `setRouteContext()` — it travels with each location through the SQLite queue and is included in the RTDB payload:
 
-Instead, it listens directly to Tracelet's internal SQLite database. When new locations are recorded (e.g., while the user is hiking offline), the adapter pulls them out of SQLite, wraps them in a massive `WriteBatch` operation, and commits them to Firestore.
-
-If the device is offline, the `WriteBatch` will fail, and the adapter will simply leave the points in SQLite to try again later.
+```dart
+await Tracelet.setRouteContext(RouteContext(
+  taskId: 'order_123',
+  custom: {'trip_id': 'trip_456'},
+));
+```
 
 ## Security Rules
 
-You must ensure your Firestore Security Rules allow writing to the specified `collectionPath`. 
+Secure your Realtime Database so authenticated users can only write to their own location path:
 
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{userId}/locations/{locationId} {
-      // Only allow the authenticated user to write their own locations
-      allow write: if request.auth != null && request.auth.uid == userId;
-      allow read: if false; // Deny public reads
+```json
+{
+  "rules": {
+    "locations": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
     }
   }
 }

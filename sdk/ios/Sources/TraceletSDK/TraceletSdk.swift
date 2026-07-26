@@ -83,6 +83,7 @@ public final class TraceletSdk {
     public private(set) var auditTrailManager: AuditTrailManager!
     public private(set) var privacyZoneManager: PrivacyZoneManager!
     public private(set) var deviceAttestor: DeviceAttestor!
+    public private(set) var remoteConfigManager: RemoteConfigManager!
     public private(set) var preventSuspendManager: PreventSuspendManager!
     public private(set) var backgroundActivitySessionManager: BackgroundActivitySessionManager!
     public private(set) var serviceSessionManager: ServiceSessionManager!
@@ -149,6 +150,12 @@ public final class TraceletSdk {
 
     /// Whether ``ready(config:)`` has been called.
     public var isReadyState: Bool { isReady }
+
+    /// Test seam: whether the battery-budget engine is currently built/active.
+    /// Exposed so regression tests can assert that a runtime `setConfig()` (the
+    /// remote-config apply path) actually (re)builds the engine when
+    /// `batteryBudgetPerHour` changes — see `applyBatteryBudgetConfig()`.
+    var isBatteryBudgetEngineActive: Bool { batteryBudgetEngine != nil }
 
     private init() {
         eventSender = delegateEventSender
@@ -250,7 +257,9 @@ public final class TraceletSdk {
     public func ready(config: [String: Any]) -> [String: Any] {
         initialize()  // no-op if already initialized
 
-        let merged = configManager.setConfig(config)
+        // Merge the incoming config; the effective config (with any cached remote
+        // overrides applied below) is read back from configManager at return.
+        _ = configManager.setConfig(config)
 
         if config["encryptDatabase"] as? Bool == true {
             let key = config["encryptionKey"] as? String ?? ""
@@ -289,23 +298,20 @@ public final class TraceletSdk {
             deviceAttestor.startRefresh(intervalSeconds: configManager.getAttestationRefreshInterval())
         }
 
-        // [Enterprise] Fetch remote config if configured.
-        // TODO: Port fetchRemoteConfig to Rust Core or standalone networking
-        if let remoteUrl = configManager.getRemoteConfigUrl() {
-            // Port to Rust Networking
+        // [Enterprise] Remote config: apply the last-good cached copy synchronously
+        // so a restart resumes on the freshest known config instantly and offline.
+        // The fresh background fetch + periodic refresh is started at the end of
+        // ready(), once isReady is set.
+        let remoteConfigUrl = configManager.getRemoteConfigUrl()
+        if remoteConfigUrl != nil, let cached = remoteConfigManager.cachedConfig() {
+            _ = configManager.setConfig(cached)
+            // Mirror the applied override to Dart so activeConfig/diagnostics
+            // reflect the cached remote config on this cold start too.
+            eventSender.sendRemoteConfigEvent(cached)
         }
 
         // Initialize battery budget engine from config
-        let budgetPerHour = configManager.getBatteryBudgetPerHour()
-        if budgetPerHour > 0 {
-            batteryBudgetEngine = TraceletBatteryBudgetEngine(
-                targetBudgetPerHour: budgetPerHour,
-                initialDistanceFilter: configManager.getDistanceFilter(),
-                initialAccuracyIndex: configManager.getDesiredAccuracy()
-            )
-        } else {
-            batteryBudgetEngine = nil
-        }
+        applyBatteryBudgetConfig()
 
         initBehaviorEngines()
 
@@ -322,21 +328,47 @@ public final class TraceletSdk {
         locationEngine.rebuildProcessor()
 
         if stateManager.enabled {
-            switch stateManager.trackingMode {
-            case .continuous:
-                TraceletLog.debug("[Tracelet] ready: Resuming continuous tracking")
+            // #256: in SPEED/SMART modes the persisted trackingMode may be a
+            // TEMPORARY stationary sub-state (.geofences/.periodic) entered by the
+            // continuous motion-aware pipeline while stationary. Resuming it as a
+            // standalone startGeofences()/startPeriodic() tears down the
+            // motion-detection pipeline that switches back to continuous on
+            // movement. Resume the continuous pipeline instead; it re-enters the
+            // stationary sub-state on its own. Matches Android's completeReady().
+            let motionMode = configManager.getMotionDetectionMode()
+            if motionMode == .smart || motionMode == .speed {
+                TraceletLog.debug("[Tracelet] ready: Resuming motion-aware tracking")
                 start(isResume: true)
-            case .periodic:
-                TraceletLog.debug("[Tracelet] ready: Resuming periodic tracking")
-                startPeriodic()
-            case .geofences:
-                TraceletLog.debug("[Tracelet] ready: Resuming geofence tracking")
-                startGeofences()
+            } else {
+                switch stateManager.trackingMode {
+                case .continuous:
+                    TraceletLog.debug("[Tracelet] ready: Resuming continuous tracking")
+                    start(isResume: true)
+                case .periodic:
+                    TraceletLog.debug("[Tracelet] ready: Resuming periodic tracking")
+                    startPeriodic()
+                case .geofences:
+                    TraceletLog.debug("[Tracelet] ready: Resuming geofence tracking")
+                    startGeofences()
+                }
+            }
+        }
+
+        // [Enterprise] Start the remote-config background fetch + periodic refresh
+        // now that isReady is true, so setConfig() can apply fresh overrides at
+        // runtime (restarting the tracking pipeline if needed).
+        if let remoteUrl = remoteConfigUrl {
+            remoteConfigManager.start(url: remoteUrl) { [weak self] remote in
+                guard let self = self else { return }
+                _ = self.setConfig(remote)
+                // Notify Dart so activeConfig / diagnostics / the Dart-side
+                // battery-budget engine reflect the freshly fetched override.
+                self.eventSender.sendRemoteConfigEvent(remote)
             }
         }
 
         logger.info("ready() called")
-        return stateManager.toMap(merged)
+        return stateManager.toMap(configManager.getConfig())
     }
 
     /// Start continuous location tracking.
@@ -400,7 +432,7 @@ public final class TraceletSdk {
 
         if stateManager.isMoving {
             locationEngine.start()
-            backgroundActivitySessionManager.start()
+            startBackgroundActivitySessionIfNeeded()
         } else {
             _ = changePace(false)
         }
@@ -673,6 +705,21 @@ public final class TraceletSdk {
                 let currentMode = stateManager.trackingMode
                 let wasMoving = stateManager.isMoving
 
+                // #257: keep any Live Activity alive across the restart. iOS
+                // cannot re-REQUEST a Live Activity while backgrounded ("Target
+                // is not foreground"), so ending and recreating it here would
+                // permanently lose it. Suppress the stop/start teardown and
+                // update the surviving activity with the new config afterwards.
+                var liveActivitySuppressed = false
+                if #available(iOS 17.0, *) {
+                    #if canImport(ActivityKit)
+                    if configManager.getLiveActivityConfig() != nil {
+                        locationEngine.suppressLiveActivityLifecycle = true
+                        liveActivitySuppressed = true
+                    }
+                    #endif
+                }
+
                 _ = stop()
 
                 stateManager.enabled = true
@@ -683,13 +730,45 @@ public final class TraceletSdk {
                 // changes take effect on the very first fix after restart.
                 locationEngine.rebuildProcessor()
 
-                switch currentMode {
-                case .periodic:
-                    _ = startPeriodic()
-                case .geofences:
-                    _ = startGeofences()
-                default:
+                // #256: in SPEED/SMART motion-detection modes the SDK runs a single
+                // continuous motion-aware pipeline that TEMPORARILY flips
+                // trackingMode to .geofences/.periodic while the device is
+                // stationary (switchToStationaryGeofencesForce /
+                // switchToStationaryPeriodicForce). That temporary value is NOT an
+                // explicitly-started standalone mode — rebuilding it via
+                // startPeriodic()/startGeofences() tears down the very
+                // motion-detection pipeline that is supposed to switch it back to
+                // continuous once the device moves again, stranding tracking in a
+                // standalone stationary mode. Restart the continuous pipeline
+                // instead; it re-enters the stationary sub-state on its own when
+                // still stationary.
+                let motionMode = configManager.getMotionDetectionMode()
+                let motionAware = motionMode == .smart || motionMode == .speed
+
+                if motionAware {
                     _ = start(isResume: true)
+                } else {
+                    switch currentMode {
+                    case .periodic:
+                        _ = startPeriodic()
+                    case .geofences:
+                        _ = startGeofences()
+                    default:
+                        _ = start(isResume: true)
+                    }
+                }
+
+                // Restart done — restore normal lifecycle and refresh the
+                // surviving Live Activity's content to reflect the new config.
+                if liveActivitySuppressed {
+                    locationEngine.suppressLiveActivityLifecycle = false
+                    if #available(iOS 17.0, *) {
+                        #if canImport(ActivityKit)
+                        if let lc = configManager.getLiveActivityConfig() {
+                            LiveActivityManager.shared.updateLiveActivity(title: lc.title, body: lc.body)
+                        }
+                        #endif
+                    }
                 }
             }
 
@@ -718,9 +797,58 @@ public final class TraceletSdk {
             initBehaviorEngines()
         }
 
+        // The battery-budget engine is built at ready() from batteryBudgetPerHour
+        // and is otherwise never touched here — so enabling/disabling/retargeting
+        // the budget at runtime (e.g. a remote-config push of
+        // {"geo":{"batteryBudgetPerHour":1.0}}) previously had no effect until the
+        // app was cold-started. Rebuild it when the target changes, and (re)start
+        // or stop sampling to match the live tracking state.
+        if !valuesEqual(oldConfig["batteryBudgetPerHour"], merged["batteryBudgetPerHour"]) {
+            applyBatteryBudgetConfig()
+            if stateManager.enabled {
+                // startBatteryBudgetSampling() stops any running timer first and
+                // returns early when the engine is nil, so this both starts a
+                // newly-enabled budget and halts a newly-disabled one.
+                startBatteryBudgetSampling()
+            }
+        }
+
         syncConfigToRustFlat()
         checkSyncProvider()
         return stateManager.toMap(configManager.getConfig())
+    }
+
+    /// Refreshes the active on-screen tracking indicator so it reflects the
+    /// latest configuration, without restarting the tracking pipeline (#257).
+    ///
+    /// iOS has no foreground-service notification. Its analogue is the optional
+    /// Live Activity, which a developer opts into by supplying a
+    /// `liveActivityConfig` (title + body) and adding the Widget Extension. When
+    /// one is configured and currently running, this repost its content from the
+    /// latest `liveActivityConfig` (the dynamic body; the title is immutable on a
+    /// running activity). If no Live Activity is configured or running, this is a
+    /// safe no-op — matching the Android behavior when the foreground service is
+    /// not running.
+    public func updateNotification() {
+        guard isReady else { return }
+        if #available(iOS 17.0, *) {
+            #if canImport(ActivityKit)
+            guard let liveConfig = configManager.getLiveActivityConfig() else {
+                logger.info("updateNotification: no liveActivityConfig set — nothing to refresh")
+                return
+            }
+            // Only meaningful while a tracking session is active. Refresh the
+            // running Live Activity in place, or (re)present it with the latest
+            // config if it isn't currently on screen (it is bound to the moving
+            // sub-state, so a transient stop can tear it down). Mirrors Android's
+            // "no-op when the service isn't running" by gating on enabled.
+            guard stateManager.enabled else {
+                logger.info("updateNotification: tracking not enabled — nothing to refresh")
+                return
+            }
+            LiveActivityManager.shared.refreshLiveActivity(title: liveConfig.title, body: liveConfig.body)
+            #endif
+        }
     }
 
     /// Loose equality for two heterogeneous config values, used to detect which
@@ -760,6 +888,7 @@ public final class TraceletSdk {
             stopSyncIntervalTimer()
             cancelStopAfterElapsedTimer()
             periodicRefreshScheduler.stop()
+            remoteConfigManager?.stop()
 
             let keepGeofencesAlive = !configManager.getStopOnTerminate()
                 && stateManager.enabled
@@ -1110,7 +1239,14 @@ public final class TraceletSdk {
         return removed
     }
 
-    /// Destroy a single location by UUID.
+    /// Destroy a single location by its public UUID (#251).
+    ///
+    /// The public location identifier is a UUID string, not the internal numeric
+    /// database id. Previously this parsed the argument with `Int64(uuid)` and
+    /// bailed out for any real UUID (e.g. `36ef46cf-…`), so pending locations
+    /// could never be acknowledged. We now resolve the UUID to its row id via
+    /// the database and delete that record. A purely numeric argument still
+    /// works (treated as a raw row id) for backward compatibility.
     ///
     /// - Parameter uuid: The location UUID.
     /// - Returns: `true` if the location was destroyed.
@@ -1118,8 +1254,16 @@ public final class TraceletSdk {
     public func destroyLocation(_ uuid: String) -> Bool {
         guard isReady else { return false }
         guard let db = rustDatabase else { return false }
-        guard let id = Int64(uuid) else { return false }
         do {
+            let id: Int64
+            if let record = try db.getLocationForAudit(uuid: uuid) {
+                id = record.id
+            } else if let numeric = Int64(uuid) {
+                id = numeric
+            } else {
+                TraceletLog.error("destroyLocation: no location found for uuid=\(uuid)")
+                return false
+            }
             try db.destroyLocation(id: id)
             return true
         } catch {
@@ -1178,11 +1322,17 @@ public final class TraceletSdk {
             }
         }
         
-        // Prevent duplicate insertions of the exact same GPS fix
-        if eventType == "location", let ts = timestamp, ts == lastInsertedTimestamp {
+        // Prevent duplicate insertions of the exact same GPS fix. The heartbeat
+        // writer (startHeartbeat) tags the last GPS fix with event="heartbeat"
+        // and calls insertLocation too, so it must share the location writer's
+        // dedup key. Otherwise a fix already persisted by the normal dispatch is
+        // re-inserted by the heartbeat (identical timestamp), producing
+        // byte-identical duplicate rows that getLocations() then returns twice.
+        let persistsGpsFix = eventType == "location" || eventType == "heartbeat"
+        if persistsGpsFix, let ts = timestamp, ts == lastInsertedTimestamp {
             return ""
         }
-        if eventType == "location" { lastInsertedTimestamp = timestamp }
+        if persistsGpsFix { lastInsertedTimestamp = timestamp }
         
         var routeContext = rustEngineState?.getRouteContext()
 
@@ -1853,6 +2003,9 @@ public final class TraceletSdk {
         auditTrailManager = AuditTrailManager(configManager: configManager, rustDatabase: rustDatabase)
         privacyZoneManager = PrivacyZoneManager(configManager: configManager, rustDatabase: rustDatabase)
         deviceAttestor = DeviceAttestor()
+        remoteConfigManager = RemoteConfigManager(configManager: configManager) { [weak self] msg in
+            self?.logger.info(msg)
+        }
 
         // Location engine
         locationEngine = LocationEngine(
@@ -1979,6 +2132,32 @@ public final class TraceletSdk {
         drainDueConfirmations()
     }
 
+    // MARK: - Private: Background activity session
+
+    /// Opens the iOS 17+ `CLBackgroundActivitySession` for continuous tracking —
+    /// unless `useSignificantChangesOnly` is enabled.
+    ///
+    /// `CLBackgroundActivitySession` keeps a background location activity alive
+    /// and auto-shows the system location indicator (Dynamic Island / status-bar
+    /// pill), even when continuous GPS is not running. That defeats
+    /// significant-change monitoring, whose entire purpose is low-power
+    /// background location WITHOUT a persistent "ongoing location" indicator
+    /// (Issue #261). Periodic mode and low-accuracy geofence-only mode already
+    /// avoid the session for the same reason; this brings significant-changes-
+    /// only into line with them.
+    ///
+    /// The indicator may still blink briefly when a significant-change event is
+    /// delivered — that is normal iOS behavior and not a persistent session.
+    private func startBackgroundActivitySessionIfNeeded() {
+        if configManager.getUseSignificantChangesOnly() {
+            logger.debug(
+                "Not starting CLBackgroundActivitySession — useSignificantChangesOnly is enabled (#261)"
+            )
+            return
+        }
+        backgroundActivitySessionManager.start()
+    }
+
     // MARK: - Private: Motion State
 
     private func handleMotionStateChange(_ isMoving: Bool) {
@@ -2010,7 +2189,7 @@ public final class TraceletSdk {
             self.locationEngine.changePace(isMoving)
 
             if isMoving {
-                self.backgroundActivitySessionManager.start()
+                self.startBackgroundActivitySessionIfNeeded()
             } else {
                 self.backgroundActivitySessionManager.stop()
             }
@@ -2619,6 +2798,26 @@ public final class TraceletSdk {
 
     // MARK: - Private: Battery Budget Sampling
 
+    /// (Re)builds the battery-budget engine from the current config.
+    ///
+    /// A non-zero `batteryBudgetPerHour` creates the engine seeded with the
+    /// current distance filter / accuracy; a zero (or negative) value disables
+    /// it. Called both at `ready()` and from `setConfig()` so the budget can be
+    /// turned on/off/retargeted at runtime — e.g. via remote config — instead of
+    /// only taking effect on the next cold start (#battery-budget-remote-config).
+    private func applyBatteryBudgetConfig() {
+        let budgetPerHour = configManager.getBatteryBudgetPerHour()
+        if budgetPerHour > 0 {
+            batteryBudgetEngine = TraceletBatteryBudgetEngine(
+                targetBudgetPerHour: budgetPerHour,
+                initialDistanceFilter: configManager.getDistanceFilter(),
+                initialAccuracyIndex: configManager.getDesiredAccuracy()
+            )
+        } else {
+            batteryBudgetEngine = nil
+        }
+    }
+
     private func startBatteryBudgetSampling() {
         stopBatteryBudgetSampling()
         guard let engine = batteryBudgetEngine else { return }
@@ -2835,7 +3034,7 @@ public final class TraceletSdk {
             }
             startHeartbeat()
             preventSuspendManager.start()
-            backgroundActivitySessionManager.start()
+            startBackgroundActivitySessionIfNeeded()
             serviceSessionManager.start()
 
         case .geofences:
@@ -3076,7 +3275,11 @@ extension TraceletSdk: SpeedMotionDelegate {
             stateManager.isMoving = true
             stateManager.trackingMode = .continuous
             locationEngine.switchToContinuous()
-            backgroundActivitySessionManager.start()
+            // #261: honor useSignificantChangesOnly here too. This is the path
+            // the speed/smart motion pipeline takes when it confirms movement,
+            // independent of start()'s moving branch — so it must apply the same
+            // guard or the persistent location indicator comes back.
+            startBackgroundActivitySessionIfNeeded()
 
             // Emit motionchange event for backward compatibility
             let lastLoc = locationEngine.getLastLocation()

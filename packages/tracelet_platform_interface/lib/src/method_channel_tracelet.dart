@@ -76,6 +76,11 @@ class MethodChannelTracelet extends TraceletPlatform {
     return _invokeMap('reset', config != null ? _tlConfigToMap(config) : null);
   }
 
+  @override
+  Future<void> updateNotification() async {
+    await _methodChannel.invokeMethod<void>('updateNotification');
+  }
+
   // ---------------------------------------------------------------------------
   // Location
   // ---------------------------------------------------------------------------

@@ -137,7 +137,15 @@ class TraceletHostApiImpl: TraceletHostApi {
         dict["stopOnStationary"] = c.motion.stopOnStationary
         if let activityTypes = c.motion.activityTypes { dict["activityTypes"] = activityTypes.compactMap { $0?.rawValue } }
         dict["stationaryRadius"] = c.motion.stationaryRadius
-        dict["useSignificantChangesOnly"] = c.motion.useSignificantChangesOnly
+        // #261: `useSignificantChangesOnly` is defined on BOTH IosConfig and
+        // MotionConfig, and both flatten to this same native key. The iOS
+        // section already wrote `c.ios.useSignificantChangesOnly` above; writing
+        // the motion value here unconditionally CLOBBERED it, so a user-set
+        // `ios: IosConfig(useSignificantChangesOnly: true)` was overwritten by a
+        // default-false MotionConfig. Combine them so a `true` from either
+        // source is honored (the native SDK exposes a single flag).
+        dict["useSignificantChangesOnly"] =
+            c.ios.useSignificantChangesOnly || c.motion.useSignificantChangesOnly
         dict["shakeThreshold"] = c.motion.shakeThreshold
         dict["stillThreshold"] = c.motion.stillThreshold
         dict["stillSampleCount"] = c.motion.stillSampleCount
@@ -400,6 +408,17 @@ class TraceletHostApiImpl: TraceletHostApi {
         let dict = config.map { tlConfigToDict($0) }
         let state = sdk.reset(dict)
         completion(.success(dictToTlState(state as? [String: Any] ?? [:])))
+    }
+
+    func updateNotification(completion: @escaping (Result<Void, Error>) -> Void) {
+        // #257: iOS has no foreground-service notification. Its analogue is the
+        // optional Live Activity: if the developer opted into one via
+        // liveActivityConfig and it is currently running, refresh its content
+        // from the latest config. Otherwise this is a safe no-op. Never restarts
+        // tracking. No isReadyState guard so it degrades to a no-op rather than
+        // throwing when called before ready().
+        sdk.updateNotification()
+        completion(.success(()))
     }
 
     // MARK: - Location
@@ -716,6 +735,27 @@ class TraceletHostApiImpl: TraceletHostApi {
             "isIgnoringBatteryOptimizations": true,
             "autostartAvailable": false,
             "oemSettingsScreens": [[String: String]](),
+        ]))
+    }
+
+    func getForegroundServiceHealth(completion: @escaping (Result<[String?: Any?], Error>) -> Void) {
+        // iOS has no foreground service — there is no promotion that can fail
+        // after the fact (see #253/#254). Report the desired state alongside
+        // whether location tracking is actually active, so cross-platform code
+        // can consume the same shape. `serviceForeground` and the promotion
+        // fields are always null/false on iOS.
+        let state = sdk.getState()
+        completion(.success([
+            "desiredEnabled": state["enabled"] as? Bool ?? false,
+            "foregroundServiceEnabled": false,
+            "serviceRunning": state["enabled"] as? Bool ?? false,
+            "serviceForeground": false,
+            "foregroundNotificationId": nil,
+            "lastForegroundPromotionResult": nil,
+            "lastForegroundPromotionFailureClass": nil,
+            "lastForegroundPromotionFailureMessage": nil,
+            "lastForegroundTransitionAt": nil,
+            "platform": "ios",
         ]))
     }
 

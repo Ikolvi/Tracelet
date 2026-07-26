@@ -19,11 +19,23 @@ a new *Share* button lets you download/email it as a `.md` file. There's also a
 
 ## The 30-second version
 
+Add `tracelet_doctor` as a **dev dependency** (not a regular one) — it's a debugging
+tool, and Flutter excludes dev-dependency packages from release builds:
+
+```bash
+flutter pub add dev:tracelet_doctor
+```
+
+Then guard usage behind `kDebugMode` so it's tree-shaken out of release builds:
+
 ```dart
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:tracelet_doctor/tracelet_doctor.dart';
 
 // Open the diagnostic screen from a debug menu, button, or shake gesture:
-TraceletDoctor.show(context);
+if (kDebugMode) {
+  TraceletDoctor.show(context);
+}
 ```
 
 That opens a sheet with:
@@ -155,7 +167,7 @@ final safe = TraceletBugReport.redactConfig(Tracelet.activeConfig.toMap());
 |---|---|---|
 | Health check | `Tracelet.getHealth()` | Permissions, OEM/battery, sensors, device — the usual suspects |
 | Warnings | computed | The likely *cause* of "tracking stops in the background" |
-| Active configuration | `Tracelet.activeConfig` (redacted) | Confirms the settings actually in effect |
+| Active configuration | `Tracelet.activeConfig` (redacted) | Confirms the settings actually in effect — including any applied [remote config](/en/config/enterprise-features) (3.6.10+) |
 | Telematics events | `Tracelet.getTelematicsEvents()` | Recent driving/impact events (3.3.0) |
 | Logs | `Tracelet.getLogs()` | A timeline of what the SDK did, including in the background |
 

@@ -179,7 +179,12 @@ public final class PluginEventDispatcher: NSObject, TraceletEventSending {
     }
 
     public func sendRemoteConfigEvent(_ data: [String: Any]) {
-        fallback("remoteconfig", data)
+        guard let api = eventApi else { return fallback("remoteconfig", data) }
+        // Widen [String: Any] to the Pigeon [String?: Any?] map type. Nested
+        // dictionaries serialize through the standard codec unchanged.
+        var config: [String?: Any?] = [:]
+        for (key, value) in data { config[key] = value }
+        DispatchQueue.main.async { api.onRemoteConfig(config: config) { _ in } }
     }
 
     public func sendTrip(_ data: [String: Any]) {

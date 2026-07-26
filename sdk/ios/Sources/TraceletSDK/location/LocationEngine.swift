@@ -29,6 +29,17 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     private var nextWatchId = 0
     public private(set) var isTracking = false
 
+    /// When `true`, `start()`/`stop()` leave the Live Activity untouched.
+    ///
+    /// A `setConfig()` that changes a restart-sensitive key rebuilds the
+    /// pipeline via a stop→start cycle. On iOS a Live Activity cannot be
+    /// *re-requested* while the app is backgrounded ("Target is not
+    /// foreground"), so tearing it down and recreating it during a restart
+    /// would permanently lose it. Instead `TraceletSdk.setConfig()` sets this
+    /// flag so the existing activity survives the restart and is then updated
+    /// in place with the new config (#257).
+    public var suppressLiveActivityLifecycle = false
+
     /// Temporary OS-provider overrides. These intentionally do not mutate
     /// ConfigManager or the Rust accepted-point filter. They only control how
     /// Core Location acquires and delivers fixes while continuous tracking is
@@ -250,7 +261,11 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
                 // open a second CLLocationUpdate.liveUpdates() stream, which would
                 // double GPS work and duplicate every fix.
                 #if canImport(ActivityKit)
-                LiveActivityManager.shared.startLiveActivity(title: liveConfig.title, body: liveConfig.body)
+                // Skipped while a setConfig() restart is in progress so the
+                // existing activity survives (it is updated in place instead).
+                if !suppressLiveActivityLifecycle {
+                    LiveActivityManager.shared.startLiveActivity(title: liveConfig.title, body: liveConfig.body)
+                }
                 #endif
             } else if configManager.getUseBackgroundActivitySession() {
                 backgroundActivitySession = CLBackgroundActivitySession()
@@ -272,7 +287,11 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         
         if #available(iOS 17.0, *) {
             #if canImport(ActivityKit)
-            LiveActivityManager.shared.stopLiveActivity()
+            // Left running while a setConfig() restart is in progress so the
+            // activity survives and is updated in place afterwards (#257).
+            if !suppressLiveActivityLifecycle {
+                LiveActivityManager.shared.stopLiveActivity()
+            }
             #endif
             (backgroundActivitySession as? CLBackgroundActivitySession)?.invalidate()
             backgroundActivitySession = nil
@@ -376,6 +395,19 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         TraceletLog.debug("[Tracelet] switchToContinuous: stopping periodic, resuming continuous")
         stopPeriodicTimer()
         isPeriodicTracking = false
+
+        // #261: in significant-changes-only mode we must NOT start continuous
+        // GPS. startUpdatingLocation() (with allowsBackgroundLocationUpdates)
+        // itself shows the persistent system location indicator — independent
+        // of CLBackgroundActivitySession — which defeats significant-change
+        // monitoring. The motion pipeline can call this on a confirmed
+        // movement, so honor the flag here just like start() does and keep
+        // significant-change monitoring (registered in start()) as the sole
+        // wake-up mechanism.
+        if configManager.getUseSignificantChangesOnly() {
+            TraceletLog.debug("[Tracelet] switchToContinuous: useSignificantChangesOnly enabled — staying on significant-change monitoring, not starting continuous GPS (#261)")
+            return
+        }
 
         configureLocationManager()
         locationManager.startUpdatingLocation()

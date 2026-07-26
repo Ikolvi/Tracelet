@@ -1,4 +1,5 @@
 import XCTest
+import CoreLocation
 @testable import TraceletSDK
 
 final class TraceletSdkTests: XCTestCase {
@@ -111,6 +112,50 @@ final class TraceletSdkTests: XCTestCase {
 
         config.reset(nil)
         XCTAssertEqual(config.getDistanceFilter(), 10.0)
+    }
+
+    // MARK: - activityType (#250)
+
+    /// The Flutter bridge sends `activityType` as the raw enum index (Int).
+    /// getActivityType() previously read it as a String, so it always fell
+    /// through to `.otherNavigation` regardless of what was configured.
+    func testGetActivityTypeReadsRawIndex() {
+        let cases: [(Int, CLActivityType)] = [
+            (0, .other),
+            (1, .automotiveNavigation),
+            (2, .fitness),
+            (3, .otherNavigation),
+            (4, .airborne),
+        ]
+        for (index, expected) in cases {
+            let config = ConfigManager()
+            config.reset(nil)
+            let _ = config.setConfig(["activityType": index])
+            XCTAssertEqual(
+                config.getActivityType(),
+                expected,
+                "activityType index \(index) must resolve to \(expected)"
+            )
+        }
+    }
+
+    /// Regression guard for the exact reported symptom: configuring
+    /// automotiveNavigation/fitness/airborne used to silently become
+    /// otherNavigation.
+    func testGetActivityTypeHonoursNonDefaultValue() {
+        let config = ConfigManager()
+        config.reset(nil)
+        let _ = config.setConfig(["activityType": 1])
+        XCTAssertEqual(config.getActivityType(), .automotiveNavigation)
+        XCTAssertNotEqual(config.getActivityType(), .otherNavigation)
+    }
+
+    /// Older persisted caches may still hold the string name — keep reading it.
+    func testGetActivityTypeStringFallback() {
+        let config = ConfigManager()
+        config.reset(nil)
+        let _ = config.setConfig(["activityType": "fitness"])
+        XCTAssertEqual(config.getActivityType(), .fitness)
     }
 
     func testConfigManagerDynamicHeaders() {

@@ -81,6 +81,67 @@ class LocationService : Service(), DefaultLifecycleObserver {
         @Volatile
         private var isRunning = false
 
+        // ── Foreground-service health (#255) ──
+        // Authoritative native foreground-service state, so Dart can distinguish
+        // the *desired* tracking state (StateManager.enabled) from what the OS
+        // actually granted. On Android 12+ a foreground-service start can be
+        // deferred or rejected even while enabled=true, so enabled alone is not
+        // proof that background tracking is operational.
+
+        /** Whether the service is currently promoted to the foreground (last
+         *  startForeground() succeeded and it has not been demoted/stopped). */
+        @Volatile
+        private var foregroundPromoted = false
+
+        /** Result of the most recent foreground promotion attempt:
+         *  `success`, `deferred`, or `failed`; null before any attempt. */
+        @Volatile
+        private var lastPromotionResult: String? = null
+
+        /** Exception class of the most recent failed/deferred promotion. */
+        @Volatile
+        private var lastPromotionFailureClass: String? = null
+
+        /** Message of the most recent failed/deferred promotion. */
+        @Volatile
+        private var lastPromotionFailureMessage: String? = null
+
+        /** Epoch-ms of the most recent promotion transition (0 = never). */
+        @Volatile
+        private var lastPromotionTimestampMs: Long = 0L
+
+        /** Records the outcome of a foreground-promotion attempt (#255). */
+        private fun recordPromotion(
+            result: String,
+            promoted: Boolean,
+            failureClass: String? = null,
+            failureMessage: String? = null,
+        ) {
+            lastPromotionResult = result
+            foregroundPromoted = promoted
+            lastPromotionFailureClass = failureClass
+            lastPromotionFailureMessage = failureMessage
+            lastPromotionTimestampMs = System.currentTimeMillis()
+        }
+
+        /**
+         * Authoritative snapshot of the foreground-service state (#255).
+         *
+         * Reports what the OS actually granted — independent of the desired
+         * `enabled` flag — so apps can build tracking-health indicators,
+         * diagnostics, and recovery. Callers typically merge in `desiredEnabled`
+         * and `foregroundServiceEnabled` at the SDK layer.
+         */
+        fun foregroundServiceHealth(): Map<String, Any?> = mapOf(
+            "serviceRunning" to isRunning,
+            "serviceForeground" to foregroundPromoted,
+            "foregroundNotificationId" to if (foregroundPromoted) NOTIFICATION_ID.toLong() else null,
+            "lastForegroundPromotionResult" to lastPromotionResult,
+            "lastForegroundPromotionFailureClass" to lastPromotionFailureClass,
+            "lastForegroundPromotionFailureMessage" to lastPromotionFailureMessage,
+            "lastForegroundTransitionAt" to lastPromotionTimestampMs.takeIf { it > 0L },
+        )
+
         // Boot-mode native tracking state — accessible by the plugin.
         @JvmStatic
         @androidx.annotation.VisibleForTesting
@@ -145,7 +206,11 @@ class LocationService : Service(), DefaultLifecycleObserver {
                         stopStationaryTimer()
                         return
                     }
-                    engine.getCurrentPosition(mapOf("desiredAccuracy" to accuracy, "skipCache" to true)) { locationMap ->
+                    // persist=false: this timer inserts the enriched "periodic" record
+                    // itself below. Letting getCurrentPosition() persist too stored the
+                    // same map (same uuid) first, so the insert below failed every tick
+                    // with "UNIQUE constraint failed: location_events.uuid" (#248).
+                    engine.getCurrentPosition(mapOf("desiredAccuracy" to accuracy, "skipCache" to true, "persist" to false)) { locationMap ->
                         if (locationMap != null) {
                             val coords = locationMap["coords"] as? Map<*, *>
                             var speed = (coords?.get("speed") as? Number)?.toDouble() ?: 0.0
@@ -316,16 +381,44 @@ class LocationService : Service(), DefaultLifecycleObserver {
                     // never resume. Report the failure so BootReceiver can fall
                     // back to a background-eligible mechanism (WorkManager/alarms).
                     TraceletLog.warning("Boot foreground-service start blocked (Android 12+ background restriction): ${e.message}. Caller will fall back to WorkManager.")
+                    // #255: boot promotion is not retried as a foreground service
+                    // (falls back to WorkManager), so record it as a failure.
+                    recordPromotion(
+                        result = "failed",
+                        promoted = false,
+                        failureClass = e.javaClass.name,
+                        failureMessage = e.message,
+                    )
                 } else {
                     TraceletLog.warning("startForegroundService blocked (app likely backgrounded on Android 12+): ${e.message}. Deferring until foreground.")
+                    // #255: the promotion is deferred until the app returns to the
+                    // foreground (see scheduleDeferredStart); surface that state.
+                    recordPromotion(
+                        result = "deferred",
+                        promoted = false,
+                        failureClass = e.javaClass.name,
+                        failureMessage = e.message,
+                    )
                     scheduleDeferredStart(appContext, isBoot)
                 }
                 false
             } catch (e: SecurityException) {
                 TraceletLog.warning("startForegroundService blocked by SecurityException (missing permissions?): ${e.message}")
+                recordPromotion(
+                    result = "failed",
+                    promoted = false,
+                    failureClass = e.javaClass.name,
+                    failureMessage = e.message,
+                )
                 false
             } catch (e: Exception) {
                 TraceletLog.error("startForegroundService failed unexpectedly: ${e.message}")
+                recordPromotion(
+                    result = "failed",
+                    promoted = false,
+                    failureClass = e.javaClass.name,
+                    failureMessage = e.message,
+                )
                 false
             }
         }
@@ -523,8 +616,7 @@ class LocationService : Service(), DefaultLifecycleObserver {
 
         if (!isForegroundService) {
             TraceletLog.debug("Satisfying foreground contract...")
-            startForegroundWithNotification()
-            isForegroundService = true
+            isForegroundService = startForegroundWithNotification()
         }
 
         updateNotificationVisibility()
@@ -548,7 +640,18 @@ class LocationService : Service(), DefaultLifecycleObserver {
                 isRunning = false
             }
             ACTION_UPDATE_NOTIFICATION -> {
-                // Visibility is managed by updateNotificationVisibility()
+                // #257: repost the notification so ForegroundServiceConfig
+                // changes (title/text/icon/color/actions/priority/ongoing)
+                // applied via setConfig() take effect on the live notification
+                // without restarting tracking. Visibility (whether it should be
+                // shown at all) is still governed by updateNotificationVisibility()
+                // above, so only repost content when currently promoted — this
+                // avoids resurrecting a notification that pause-only mode just
+                // suppressed while the app is in the foreground.
+                if (isForegroundService) {
+                    createNotificationChannel()
+                    updateNotificationContent()
+                }
             }
             ACTION_BUTTON -> {
                 val action = intent.getStringExtra(EXTRA_BUTTON_ACTION)
@@ -665,6 +768,8 @@ class LocationService : Service(), DefaultLifecycleObserver {
         stopBootTrackingInternal()
         releaseOemWakelock()
         isRunning = false
+        // #255: the service is gone — it is no longer a foreground service.
+        foregroundPromoted = false
         super<Service>.onDestroy()
     }
 
@@ -1124,11 +1229,19 @@ class LocationService : Service(), DefaultLifecycleObserver {
     // Notification
     // =========================================================================
 
-    private fun startForegroundWithNotification() {
+    /**
+     * Promote the service to the foreground with its notification.
+     *
+     * @return `true` if `startForeground()` succeeded, `false` if it threw and the
+     *         service was torn down. Callers MUST gate `isForegroundService` on this
+     *         result — on failure the service is stopping, so marking it as a running
+     *         foreground service would leave the internal state inconsistent (see #253).
+     */
+    private fun startForegroundWithNotification(): Boolean {
         createNotificationChannel()
         val notification = buildNotification()
 
-        try {
+        return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(
                     NOTIFICATION_ID,
@@ -1138,16 +1251,33 @@ class LocationService : Service(), DefaultLifecycleObserver {
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
+            // #255: record the successful promotion for the health snapshot.
+            recordPromotion(result = "success", promoted = true)
+            true
         } catch (e: SecurityException) {
             TraceletLog.warning("SecurityException starting foreground service (missing permissions?): ${e.message}")
+            recordPromotion(
+                result = "failed",
+                promoted = false,
+                failureClass = e.javaClass.name,
+                failureMessage = e.message,
+            )
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             isRunning = false
+            false
         } catch (e: Exception) {
             TraceletLog.error("Error starting foreground service: ${e.message}")
+            recordPromotion(
+                result = "failed",
+                promoted = false,
+                failureClass = e.javaClass.name,
+                failureMessage = e.message,
+            )
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             isRunning = false
+            false
         }
     }
 
@@ -1266,22 +1396,19 @@ class LocationService : Service(), DefaultLifecycleObserver {
                 // Show in background if not already shown OR if we just transitioned.
                 if (!isForegroundService || changed) {
                     TraceletLog.debug("Showing notification (App in background)")
-                    startForegroundWithNotification()
-                    isForegroundService = true
+                    isForegroundService = startForegroundWithNotification()
                 }
             }
         } else {
             // Persistent mode: Always ensure it's shown.
             if (!isForegroundService) {
                 TraceletLog.debug("Showing persistent notification")
-                startForegroundWithNotification()
-                isForegroundService = true
+                isForegroundService = startForegroundWithNotification()
             } else if (changed && !inForeground) {
                 // Optimization: Re-show when moving to background in case it was
                 // manually dismissed while the app was in the foreground.
                 TraceletLog.debug("Restoring persistent notification on background transition")
-                startForegroundWithNotification()
-                isForegroundService = true
+                isForegroundService = startForegroundWithNotification()
             }
         }
     }

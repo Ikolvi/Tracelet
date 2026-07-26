@@ -4,7 +4,7 @@ import LottiePlayer from '../../../../../components/LottiePlayer'
 
 <LottiePlayer src="/animations/handshake.json" />
 
-The `tracelet_supabase` package provides a highly optimized, drop-in adapter to sync your background locations directly to a Supabase Postgres database using bulk inserts.
+The `tracelet_supabase` package provides a drop-in adapter to sync your background locations directly into **Supabase Postgres**, via either a Postgres **RPC function** or a Supabase **Edge Function**.
 
 import { Steps, Callout } from 'nextra/components'
 
@@ -17,41 +17,66 @@ flutter pub add tracelet_supabase
 ```
 
 <Callout type="info">
-  This package automatically depends on `supabase_flutter`. You must initialize the Supabase client before using this adapter.
+  This adapter uses `supabase_flutter`. You must initialize the Supabase client before using it.
 </Callout>
+
+## How it Works
+
+The adapter plugs into Tracelet's battery-efficient **native HTTP sync engine**: `buildHttpConfig` produces an `HttpConfig` pointing at your Supabase REST endpoint — either `/rest/v1/rpc/<function>` (RPC) or `/functions/v1/<function>` (Edge Function) — with the `apikey` and `Authorization: Bearer <token>` headers set for you.
+
+Because syncing runs in the native engine, batches upload with exponential backoff and offline queuing **even when the app is force-quit**. On a `401`, `configureTokenRefresh` refreshes the Supabase session — in the foreground and in a headless background isolate — and retries. You provide **exactly one** target: `rpcFunction` **or** `edgeFunction`.
 
 ## Setup & Configuration
 
 <Steps>
-### Database Schema
-First, create a table in your Supabase Postgres database to receive the locations. 
+### Create a table and an ingest function
+Create a table to receive the locations, enable RLS, and add a Postgres function that inserts an incoming batch. Tracelet posts a batch of location objects, so the function accepts a `jsonb` array:
 
 ```sql
+-- Table
 CREATE TABLE public.locations (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id uuid REFERENCES auth.users NOT NULL,
+  user_id uuid REFERENCES auth.users NOT NULL DEFAULT auth.uid(),
   latitude double precision NOT NULL,
   longitude double precision NOT NULL,
   accuracy double precision,
-  altitude double precision,
   speed double precision,
-  heading double precision,
-  timestamp timestamp with time zone NOT NULL,
+  timestamp timestamptz NOT NULL,
   is_moving boolean,
-  activity_type text,
-  battery_level double precision,
-  created_at timestamp with time zone DEFAULT now()
+  created_at timestamptz DEFAULT now()
 );
 
--- Enable RLS
 ALTER TABLE public.locations ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can insert their own locations" ON public.locations
+CREATE POLICY "Users insert their own locations" ON public.locations
   FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- RPC function: receives the batch as a jsonb array and inserts each row.
+-- (The exact field names come from Tracelet's sync payload — see the
+--  Tracelet Sync docs for the payload schema.)
+CREATE OR REPLACE FUNCTION public.insert_tracelet_locations(payload jsonb)
+RETURNS void
+LANGUAGE sql
+SECURITY INVOKER
+AS $$
+  INSERT INTO public.locations (latitude, longitude, accuracy, speed, timestamp, is_moving)
+  SELECT
+    (e->'coords'->>'latitude')::double precision,
+    (e->'coords'->>'longitude')::double precision,
+    (e->'coords'->>'accuracy')::double precision,
+    (e->'coords'->>'speed')::double precision,
+    (e->>'timestamp')::timestamptz,
+    (e->>'is_moving')::boolean
+  FROM jsonb_array_elements(payload) AS e;
+$$;
 ```
 
+<Callout type="info">
+  Prefer more custom processing (validation, fan-out, enrichment)? Deploy a Supabase **Edge Function** instead and pass its name as `edgeFunction` — the adapter will POST the batch to `/functions/v1/<name>`.
+</Callout>
+
 ### Initialize Supabase
-Ensure Supabase is initialized in your `main.dart`:
+Initialize the Supabase client in your `main.dart`:
 
 ```dart
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -66,45 +91,47 @@ void main() async {
 }
 ```
 
-### Configure the Adapter
-When initializing Tracelet, mount the Supabase Adapter instead of using the standard HTTP Sync engine.
+### Configure token refresh & build the HTTP config
+Call `configureTokenRefresh()` once, build the `HttpConfig` targeting your RPC (or Edge Function), and pass it to `Tracelet.ready`:
 
 ```dart
 import 'package:tracelet_supabase/tracelet_supabase.dart';
-import 'package:tracelet/tracelet.dart' as tl;
+import 'package:tracelet/tracelet.dart';
 
-// 1. Create the adapter
-final supabaseAdapter = TraceletSupabase(
-  tableName: 'locations', // The Postgres table name
-  batchSize: 500, // Number of rows per bulk insert
-  autoSync: true, // Automatically listen to Tracelet's SQLite DB and flush
-  
-  // Optional: Transform the JSON before inserting to match your Postgres schema exactly
-  transformPayload: (Map<String, dynamic> locationJson) {
-    return {
-      'user_id': Supabase.instance.client.auth.currentUser?.id,
-      'latitude': locationJson['coords']['latitude'],
-      'longitude': locationJson['coords']['longitude'],
-      'accuracy': locationJson['coords']['accuracy'],
-      'timestamp': locationJson['timestamp'],
-      'is_moving': locationJson['is_moving'],
-    };
-  }
+const supabaseUrl = 'https://xyzcompany.supabase.co';
+const supabaseAnonKey = 'public-anon-key';
+
+// 1. Keep the Supabase session token fresh in the background (resolves 401s).
+await TraceletSupabase.configureTokenRefresh(anonKey: supabaseAnonKey);
+
+// 2. Build the native HTTP config. Provide EITHER rpcFunction OR edgeFunction.
+final httpConfig = TraceletSupabase.buildHttpConfig(
+  supabaseUrl: supabaseUrl,
+  anonKey: supabaseAnonKey,
+  rpcFunction: 'insert_tracelet_locations', // ...or: edgeFunction: 'tracelet-ingest'
+  // autoSync: true, batchSync: true, maxBatchSize: 250 are the defaults
 );
 
-// 2. Start the adapter
-await supabaseAdapter.start();
-
-// 3. Start Tracelet
-await tl.Tracelet.ready(tl.Config.balanced());
-await tl.Tracelet.start();
+// 3. Start Tracelet with the adapter's HTTP config.
+await Tracelet.ready(Config(
+  geo: const GeoConfig(distanceFilter: 50),
+  http: httpConfig,
+));
+await Tracelet.start();
 ```
 </Steps>
 
-## Performance & Delta Compression
+## Attaching custom metadata
 
-Unlike Firebase which requires billing per-document-write, Supabase uses Postgres. The `tracelet_supabase` adapter utilizes PostgREST's bulk-insert capability (`.insert(List<Map>)`). 
+To tag every location with business data (e.g. a `driver_id` or `trip_id`), use `setRouteContext()` — it travels with each location through the SQLite queue and is included in the payload your function receives:
 
-If you queue 500 locations while driving offline, the adapter will send all 500 points in **a single HTTP request** and a **single Postgres transaction**. 
+```dart
+await Tracelet.setRouteContext(RouteContext(
+  taskId: 'order_123',
+  custom: {'trip_id': 'trip_456'},
+));
+```
 
-Because of this efficiency, Supabase is highly recommended for high-frequency tracking (e.g., 1 point every 10 meters).
+## Performance
+
+Syncing runs through Tracelet's batch engine, so a backlog of offline points is flushed in batches (default `maxBatchSize: 250`) rather than one request per point. Combined with Postgres' bulk insert inside your RPC, this keeps high-frequency tracking (e.g. a point every 10 m) efficient on both device battery and database round-trips.

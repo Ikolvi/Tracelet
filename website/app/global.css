@@ -202,3 +202,23 @@ html.dark .notification-dropdown-item {
 html.dark .notification-dropdown-item:hover {
   background-color: rgba(15, 157, 88, 0.1);
 }
+
+/* Copy AI Setup Prompt — landing highlight.
+   When a visitor arrives from the GitHub / pub.dev README badge and the browser
+   blocks the automatic clipboard write, we pulse the hero button so it's obvious
+   they should click it once to copy the prompt. */
+@keyframes tracelet-copy-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(15, 157, 88, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(15, 157, 88, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(15, 157, 88, 0);
+  }
+}
+.tracelet-copy-attention {
+  animation: tracelet-copy-pulse 1.4s ease-out infinite;
+  background-color: rgba(15, 157, 88, 0.08) !important;
+}

@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tracelet/tracelet.dart';
+import 'package:tracelet_platform_interface/tracelet_platform_interface.dart'
+    show TlIosActivityType;
 
 void main() {
   // ==========================================================================
@@ -300,6 +302,56 @@ void main() {
     test('ForegroundServiceConfig.enabled from map defaults to true', () {
       final config = ForegroundServiceConfig.fromMap(const {});
       expect(config.enabled, true);
+    });
+  });
+
+  // ==========================================================================
+  // IosConfig.activityType (#250)
+  // ==========================================================================
+  group('IosConfig.activityType (#250)', () {
+    // The two enums are declared with different member orderings, so mapping
+    // by raw `.index` corrupted the value in flight. `otherNavigation` and
+    // `fitness` in particular are swapped between the orderings, which is the
+    // clearest regression signal.
+    test('toTlConfig maps every activity type by name, not by index', () {
+      const cases = <LocationActivityType, TlIosActivityType>{
+        LocationActivityType.other: TlIosActivityType.other,
+        LocationActivityType.automotiveNavigation: TlIosActivityType.automotive,
+        LocationActivityType.otherNavigation: TlIosActivityType.otherNavigation,
+        LocationActivityType.fitness: TlIosActivityType.fitness,
+        LocationActivityType.airborne: TlIosActivityType.airborne,
+      };
+      cases.forEach((input, expected) {
+        expect(
+          IosConfig(activityType: input).toTlConfig().activityType,
+          expected,
+          reason: '$input must map to $expected',
+        );
+      });
+    });
+
+    test('otherNavigation no longer bridges to fitness (the #250 bug)', () {
+      // Regression guard for the exact reported symptom: with index-based
+      // mapping, otherNavigation (index 2) became TlIosActivityType.values[2]
+      // == fitness.
+      const config = IosConfig(
+        activityType: LocationActivityType.otherNavigation,
+      );
+      expect(
+        config.toTlConfig().activityType,
+        TlIosActivityType.otherNavigation,
+      );
+      expect(
+        config.toTlConfig().activityType,
+        isNot(TlIosActivityType.fitness),
+      );
+    });
+
+    test('default activity type is other', () {
+      expect(
+        const IosConfig().toTlConfig().activityType,
+        TlIosActivityType.other,
+      );
     });
   });
 

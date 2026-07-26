@@ -76,6 +76,7 @@ class TraceletBugReport {
     buffer.writeln();
 
     await _writeHealth(buffer);
+    await _writeForegroundServiceHealth(buffer);
     if (includeConfig) _writeConfig(buffer);
     await _writeTelematics(buffer, telematicsLimit);
     await _writeLogs(buffer, logLimit);
@@ -139,6 +140,47 @@ class TraceletBugReport {
       }
     } catch (e) {
       buffer.writeln('_Could not read health: ${e}_');
+    }
+    buffer.writeln();
+  }
+
+  static Future<void> _writeForegroundServiceHealth(StringBuffer buffer) async {
+    buffer.writeln('## Foreground service health');
+    buffer.writeln();
+    try {
+      final health = await Tracelet.getForegroundServiceHealth();
+      buffer.writeln('| Field | Value |');
+      buffer.writeln('|---|---|');
+      buffer.writeln('| Platform | ${health['platform']} |');
+      buffer.writeln('| Desired (enabled) | ${health['desiredEnabled']} |');
+      buffer.writeln(
+        '| FGS configured | ${health['foregroundServiceEnabled']} |',
+      );
+      buffer.writeln('| Service running | ${health['serviceRunning']} |');
+      buffer.writeln(
+        '| Promoted to foreground | ${health['serviceForeground']} |',
+      );
+      buffer.writeln(
+        '| Notification id | ${health['foregroundNotificationId']} |',
+      );
+      buffer.writeln(
+        '| Last promotion result '
+        '| ${health['lastForegroundPromotionResult']} |',
+      );
+      buffer.writeln(
+        '| Last promotion failure class '
+        '| ${health['lastForegroundPromotionFailureClass']} |',
+      );
+      buffer.writeln(
+        '| Last promotion failure message '
+        '| ${health['lastForegroundPromotionFailureMessage']} |',
+      );
+      buffer.writeln(
+        '| Last transition (ms) '
+        '| ${health['lastForegroundTransitionAt']} |',
+      );
+    } catch (e) {
+      buffer.writeln('_Could not read foreground-service health: ${e}_');
     }
     buffer.writeln();
   }

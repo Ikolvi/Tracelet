@@ -48,13 +48,13 @@ android {
         // Tracelet SDK — standalone geolocation engine
         // Resolved from Maven Central when published, substituted with local
         // module via includeBuild during development.
-        api("com.ikolvi:tracelet-sdk:3.6.1")
+        api("com.ikolvi:tracelet-sdk:3.6.12")
 
         // Testing
         // Real org.json so ConfigManager's JSON persistence works under unit
         // tests (Android's bundled org.json is stubbed to return null when
         // unitTests.returnDefaultValues=true). Mirrors the tracelet-sdk module.
-        testImplementation("org.json:json:20260522")
+        testImplementation("org.json:json:20260719")
         // Optional SDK deps that some duplicated SDK-behavior tests exercise.
         testImplementation("androidx.security:security-crypto:1.1.0")
         testImplementation("com.google.android.play:integrity:1.6.0")

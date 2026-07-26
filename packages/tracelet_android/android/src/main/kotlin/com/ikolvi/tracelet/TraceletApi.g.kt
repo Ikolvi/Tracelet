@@ -3485,6 +3485,18 @@ interface TraceletHostApi {
   fun getState(callback: (Result<TlState>) -> Unit)
   fun setConfig(config: TlConfig, callback: (Result<TlState>) -> Unit)
   fun reset(config: TlConfig?, callback: (Result<TlState>) -> Unit)
+  /**
+   * Refreshes the active on-screen tracking indicator so it reflects the
+   * latest configuration applied via [setConfig], without restarting the
+   * tracking pipeline.
+   *
+   * - Android: reposts the foreground-service notification from the latest
+   *   ForegroundServiceConfig. No-op if the service is not running.
+   * - iOS: refreshes the running Live Activity body from the latest
+   *   liveActivityConfig (if the developer opted into one). No-op otherwise.
+   * - Web: no-op.
+   */
+  fun updateNotification(callback: (Result<Unit>) -> Unit)
   fun getCurrentPosition(options: TlCurrentPositionOptions, callback: (Result<TlLocation>) -> Unit)
   fun getLastKnownLocation(options: TlCurrentPositionOptions?, callback: (Result<TlLocation?>) -> Unit)
   fun watchPosition(options: TlCurrentPositionOptions, callback: (Result<Long>) -> Unit)
@@ -3548,6 +3560,7 @@ interface TraceletHostApi {
   fun stopBackgroundTask(taskId: Long, callback: (Result<Long>) -> Unit)
   fun getSensors(callback: (Result<Map<String?, Any?>>) -> Unit)
   fun getSettingsHealth(callback: (Result<Map<String?, Any?>>) -> Unit)
+  fun getForegroundServiceHealth(callback: (Result<Map<String?, Any?>>) -> Unit)
   fun openOemSettings(label: String, callback: (Result<Boolean>) -> Unit)
   fun showPowerManager(callback: (Result<Boolean>) -> Unit)
   fun getLog(query: Map<String?, Any?>?, callback: (Result<String>) -> Unit)
@@ -3749,6 +3762,23 @@ interface TraceletHostApi {
               } else {
                 val data = result.getOrNull()
                 reply.reply(TraceletApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.updateNotification$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            api.updateNotification{ result: Result<Unit> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(TraceletApiPigeonUtils.wrapError(error))
+              } else {
+                reply.reply(TraceletApiPigeonUtils.wrapResult(null))
               }
             }
           }
@@ -4765,6 +4795,24 @@ interface TraceletHostApi {
         }
       }
       run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.getForegroundServiceHealth$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            api.getForegroundServiceHealth{ result: Result<Map<String?, Any?>> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(TraceletApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(TraceletApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.openOemSettings$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { message, reply ->
@@ -5592,6 +5640,31 @@ class TraceletEventApi(private val binaryMessenger: BinaryMessenger, private val
     val channelName = "dev.flutter.pigeon.tracelet_platform_interface.TraceletEventApi.onCrashModelStatus$separatedMessageChannelSuffix"
     val channel = BasicMessageChannel<Any?>(binaryMessenger, channelName, codec)
     channel.send(listOf(eventArg)) {
+      if (it is List<*>) {
+        if (it.size > 1) {
+          callback(Result.failure(FlutterError(it[0] as String, it[1] as String, it[2] as String?)))
+        } else {
+          callback(Result.success(Unit))
+        }
+      } else {
+        callback(Result.failure(TraceletApiPigeonUtils.createConnectionError(channelName)))
+      } 
+    }
+  }
+  /**
+   * Fired when a remotely-fetched configuration (Enterprise `remoteConfigUrl`)
+   * is applied natively at runtime. Carries the raw override map the endpoint
+   * returned (e.g. `{"geo":{"batteryBudgetPerHour":1.0}}`) so the Dart layer
+   * can fold it into its cached active config — otherwise `Tracelet.activeConfig`
+   * (and diagnostics like tracelet_doctor) would keep showing the last
+   * locally-set values, since the native fetch never round-trips through Dart.
+   */
+  fun onRemoteConfig(configArg: Map<String?, Any?>, callback: (Result<Unit>) -> Unit)
+{
+    val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+    val channelName = "dev.flutter.pigeon.tracelet_platform_interface.TraceletEventApi.onRemoteConfig$separatedMessageChannelSuffix"
+    val channel = BasicMessageChannel<Any?>(binaryMessenger, channelName, codec)
+    channel.send(listOf(configArg)) {
       if (it is List<*>) {
         if (it.size > 1) {
           callback(Result.failure(FlutterError(it[0] as String, it[1] as String, it[2] as String?)))

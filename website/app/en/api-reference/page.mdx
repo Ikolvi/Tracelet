@@ -84,7 +84,7 @@ Controls overall app lifecycle behavior.
 - **`schedule`**: `List<String>` *(Default: `[]`)*
   CRON-like strings to automatically start/stop tracking at specific times.
 - **`remoteConfigUrl`**: `String?` *(Default: `null`)*
-  URL to fetch remote JSON configurations overriding local ones.
+  HTTPS URL the SDK fetches a JSON config map from on `ready()`, applying it over the local config and refreshing in the background. Cached on-device for instant offline apply. See [Remote Configuration](/en/config/enterprise-features).
 - **`remoteConfigHeaders`**: `Map<String, String>?` *(Default: `null`)*
   HTTP Headers for the remote config fetch.
 - **`remoteConfigTimeout`**: `int` *(Default: `60000`)*
@@ -139,6 +139,8 @@ Android specific OS constraints. [See Android Story 📖](/en/getting-started/pl
 - **`showNotificationOnPauseOnly`**: `bool` *(Default: `false`)*
 - **`actions`**: `List<String>` *(Default: `[]`)*
 
+> 🔔 To apply a notification change *while tracking is already running*, call [`Tracelet.updateNotification()`](/en/getting-started/platform-setup/android#refreshing-the-notification-while-tracking-updatenotification) after `setConfig()`. It reposts the live notification without restarting the pipeline (v3.6.8+). On iOS it refreshes the running Live Activity instead; on web it is a no-op.
+
 ---
 
 ## 🍎 IosConfig (`config.ios`)
@@ -160,6 +162,8 @@ iOS specific OS constraints. [See iOS Story 📖](/en/getting-started/platform-s
   Plays silent audio to keep the app alive 24/7. Requires `audio` Xcode capability. [See Prevent Suspend 📖](/en/getting-started/platform-setup/ios#scenario-1-the-un-killable-fleet-tracker-high-power)
 - **`useBackgroundActivitySession`**: `bool` *(Default: `false`)*
   Uses `CLBackgroundActivitySession` (iOS 17+) to maintain a background location session with only "When In Use" authorization. This replaces the traditional blue pill with a Dynamic Island indicator. *Note: Apple App Store guidelines require apps using this to provide a clear explanation to users why background location is necessary.*
+- **`liveActivityConfig`**: `LiveActivityConfig?` *(Default: `null`)*
+  Opt into a Lock Screen / Dynamic Island Live Activity while tracking (iOS 16.1+, requires a Widget Extension). Takes a `title` and `body`. [See Live Activities 📖](/en/getting-started/platform-setup/ios#scenario-5-live-activities-lock-screen--dynamic-island-ui). Refresh it at runtime with [`Tracelet.updateNotification()`](/en/getting-started/platform-setup/ios#refreshing-the-live-activity-while-tracking-updatenotification) (v3.6.8+).
 
 ---
 

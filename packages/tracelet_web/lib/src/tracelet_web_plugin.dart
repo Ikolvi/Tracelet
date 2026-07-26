@@ -274,6 +274,26 @@ class TraceletWebPlugin extends TraceletPlatform {
   }
 
   @override
+  Future<Map<String, Object?>> getForegroundServiceHealth() async {
+    // Web has no foreground service (#255). Report the desired enabled state
+    // and null/false promotion fields so cross-platform callers get a stable
+    // shape without a runtime UnimplementedError.
+    final state = _buildState();
+    return <String, Object?>{
+      'desiredEnabled': state['enabled'] ?? false,
+      'foregroundServiceEnabled': false,
+      'serviceRunning': state['enabled'] ?? false,
+      'serviceForeground': false,
+      'foregroundNotificationId': null,
+      'lastForegroundPromotionResult': null,
+      'lastForegroundPromotionFailureClass': null,
+      'lastForegroundPromotionFailureMessage': null,
+      'lastForegroundTransitionAt': null,
+      'platform': 'web',
+    };
+  }
+
+  @override
   Future<Map<String, Object?>> setConfig(TlConfig config) async {
     final map = _tlConfigToMap(config);
     _config = map;
@@ -297,6 +317,11 @@ class TraceletWebPlugin extends TraceletPlatform {
       _httpEngine.applyConfig(map);
     }
     return _buildState();
+  }
+
+  @override
+  Future<void> updateNotification() async {
+    // Web has no foreground-service notification to refresh (#257): no-op.
   }
 
   // ---------------------------------------------------------------------------
@@ -1135,6 +1160,11 @@ class TraceletWebPlugin extends TraceletPlatform {
   @override
   Stream<TlCrashModelStatusEvent> get crashModelStatusEvents =>
       // The ML crash model is a native-only feature; never fires on web.
+      const Stream.empty();
+
+  @override
+  Stream<Map<String?, Object?>> get remoteConfigEvents =>
+      // Remote config is a native-only (Enterprise) feature; never fires on web.
       const Stream.empty();
 
   void _assertReady() {

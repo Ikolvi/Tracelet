@@ -1,3 +1,47 @@
+## 3.6.12
+
+Version alignment with tracelet 3.6.12.
+
+## 3.6.11
+
+Version alignment with tracelet 3.6.11.
+
+## 3.6.10
+
+Version alignment with tracelet 3.6.10.
+
+## 3.6.9
+
+Version alignment with tracelet 3.6.9.
+
+## 3.6.8
+
+Version alignment with tracelet 3.6.8.
+
+## 3.6.7
+
+Version alignment with tracelet 3.6.7.
+
+## 3.6.6
+
+**FEAT**: Added a **Foreground Service** card to the Doctor overlay and a matching section to the generated bug report, powered by `Tracelet.getForegroundServiceHealth()`. It surfaces the authoritative native foreground-service state — whether the service is running and promoted to the foreground, and the last promotion result (`success`/`deferred`/`failed`) with its failure class and message — so "tracking stops in the background" reports show whether the foreground service was actually running. iOS/web (which have no foreground service) are reflected accordingly ([#255](https://github.com/Ikolvi/Tracelet/issues/255)).
+
+## 3.6.5
+
+Version alignment with tracelet 3.6.5.
+
+## 3.6.4
+
+Version alignment with tracelet 3.6.4.
+
+## 3.6.3
+
+Version alignment with tracelet 3.6.3.
+
+## 3.6.2
+
+Version alignment with tracelet 3.6.2.
+
 ## 3.6.1
 
 Version alignment with tracelet 3.6.1.

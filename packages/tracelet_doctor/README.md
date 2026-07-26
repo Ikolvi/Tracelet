@@ -2,6 +2,16 @@
 
 📚 **Official Documentation:** [tracelet.ikolvi.com](https://tracelet.ikolvi.com)
 
+<p align="center">
+  <a href="https://tracelet.ikolvi.com/copy-prompt?utm_source=pubdev&utm_medium=readme&utm_campaign=copy_prompt&utm_content=tracelet_doctor">
+    <img src="https://img.shields.io/badge/%E2%9C%A8%20Copy%20AI%20Setup%20Prompt-%E2%96%B6%20click%20to%20copy-0F9D58?style=for-the-badge&labelColor=0B7A43" alt="Copy AI Setup Prompt" height="42"/>
+  </a>
+</p>
+
+<p align="center">
+  <sub><b>⚡ Set up Tracelet with AI.</b> Clicking the badge opens Tracelet and copies a ready-made prompt — paste it into your AI coding assistant (Cursor, Claude Code, Kiro, Copilot Chat…) and it interviews you, then installs and configures Tracelet (and wires up this diagnostic overlay as a debug-only dev dependency) in your Flutter app.</sub>
+</p>
+
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Pub Package](https://img.shields.io/pub/v/tracelet_doctor.svg)](https://pub.dev/packages/tracelet_doctor)
@@ -22,20 +32,53 @@ The Doctor shows a premium dark-themed bottom sheet with:
 
 ## Quick Start
 
+Tracelet Doctor is a **debugging tool**, so add it under `dev_dependencies` — Flutter
+excludes dev-dependency packages from release builds, keeping it out of what you ship:
+
 ```yaml
 dependencies:
   tracelet: ^2.0.6
+
+dev_dependencies:
   tracelet_doctor: ^1.0.1
 ```
 
+Because it lives in `dev_dependencies`, guard every reference to it behind
+`kDebugMode` so the import is tree-shaken out of release builds and your app still
+compiles in release mode:
+
 ```dart
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:tracelet_doctor/tracelet_doctor.dart';
 
-// Show the diagnostic sheet:
-TraceletDoctor.show(context);
+// Show the diagnostic sheet — debug builds only.
+if (kDebugMode) {
+  TraceletDoctor.show(context);
+}
 ```
 
-That's it — one line. No setup, no configuration.
+A common pattern is a debug-only trigger, so it never appears in production:
+
+```dart
+Scaffold(
+  // ...
+  floatingActionButton: kDebugMode
+      ? FloatingActionButton(
+          onPressed: () => TraceletDoctor.show(context),
+          child: const Icon(Icons.medical_services),
+        )
+      : null,
+);
+```
+
+That's it — one line to show it, and it's automatically stripped from release builds.
+
+> **Why `dev_dependencies`?** In release mode Flutter drops dev-dependency packages,
+> and the `kDebugMode` guards let the Dart tree-shaker remove the Doctor code and its
+> import entirely — so it adds nothing to your production app size and can't be opened
+> by end users. If you instead need the diagnostics available in a production support
+> build, move `tracelet_doctor` to regular `dependencies` and drop the `kDebugMode`
+> guards.
 
 ## Features
 

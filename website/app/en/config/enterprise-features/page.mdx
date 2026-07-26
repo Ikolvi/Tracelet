@@ -185,3 +185,82 @@ Tracelet.onLocation((loc) {
 ```
 
 The resulting `TripCarbonSummary` can then be synced to your server or displayed directly to the user to encourage eco-friendly transport choices.
+
+---
+
+## 5. Remote Configuration
+
+<Callout type="info">
+Fetched and applied natively on both iOS and Android since **3.6.2**. Earlier versions accepted `remoteConfigUrl` but never fetched it — the native side silently fell back to the local config.
+</Callout>
+
+For fleets and large deployments you often need to change tracking behavior — accuracy, sync cadence, geofence radius, battery budget — **without shipping an app update**. Tracelet's **Remote Configuration** lets the SDK pull a config document from your own HTTPS endpoint and apply it on top of the local config at runtime.
+
+### How Remote Configuration Works
+
+1. You set `remoteConfigUrl` (and optional headers) in your `AppConfig`.
+2. On `ready()`, the SDK first applies the **last successfully fetched** config from an on-device cache — so a relaunch resumes on your latest published settings instantly and **offline**, before any network call, and without blocking `ready()`.
+3. It then fetches a fresh copy from your endpoint in the **background** and applies it through the same runtime path as `setConfig()` — restarting the active tracking pipeline only when a tracking-relevant key actually changed.
+4. It keeps the config fresh by re-fetching on the `remoteConfigRefreshInterval` cadence (in minutes).
+
+Only **HTTPS** URLs are honored — an `http://` URL is rejected and logged, because the configuration controls tracking behavior and must not be tamperable in transit.
+
+### The Endpoint Contract
+
+Your endpoint answers a `GET` with a JSON object shaped like a Tracelet config map — either **flat**, or the **nested** `{ "geo": {…}, "app": {…}, "http": {…} }` form that `Config.toMap()` produces. Only the keys you include are overridden; every other setting keeps its local value.
+
+```json
+{
+  "geo": { "distanceFilter": 25.0, "desiredAccuracy": 0 },
+  "app": { "heartbeatInterval": 120 },
+  "http": { "autoSync": true }
+}
+```
+
+### Configuration
+
+```dart
+final config = Config.balanced().copyWith(
+  app: tl.AppConfig(
+    remoteConfigUrl: 'https://config.mycompany.com/tracelet/fleet-a.json',
+    remoteConfigHeaders: {'Authorization': 'Bearer $token'},
+    remoteConfigTimeout: 15000, // milliseconds
+    remoteConfigRefreshInterval: 60, // minutes
+  ),
+);
+```
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `remoteConfigUrl` | `String?` | `null` | HTTPS endpoint returning the JSON config map. `null` disables remote config. |
+| `remoteConfigHeaders` | `Map<String, String>?` | `null` | Headers sent with the fetch (e.g. auth token). |
+| `remoteConfigTimeout` | `int` | `60000` | Fetch timeout in milliseconds. |
+| `remoteConfigRefreshInterval` | `int` | `1440` | Minutes between background refreshes (floored at 15 minutes natively). `0` fetches once and never repeats. |
+
+<Callout type="warning">
+Applied remote values are merged into the device's persisted config, and remote overrides win over local ones. Only publish values you intend **every** device fetching that URL to adopt — scope per-fleet or per-cohort by pointing each build at a different URL.
+</Callout>
+
+### Observing applied remote config from Dart
+
+Remote config is fetched and applied on the native side. Since **3.6.10**, every time a remote override is applied — both the cached copy restored at `ready()` **and** each background refresh — the SDK surfaces it back to Dart:
+
+- `Tracelet.activeConfig` (and therefore [`tracelet_doctor`](/en/core/diagnostics) and the Dart-side battery-budget engine) now reflects the fetched values, instead of only the last config you set locally.
+- Subscribe to react when a server-driven change lands:
+
+```dart
+// Callback — fires after a remote override is applied.
+// Tracelet.activeConfig already reflects the new values when this fires.
+Tracelet.onRemoteConfig((Config config) {
+  print('Remote battery budget: ${config.geo.batteryBudgetPerHour}%/hr');
+});
+
+// …or listen to the broadcast stream directly.
+final sub = Tracelet.remoteConfigStream.listen((config) {
+  // react to the merged, now-active config
+});
+```
+
+<Callout type="info">
+Before 3.6.10, remote values were applied to native tracking but were **not** mirrored into `Tracelet.activeConfig`, so diagnostics could still show the last locally-set value even though tracking already used the remote one.
+</Callout>
