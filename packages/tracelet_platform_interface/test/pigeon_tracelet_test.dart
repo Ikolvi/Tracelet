@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 
@@ -542,7 +545,40 @@ class FakeHostApi extends TraceletHostApi {
   }
 }
 
+/// A [FakeHostApi] whose [requestStateFlush] always fails, reproducing an
+/// unreachable platform channel (a headless `flutter test`, or a temporarily
+/// detached engine). This is the exact condition that made the lazy
+/// event-channel registration in `ready()` surface an *uncaught* async error
+/// before #262.
+class ThrowingFlushHostApi extends FakeHostApi {
+  @override
+  Future<void> requestStateFlush() async {
+    _record('requestStateFlush');
+    throw PlatformException(
+      code: 'channel-error',
+      message: 'Unable to establish connection on channel.',
+    );
+  }
+}
+
+/// A [FakeHostApi] that records how many times [requestStateFlush] runs and
+/// completes successfully, for asserting the flush is fired lazily and only
+/// once regardless of how many event streams are accessed.
+class RecordingFlushHostApi extends FakeHostApi {
+  int flushCount = 0;
+
+  @override
+  Future<void> requestStateFlush() async {
+    flushCount++;
+    _record('requestStateFlush');
+  }
+}
+
 void main() {
+  // Event-stream getters register a Pigeon FlutterApi handler on the binary
+  // messenger, which requires an initialized test binding.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   late FakeHostApi fakeApi;
   late PigeonTracelet pigeon;
 
@@ -1266,5 +1302,103 @@ void main() {
       expect(p['status'], 3);
       expect(p['accuracyAuthorization'], 0);
     });
+  });
+
+  // ===================== Event channel registration (#262) =====================
+  //
+  // Regression coverage for #262: accessing an event stream lazily registers
+  // the Pigeon event channel and fires a best-effort `requestStateFlush()`.
+  // That flush is intentionally fire-and-forget, so if it fails (unreachable
+  // channel) its rejection must be CONTAINED inside the platform interface. If
+  // it ever escapes as an uncaught async error again, it takes down a caller
+  // that merely awaited `ready()` (e.g. a ride-start path) — which is the exact
+  // regression these tests guard against.
+
+  group('Event channel registration (#262 regression)', () {
+    test('accessing an event stream never leaks an uncaught async error when '
+        'requestStateFlush() fails', () async {
+      final throwingApi = ThrowingFlushHostApi();
+      final localPigeon = PigeonTracelet(api: throwingApi);
+      final uncaught = <Object>[];
+
+      await runZonedGuarded(
+        () async {
+          // Accessing the stream registers the event channel and fires the
+          // best-effort flush. It must NOT throw synchronously at the call
+          // site...
+          final stream = localPigeon.remoteConfigEvents;
+          expect(stream, isNotNull);
+          // ...and the failing fire-and-forget flush must settle without
+          // reaching the zone error handler.
+          await pumpEventQueue();
+        },
+        (error, stack) {
+          uncaught.add(error);
+        },
+      );
+
+      expect(
+        throwingApi.wasCalled('requestStateFlush'),
+        isTrue,
+        reason: 'the best-effort flush should still be attempted',
+      );
+      expect(
+        uncaught,
+        isEmpty,
+        reason:
+            'a fire-and-forget requestStateFlush() failure must be swallowed '
+            'inside the platform interface, never surfaced as an uncaught '
+            'async error (#262)',
+      );
+    });
+
+    test(
+      'event channel registers lazily and only once across streams',
+      () async {
+        final api = RecordingFlushHostApi();
+        final localPigeon = PigeonTracelet(api: api);
+
+        expect(
+          api.flushCount,
+          0,
+          reason: 'nothing registers until an event stream is accessed',
+        );
+
+        // First access registers + flushes; subsequent accesses (same or other
+        // streams) must not re-register.
+        expect(localPigeon.remoteConfigEvents, isNotNull);
+        expect(localPigeon.remoteConfigEvents, isNotNull);
+        expect(localPigeon.modeChangeEvents, isNotNull);
+        expect(localPigeon.motionModeChangeEvents, isNotNull);
+        await pumpEventQueue();
+
+        expect(
+          api.flushCount,
+          1,
+          reason: 'registration + state flush happen exactly once, lazily',
+        );
+      },
+    );
+
+    test(
+      'every event stream getter is safe to access when the flush fails',
+      () async {
+        final throwingApi = ThrowingFlushHostApi();
+        final localPigeon = PigeonTracelet(api: throwingApi);
+        final uncaught = <Object>[];
+
+        await runZonedGuarded(() async {
+          // Whichever getter is touched first triggers registration; verify a
+          // representative spread returns real streams without leaking.
+          expect(localPigeon.remoteConfigEvents, isNotNull);
+          expect(localPigeon.modeChangeEvents, isNotNull);
+          expect(localPigeon.motionModeChangeEvents, isNotNull);
+          expect(localPigeon.crashModelStatusEvents, isNotNull);
+          await pumpEventQueue();
+        }, (error, stack) => uncaught.add(error));
+
+        expect(uncaught, isEmpty);
+      },
+    );
   });
 }
