@@ -52,6 +52,39 @@ another dependency pulls in an older version, but if you pin the version yoursel
 
 ---
 
+## Optional dependency: Play Integrity (device attestation)
+
+If you use Tracelet's **device attestation** feature (`AttestationConfig`), the Android
+side generates its cryptographic token through **Google Play Integrity**. Just like
+`play-services-location`, this dependency is **not bundled** — you add it only when you
+enable attestation:
+
+```kotlin
+// android/app/build.gradle.kts
+dependencies {
+    implementation("com.google.android.play:integrity:1.6.0")
+}
+```
+
+<Callout type="info">
+**It's optional, and attestation degrades gracefully.** Without the Play Integrity
+dependency, everything else in Tracelet works normally — only attestation is affected:
+`AttestationConfig(enabled: true)` logs a warning and `Tracelet.getAttestationToken()`
+returns `null` instead of a token, rather than crashing. Add the dependency only if you
+enable attestation and need the Play Integrity verdict on Android. See the
+[Device Attestation guide](https://github.com/Ikolvi/Tracelet/blob/main/help/DEVICE-ATTESTATION.md)
+for the full workflow and server-side verification.
+</Callout>
+
+<Callout type="warning">
+**It must be `implementation`, not `compileOnly`.** Play Integrity is `compileOnly` inside
+the Tracelet SDK (so it is never shipped or forced on apps that don't use attestation). If
+you enable attestation without adding the dependency to your **app** module as
+`implementation`, the classes are absent at runtime and attestation silently returns `null`.
+</Callout>
+
+---
+
 ## Permissions & Manifest Setup
 
 Tracelet automatically injects the necessary permissions into your `AndroidManifest.xml` when you compile your app. By default, it requests:
