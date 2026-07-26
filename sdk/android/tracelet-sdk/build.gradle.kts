@@ -63,6 +63,31 @@ dependencies {
     // implementation("com.google.android.gms:play-services-location:21.3.0") to their build.gradle.
     compileOnly("com.google.android.gms:play-services-location:21.3.0")
 
+    // Version floor for Play Services Location (see issue #263).
+    //
+    // Tracelet's compiled bytecode targets the interface-based
+    // FusedLocationProviderClient and ActivityRecognitionClient APIs. These
+    // types became interfaces in play-services-location 21.x; in older releases
+    // (e.g. 19.0.0) they are concrete classes, so calling into them throws
+    // java.lang.IncompatibleClassChangeError at runtime.
+    //
+    // We keep the dependency compileOnly so the SDK still degrades gracefully to
+    // the AOSP LocationManager when the host app omits GMS entirely. This
+    // constraint does NOT add the dependency to the graph — it only raises the
+    // resolved version to a compatible floor (>= 21.2.0) whenever the host app
+    // pulls play-services-location in directly or transitively. The constraint is
+    // published in the Gradle module metadata (.module) and POM.
+    constraints {
+        implementation("com.google.android.gms:play-services-location:21.2.0") {
+            because(
+                "Tracelet uses the interface-based FusedLocationProviderClient/" +
+                    "ActivityRecognitionClient APIs (play-services-location >= 21.2.0); " +
+                    "older versions expose them as concrete classes and crash with " +
+                    "IncompatibleClassChangeError (issue #263)."
+            )
+        }
+    }
+
     // WorkManager for reliable background scheduling
     implementation("androidx.work:work-runtime-ktx:2.11.1")
 

@@ -33,6 +33,17 @@ geofencing. **Recommended:** add it unless you specifically target Google-less /
 (e.g. Huawei without GMS, or de-Googled ROMs).
 </Callout>
 
+<Callout type="warning">
+**Minimum version: `21.2.0`.** Tracelet's Android code calls the interface-based
+`FusedLocationProviderClient` and `ActivityRecognitionClient` APIs, which only became
+interfaces in `play-services-location` **21.2.0**. Older releases (e.g. `19.0.0`) ship these
+as concrete classes, so calling into them throws
+`java.lang.IncompatibleClassChangeError` at runtime. Tracelet publishes a Gradle
+dependency **constraint** that raises `play-services-location` to `21.2.0+` automatically if
+another dependency pulls in an older version, but if you pin the version yourself, keep it at
+`21.2.0` or newer (we recommend `21.3.0`).
+</Callout>
+
 | With `play-services-location` | Without it (AOSP fallback) |
 |---|---|
 | Fused location (best accuracy + battery) | Raw GPS / network via `LocationManager` |
