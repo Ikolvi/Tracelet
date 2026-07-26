@@ -901,7 +901,22 @@ class LocationService : Service(), DefaultLifecycleObserver {
 
         // HTTP sync is handled natively by Rust Core now
         val sdk = com.ikolvi.tracelet.sdk.TraceletSdk.getInstance(ctx)
-        sdk.bootstrapForBackground(eventSender)
+        // Wait for the SDK to finish initializing before touching any manager.
+        // bootstrapForBackground() now blocks on the init latch and returns false
+        // if the Rust DB / geofenceManager are not ready. On a cold boot the
+        // async tracelet-init thread may not have assigned the lateinit
+        // geofenceManager yet; touching it below (reRegisterAll / static
+        // receiver wiring) would throw UninitializedPropertyAccessException and
+        // crash the service (#264). Defer gracefully instead — the foreground
+        // notification is already posted and START_STICKY (plus the next app
+        // launch / ready()) will retry once init is complete.
+        if (!sdk.bootstrapForBackground(eventSender)) {
+            TraceletLog.warning(
+                "startBootTracking() — SDK initialization did not complete; deferring boot " +
+                    "tracking without touching managers (#264)"
+            )
+            return
+        }
 
         val trackingMode = state.trackingMode
         TraceletLog.debug("Bootstrapping native tracking after boot/task-removal (trackingMode=$trackingMode, isMoving=${state.isMoving}, speedState=${state.speedMotionState}, enabled=${state.enabled})")

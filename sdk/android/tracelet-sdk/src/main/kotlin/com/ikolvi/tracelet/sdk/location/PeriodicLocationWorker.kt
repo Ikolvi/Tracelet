@@ -199,7 +199,14 @@ class PeriodicLocationWorker(
                 // Bootstrap native tracking and persist location so it can be synced even if UI is dead.
                 val sdk = com.ikolvi.tracelet.sdk.TraceletSdk.getInstance(applicationContext)
                 val fallbackSender = TraceletBootstrap.eventSenderFactory?.invoke(applicationContext) ?: com.ikolvi.tracelet.sdk.ListenerEventSender()
-                sdk.bootstrapForBackground(fallbackSender)
+                // Wait for init to finish. If the Rust DB / managers are not ready
+                // (e.g. this worker fired during a cold-boot init race), don't
+                // persist against a half-initialized SDK or touch locationEngine —
+                // retry the fix once init can complete (#264).
+                if (!sdk.bootstrapForBackground(fallbackSender)) {
+                    TraceletLog.warning("Periodic fix: SDK initialization not complete — retrying later (#264)")
+                    return Result.retry()
+                }
                 sdk.insertLocation(locationMap)
 
                 // Dispatch to the event sender which will route to UI/Headless

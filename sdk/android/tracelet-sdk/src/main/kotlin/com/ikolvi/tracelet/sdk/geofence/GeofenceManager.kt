@@ -566,6 +566,17 @@ class GeofenceManager(
         return try {
             val latch = CountDownLatch(1)
             var success = false
+            // The Flutter host invokes addGeofence()/registerGeofence() on the
+            // Android main thread. GeofencingClient.addGeofences() is asynchronous
+            // and also delivers its success/failure callback on the main looper,
+            // so we must NOT block the main thread waiting for it. Off the main
+            // thread we await the callback and return its real result; on the main
+            // thread we return true once the request has been scheduled without
+            // throwing synchronously — the geofence is already persisted and
+            // registration is in flight. Returning the initial `success` on the
+            // main thread reported a stale false for a geofence that was actually
+            // created and shows up in getGeofences() (#265).
+            val isMainThread = Looper.myLooper() == Looper.getMainLooper()
             geofencingClient.addGeofences(
                 request = request,
                 pendingIntent = getGeofencePendingIntent(),
@@ -580,10 +591,10 @@ class GeofenceManager(
                     TraceletLog.error("Failed to register geofence $identifier: ${e.message}")
                 }
             )
-            if (Looper.myLooper() != Looper.getMainLooper()) {
+            if (!isMainThread) {
                 latch.await(REGISTRATION_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             }
-            success
+            isMainThread || success
         } catch (e: SecurityException) {
             TraceletLog.error("Permission denied for geofencing: ${e.message}")
             false

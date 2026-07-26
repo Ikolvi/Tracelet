@@ -316,6 +316,12 @@ class TraceletSdk private constructor(private val context: Context) {
             try {
                 initializeInternal()
             } catch (t: Throwable) {
+                // Preserve the failure. Previously this was logged and swallowed,
+                // so the latch was released and callers could not distinguish a
+                // *successful* init from one that never wired the lateinit
+                // managers — leading to UninitializedPropertyAccessException on
+                // the boot path (#264).
+                initializationFailure = t
                 logger.error("initializeInternal failed: ${t.message}")
             } finally {
                 initCompleteLatch.countDown()
@@ -325,6 +331,7 @@ class TraceletSdk private constructor(private val context: Context) {
 
     private val initLock = Any()
     @Volatile private var initStarted = false
+    @Volatile private var initializationFailure: Throwable? = null
     private val initCompleteLatch = java.util.concurrent.CountDownLatch(1)
 
     private fun initializeInternal() {
@@ -1304,19 +1311,62 @@ class TraceletSdk private constructor(private val context: Context) {
         LocationService.updateNotification(context)
     }
 
-    internal fun bootstrapForBackground(sender: TraceletEventSender) {
+    /**
+     * Bootstraps the SDK for a headless / boot / task-removal restart.
+     *
+     * Returns `true` only when initialization has fully completed and the
+     * lateinit subsystems (Rust DB, [geofenceManager], engines) are ready to
+     * use. Returns `false` if init did not finish within the timeout, threw, or
+     * left the DB/managers unassigned.
+     *
+     * This mirrors [ready], which already blocks on [initCompleteLatch] before
+     * touching those subsystems. Previously this method kicked off [initialize]
+     * (which runs on a background `tracelet-init` thread) and returned
+     * immediately, so a caller like [LocationService.startBootTracking] could
+     * read the still-unassigned [geofenceManager] and crash with
+     * `UninitializedPropertyAccessException` on a cold boot (#264). Callers MUST
+     * check the return value and bail out (stop/defer) instead of touching any
+     * manager when it is `false`.
+     */
+    internal fun bootstrapForBackground(sender: TraceletEventSender): Boolean {
         if (!::eventSender.isInitialized) {
             setEventSender(sender)
         }
         if (rustDatabase == null) {
             initialize()
         }
+
+        // Block until the background init thread finishes wiring the DB and
+        // lateinit managers (same contract ready() relies on). Do NOT proceed to
+        // touch managers if this times out.
+        val initialized = try {
+            initCompleteLatch.await(15, java.util.concurrent.TimeUnit.SECONDS)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        }
+        if (!initialized) {
+            logger.error("bootstrapForBackground: initialize() did not complete within 15s — deferring boot tracking")
+            return false
+        }
+        if (initializationFailure != null) {
+            logger.error("bootstrapForBackground: initialization failed (${initializationFailure?.message}) — deferring boot tracking")
+            return false
+        }
+        // Defensive: the latch is released even on failure, so re-check the
+        // actual lateinit state before returning success.
+        if (rustDatabase == null || !::geofenceManager.isInitialized) {
+            logger.error("bootstrapForBackground: DB/geofenceManager not initialized after init — deferring boot tracking")
+            return false
+        }
+
         // Initialize the behavior engines (telematics / transport / crash-fall) in
         // the background process too. Without this they stay null after a reboot or
         // task-removal restart, silently disabling crash and driving diagnostics
         // while the app UI is killed (#214). Honors the same config flags as ready().
         initBehaviorEngines()
         checkSyncProvider()
+        return true
     }
 
     internal fun checkSyncProvider() {
