@@ -328,6 +328,14 @@ class HeadlessTaskService(
                                 syncBodyLatch?.countDown()
                                 result.success(true)
                             }
+                            "requestTermination" -> {
+                                try {
+                                    TraceletSdk.getInstance(context).stop()
+                                    result.success(true)
+                                } catch (e: Exception) {
+                                    result.error("STOP_FAILED", e.message, null)
+                                }
+                            }
                             else -> result.notImplemented()
                         }
                     }
