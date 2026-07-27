@@ -271,6 +271,24 @@ class Tracelet {
     return _stateFromMap(result);
   }
 
+  /// Request the native service to terminate from a headless isolate.
+  ///
+  /// Unlike [stop], this uses the headless MethodChannel directly,
+  /// so it works from FCM background handlers where Pigeon is unavailable.
+  /// Returns whether the native service acknowledged the request.
+  /// No [State] is returned since Pigeon is unavailable in headless isolates.
+  ///
+  /// Android only. On iOS, returns `false` (headless architecture differs).
+  static Future<bool> requestTermination() async {
+    try {
+      const channel = MethodChannel('com.tracelet/methods');
+      final result = await channel.invokeMethod<bool>('requestTermination');
+      return result ?? false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   /// Start geofence-only tracking mode.
   ///
   /// The plugin will only monitor geofences without continuous location
