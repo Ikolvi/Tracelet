@@ -280,6 +280,80 @@ void main() async {
       expect(evaluator.insideGeofenceIds, isEmpty);
     });
 
+    // Regression for #268: a stationary device near the edge whose fixes
+    // jitter across the boundary must not flap between ENTER and EXIT.
+    ({double lat, double lng}) pointNorth(
+      double centerLat,
+      double centerLng,
+      double distanceMeters,
+    ) => (lat: centerLat + distanceMeters / 111320.0, lng: centerLng);
+
+    test('stationary boundary jitter does not flap (#268)', () {
+      const centerLat = 37.4219983;
+      const centerLng = -122.084;
+      final geofences = <Map<String, Object?>>[
+        {
+          'identifier': 'flap',
+          'latitude': centerLat,
+          'longitude': centerLng,
+          'radius': 100.0,
+        },
+      ];
+
+      // Initial solid fix inside, then jitter straddling the 100 m boundary
+      // but staying within radius + buffer (120 m).
+      const distances = <double>[40, 96, 104, 95, 106, 97, 103];
+      var enters = 0;
+      var exits = 0;
+      for (final d in distances) {
+        final p = pointNorth(centerLat, centerLng, d);
+        final transitions = evaluator.evaluateProximity(
+          latitude: p.lat,
+          longitude: p.lng,
+          geofences: geofences,
+        );
+        for (final t in transitions) {
+          if (t.action == 'ENTER') enters++;
+          if (t.action == 'EXIT') exits++;
+        }
+      }
+
+      expect(enters, 1, reason: 'expected exactly one ENTER');
+      expect(exits, 0, reason: 'boundary jitter must not produce any EXIT');
+    });
+
+    test('genuine exit beyond the hysteresis band still fires (#268)', () {
+      const centerLat = 37.4219983;
+      const centerLng = -122.084;
+      final geofences = <Map<String, Object?>>[
+        {
+          'identifier': 'home',
+          'latitude': centerLat,
+          'longitude': centerLng,
+          'radius': 100.0,
+        },
+      ];
+
+      // Enter well inside.
+      final inside = pointNorth(centerLat, centerLng, 20);
+      evaluator.evaluateProximity(
+        latitude: inside.lat,
+        longitude: inside.lng,
+        geofences: geofences,
+      );
+
+      // Move clearly outside (well past radius + 20 m buffer).
+      final far = pointNorth(centerLat, centerLng, 400);
+      final transitions = evaluator.evaluateProximity(
+        latitude: far.lat,
+        longitude: far.lng,
+        geofences: geofences,
+      );
+
+      expect(transitions, hasLength(1));
+      expect(transitions[0].action, 'EXIT');
+    });
+
     test('polygon with integer vertices works', () {
       final geofences = <Map<String, Object?>>[
         {

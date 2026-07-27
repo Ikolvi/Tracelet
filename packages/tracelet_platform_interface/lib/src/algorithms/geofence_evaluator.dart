@@ -60,6 +60,19 @@ class GeofenceTransition {
 /// }
 /// ```
 class GeofenceEvaluator {
+  /// Fraction of the geofence radius used as an exit-hysteresis band.
+  ///
+  /// A device ENTERs at the true `radius`, but only EXITs once it is farther
+  /// than `radius * (1 + _exitHysteresisFraction)` from the center. This
+  /// asymmetric threshold prevents ENTER/EXIT "flapping" when a stationary
+  /// device's GPS fixes jitter across the boundary (issue #268).
+  static const double _exitHysteresisFraction = 0.1;
+
+  /// Minimum exit-hysteresis band in meters, so small-radius geofences still
+  /// get a meaningful buffer against typical GPS noise (e.g. a 50 m geofence
+  /// gets a 20 m band rather than 5 m).
+  static const double _minExitHysteresisMeters = 20;
+
   /// Set of geofence identifiers the device is currently inside.
   final Set<String> _insideGeofenceIds = <String>{};
 
@@ -207,9 +220,19 @@ class GeofenceEvaluator {
 
       final distance = GeoUtils.haversine(latitude, longitude, gfLat, gfLng);
       final wasInside = _insideGeofenceIds.contains(identifier);
-      final isInside = distance <= gfRadius;
 
-      if (isInside && !wasInside) {
+      // Exit hysteresis (#268): ENTER at the true radius, but only EXIT once
+      // the device is clearly beyond it (radius + buffer). Without this, a
+      // stationary device whose fixes jitter across the boundary produces
+      // repeated ENTER/EXIT events.
+      final scaledBuffer = gfRadius * _exitHysteresisFraction;
+      final exitBuffer = scaledBuffer > _minExitHysteresisMeters
+          ? scaledBuffer
+          : _minExitHysteresisMeters;
+      final entered = distance <= gfRadius;
+      final exited = distance > gfRadius + exitBuffer;
+
+      if (entered && !wasInside) {
         _insideGeofenceIds.add(identifier);
         _cachedInsideView = null;
         transitions.add(
@@ -220,7 +243,7 @@ class GeofenceEvaluator {
             geofence: gf,
           ),
         );
-      } else if (!isInside && wasInside) {
+      } else if (exited && wasInside) {
         _insideGeofenceIds.remove(identifier);
         _cachedInsideView = null;
         transitions.add(
@@ -232,6 +255,8 @@ class GeofenceEvaluator {
           ),
         );
       }
+      // Between `radius` and `radius + exitBuffer` while already inside: hold
+      // the current state (no transition) to absorb boundary jitter.
     }
 
     return transitions;
