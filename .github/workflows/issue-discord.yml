@@ -1,0 +1,48 @@
+name: Post Issues to Discord
+
+# Announces GitHub issue status changes to the Discord issue-status channel.
+# Fires when an issue is opened, reopened, or closed.
+
+on:
+  issues:
+    types: [opened, reopened, closed, edited, labeled, unlabeled, assigned, unassigned]
+
+permissions:
+  contents: read
+
+concurrency:
+  # Serialize per issue so rapid open/close toggles post in order.
+  group: issue-discord-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  announce:
+    name: Announce Issue on Discord
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Post issue to Discord
+        env:
+          DISCORD_ISSUE_WEBHOOK_URL: ${{ secrets.DISCORD_ISSUE_WEBHOOK_URL }}
+          # Optional: enables auto-publishing to servers that follow this
+          # announcement channel. Requires the bot to have Manage Messages here.
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          ISSUE_ACTION: ${{ github.event.action }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          ISSUE_LABELS: ${{ join(github.event.issue.labels.*.name, ', ') }}
+          ISSUE_STATE_REASON: ${{ github.event.issue.state_reason }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          # Populated only for labeled/unlabeled and assigned/unassigned events.
+          CHANGED_LABEL: ${{ github.event.label.name }}
+          CHANGED_ASSIGNEE: ${{ github.event.assignee.login }}
+        run: |
+          printf '%s' "$ISSUE_BODY" | python3 .github/scripts/post_discord_issue.py
