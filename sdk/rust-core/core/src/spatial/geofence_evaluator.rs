@@ -3,6 +3,22 @@ use std::sync::Arc;
 use crate::algorithms::geo_utils::{haversine, is_point_in_polygon, Coordinate};
 use crate::spatial::rtree::RTree;
 
+/// Fraction of the geofence radius used as an exit-hysteresis band.
+///
+/// A device is considered to have ENTERed at the true `radius`, but is only
+/// considered to have EXITed once it is farther than `radius * (1 + FRACTION)`
+/// from the center. This asymmetric threshold prevents ENTER/EXIT "flapping"
+/// (dithering) when a stationary device's GPS fixes jitter across the boundary
+/// (issue #268).
+const GEOFENCE_EXIT_HYSTERESIS_FRACTION: f64 = 0.1;
+
+/// Minimum exit-hysteresis band in meters.
+///
+/// For small-radius geofences `radius * FRACTION` is smaller than typical GPS
+/// noise, so a floor is applied to keep the buffer meaningful (e.g. a 50 m
+/// geofence still gets a 20 m band rather than 5 m).
+const GEOFENCE_MIN_EXIT_HYSTERESIS_METERS: f64 = 20.0;
+
 #[derive(uniffi::Record, Clone, Debug)]
 /// Defines a geofence with a spatial polygon or circular radius for evaluation.
 pub struct CoreGeofence {
@@ -99,21 +115,31 @@ impl GeofenceEvaluator {
 
             let distance = haversine(latitude, longitude, gf.latitude, gf.longitude);
             let was_inside = inside_ids.contains(identifier);
-            let is_inside = distance <= gf.radius;
 
-            if is_inside && !was_inside {
+            // Exit hysteresis: ENTER at the true radius, but only EXIT once the
+            // device is clearly beyond it (radius + buffer). Without this, a
+            // stationary device whose fixes jitter across the boundary produces
+            // repeated ENTER/EXIT events (issue #268).
+            let exit_buffer = (gf.radius * GEOFENCE_EXIT_HYSTERESIS_FRACTION)
+                .max(GEOFENCE_MIN_EXIT_HYSTERESIS_METERS);
+            let entered = distance <= gf.radius;
+            let exited = distance > gf.radius + exit_buffer;
+
+            if entered && !was_inside {
                 inside_ids.insert(identifier.clone());
                 transitions.push(GeofenceTransition {
                     identifier: identifier.clone(),
                     action: "ENTER".to_string(),
                 });
-            } else if !is_inside && was_inside {
+            } else if exited && was_inside {
                 inside_ids.remove(identifier);
                 transitions.push(GeofenceTransition {
                     identifier: identifier.clone(),
                     action: "EXIT".to_string(),
                 });
             }
+            // Between `radius` and `radius + exit_buffer` while already inside:
+            // hold the current state (no transition) to absorb boundary jitter.
         }
 
         transitions
@@ -166,5 +192,99 @@ impl GeofenceEvaluator {
         }
 
         merged
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn circular(identifier: &str, lat: f64, lng: f64, radius: f64) -> CoreGeofence {
+        CoreGeofence {
+            identifier: identifier.to_string(),
+            latitude: lat,
+            longitude: lng,
+            radius,
+            vertices: Vec::new(),
+            extras: None,
+        }
+    }
+
+    /// Approximate a point `dist_m` meters due north of the given center.
+    /// 1 degree of latitude ≈ 111_320 m, so this yields ~`dist_m` haversine
+    /// distance from the center — enough to script boundary crossings.
+    fn point_north(center_lat: f64, center_lng: f64, dist_m: f64) -> (f64, f64) {
+        (center_lat + dist_m / 111_320.0, center_lng)
+    }
+
+    fn count(transitions: &[GeofenceTransition]) -> (usize, usize) {
+        let enters = transitions.iter().filter(|t| t.action == "ENTER").count();
+        let exits = transitions.iter().filter(|t| t.action == "EXIT").count();
+        (enters, exits)
+    }
+
+    /// Regression for #268: a stationary device near the edge whose fixes
+    /// jitter across the boundary must NOT flap. With exit hysteresis it enters
+    /// once and holds inside despite fixes just outside the radius.
+    #[test]
+    fn stationary_jitter_does_not_flap() {
+        let (lat, lng) = (37.4219983, -122.084);
+        let gf = circular("flap", lat, lng, 100.0);
+
+        // Distances (m): initial solid fix inside, then jitter straddling the
+        // 100 m boundary but staying within radius + buffer (120 m).
+        let distances = [40.0, 96.0, 104.0, 95.0, 106.0, 97.0, 103.0];
+
+        let eval = GeofenceEvaluator::new();
+        let (mut enters, mut exits) = (0usize, 0usize);
+        for d in distances {
+            let (plat, plng) = point_north(lat, lng, d);
+            let (e, x) = count(&eval.evaluate_proximity(plat, plng, vec![gf.clone()]));
+            enters += e;
+            exits += x;
+        }
+
+        assert_eq!(enters, 1, "expected exactly one ENTER, got {enters}");
+        assert_eq!(exits, 0, "boundary jitter must not produce any EXIT, got {exits}");
+    }
+
+    /// A genuine departure — clearly beyond radius + hysteresis band — must
+    /// still produce exactly one EXIT.
+    #[test]
+    fn genuine_exit_beyond_buffer_fires_once() {
+        let (lat, lng) = (37.4219983, -122.084);
+        let gf = circular("home", lat, lng, 100.0);
+        let eval = GeofenceEvaluator::new();
+
+        // Enter well inside.
+        let (plat, plng) = point_north(lat, lng, 20.0);
+        let (e, _) = count(&eval.evaluate_proximity(plat, plng, vec![gf.clone()]));
+        assert_eq!(e, 1);
+
+        // Move clearly outside (well past radius + 20 m buffer).
+        let (plat, plng) = point_north(lat, lng, 400.0);
+        let (_, x) = count(&eval.evaluate_proximity(plat, plng, vec![gf.clone()]));
+        assert_eq!(x, 1, "a clear departure must fire exactly one EXIT");
+    }
+
+    /// Small-radius geofences use the meter floor for their hysteresis band, so
+    /// they too resist flapping from typical GPS noise.
+    #[test]
+    fn small_radius_uses_meter_floor() {
+        let (lat, lng) = (37.4219983, -122.084);
+        let gf = circular("small", lat, lng, 50.0); // radius*0.1 = 5m < 20m floor
+        let eval = GeofenceEvaluator::new();
+
+        // Enter, then jitter to 60 m (outside 50 m radius but inside 50+20=70 m).
+        let distances = [30.0, 55.0, 60.0, 52.0, 65.0];
+        let (mut enters, mut exits) = (0usize, 0usize);
+        for d in distances {
+            let (plat, plng) = point_north(lat, lng, d);
+            let (e, x) = count(&eval.evaluate_proximity(plat, plng, vec![gf.clone()]));
+            enters += e;
+            exits += x;
+        }
+        assert_eq!(enters, 1);
+        assert_eq!(exits, 0);
     }
 }
