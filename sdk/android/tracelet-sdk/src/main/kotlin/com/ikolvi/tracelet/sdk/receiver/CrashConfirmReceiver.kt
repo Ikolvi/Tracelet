@@ -59,8 +59,15 @@ class CrashConfirmReceiver : BroadcastReceiver() {
                 val sender = TraceletBootstrap.eventSenderFactory?.invoke(context)
                     ?: ListenerEventSender()
                 sdk.setEventSender(sender)
+                // initialize() now wires subsystems on a background thread and
+                // returns immediately; wait for it before re-delivering, otherwise
+                // deliverConfirmedImpact touches unset lateinit state and throws again.
                 sdk.initialize()
-                sdk.deliverConfirmedImpact(candidate)
+                if (sdk.awaitInit()) {
+                    sdk.deliverConfirmedImpact(candidate)
+                } else {
+                    TraceletLog.warning("CrashConfirm: SDK init not ready — impact delivery skipped")
+                }
             }
         } catch (e: Exception) {
             TraceletLog.error("CrashConfirm alarm: failed to deliver confirmed impact — ${e.message}")

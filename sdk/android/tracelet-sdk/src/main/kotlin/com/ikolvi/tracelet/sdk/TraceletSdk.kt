@@ -316,13 +316,14 @@ class TraceletSdk private constructor(private val context: Context) {
             try {
                 initializeInternal()
             } catch (t: Throwable) {
-                // Preserve the failure. Previously this was logged and swallowed,
-                // so the latch was released and callers could not distinguish a
-                // *successful* init from one that never wired the lateinit
-                // managers — leading to UninitializedPropertyAccessException on
-                // the boot path (#264).
+                // Preserve the failure so awaitInit()/bootstrapForBackground()
+                // can report it instead of letting callers dereference
+                // half-wired lateinit managers and crash later with a
+                // misleading UninitializedPropertyAccessException on the boot /
+                // broadcast paths (#264). Log the full stacktrace, not just the
+                // message, so the underlying init failure is diagnosable.
                 initializationFailure = t
-                logger.error("initializeInternal failed: ${t.message}")
+                logger.error("initializeInternal failed: ${t.stackTraceToString()}")
             } finally {
                 initCompleteLatch.countDown()
             }
@@ -333,6 +334,37 @@ class TraceletSdk private constructor(private val context: Context) {
     @Volatile private var initStarted = false
     @Volatile private var initializationFailure: Throwable? = null
     private val initCompleteLatch = java.util.concurrent.CountDownLatch(1)
+
+    /**
+     * Blocks until [initializeInternal] has finished wiring the subsystems
+     * (Rust DB, engines, geofenceManager). Every entry point that touches those
+     * lateinit managers synchronously — ready() and the native boot / broadcast
+     * paths (GeofenceBroadcastReceiver, CrashConfirmReceiver) — must call this
+     * after ensuring initialize() has been kicked off, otherwise it risks
+     * reading an unassigned lateinit while the background "tracelet-init" thread
+     * is still running.
+     *
+     * Safe to call from any service / broadcast / plugin thread; it must never
+     * be called on the "tracelet-init" thread itself, which would self-deadlock.
+     *
+     * @return true if init completed and did not fail (subsystems are safe to
+     * touch), false on timeout or init failure — callers on paths that
+     * dereference lateinit managers should bail instead of proceeding when this
+     * returns false.
+     */
+    internal fun awaitInit(): Boolean {
+        val done = try {
+            initCompleteLatch.await(30, java.util.concurrent.TimeUnit.SECONDS)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        }
+        if (!done) {
+            logger.error("awaitInit() timed out — subsystems still unset")
+            return false
+        }
+        return initializationFailure == null
+    }
 
     private fun initializeInternal() {
         // Bootstrap factory for headless/boot restart
@@ -630,11 +662,14 @@ class TraceletSdk private constructor(private val context: Context) {
      * @param callback Receives the current state map when ready.
      */
     fun ready(config: Map<String, Any?>, callback: (Map<String, Any?>) -> Unit) {
-        // initialize() opens the DB and wires the engines on a background thread
-        // (see its comment). Block until that finishes, otherwise completeReady()
-        // would touch not-yet-initialized lateinit engines.
-        if (!initCompleteLatch.await(15, java.util.concurrent.TimeUnit.SECONDS)) {
-            logger.error("ready() proceeded before initialize() finished (15s timeout)")
+        // (see its comment). Ensure it has been kicked off (idempotent via the
+        // initStarted guard) then block until it finishes, otherwise
+        // completeReady() would touch not-yet-initialized lateinit engines. Kept
+        // consistent with bootstrapForBackground so ready() never depends on an
+        // external ordering guarantee for who called initialize() first.
+        initialize()
+        if (!awaitInit()) {
+            logger.error("ready() proceeding without a completed initialize() — startup may be degraded")
         }
         val merged = configManager.setConfig(config)
 
@@ -1332,25 +1367,26 @@ class TraceletSdk private constructor(private val context: Context) {
         if (!::eventSender.isInitialized) {
             setEventSender(sender)
         }
-        if (rustDatabase == null) {
-            initialize()
-        }
-
+        // The boot / task-removal path (LocationService.onStartCommand →
+        // startBootTracking) reads lateinit managers (geofenceManager,
+        // locationEngine) as soon as this returns. Since initialize() runs its
+        // heavy setup on the background "tracelet-init" thread, we must wait for
+        // it to finish here — otherwise the service touches an unassigned
+        // lateinit and crashes in onStartCommand ("lateinit property
+        // geofenceManager has not been initialized"). Do NOT gate on
+        // `rustDatabase == null`: rustDatabase is assigned early inside
+        // initializeInternal, well before geofenceManager, so that check can
+        // pass while the managers are still unset. initialize() is idempotent
+        // (initStarted guard), so calling it unconditionally both starts init
+        // when this is the first entry point and joins an in-flight init begun
+        // by an engine attach; awaitInit() then blocks until it completes.
+        initialize()
         // Block until the background init thread finishes wiring the DB and
-        // lateinit managers (same contract ready() relies on). Do NOT proceed to
-        // touch managers if this times out.
-        val initialized = try {
-            initCompleteLatch.await(15, java.util.concurrent.TimeUnit.SECONDS)
-        } catch (e: InterruptedException) {
-            Thread.currentThread().interrupt()
-            false
-        }
-        if (!initialized) {
-            logger.error("bootstrapForBackground: initialize() did not complete within 15s — deferring boot tracking")
-            return false
-        }
-        if (initializationFailure != null) {
-            logger.error("bootstrapForBackground: initialization failed (${initializationFailure?.message}) — deferring boot tracking")
+        // lateinit managers (same contract ready() relies on). awaitInit()
+        // returns false on timeout OR init failure. Do NOT proceed to touch
+        // managers if it returns false.
+        if (!awaitInit()) {
+            logger.error("bootstrapForBackground: init not ready (timeout or failure) — deferring boot tracking")
             return false
         }
         // Defensive: the latch is released even on failure, so re-check the

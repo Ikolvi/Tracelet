@@ -1164,6 +1164,12 @@ class LocationService : Service(), DefaultLifecycleObserver {
             // Geofence mode: re-register persisted geofences with Play Services
             // and restore the static BroadcastReceiver reference so transition
             // events are not silently dropped after process death.
+            // Safe to read geofenceManager here: startBootTracking() only reaches
+            // this point when bootstrapForBackground() returned true, which
+            // already awaited init (awaitInit) AND verified geofenceManager is
+            // assigned — so the background "tracelet-init" thread has finished
+            // wiring the lateinit and this cannot throw
+            // UninitializedPropertyAccessException (#264).
             val geoManager = sdk.geofenceManager
             if (trackingMode == TrackingMode.GEOFENCES) {
                 geoManager.reRegisterAll()
