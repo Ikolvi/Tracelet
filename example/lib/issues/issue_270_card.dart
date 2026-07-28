@@ -99,17 +99,20 @@ class _Issue270CardState extends State<Issue270Card> {
         return;
       }
 
-      _set('Reading current position to anchor the geofence...');
-      final pos = await Tracelet.getCurrentPosition(maximumAge: 0);
-      final lat = pos.coords.latitude;
-      final lng = pos.coords.longitude;
-
+      // ready() must be called before any location API (getCurrentPosition
+      // throws NOT_READY otherwise), so configure the SDK first, then anchor
+      // the geofence on the current position.
       _set('Configuring startOnBoot + stopOnTerminate:false + geofences...');
       await Tracelet.ready(
         Config.balanced().copyWith(
           app: const AppConfig(stopOnTerminate: false, startOnBoot: true),
         ),
       );
+
+      _set('Reading current position to anchor the geofence...');
+      final pos = await Tracelet.getCurrentPosition(maximumAge: 0);
+      final lat = pos.coords.latitude;
+      final lng = pos.coords.longitude;
 
       // Register a geofence around the current location with a small radius so
       // walking a short distance crosses the boundary and fires a transition
