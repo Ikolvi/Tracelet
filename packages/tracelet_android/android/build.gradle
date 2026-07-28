@@ -48,13 +48,31 @@ android {
         // Tracelet SDK — standalone geolocation engine
         // Resolved from Maven Central when published, substituted with local
         // module via includeBuild during development.
-        api("com.ikolvi:tracelet-sdk:3.6.8")
+        api("com.ikolvi:tracelet-sdk:3.6.14")
+
+        // Version floor for Play Services Location (see issue #263).
+        //
+        // Tracelet's bytecode targets the interface-based
+        // FusedLocationProviderClient/ActivityRecognitionClient APIs, which are
+        // interfaces only in play-services-location >= 21.2.0. Older releases
+        // (e.g. 19.0.0) expose them as concrete classes, so the host app crashes
+        // with java.lang.IncompatibleClassChangeError at runtime.
+        //
+        // play-services-location stays optional (the SDK falls back to the AOSP
+        // LocationManager when it is absent). This constraint does not add the
+        // dependency; it only raises the resolved version to a compatible floor
+        // when the Flutter host app pulls it in directly or transitively.
+        constraints {
+            implementation("com.google.android.gms:play-services-location:21.2.0") {
+                because("Tracelet uses the interface-based Fused/ActivityRecognition clients (>= 21.2.0); older versions crash with IncompatibleClassChangeError (issue #263).")
+            }
+        }
 
         // Testing
         // Real org.json so ConfigManager's JSON persistence works under unit
         // tests (Android's bundled org.json is stubbed to return null when
         // unitTests.returnDefaultValues=true). Mirrors the tracelet-sdk module.
-        testImplementation("org.json:json:20260522")
+        testImplementation("org.json:json:20260719")
         // Optional SDK deps that some duplicated SDK-behavior tests exercise.
         testImplementation("androidx.security:security-crypto:1.1.0")
         testImplementation("com.google.android.play:integrity:1.6.0")

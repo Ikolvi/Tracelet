@@ -36,6 +36,9 @@ let package = Package(
             sources: [
                 "LocationEngineRuntimeProviderOptionsTests.swift",
                 "MotionDetectorTests.swift",
+                "BatteryBudgetRemoteConfigTests.swift",
+                "ConfigManagerNumericCoercionTests.swift",
+                "SignificantChangesBackgroundSessionTests.swift",
             ]
         ),
     ]

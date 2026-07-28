@@ -3,7 +3,7 @@
 📚 **Official Documentation:** [tracelet.ikolvi.com](https://tracelet.ikolvi.com)
 
 <p align="center">
-  <a href="https://tracelet.ikolvi.com/en?copyPrompt=1&utm_source=pubdev&utm_medium=readme&utm_campaign=copy_prompt&utm_content=tracelet_sync">
+  <a href="https://tracelet.ikolvi.com/copy-prompt?utm_source=pubdev&utm_medium=readme&utm_campaign=copy_prompt&utm_content=tracelet_sync">
     <img src="https://img.shields.io/badge/%E2%9C%A8%20Copy%20AI%20Setup%20Prompt-%E2%96%B6%20click%20to%20copy-0F9D58?style=for-the-badge&labelColor=0B7A43" alt="Copy AI Setup Prompt" height="42"/>
   </a>
 </p>

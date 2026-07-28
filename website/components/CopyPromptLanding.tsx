@@ -18,10 +18,48 @@ type CopyState = "idle" | "copied" | "manual";
 
 const ACCENT = "#0F9D58";
 
+// This page renders outside Nextra's theme provider, so it has no theme class
+// on <html>. We detect the visitor's preference ourselves — first the theme
+// next-themes persisted in localStorage, then the OS setting — and swap the
+// palette. We start in light (matching the server-rendered HTML) and adjust
+// after mount to avoid a hydration mismatch.
+const PALETTES = {
+  light: {
+    bg: "#ffffff",
+    text: "#111827",
+    subtext: "#374151",
+    muted: "#6b7280",
+    panelBg: "#f9fafb",
+    border: "#e5e7eb",
+  },
+  dark: {
+    bg: "#0a0a0a",
+    text: "#f3f4f6",
+    subtext: "#d1d5db",
+    muted: "#9ca3af",
+    panelBg: "#171717",
+    border: "#262626",
+  },
+} as const;
+
 export default function CopyPromptLanding() {
   const [state, setState] = useState<CopyState>("idle");
+  const [dark, setDark] = useState(false);
   const promptRef = useRef<string>(buildAiSetupPrompt("English"));
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("theme");
+      if (stored === "dark" || stored === "light") {
+        setDark(stored === "dark");
+        return;
+      }
+      setDark(window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false);
+    } catch {
+      /* keep light default */
+    }
+  }, []);
 
   const writeClipboard = async (text: string): Promise<boolean> => {
     try {
@@ -88,6 +126,7 @@ export default function CopyPromptLanding() {
   };
 
   const copied = state === "copied";
+  const t = dark ? PALETTES.dark : PALETTES.light;
 
   return (
     <main
@@ -99,8 +138,8 @@ export default function CopyPromptLanding() {
         padding: "3rem 1.25rem 4rem",
         fontFamily:
           "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-        color: "#111827",
-        background: "#ffffff",
+        color: t.text,
+        background: t.bg,
         boxSizing: "border-box",
       }}
     >
@@ -115,33 +154,57 @@ export default function CopyPromptLanding() {
         <h1 style={{ fontSize: "1.9rem", fontWeight: 800, margin: "1.25rem 0 0.5rem" }}>
           Tracelet AI Setup Prompt
         </h1>
-        <p style={{ fontSize: "1.05rem", lineHeight: 1.6, color: "#374151", margin: "0 0 1.5rem" }}>
+        <p style={{ fontSize: "1.05rem", lineHeight: 1.6, color: t.subtext, margin: "0 0 1.5rem" }}>
           {copied
             ? "The prompt is on your clipboard. Paste it into your AI coding assistant (Cursor, Claude Code, Kiro, Copilot Chat, etc.) and it will interview you, then install and configure Tracelet for your exact use case."
             : "Copy the prompt below and paste it into your AI coding assistant (Cursor, Claude Code, Kiro, Copilot Chat, etc.). It will interview you, then install and configure Tracelet for your exact use case."}
         </p>
 
-        <button
-          type="button"
-          onClick={handleCopy}
-          aria-live="polite"
-          style={{
-            padding: "0.85rem 1.6rem",
-            fontWeight: 700,
-            fontSize: "1.05rem",
-            borderRadius: "0.6rem",
-            border: `1px solid ${ACCENT}`,
-            color: copied ? "#ffffff" : ACCENT,
-            backgroundColor: copied ? ACCENT : "transparent",
-            cursor: "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "0.55rem",
-            transition: "background-color 0.2s, color 0.2s",
-          }}
-        >
-          {copied ? <>✓ Prompt copied — paste it into your AI</> : <>✨ Copy AI Setup Prompt</>}
-        </button>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.75rem" }}>
+          <button
+            type="button"
+            onClick={handleCopy}
+            aria-live="polite"
+            style={{
+              padding: "0.85rem 1.6rem",
+              fontWeight: 700,
+              fontSize: "1.05rem",
+              borderRadius: "0.6rem",
+              border: `1px solid ${ACCENT}`,
+              color: copied ? "#ffffff" : ACCENT,
+              backgroundColor: copied ? ACCENT : "transparent",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.55rem",
+              transition: "background-color 0.2s, color 0.2s",
+            }}
+          >
+            {copied ? <>✓ Prompt copied — paste it into your AI</> : <>✨ Copy AI Setup Prompt</>}
+          </button>
+
+          {/* Escape hatch for visitors who'd rather wire Tracelet up by hand
+              instead of using the AI prompt — send them straight to the docs. */}
+          <a
+            href="https://tracelet.ikolvi.com/en/quick-start"
+            style={{
+              padding: "0.85rem 1.5rem",
+              fontWeight: 600,
+              fontSize: "1rem",
+              borderRadius: "0.6rem",
+              border: `1px solid ${t.border}`,
+              color: t.subtext,
+              backgroundColor: t.panelBg,
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              transition: "opacity 0.2s",
+            }}
+          >
+            🛠️ Set up manually (read the docs)
+          </a>
+        </div>
 
         {state === "manual" && (
           <p style={{ marginTop: "0.75rem", color: "#b45309", fontSize: "0.9rem" }}>
@@ -152,7 +215,7 @@ export default function CopyPromptLanding() {
 
         <label
           htmlFor="tracelet-prompt"
-          style={{ display: "block", marginTop: "2rem", marginBottom: "0.5rem", fontWeight: 600, color: "#374151" }}
+          style={{ display: "block", marginTop: "2rem", marginBottom: "0.5rem", fontWeight: 600, color: t.subtext }}
         >
           Prompt
         </label>
@@ -170,16 +233,16 @@ export default function CopyPromptLanding() {
               "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
             fontSize: "0.82rem",
             lineHeight: 1.55,
-            color: "#111827",
-            background: "#f9fafb",
-            border: "1px solid #e5e7eb",
+            color: t.text,
+            background: t.panelBg,
+            border: `1px solid ${t.border}`,
             borderRadius: "0.6rem",
             resize: "vertical",
             boxSizing: "border-box",
           }}
         />
 
-        <p style={{ marginTop: "1.5rem", fontSize: "0.9rem", color: "#6b7280", lineHeight: 1.6 }}>
+        <p style={{ marginTop: "1.5rem", fontSize: "0.9rem", color: t.muted, lineHeight: 1.6 }}>
           New to Tracelet? Start with the{" "}
           <a href="https://tracelet.ikolvi.com/en/quick-start" style={{ color: ACCENT }}>
             Quick Start

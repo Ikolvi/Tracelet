@@ -57,6 +57,21 @@ dependencies {
 **Without this dependency, Tracelet falls back to the AOSP `LocationManager` (plain GPS)** — tracking still works, but you lose the `FusedLocationProviderClient`'s accuracy/battery benefits, hardware activity recognition, and hardware geofencing. **Add it unless you specifically target Google-less / AOSP devices.** See [Android platform setup](/en/getting-started/platform-setup/android#optional-dependency-high-accuracy-gms-location) for the full comparison.
 </Callout>
 
+#### Optional dependency: Play Integrity (device attestation)
+
+If you enable Tracelet's **device attestation** feature (`AttestationConfig`), also add Google Play Integrity to your app. Like the GMS location dependency, it is **not bundled** by Tracelet, so you opt in:
+
+```kotlin
+// android/app/build.gradle.kts
+dependencies {
+    implementation("com.google.android.play:integrity:1.6.0")
+}
+```
+
+<Callout type="info">
+**Only needed if you use attestation.** Without it, all other features work normally — `Tracelet.getAttestationToken()` just returns `null` instead of a Play Integrity token. See [Android platform setup](/en/getting-started/platform-setup/android#optional-dependency-play-integrity-device-attestation) for details.
+</Callout>
+
 #### Permissions
 
 By default, Tracelet automatically injects all required permissions into your compiled Android manifest via Manifest Merger. You **do not** need to manually add `<uses-permission>` tags to your `AndroidManifest.xml` unless you want to override them.

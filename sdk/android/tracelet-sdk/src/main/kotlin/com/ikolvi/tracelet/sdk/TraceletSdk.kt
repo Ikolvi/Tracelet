@@ -141,6 +141,15 @@ class TraceletSdk private constructor(private val context: Context) {
     private var batteryBudgetEngine: BatteryBudgetEngine? = null
     private var batteryBudgetRunnable: Runnable? = null
 
+    /**
+     * Test seam: whether the battery-budget engine is currently built/active.
+     * Exposed so regression tests can assert that a runtime `setConfig()` (the
+     * remote-config apply path) actually (re)builds the engine when
+     * `batteryBudgetPerHour` changes — see [applyBatteryBudgetConfig].
+     */
+    internal val isBatteryBudgetEngineActive: Boolean
+        get() = batteryBudgetEngine != null
+
     // 3.3.0 behavior engines (opt-in, default off)
     private var telematicsEngine: uniffi.tracelet_core.TelematicsEngine? = null
     private var transportClassifier: uniffi.tracelet_core.TransportModeClassifier? = null
@@ -307,11 +316,13 @@ class TraceletSdk private constructor(private val context: Context) {
             try {
                 initializeInternal()
             } catch (t: Throwable) {
-                // Record the failure so awaitInit() reports it instead of
-                // letting callers dereference half-wired lateinit managers and
-                // crash later with a misleading UninitializedPropertyAccessException.
-                // Log the full stacktrace, not just the message.
-                initFailed = true
+                // Preserve the failure so awaitInit()/bootstrapForBackground()
+                // can report it instead of letting callers dereference
+                // half-wired lateinit managers and crash later with a
+                // misleading UninitializedPropertyAccessException on the boot /
+                // broadcast paths (#264). Log the full stacktrace, not just the
+                // message, so the underlying init failure is diagnosable.
+                initializationFailure = t
                 logger.error("initializeInternal failed: ${t.stackTraceToString()}")
             } finally {
                 initCompleteLatch.countDown()
@@ -321,28 +332,38 @@ class TraceletSdk private constructor(private val context: Context) {
 
     private val initLock = Any()
     @Volatile private var initStarted = false
-    @Volatile private var initFailed = false
+    @Volatile private var initializationFailure: Throwable? = null
     private val initCompleteLatch = java.util.concurrent.CountDownLatch(1)
 
     /**
      * Blocks until [initializeInternal] has finished wiring the subsystems
      * (Rust DB, engines, geofenceManager). Every entry point that touches those
      * lateinit managers synchronously — ready() and the native boot / broadcast
-     * paths — must call this after ensuring initialize() has been kicked off,
-     * otherwise it risks reading an unassigned lateinit while the background
-     * "tracelet-init" thread is still running.
+     * paths (GeofenceBroadcastReceiver, CrashConfirmReceiver) — must call this
+     * after ensuring initialize() has been kicked off, otherwise it risks
+     * reading an unassigned lateinit while the background "tracelet-init" thread
+     * is still running.
      *
-     * @return true if init completed (subsystems are safe to touch), false on
-     * timeout or init failure — callers on paths that dereference lateinit
-     * managers should bail instead of proceeding when this returns false.
+     * Safe to call from any service / broadcast / plugin thread; it must never
+     * be called on the "tracelet-init" thread itself, which would self-deadlock.
+     *
+     * @return true if init completed and did not fail (subsystems are safe to
+     * touch), false on timeout or init failure — callers on paths that
+     * dereference lateinit managers should bail instead of proceeding when this
+     * returns false.
      */
     internal fun awaitInit(): Boolean {
-        val done = initCompleteLatch.await(30, java.util.concurrent.TimeUnit.SECONDS)
+        val done = try {
+            initCompleteLatch.await(30, java.util.concurrent.TimeUnit.SECONDS)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        }
         if (!done) {
             logger.error("awaitInit() timed out — subsystems still unset")
             return false
         }
-        return !initFailed
+        return initializationFailure == null
     }
 
     private fun initializeInternal() {
@@ -641,7 +662,6 @@ class TraceletSdk private constructor(private val context: Context) {
      * @param callback Receives the current state map when ready.
      */
     fun ready(config: Map<String, Any?>, callback: (Map<String, Any?>) -> Unit) {
-        // initialize() opens the DB and wires the engines on a background thread
         // (see its comment). Ensure it has been kicked off (idempotent via the
         // initStarted guard) then block until it finishes, otherwise
         // completeReady() would touch not-yet-initialized lateinit engines. Kept
@@ -671,20 +691,32 @@ class TraceletSdk private constructor(private val context: Context) {
         // ready() without waiting on the network, then fetch a fresh copy in the
         // background and keep it refreshed on the configured interval.
         val remoteUrl = configManager.getRemoteConfigUrl()
-        val effective = if (!remoteUrl.isNullOrEmpty()) {
-            remoteConfigManager.cachedConfig()?.let { configManager.setConfig(it) } ?: merged
+        val cachedRemote = if (!remoteUrl.isNullOrEmpty()) {
+            remoteConfigManager.cachedConfig()
         } else {
-            merged
+            null
         }
+        val effective = cachedRemote?.let { configManager.setConfig(it) } ?: merged
 
         completeReady(effective, callback)
+
+        // Mirror the applied cached override to Dart so activeConfig/diagnostics
+        // reflect the cached remote config on this cold start too.
+        if (cachedRemote != null) {
+            eventSender.sendRemoteConfigEvent(cachedRemote)
+        }
 
         if (!remoteUrl.isNullOrEmpty()) {
             remoteConfigManager.start(remoteUrl) { remote ->
                 // Apply on the main thread: setConfig() may restart the active
                 // tracking pipeline (location engine, motion sensors), which must
                 // run off the background fetch thread.
-                mainHandler.post { setConfig(remote) }
+                mainHandler.post {
+                    setConfig(remote)
+                    // Notify Dart so activeConfig / diagnostics / the Dart-side
+                    // battery-budget engine reflect the freshly fetched override.
+                    eventSender.sendRemoteConfigEvent(remote)
+                }
             }
         }
     }
@@ -709,16 +741,7 @@ class TraceletSdk private constructor(private val context: Context) {
         }
 
         // Initialize battery budget engine from config
-        val budgetPerHour = configManager.getBatteryBudgetPerHour()
-        if (budgetPerHour > 0) {
-            batteryBudgetEngine = BatteryBudgetEngine(
-                targetBudgetPerHour = budgetPerHour,
-                initialDistanceFilter = configManager.getDistanceFilter(),
-                initialAccuracyIndex = configManager.getDesiredAccuracy(),
-            )
-        } else {
-            batteryBudgetEngine = null
-        }
+        applyBatteryBudgetConfig()
 
         initBehaviorEngines()
 
@@ -1284,6 +1307,22 @@ class TraceletSdk private constructor(private val context: Context) {
             initBehaviorEngines()
         }
 
+        // The battery-budget engine is built at ready() from batteryBudgetPerHour
+        // and is otherwise never touched here — so enabling/disabling/retargeting
+        // the budget at runtime (e.g. a remote-config push of
+        // {"geo":{"batteryBudgetPerHour":1.0}}) previously had no effect until the
+        // app was cold-started. Rebuild it when the target changes, and (re)start
+        // or stop sampling to match the live tracking state.
+        if (oldConfig["batteryBudgetPerHour"] != merged["batteryBudgetPerHour"]) {
+            applyBatteryBudgetConfig()
+            if (stateManager.enabled) {
+                // startBatteryBudgetSampling() removes any pending callback first
+                // and returns early when the engine is null, so this both starts a
+                // newly-enabled budget and halts a newly-disabled one.
+                startBatteryBudgetSampling()
+            }
+        }
+
         updateBootReceiverState()
         syncConfigToRustFlat()
         checkSyncProvider()
@@ -1307,7 +1346,24 @@ class TraceletSdk private constructor(private val context: Context) {
         LocationService.updateNotification(context)
     }
 
-    internal fun bootstrapForBackground(sender: TraceletEventSender) {
+    /**
+     * Bootstraps the SDK for a headless / boot / task-removal restart.
+     *
+     * Returns `true` only when initialization has fully completed and the
+     * lateinit subsystems (Rust DB, [geofenceManager], engines) are ready to
+     * use. Returns `false` if init did not finish within the timeout, threw, or
+     * left the DB/managers unassigned.
+     *
+     * This mirrors [ready], which already blocks on [initCompleteLatch] before
+     * touching those subsystems. Previously this method kicked off [initialize]
+     * (which runs on a background `tracelet-init` thread) and returned
+     * immediately, so a caller like [LocationService.startBootTracking] could
+     * read the still-unassigned [geofenceManager] and crash with
+     * `UninitializedPropertyAccessException` on a cold boot (#264). Callers MUST
+     * check the return value and bail out (stop/defer) instead of touching any
+     * manager when it is `false`.
+     */
+    internal fun bootstrapForBackground(sender: TraceletEventSender): Boolean {
         if (!::eventSender.isInitialized) {
             setEventSender(sender)
         }
@@ -1325,19 +1381,28 @@ class TraceletSdk private constructor(private val context: Context) {
         // when this is the first entry point and joins an in-flight init begun
         // by an engine attach; awaitInit() then blocks until it completes.
         initialize()
+        // Block until the background init thread finishes wiring the DB and
+        // lateinit managers (same contract ready() relies on). awaitInit()
+        // returns false on timeout OR init failure. Do NOT proceed to touch
+        // managers if it returns false.
         if (!awaitInit()) {
-            // Init did not finish (timeout / failure): the managers this path
-            // and its caller (startBootTracking) read are still unset. Bail
-            // rather than dereference them and crash the service.
-            logger.error("bootstrapForBackground: init not ready — skipping background bootstrap")
-            return
+            logger.error("bootstrapForBackground: init not ready (timeout or failure) — deferring boot tracking")
+            return false
         }
+        // Defensive: the latch is released even on failure, so re-check the
+        // actual lateinit state before returning success.
+        if (rustDatabase == null || !::geofenceManager.isInitialized) {
+            logger.error("bootstrapForBackground: DB/geofenceManager not initialized after init — deferring boot tracking")
+            return false
+        }
+
         // Initialize the behavior engines (telematics / transport / crash-fall) in
         // the background process too. Without this they stay null after a reboot or
         // task-removal restart, silently disabling crash and driving diagnostics
         // while the app UI is killed (#214). Honors the same config flags as ready().
         initBehaviorEngines()
         checkSyncProvider()
+        return true
     }
 
     internal fun checkSyncProvider() {
@@ -3316,6 +3381,28 @@ class TraceletSdk private constructor(private val context: Context) {
             "fired" to (candidate != null),
             "kind" to candidate?.kind,
         )
+    }
+
+    /**
+     * (Re)builds the battery-budget engine from the current config.
+     *
+     * A non-zero `batteryBudgetPerHour` creates the engine seeded with the
+     * current distance filter / accuracy; a zero (or negative) value disables
+     * it. Called both at [ready] and from [setConfig] so the budget can be
+     * turned on/off/retargeted at runtime — e.g. via remote config — instead of
+     * only taking effect on the next cold start.
+     */
+    private fun applyBatteryBudgetConfig() {
+        val budgetPerHour = configManager.getBatteryBudgetPerHour()
+        batteryBudgetEngine = if (budgetPerHour > 0) {
+            BatteryBudgetEngine(
+                targetBudgetPerHour = budgetPerHour,
+                initialDistanceFilter = configManager.getDistanceFilter(),
+                initialAccuracyIndex = configManager.getDesiredAccuracy(),
+            )
+        } else {
+            null
+        }
     }
 
     private fun startBatteryBudgetSampling() {

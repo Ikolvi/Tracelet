@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:tracelet_platform_interface/src/generated/tracelet_api.g.dart';
 import 'package:tracelet_platform_interface/src/pigeon_event_receiver.dart';
 import 'package:tracelet_platform_interface/src/tracelet_platform.dart';
@@ -25,7 +27,26 @@ class PigeonTracelet extends TraceletPlatform {
     if (!_eventsRegistered) {
       _eventsRegistered = true;
       TraceletEventApi.setUp(_events);
-      _api.requestStateFlush();
+      // Best-effort nudge for the native side to re-emit current state. This
+      // is intentionally fire-and-forget: event registration above has already
+      // succeeded, so a flush failure (e.g. no platform side in headless
+      // tests, or a temporarily unreachable channel) must never surface as an
+      // *uncaught* async error. Swallowing it here keeps the failure contained
+      // so callers awaiting higher-level APIs (like Tracelet.ready) are not
+      // taken down by a stray zone error. See issue #262.
+      unawaited(_requestStateFlushSafely());
+    }
+  }
+
+  /// Requests a native state flush while guaranteeing any failure is contained
+  /// rather than propagating as an uncaught async error.
+  Future<void> _requestStateFlushSafely() async {
+    try {
+      await _api.requestStateFlush();
+    } catch (_) {
+      // Ignored: the flush is a non-critical, best-effort re-emit of current
+      // state. If the channel is unreachable there is nothing to flush and the
+      // caller's awaited path is unaffected.
     }
   }
 
@@ -730,5 +751,11 @@ class PigeonTracelet extends TraceletPlatform {
   Stream<TlSpeedMotionEvent> get motionModeChangeEvents {
     _ensureEventsRegistered();
     return _events.motionModeChangeEvents;
+  }
+
+  @override
+  Stream<Map<String?, Object?>> get remoteConfigEvents {
+    _ensureEventsRegistered();
+    return _events.remoteConfigEvents;
   }
 }

@@ -41,6 +41,7 @@ class PigeonEventReceiver implements TraceletEventApi {
   final _modeChangeCtrl = StreamController<TlModeChangeEvent>.broadcast();
   final _crashModelStatusCtrl =
       StreamController<TlCrashModelStatusEvent>.broadcast();
+  final _remoteConfigCtrl = StreamController<Map<String?, Object?>>.broadcast();
 
   // ---------------------------------------------------------------------------
   // Public streams
@@ -116,6 +117,10 @@ class PigeonEventReceiver implements TraceletEventApi {
   Stream<TlCrashModelStatusEvent> get crashModelStatusEvents =>
       _crashModelStatusCtrl.stream;
 
+  /// Stream of remote-config override maps applied natively at runtime.
+  Stream<Map<String?, Object?>> get remoteConfigEvents =>
+      _remoteConfigCtrl.stream;
+
   // ---------------------------------------------------------------------------
   // TraceletEventApi implementation (called by native via Pigeon)
   // ---------------------------------------------------------------------------
@@ -185,6 +190,10 @@ class PigeonEventReceiver implements TraceletEventApi {
   void onCrashModelStatus(TlCrashModelStatusEvent event) =>
       _crashModelStatusCtrl.add(event);
 
+  @override
+  void onRemoteConfig(Map<String?, Object?> config) =>
+      _remoteConfigCtrl.add(config);
+
   /// Called by native when the speed-based motion state machine transitions.
   ///
   /// Forwards the typed [TlSpeedMotionEvent] (state, previousState,
@@ -215,5 +224,6 @@ class PigeonEventReceiver implements TraceletEventApi {
     _impactCtrl.close();
     _modeChangeCtrl.close();
     _crashModelStatusCtrl.close();
+    _remoteConfigCtrl.close();
   }
 }

@@ -55,6 +55,7 @@ class StreamTestPlatform extends TraceletPlatform {
   final notificationActionCtrl = StreamController<String>.broadcast();
   final authorizationCtrl = StreamController<TlAuthorizationEvent>.broadcast();
   final watchPositionCtrl = StreamController<TlLocation>.broadcast();
+  final remoteConfigCtrl = StreamController<Map<String?, Object?>>.broadcast();
 
   @override
   Stream<TlLocation> get locationEvents => locationCtrl.stream;
@@ -91,6 +92,9 @@ class StreamTestPlatform extends TraceletPlatform {
       authorizationCtrl.stream;
   @override
   Stream<TlLocation> get watchPositionEvents => watchPositionCtrl.stream;
+  @override
+  Stream<Map<String?, Object?>> get remoteConfigEvents =>
+      remoteConfigCtrl.stream;
 
   @override
   Future<Map<String, Object?>> ready(TlConfig config) async => {
@@ -116,6 +120,7 @@ class StreamTestPlatform extends TraceletPlatform {
     notificationActionCtrl.close();
     authorizationCtrl.close();
     watchPositionCtrl.close();
+    remoteConfigCtrl.close();
   }
 }
 

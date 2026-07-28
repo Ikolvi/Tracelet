@@ -901,7 +901,22 @@ class LocationService : Service(), DefaultLifecycleObserver {
 
         // HTTP sync is handled natively by Rust Core now
         val sdk = com.ikolvi.tracelet.sdk.TraceletSdk.getInstance(ctx)
-        sdk.bootstrapForBackground(eventSender)
+        // Wait for the SDK to finish initializing before touching any manager.
+        // bootstrapForBackground() now blocks on the init latch and returns false
+        // if the Rust DB / geofenceManager are not ready. On a cold boot the
+        // async tracelet-init thread may not have assigned the lateinit
+        // geofenceManager yet; touching it below (reRegisterAll / static
+        // receiver wiring) would throw UninitializedPropertyAccessException and
+        // crash the service (#264). Defer gracefully instead — the foreground
+        // notification is already posted and START_STICKY (plus the next app
+        // launch / ready()) will retry once init is complete.
+        if (!sdk.bootstrapForBackground(eventSender)) {
+            TraceletLog.warning(
+                "startBootTracking() — SDK initialization did not complete; deferring boot " +
+                    "tracking without touching managers (#264)"
+            )
+            return
+        }
 
         val trackingMode = state.trackingMode
         TraceletLog.debug("Bootstrapping native tracking after boot/task-removal (trackingMode=$trackingMode, isMoving=${state.isMoving}, speedState=${state.speedMotionState}, enabled=${state.enabled})")
@@ -1149,18 +1164,17 @@ class LocationService : Service(), DefaultLifecycleObserver {
             // Geofence mode: re-register persisted geofences with Play Services
             // and restore the static BroadcastReceiver reference so transition
             // events are not silently dropped after process death.
-            // Guard: initialize() wires geofenceManager on a background thread, so
-            // in the pathological case where it hasn't finished (awaitInit timeout)
-            // reading the lateinit here would crash the service — skip instead.
-            if (sdk.awaitInit()) {
-                val geoManager = sdk.geofenceManager
-                if (trackingMode == TrackingMode.GEOFENCES) {
-                    geoManager.reRegisterAll()
-                }
-                GeofenceBroadcastReceiver.geofenceManager = geoManager
-            } else {
-                TraceletLog.warning("boot: SDK init not ready — skipping geofence re-registration")
+            // Safe to read geofenceManager here: startBootTracking() only reaches
+            // this point when bootstrapForBackground() returned true, which
+            // already awaited init (awaitInit) AND verified geofenceManager is
+            // assigned — so the background "tracelet-init" thread has finished
+            // wiring the lateinit and this cannot throw
+            // UninitializedPropertyAccessException (#264).
+            val geoManager = sdk.geofenceManager
+            if (trackingMode == TrackingMode.GEOFENCES) {
+                geoManager.reRegisterAll()
             }
+            GeofenceBroadcastReceiver.geofenceManager = geoManager
 
             // Wire the location stream into proximity evaluation. Without this,
             // geofenceModeHighAccuracy — which suppresses OS-level geofence

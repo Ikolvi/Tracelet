@@ -190,4 +190,6 @@ mixin EmptyEventStreamsMixin on TraceletPlatform {
   Stream<TlAuthorizationEvent> get authorizationEvents => const Stream.empty();
   @override
   Stream<TlLocation> get watchPositionEvents => const Stream.empty();
+  @override
+  Stream<Map<String?, Object?>> get remoteConfigEvents => const Stream.empty();
 }

@@ -104,6 +104,18 @@ class Tracelet {
   /// Subscription that feeds location battery levels to the budget engine.
   static StreamSubscription<Location>? _budgetLocationSub;
 
+  /// StreamController for remote-config-applied events (Enterprise).
+  ///
+  /// Emits the merged active [Config] whenever the native layer applies a
+  /// remotely-fetched configuration override at runtime.
+  static final StreamController<Config> _remoteConfigController =
+      StreamController<Config>.broadcast();
+
+  /// Internal subscription that folds native remote-config overrides into
+  /// [_currentConfig]. Set up once in [ready]; persists for the app lifetime so
+  /// [activeConfig] stays in sync even when the app has no explicit listener.
+  static StreamSubscription<Map<String?, Object?>>? _remoteConfigSub;
+
   /// Geofence evaluator for high-accuracy proximity checks
   /// (runs in Dart, not native).
   static final GeofenceEvaluator _geofenceEvaluator = GeofenceEvaluator();
@@ -150,6 +162,52 @@ class Tracelet {
     } else {
       _batteryBudgetEngine = null;
     }
+  }
+
+  /// Folds a native remote-config override map into the Dart-side active config.
+  ///
+  /// The native layer has already applied [remote] to its own config/engines;
+  /// this keeps the Dart mirror ([_currentConfig], and therefore [activeConfig],
+  /// diagnostics, and the Dart-side battery-budget engine) in sync, then
+  /// notifies [onRemoteConfig] listeners with the merged [Config].
+  static void _applyRemoteConfig(Map<String?, Object?> remote) {
+    if (remote.isEmpty) return;
+    // Pigeon delivers String?/Object? keys with nested Map<Object?, Object?>;
+    // normalize to the Map<String, Object?> shape Config.fromMap expects.
+    final overrides = _deepCastMap(remote.cast<Object?, Object?>());
+    final mergedMap = _deepMergeConfig(_currentConfig.toMap(), overrides);
+    final merged = Config.fromMap(mergedMap);
+    _currentConfig = merged;
+    // Re-init the Dart battery-budget engine and invalidate the processed
+    // location stream so both pick up the new settings.
+    _initBatteryBudget(merged);
+    _processedLocationStream = null;
+    if (_remoteConfigController.hasListener) {
+      _remoteConfigController.add(merged);
+    }
+  }
+
+  /// Recursively merges [overrides] onto [base], with nested maps merged
+  /// key-by-key (leaf values in [overrides] win). Used to apply a partial
+  /// remote-config map (e.g. `{geo: {batteryBudgetPerHour: 1.0}}`) onto the full
+  /// current config without dropping unspecified fields.
+  static Map<String, Object?> _deepMergeConfig(
+    Map<String, Object?> base,
+    Map<String, Object?> overrides,
+  ) {
+    final result = Map<String, Object?>.from(base);
+    overrides.forEach((key, value) {
+      final existing = result[key];
+      if (existing is Map && value is Map) {
+        result[key] = _deepMergeConfig(
+          Map<String, Object?>.from(existing),
+          Map<String, Object?>.from(value),
+        );
+      } else {
+        result[key] = value;
+      }
+    });
+    return result;
   }
 
   // ---------------------------------------------------------------------------
@@ -227,6 +285,17 @@ class Tracelet {
     // Initialize battery budget engine from config.
     _initBatteryBudget(config);
 
+    // Enterprise remote config is fetched and applied entirely on the native
+    // side; the fetch never round-trips through Dart. Subscribe once so that
+    // when native applies a remote override at runtime we fold it into
+    // [_currentConfig] — otherwise [activeConfig] (and tools like
+    // tracelet_doctor, plus the Dart-side battery-budget engine) would keep
+    // showing the last locally-set values. Accessing the stream also ensures
+    // the Pigeon event channel is registered so the event can arrive.
+    _remoteConfigSub ??= _platform.remoteConfigEvents.listen(
+      _applyRemoteConfig,
+    );
+
     // Wire trip manager output to the Dart stream controller.
     _tripManager.onTripEnd = (tripData) {
       _tripController.add(TripEvent.fromMap(tripData));
@@ -269,6 +338,24 @@ class Tracelet {
     _batteryBudgetEngine?.reset();
 
     return _stateFromMap(result);
+  }
+
+  /// Request the native service to terminate from a headless isolate.
+  ///
+  /// Unlike [stop], this uses the headless MethodChannel directly,
+  /// so it works from FCM background handlers where Pigeon is unavailable.
+  /// Returns whether the native service acknowledged the request.
+  /// No [State] is returned since Pigeon is unavailable in headless isolates.
+  ///
+  /// Android only. On iOS, returns `false` (headless architecture differs).
+  static Future<bool> requestTermination() async {
+    try {
+      const channel = MethodChannel('com.tracelet/methods');
+      final result = await channel.invokeMethod<bool>('requestTermination');
+      return result ?? false;
+    } on MissingPluginException {
+      return false;
+    }
   }
 
   /// Start geofence-only tracking mode.
@@ -2525,6 +2612,32 @@ class Tracelet {
     void Function(BudgetAdjustmentEvent) callback,
   ) {
     return _tracked(_budgetController.stream.listen(callback));
+  }
+
+  /// A broadcast stream of the merged active [Config] each time a remotely
+  /// fetched configuration (Enterprise `remoteConfigUrl`) is applied at runtime.
+  ///
+  /// The native layer fetches and applies remote config on its own; this stream
+  /// (and [activeConfig]) reflect the result on the Dart side.
+  static Stream<Config> get remoteConfigStream =>
+      _remoteConfigController.stream;
+
+  /// Subscribe to remote-config-applied events.
+  ///
+  /// Fires with the merged active [Config] whenever a remotely fetched
+  /// configuration override (Enterprise `remoteConfigUrl`) is applied at
+  /// runtime. Use it to react to server-driven config changes; after it fires,
+  /// [activeConfig] already reflects the new values.
+  ///
+  /// ```dart
+  /// Tracelet.onRemoteConfig((config) {
+  ///   print('Remote budget: ${config.geo.batteryBudgetPerHour}%/hr');
+  /// });
+  /// ```
+  static StreamSubscription<Config> onRemoteConfig(
+    void Function(Config) callback,
+  ) {
+    return _tracked(_remoteConfigController.stream.listen(callback));
   }
 
   // ---------------------------------------------------------------------------

@@ -5622,6 +5622,14 @@ abstract class TraceletEventApi {
 
   void onCrashModelStatus(TlCrashModelStatusEvent event);
 
+  /// Fired when a remotely-fetched configuration (Enterprise `remoteConfigUrl`)
+  /// is applied natively at runtime. Carries the raw override map the endpoint
+  /// returned (e.g. `{"geo":{"batteryBudgetPerHour":1.0}}`) so the Dart layer
+  /// can fold it into its cached active config — otherwise `Tracelet.activeConfig`
+  /// (and diagnostics like tracelet_doctor) would keep showing the last
+  /// locally-set values, since the native fetch never round-trips through Dart.
+  void onRemoteConfig(Map<String?, Object?> config);
+
   static void setUp(
     TraceletEventApi? api, {
     BinaryMessenger? binaryMessenger,
@@ -6125,6 +6133,32 @@ abstract class TraceletEventApi {
               args[0]! as TlCrashModelStatusEvent;
           try {
             api.onCrashModelStatus(arg_event);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+        'dev.flutter.pigeon.tracelet_platform_interface.TraceletEventApi.onRemoteConfig$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final Map<String?, Object?> arg_config =
+              (args[0]! as Map<Object?, Object?>).cast<String?, Object?>();
+          try {
+            api.onRemoteConfig(arg_config);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);

@@ -240,3 +240,27 @@ final config = Config.balanced().copyWith(
 <Callout type="warning">
 Applied remote values are merged into the device's persisted config, and remote overrides win over local ones. Only publish values you intend **every** device fetching that URL to adopt — scope per-fleet or per-cohort by pointing each build at a different URL.
 </Callout>
+
+### Observing applied remote config from Dart
+
+Remote config is fetched and applied on the native side. Since **3.6.10**, every time a remote override is applied — both the cached copy restored at `ready()` **and** each background refresh — the SDK surfaces it back to Dart:
+
+- `Tracelet.activeConfig` (and therefore [`tracelet_doctor`](/en/core/diagnostics) and the Dart-side battery-budget engine) now reflects the fetched values, instead of only the last config you set locally.
+- Subscribe to react when a server-driven change lands:
+
+```dart
+// Callback — fires after a remote override is applied.
+// Tracelet.activeConfig already reflects the new values when this fires.
+Tracelet.onRemoteConfig((Config config) {
+  print('Remote battery budget: ${config.geo.batteryBudgetPerHour}%/hr');
+});
+
+// …or listen to the broadcast stream directly.
+final sub = Tracelet.remoteConfigStream.listen((config) {
+  // react to the merged, now-active config
+});
+```
+
+<Callout type="info">
+Before 3.6.10, remote values were applied to native tracking but were **not** mirrored into `Tracelet.activeConfig`, so diagnostics could still show the last locally-set value even though tracking already used the remote one.
+</Callout>

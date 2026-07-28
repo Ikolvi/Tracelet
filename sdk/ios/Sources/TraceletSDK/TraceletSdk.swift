@@ -151,6 +151,12 @@ public final class TraceletSdk {
     /// Whether ``ready(config:)`` has been called.
     public var isReadyState: Bool { isReady }
 
+    /// Test seam: whether the battery-budget engine is currently built/active.
+    /// Exposed so regression tests can assert that a runtime `setConfig()` (the
+    /// remote-config apply path) actually (re)builds the engine when
+    /// `batteryBudgetPerHour` changes — see `applyBatteryBudgetConfig()`.
+    var isBatteryBudgetEngineActive: Bool { batteryBudgetEngine != nil }
+
     private init() {
         eventSender = delegateEventSender
         delegateEventSender.sdk = self
@@ -299,19 +305,13 @@ public final class TraceletSdk {
         let remoteConfigUrl = configManager.getRemoteConfigUrl()
         if remoteConfigUrl != nil, let cached = remoteConfigManager.cachedConfig() {
             _ = configManager.setConfig(cached)
+            // Mirror the applied override to Dart so activeConfig/diagnostics
+            // reflect the cached remote config on this cold start too.
+            eventSender.sendRemoteConfigEvent(cached)
         }
 
         // Initialize battery budget engine from config
-        let budgetPerHour = configManager.getBatteryBudgetPerHour()
-        if budgetPerHour > 0 {
-            batteryBudgetEngine = TraceletBatteryBudgetEngine(
-                targetBudgetPerHour: budgetPerHour,
-                initialDistanceFilter: configManager.getDistanceFilter(),
-                initialAccuracyIndex: configManager.getDesiredAccuracy()
-            )
-        } else {
-            batteryBudgetEngine = nil
-        }
+        applyBatteryBudgetConfig()
 
         initBehaviorEngines()
 
@@ -359,7 +359,11 @@ public final class TraceletSdk {
         // runtime (restarting the tracking pipeline if needed).
         if let remoteUrl = remoteConfigUrl {
             remoteConfigManager.start(url: remoteUrl) { [weak self] remote in
-                _ = self?.setConfig(remote)
+                guard let self = self else { return }
+                _ = self.setConfig(remote)
+                // Notify Dart so activeConfig / diagnostics / the Dart-side
+                // battery-budget engine reflect the freshly fetched override.
+                self.eventSender.sendRemoteConfigEvent(remote)
             }
         }
 
@@ -428,7 +432,7 @@ public final class TraceletSdk {
 
         if stateManager.isMoving {
             locationEngine.start()
-            backgroundActivitySessionManager.start()
+            startBackgroundActivitySessionIfNeeded()
         } else {
             _ = changePace(false)
         }
@@ -791,6 +795,22 @@ public final class TraceletSdk {
         ]
         if oldBehavior != newBehavior {
             initBehaviorEngines()
+        }
+
+        // The battery-budget engine is built at ready() from batteryBudgetPerHour
+        // and is otherwise never touched here — so enabling/disabling/retargeting
+        // the budget at runtime (e.g. a remote-config push of
+        // {"geo":{"batteryBudgetPerHour":1.0}}) previously had no effect until the
+        // app was cold-started. Rebuild it when the target changes, and (re)start
+        // or stop sampling to match the live tracking state.
+        if !valuesEqual(oldConfig["batteryBudgetPerHour"], merged["batteryBudgetPerHour"]) {
+            applyBatteryBudgetConfig()
+            if stateManager.enabled {
+                // startBatteryBudgetSampling() stops any running timer first and
+                // returns early when the engine is nil, so this both starts a
+                // newly-enabled budget and halts a newly-disabled one.
+                startBatteryBudgetSampling()
+            }
         }
 
         syncConfigToRustFlat()
@@ -2112,6 +2132,32 @@ public final class TraceletSdk {
         drainDueConfirmations()
     }
 
+    // MARK: - Private: Background activity session
+
+    /// Opens the iOS 17+ `CLBackgroundActivitySession` for continuous tracking —
+    /// unless `useSignificantChangesOnly` is enabled.
+    ///
+    /// `CLBackgroundActivitySession` keeps a background location activity alive
+    /// and auto-shows the system location indicator (Dynamic Island / status-bar
+    /// pill), even when continuous GPS is not running. That defeats
+    /// significant-change monitoring, whose entire purpose is low-power
+    /// background location WITHOUT a persistent "ongoing location" indicator
+    /// (Issue #261). Periodic mode and low-accuracy geofence-only mode already
+    /// avoid the session for the same reason; this brings significant-changes-
+    /// only into line with them.
+    ///
+    /// The indicator may still blink briefly when a significant-change event is
+    /// delivered — that is normal iOS behavior and not a persistent session.
+    private func startBackgroundActivitySessionIfNeeded() {
+        if configManager.getUseSignificantChangesOnly() {
+            logger.debug(
+                "Not starting CLBackgroundActivitySession — useSignificantChangesOnly is enabled (#261)"
+            )
+            return
+        }
+        backgroundActivitySessionManager.start()
+    }
+
     // MARK: - Private: Motion State
 
     private func handleMotionStateChange(_ isMoving: Bool) {
@@ -2143,7 +2189,7 @@ public final class TraceletSdk {
             self.locationEngine.changePace(isMoving)
 
             if isMoving {
-                self.backgroundActivitySessionManager.start()
+                self.startBackgroundActivitySessionIfNeeded()
             } else {
                 self.backgroundActivitySessionManager.stop()
             }
@@ -2752,6 +2798,26 @@ public final class TraceletSdk {
 
     // MARK: - Private: Battery Budget Sampling
 
+    /// (Re)builds the battery-budget engine from the current config.
+    ///
+    /// A non-zero `batteryBudgetPerHour` creates the engine seeded with the
+    /// current distance filter / accuracy; a zero (or negative) value disables
+    /// it. Called both at `ready()` and from `setConfig()` so the budget can be
+    /// turned on/off/retargeted at runtime — e.g. via remote config — instead of
+    /// only taking effect on the next cold start (#battery-budget-remote-config).
+    private func applyBatteryBudgetConfig() {
+        let budgetPerHour = configManager.getBatteryBudgetPerHour()
+        if budgetPerHour > 0 {
+            batteryBudgetEngine = TraceletBatteryBudgetEngine(
+                targetBudgetPerHour: budgetPerHour,
+                initialDistanceFilter: configManager.getDistanceFilter(),
+                initialAccuracyIndex: configManager.getDesiredAccuracy()
+            )
+        } else {
+            batteryBudgetEngine = nil
+        }
+    }
+
     private func startBatteryBudgetSampling() {
         stopBatteryBudgetSampling()
         guard let engine = batteryBudgetEngine else { return }
@@ -2968,7 +3034,7 @@ public final class TraceletSdk {
             }
             startHeartbeat()
             preventSuspendManager.start()
-            backgroundActivitySessionManager.start()
+            startBackgroundActivitySessionIfNeeded()
             serviceSessionManager.start()
 
         case .geofences:
@@ -3209,7 +3275,11 @@ extension TraceletSdk: SpeedMotionDelegate {
             stateManager.isMoving = true
             stateManager.trackingMode = .continuous
             locationEngine.switchToContinuous()
-            backgroundActivitySessionManager.start()
+            // #261: honor useSignificantChangesOnly here too. This is the path
+            // the speed/smart motion pipeline takes when it confirms movement,
+            // independent of start()'s moving branch — so it must apply the same
+            // guard or the persistent location indicator comes back.
+            startBackgroundActivitySessionIfNeeded()
 
             // Emit motionchange event for backward compatibility
             let lastLoc = locationEngine.getLastLocation()

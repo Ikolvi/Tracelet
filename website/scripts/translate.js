@@ -466,6 +466,18 @@ async function run() {
     worker('google'),
     worker('google'),
     worker('google'),
+    worker('google'),
+    worker('google'),
+    worker('google'),
+    worker('google'),
+    worker('google'),
+    worker('google'),
+    worker('google'),
+    worker('google'),
+    worker('google'),
+    worker('google'),
+    worker('google'),
+    worker('google'),
   ]);
 
   console.log("\nAll translations completed successfully!");

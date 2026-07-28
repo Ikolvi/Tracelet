@@ -54,13 +54,26 @@ async function writeClipboard(text: string): Promise<boolean> {
   }
 }
 
-// True when the visitor arrived from the README badge, e.g.
-// /en?copyPrompt=1  or  /en#copy-ai-setup-prompt
+// True when the visitor landed on the in-page anchor, e.g.
+// /en#copy-ai-setup-prompt — we auto-copy in place for this case.
 function landedForCopy(): boolean {
   if (typeof window === "undefined") return false;
-  const params = new URLSearchParams(window.location.search);
-  if (params.get("copyPrompt") === "1") return true;
   return window.location.hash === `#${COPY_ANCHOR_ID}`;
+}
+
+// The README badges point at the dedicated /copy-prompt landing page, but links
+// already published to pub.dev / GitHub still carry /en?copyPrompt=1. That
+// loads this heavy docs homepage where a gesture-less clipboard write is
+// unreliable and third-party scripts / the video make the tab look stuck. When
+// we see that legacy marker, hand off to /copy-prompt, preserving utm params.
+function legacyCopyPromptRedirect(): boolean {
+  if (typeof window === "undefined") return false;
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("copyPrompt") !== "1") return false;
+  params.delete("copyPrompt");
+  const query = params.toString();
+  window.location.replace(`/copy-prompt${query ? `?${query}` : ""}`);
+  return true;
 }
 
 export default function CopySetupPrompt({ variant = "hero" }: { variant?: Variant }) {
@@ -101,25 +114,27 @@ export default function CopySetupPrompt({ variant = "hero" }: { variant?: Varian
     };
   }, []);
 
-  // Auto-copy flow: only the hero button (home page) reacts to the README
-  // landing marker. Browsers frequently block a clipboard write that isn't tied
-  // to a user gesture, so if the automatic attempt fails we scroll to the
-  // button and pulse it instead of leaving the visitor with nothing.
+  // Landing flow for the hero button (home page).
   useEffect(() => {
-    if (variant !== "hero" || !landedForCopy()) return;
+    if (variant !== "hero") return;
+    // Legacy README links (?copyPrompt=1) get handed off to /copy-prompt.
+    if (legacyCopyPromptRedirect()) return;
+    // In-page hash anchor (#copy-ai-setup-prompt): scroll to the button, pulse
+    // it, and attempt a best-effort auto-copy. If the browser blocks the
+    // gesture-less write the button keeps pulsing for a one-click copy.
+    if (!landedForCopy()) return;
 
     let cancelled = false;
+    setAttention(true);
+    buttonRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+
     (async () => {
       const ok = await doCopy("auto");
       if (cancelled) return;
-      if (!ok) setAttention(true);
+      if (ok) setAttention(false);
 
-      buttonRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-
-      // Clean the marker out of the URL so a refresh doesn't re-trigger this.
       try {
         const url = new URL(window.location.href);
-        url.searchParams.delete("copyPrompt");
         if (url.hash === `#${COPY_ANCHOR_ID}`) url.hash = "";
         window.history.replaceState(null, "", url.pathname + url.search + url.hash);
       } catch {

@@ -219,6 +219,6 @@ html.dark .notification-dropdown-item:hover {
   }
 }
 .tracelet-copy-attention {
-  animation: tracelet-copy-pulse 1.4s ease-out 3;
+  animation: tracelet-copy-pulse 1.4s ease-out infinite;
   background-color: rgba(15, 157, 88, 0.08) !important;
 }
