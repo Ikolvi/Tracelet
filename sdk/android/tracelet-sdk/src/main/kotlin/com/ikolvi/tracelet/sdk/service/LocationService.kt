@@ -1149,11 +1149,18 @@ class LocationService : Service(), DefaultLifecycleObserver {
             // Geofence mode: re-register persisted geofences with Play Services
             // and restore the static BroadcastReceiver reference so transition
             // events are not silently dropped after process death.
-            val geoManager = sdk.geofenceManager
-            if (trackingMode == TrackingMode.GEOFENCES) {
-                geoManager.reRegisterAll()
+            // Guard: initialize() wires geofenceManager on a background thread, so
+            // in the pathological case where it hasn't finished (awaitInit timeout)
+            // reading the lateinit here would crash the service — skip instead.
+            if (sdk.awaitInit()) {
+                val geoManager = sdk.geofenceManager
+                if (trackingMode == TrackingMode.GEOFENCES) {
+                    geoManager.reRegisterAll()
+                }
+                GeofenceBroadcastReceiver.geofenceManager = geoManager
+            } else {
+                TraceletLog.warning("boot: SDK init not ready — skipping geofence re-registration")
             }
-            GeofenceBroadcastReceiver.geofenceManager = geoManager
 
             // Wire the location stream into proximity evaluation. Without this,
             // geofenceModeHighAccuracy — which suppresses OS-level geofence

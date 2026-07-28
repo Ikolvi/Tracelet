@@ -49,8 +49,12 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                     val sender = TraceletBootstrap.eventSenderFactory?.invoke(context)
                         ?: ListenerEventSender()
                     sdk.setEventSender(sender)
+                    // initialize() wires geofenceManager on a background thread and
+                    // returns immediately; wait for it before reading the lateinit,
+                    // otherwise this throws again, the transition is dropped, and a
+                    // cold-boot geofence enter/exit (a trip start) is silently lost.
                     sdk.initialize()
-                    sdk.geofenceManager
+                    if (sdk.awaitInit()) sdk.geofenceManager else null
                 }
             } catch (e: Exception) {
                 TraceletLog.error("Failed to bootstrap SDK: ${e.message}")
