@@ -230,6 +230,19 @@ class TraceletHostApiImpl: TraceletHostApi {
         let battery = d["battery"] as? [String: Any] ?? [:]
         let activity = d["activity"] as? [String: Any]
 
+        // #280: TlLocation has no locationSource/reducedAccuracy fields, so carry
+        // them through `extras` — the same transport the live onLocation path
+        // uses (EventDispatcher.mapToTlLocation) and that Location.fromMap
+        // unpacks. Without this, getLocations()/sync drop the DB-restored
+        // classification and report the "unknown"/false defaults.
+        var extras = d["extras"] as? [String?: Any?] ?? [:]
+        if let source = d["locationSource"] as? String {
+            extras["locationSource"] = source
+        }
+        if let reduced = d["reducedAccuracy"] as? Bool {
+            extras["reducedAccuracy"] = reduced
+        }
+
         return TlLocation(
             coords: TlCoords(
                 latitude: coords["latitude"] as? Double ?? 0.0,
@@ -261,7 +274,7 @@ class TraceletHostApiImpl: TraceletHostApi {
                     confidence: Int64($0["confidence"] as? Int ?? 0)
                 )
             },
-            extras: d["extras"] as? [String?: Any?],
+            extras: extras.isEmpty ? nil : extras,
             address: (d["address"] as? [String: Any]).map { addr in
                 TlAddress(
                     street: addr["street"] as? String,

@@ -39,6 +39,9 @@ let package = Package(
                 "BatteryBudgetRemoteConfigTests.swift",
                 "ConfigManagerNumericCoercionTests.swift",
                 "SignificantChangesBackgroundSessionTests.swift",
+                // #280: pure LocationMapper API (buildLocationMap) — current, not
+                // stale — wired up so the persisted-metadata mapping is covered.
+                "LocationMapperTests.swift",
             ]
         ),
     ]

@@ -76,6 +76,15 @@ class TraceletHostApiImpl(
         val activity = m["activity"] as? Map<String, Any?>
         val addressMap = m["address"] as? Map<String, Any?>
 
+        // #280: TlLocation has no locationSource/reducedAccuracy fields, so
+        // carry them through `extras` — the same transport the live onLocation
+        // path uses (EventDispatcher.mapToTlLocation) and that Location.fromMap
+        // unpacks. Without this, getLocations()/sync drop the DB-restored
+        // classification and report the "unknown"/false defaults.
+        val extras = ((m["extras"] as? Map<String?, Any?>) ?: emptyMap()).toMutableMap()
+        (m["locationSource"] as? String)?.let { extras["locationSource"] = it }
+        (m["reducedAccuracy"] as? Boolean)?.let { extras["reducedAccuracy"] = it }
+
         return TlLocation(
             coords = TlCoords(
                 latitude = (coords["latitude"] as? Number)?.toDouble() ?: 0.0,
@@ -105,7 +114,7 @@ class TraceletHostApiImpl(
                 type = activity["type"] as? String ?: "unknown",
                 confidence = (activity["confidence"] as? Number)?.toLong() ?: 0L,
             ) else null,
-            extras = m["extras"] as? Map<String?, Any?>,
+            extras = if (extras.isEmpty()) null else extras,
             address = addressMap?.let {
                 com.ikolvi.tracelet.TlAddress(
                     street = it["street"] as? String,

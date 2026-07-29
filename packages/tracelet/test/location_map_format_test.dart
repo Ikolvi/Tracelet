@@ -177,6 +177,54 @@ void main() {
   });
 
   // ========================================================================
+  // #280: locationSource / reducedAccuracy transport
+  // ========================================================================
+  // getLocations() and the DB-sourced sync payload cross the Pigeon
+  // TlLocation boundary, which has no dedicated fields for these — they ride
+  // inside `extras`. fromMap must surface them and NOT leak them into
+  // Location.extras (mirrors the live Location.fromTl contract).
+  group('Location.fromMap #280 locationSource/reducedAccuracy', () {
+    test('reads them from top level (direct SDK map)', () {
+      final map = _minimalMap()
+        ..['locationSource'] = 'gps'
+        ..['reducedAccuracy'] = true;
+      final loc = Location.fromMap(map);
+      expect(loc.locationSource, 'gps');
+      expect(loc.reducedAccuracy, isTrue);
+    });
+
+    test('reads them from extras (Pigeon TlLocation transport)', () {
+      final map = _minimalMap()
+        ..['extras'] = <String, Object?>{
+          'locationSource': 'gps',
+          'reducedAccuracy': true,
+          'taskId': 'delivery-1',
+        };
+      final loc = Location.fromMap(map);
+      expect(loc.locationSource, 'gps');
+      expect(loc.reducedAccuracy, isTrue);
+      // Extracted, not leaked into the surfaced extras; unrelated keys remain.
+      expect(loc.extras.containsKey('locationSource'), isFalse);
+      expect(loc.extras.containsKey('reducedAccuracy'), isFalse);
+      expect(loc.extras['taskId'], 'delivery-1');
+    });
+
+    test('top level wins over extras', () {
+      final map = _minimalMap()
+        ..['locationSource'] = 'wifi'
+        ..['extras'] = <String, Object?>{'locationSource': 'gps'};
+      final loc = Location.fromMap(map);
+      expect(loc.locationSource, 'wifi');
+    });
+
+    test('defaults to unknown/false when absent', () {
+      final loc = Location.fromMap(_minimalMap());
+      expect(loc.locationSource, 'unknown');
+      expect(loc.reducedAccuracy, isFalse);
+    });
+  });
+
+  // ========================================================================
   // Coords.fromMap
   // ========================================================================
   group('Coords.fromMap key conventions', () {

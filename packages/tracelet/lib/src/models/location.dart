@@ -110,6 +110,21 @@ class Location {
     final batteryMap = safeMap(map['battery']);
     final addressMap = safeMap(map['address']);
     final extrasRaw = map['extras'];
+    // Use Map.from() to avoid per-entry MapEntry allocation (D-L4).
+    final extras = extrasRaw is Map
+        ? Map<String, Object?>.from(extrasRaw)
+        : <String, Object?>{};
+
+    // `locationSource` / `reducedAccuracy` may arrive top-level (a direct SDK
+    // map) or nested inside `extras` — the latter is the Pigeon `TlLocation`
+    // transport used by getLocations() and the DB-sourced sync payload, which
+    // has no dedicated fields for them (#280). Prefer top-level, fall back to
+    // extras, and strip them from the surfaced extras so they don't leak — the
+    // same contract `Location.fromTl` uses for live events.
+    final extrasLocationSource =
+        extras.remove('locationSource') ?? extras.remove('location_source');
+    final extrasReducedAccuracy =
+        extras.remove('reducedAccuracy') ?? extras.remove('reduced_accuracy');
 
     return Location(
       coords: Coords.fromMap(coordsMap.isEmpty ? map : coordsMap),
@@ -121,10 +136,12 @@ class Location {
       uuid: ensureString(map['uuid']),
       odometer: ensureDouble(map['odometer'], fallback: 0),
       locationSource: _ensureLocationSource(
-        map['locationSource'] ?? map['location_source'],
+        map['locationSource'] ?? map['location_source'] ?? extrasLocationSource,
       ),
       reducedAccuracy: ensureBool(
-        map['reducedAccuracy'] ?? map['reduced_accuracy'],
+        map['reducedAccuracy'] ??
+            map['reduced_accuracy'] ??
+            extrasReducedAccuracy,
         fallback: false,
       ),
       isMock: ensureBool(
@@ -139,10 +156,7 @@ class Location {
           ? LocationBattery.fromMap(batteryMap)
           : const LocationBattery(),
       address: addressMap != null ? Address.fromMap(addressMap) : null,
-      // Use Map.from() to avoid per-entry MapEntry allocation (D-L4).
-      extras: extrasRaw is Map
-          ? Map<String, Object?>.from(extrasRaw)
-          : const <String, Object?>{},
+      extras: extras,
       event: map['event'] is String
           ? map['event']! as String
           : map['event']?.toString(),

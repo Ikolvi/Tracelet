@@ -1,5 +1,6 @@
 package com.ikolvi.tracelet.flutter.db
 
+import com.ikolvi.tracelet.sdk.location.LocationMapper
 import uniffi.tracelet_core.DatabaseManager
 import uniffi.tracelet_core.LocationQuery
 import org.junit.After
@@ -83,5 +84,56 @@ class TraceletDatabaseQueryTest {
         insertAt(2000L)
         insertAt(3000L)
         assertEquals(3, db.getLocationsCount())
+    }
+
+    // #280: end-to-end proof that locationSource / reducedAccuracy survive the
+    // real Rust DB round-trip when persisted as route_context keys (the shape
+    // TraceletSdk.insertLocation writes) and are promoted to top level by
+    // LocationMapper on read — where Location.fromMap reads them.
+    @Test
+    fun routeContext_locationSourceAndReducedAccuracy_surviveDbRoundTrip() {
+        db.insertLocation(
+            uuid = "issue-280",
+            lat = 37.0,
+            lng = -122.0,
+            acc = 8.0,
+            speed = 0.0,
+            heading = 0.0,
+            altitude = 0.0,
+            isMock = false,
+            isMoving = false,
+            activity = "still",
+            activityConfidence = -1,
+            routeContext = """{"locationSource":"gps","reducedAccuracy":true}""",
+            timestampOverride = java.time.Instant.ofEpochMilli(1000L).toString(),
+            eventType = null,
+            eventPayload = null,
+            address = null,
+        )
+
+        val record = db.getLocationsBatch(null).single()
+        val map = LocationMapper.buildLocationMap(
+            id = record.id,
+            uuid = record.uuid,
+            timestamp = record.timestamp,
+            latitude = record.latitude,
+            longitude = record.longitude,
+            altitude = record.altitude,
+            speed = record.speed,
+            heading = record.heading,
+            accuracy = record.accuracy,
+            isMock = record.isMock,
+            activity = record.activity,
+            activityConfidence = record.activityConfidence,
+            routeContext = record.routeContext,
+            isMoving = record.isMoving,
+            odometer = 0.0,
+            eventType = record.eventType,
+            eventPayload = record.eventPayload,
+            address = record.address,
+        )
+
+        assertEquals("gps", map["locationSource"])
+        assertEquals(true, map["reducedAccuracy"])
     }
 }

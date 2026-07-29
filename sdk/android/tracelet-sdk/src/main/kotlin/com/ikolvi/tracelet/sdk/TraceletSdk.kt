@@ -1811,8 +1811,16 @@ class TraceletSdk private constructor(private val context: Context) {
         }
         val batteryMap = params["battery"] as? Map<*, *>
         val extrasMap = params["extras"] as? Map<*, *>
+        // #280: persist the location-source classification so it survives into
+        // DB-sourced reads (getLocations) and the sync payload, instead of only
+        // living on the live onLocation event. Stored as first-class
+        // route_context keys (like audit_*), not inside extras.
+        val locationSource = (params["locationSource"] as? String)?.takeIf { it.isNotEmpty() }
+        val reducedAccuracy = params["reducedAccuracy"] as? Boolean
 
-        if (auditHash != null || batteryMap != null || (extrasMap != null && extrasMap.isNotEmpty())) {
+        if (auditHash != null || batteryMap != null || (extrasMap != null && extrasMap.isNotEmpty()) ||
+            locationSource != null || reducedAccuracy != null
+        ) {
             try {
                 val jsonMap = if (routeContext != null) {
                     org.json.JSONObject(routeContext)
@@ -1833,6 +1841,12 @@ class TraceletSdk private constructor(private val context: Context) {
                 }
                 if (extrasMap != null && extrasMap.isNotEmpty()) {
                     jsonMap.put("extras", org.json.JSONObject(extrasMap as Map<*, *>))
+                }
+                if (locationSource != null) {
+                    jsonMap.put("locationSource", locationSource)
+                }
+                if (reducedAccuracy != null) {
+                    jsonMap.put("reducedAccuracy", reducedAccuracy)
                 }
                 routeContext = jsonMap.toString()
             } catch (e: Exception) {
