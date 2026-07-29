@@ -494,6 +494,10 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         periodicTimer = timer
     }
 
+    /// Number of GPS samples collected per high-accuracy periodic fix before
+    /// the most accurate one is persisted (#282). Bounded by `locationTimeout`.
+    private static let periodicHighAccuracySampleCount = 3
+
     /// Performs a single one-shot location fix for periodic mode.
     ///
     /// Temporarily enables `allowsBackgroundLocationUpdates` and calls
@@ -504,6 +508,35 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// the plugin can trigger a fix from a `BGAppRefreshTask` wake-up.
     public func performPeriodicFix() {
         guard isPeriodicTracking else { return }
+
+        // #282: In high-accuracy periodic mode, iOS's single requestLocation()
+        // one-shot often returns a stale cached or first-coarse fix before the
+        // GPS hardware converges. Route through the shared best-of-N sampling
+        // window (the same path getCurrentPosition uses) so we persist the most
+        // accurate fix instead. feedSample() consumes the samples during the
+        // window (no double-dispatch) and restoreAfterSampling() puts the
+        // low-power periodic configuration back. Non-best accuracy keeps the
+        // cheaper single-shot path below.
+        if configManager.getPeriodicDesiredAccuracy() == 0 {
+            // Don't start a second window on top of an in-flight one (only
+            // possible if the periodic interval is shorter than locationTimeout).
+            guard sampleState == nil else {
+                TraceletLog.debug("[Tracelet] performPeriodicFix: sampling window already active, skipping tick")
+                return
+            }
+            TraceletLog.debug("[Tracelet] performPeriodicFix: high-accuracy best-of-N sampling window")
+            periodicFixTimeoutWork?.cancel()
+            endPeriodicFixBgTask()
+            periodicFixBgTaskId = BackgroundTaskHelper.shared.begin("periodicFix")
+            collectSamples(
+                count: Self.periodicHighAccuracySampleCount,
+                persist: true,
+                extras: [:]
+            ) { [weak self] _ in
+                self?.endPeriodicFixBgTask()
+            }
+            return
+        }
 
         TraceletLog.debug("[Tracelet] performPeriodicFix: requesting one-shot GPS fix")
 
