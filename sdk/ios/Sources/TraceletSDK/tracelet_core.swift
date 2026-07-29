@@ -2335,8 +2335,19 @@ public protocol GeofenceEvaluatorProtocol: AnyObject, Sendable {
     
     /**
      * Evaluates a location update and returns a list of triggered geofence transitions.
+     *
+     * `accuracy` is the fix's horizontal accuracy radius in meters (a 68%
+     * confidence circle). It is used to make the EXIT decision drift-aware:
+     * a circular geofence only EXITs once the *entire* accuracy circle clears
+     * the fence (`distance - accuracy > radius + exitBuffer`). This prevents a
+     * single high-drift fix — which is reported with a correspondingly large
+     * accuracy value — from producing a false EXIT while the device is
+     * stationary inside the fence (issue #274). Pass `0.0` (or any
+     * non-positive/non-finite value) to disable accuracy gating and preserve
+     * the legacy `distance`-only behavior. ENTER is intentionally left
+     * accuracy-agnostic so arrivals still trigger promptly.
      */
-    func evaluateProximity(latitude: Double, longitude: Double, geofences: [CoreGeofence])  -> [GeofenceTransition]
+    func evaluateProximity(latitude: Double, longitude: Double, accuracy: Double, geofences: [CoreGeofence])  -> [GeofenceTransition]
     
     /**
      * Indexes a collection of geofences for efficient spatial querying.
@@ -2431,13 +2442,25 @@ open func clearIndex()  {try! rustCall() {
     
     /**
      * Evaluates a location update and returns a list of triggered geofence transitions.
+     *
+     * `accuracy` is the fix's horizontal accuracy radius in meters (a 68%
+     * confidence circle). It is used to make the EXIT decision drift-aware:
+     * a circular geofence only EXITs once the *entire* accuracy circle clears
+     * the fence (`distance - accuracy > radius + exitBuffer`). This prevents a
+     * single high-drift fix — which is reported with a correspondingly large
+     * accuracy value — from producing a false EXIT while the device is
+     * stationary inside the fence (issue #274). Pass `0.0` (or any
+     * non-positive/non-finite value) to disable accuracy gating and preserve
+     * the legacy `distance`-only behavior. ENTER is intentionally left
+     * accuracy-agnostic so arrivals still trigger promptly.
      */
-open func evaluateProximity(latitude: Double, longitude: Double, geofences: [CoreGeofence]) -> [GeofenceTransition]  {
+open func evaluateProximity(latitude: Double, longitude: Double, accuracy: Double, geofences: [CoreGeofence]) -> [GeofenceTransition]  {
     return try!  FfiConverterSequenceTypeGeofenceTransition.lift(try! rustCall() {
     uniffi_tracelet_core_fn_method_geofenceevaluator_evaluate_proximity(
             self.uniffiCloneHandle(),
         FfiConverterDouble.lower(latitude),
         FfiConverterDouble.lower(longitude),
+        FfiConverterDouble.lower(accuracy),
         FfiConverterSequenceTypeCoreGeofence.lower(geofences),$0
     )
 })
@@ -9754,7 +9777,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_tracelet_core_checksum_method_geofenceevaluator_clear_index() != 37834) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_tracelet_core_checksum_method_geofenceevaluator_evaluate_proximity() != 38287) {
+    if (uniffi_tracelet_core_checksum_method_geofenceevaluator_evaluate_proximity() != 39120) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_geofenceevaluator_index_geofences() != 2949) {

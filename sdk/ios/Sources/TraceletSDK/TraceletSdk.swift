@@ -407,10 +407,10 @@ public final class TraceletSdk {
         periodicRefreshScheduler.stop()
 
         // Wire proximity-based geofence monitoring + trip waypoints.
-        locationEngine.onLocationUpdate = { [weak self] lat, lng in
+        locationEngine.onLocationUpdate = { [weak self] lat, lng, accuracy in
             self?.geofenceManager.updateProximity(latitude: lat, longitude: lng)
             if self?.configManager.getGeofenceModeHighAccuracy() == true {
-                self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng)
+                self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng, accuracy: accuracy)
             }
             self?.tripManager.onLocationReceived(
                 latitude: lat,
@@ -512,10 +512,10 @@ public final class TraceletSdk {
         geofenceManager.reRegisterAll()
 
         // Wire proximity-based geofence monitoring.
-        locationEngine.onLocationUpdate = { [weak self] lat, lng in
+        locationEngine.onLocationUpdate = { [weak self] lat, lng, accuracy in
             self?.geofenceManager.updateProximity(latitude: lat, longitude: lng)
             if self?.configManager.getGeofenceModeHighAccuracy() == true {
-                self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng)
+                self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng, accuracy: accuracy)
             }
         }
 
@@ -581,10 +581,10 @@ public final class TraceletSdk {
         locationEngine.startPeriodic()
 
         // Wire proximity-based geofence monitoring.
-        locationEngine.onLocationUpdate = { [weak self] lat, lng in
+        locationEngine.onLocationUpdate = { [weak self] lat, lng, accuracy in
             self?.geofenceManager.updateProximity(latitude: lat, longitude: lng)
             if self?.configManager.getGeofenceModeHighAccuracy() == true {
-                self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng)
+                self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng, accuracy: accuracy)
             }
         }
 
@@ -3012,10 +3012,10 @@ public final class TraceletSdk {
         switch trackingMode {
         case .continuous:
             locationEngine.start()
-            locationEngine.onLocationUpdate = { [weak self] lat, lng in
+            locationEngine.onLocationUpdate = { [weak self] lat, lng, accuracy in
                 self?.geofenceManager.updateProximity(latitude: lat, longitude: lng)
                 if self?.configManager.getGeofenceModeHighAccuracy() == true {
-                    self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng)
+                    self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng, accuracy: accuracy)
                 }
                 self?.tripManager.onLocationReceived(
                     latitude: lat,
@@ -3039,10 +3039,10 @@ public final class TraceletSdk {
 
         case .geofences:
             geofenceManager.reRegisterAll()
-            locationEngine.onLocationUpdate = { [weak self] lat, lng in
+            locationEngine.onLocationUpdate = { [weak self] lat, lng, accuracy in
                 self?.geofenceManager.updateProximity(latitude: lat, longitude: lng)
                 if self?.configManager.getGeofenceModeHighAccuracy() == true {
-                    self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng)
+                    self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng, accuracy: accuracy)
                 }
             }
             locationEngine.start()
@@ -3052,10 +3052,10 @@ public final class TraceletSdk {
 
         case .periodic:
             locationEngine.startPeriodic()
-            locationEngine.onLocationUpdate = { [weak self] lat, lng in
+            locationEngine.onLocationUpdate = { [weak self] lat, lng, accuracy in
                 self?.geofenceManager.updateProximity(latitude: lat, longitude: lng)
                 if self?.configManager.getGeofenceModeHighAccuracy() == true {
-                    self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng)
+                    self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng, accuracy: accuracy)
                 }
             }
             let interval = TimeInterval(configManager.getPeriodicLocationInterval())

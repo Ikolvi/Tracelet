@@ -242,8 +242,13 @@ class LocationEngine(
     var lastEffectiveSpeed: Double = 0.0
         private set
 
-    /** Optional callback invoked on every accepted location (for geofenceModeHighAccuracy). */
-    var onLocationUpdate: ((Double, Double) -> Unit)? = null
+    /**
+     * Optional callback invoked on every accepted location (for geofenceModeHighAccuracy).
+     *
+     * Params: latitude, longitude, horizontalAccuracy (meters). Accuracy feeds
+     * the drift-aware geofence EXIT decision (issue #274); pass 0.0 when unknown.
+     */
+    var onLocationUpdate: ((Double, Double, Double) -> Unit)? = null
 
     /** Optional callback invoked after a location is persisted to the database.
      *  Used by the plugin to trigger HTTP auto-sync. */
@@ -462,7 +467,7 @@ class LocationEngine(
 
                         // Notify proximity-based geofence monitoring
                         if (lat != null && lng != null) {
-                            onLocationUpdate?.invoke(lat, lng)
+                            onLocationUpdate?.invoke(lat, lng, accuracy ?: 0.0)
                         }
                     } else {
                         TraceletLog.warning("periodic fix — no location available (fresh + fallback both null)")
@@ -980,7 +985,7 @@ class LocationEngine(
                         // Dispatch to Dart but do NOT persist or audit.
                         val locationData = privacyResult.location ?: finalEnriched
                         events.sendLocation(locationData)
-                        onLocationUpdate?.invoke(location.latitude, location.longitude)
+                        onLocationUpdate?.invoke(location.latitude, location.longitude, location.accuracy.toDouble())
                         return
                     }
                     PrivacyZoneManager.ProcessedLocation.Action.DEGRADED -> {
@@ -994,7 +999,7 @@ class LocationEngine(
                         }
                         persistLocationIfAllowed(withAudit, actualEvent)
                         events.sendLocation(withAudit)
-                        onLocationUpdate?.invoke(location.latitude, location.longitude)
+                        onLocationUpdate?.invoke(location.latitude, location.longitude, location.accuracy.toDouble())
                         
                         if (isForcedAccept) {
                             try {
@@ -1023,7 +1028,7 @@ class LocationEngine(
             events.sendLocation(enrichedWithAudit)
 
             // Notify geofenceModeHighAccuracy listener (if active)
-            onLocationUpdate?.invoke(location.latitude, location.longitude)
+            onLocationUpdate?.invoke(location.latitude, location.longitude, location.accuracy.toDouble())
             
             if (isForcedAccept) {
                 try {

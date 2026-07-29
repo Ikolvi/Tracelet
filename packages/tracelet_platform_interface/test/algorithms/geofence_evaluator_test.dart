@@ -354,6 +354,80 @@ void main() async {
       expect(transitions[0].action, 'EXIT');
     });
 
+    test('high-accuracy drift does not fire a false EXIT (#274)', () {
+      const centerLat = 37.4219983;
+      const centerLng = -122.084;
+      final geofences = <Map<String, Object?>>[
+        {
+          'identifier': 'attendance',
+          'latitude': centerLat,
+          'longitude': centerLng,
+          'radius': 50.0, // exit threshold = 70 m
+        },
+      ];
+
+      // Solid fix inside with good accuracy → ENTER.
+      final inside = pointNorth(centerLat, centerLng, 10);
+      final enter = evaluator.evaluateProximity(
+        latitude: inside.lat,
+        longitude: inside.lng,
+        accuracy: 8,
+        geofences: geofences,
+      );
+      expect(enter, hasLength(1));
+      expect(enter[0].action, 'ENTER');
+
+      // Drift spike: reported 160 m out but with ±150 m accuracy. The nearest
+      // plausible position (160 - 150 = 10 m) is still inside → hold, no EXIT.
+      final drift = pointNorth(centerLat, centerLng, 160);
+      final driftTransitions = evaluator.evaluateProximity(
+        latitude: drift.lat,
+        longitude: drift.lng,
+        accuracy: 150,
+        geofences: geofences,
+      );
+      expect(
+        driftTransitions,
+        isEmpty,
+        reason: 'high-drift low-confidence fix must not fire EXIT',
+      );
+    });
+
+    test(
+      'accurate genuine departure still EXITs with gating active (#274)',
+      () {
+        const centerLat = 37.4219983;
+        const centerLng = -122.084;
+        final geofences = <Map<String, Object?>>[
+          {
+            'identifier': 'attendance',
+            'latitude': centerLat,
+            'longitude': centerLng,
+            'radius': 50.0, // exit threshold = 70 m
+          },
+        ];
+
+        final inside = pointNorth(centerLat, centerLng, 10);
+        evaluator.evaluateProximity(
+          latitude: inside.lat,
+          longitude: inside.lng,
+          accuracy: 8,
+          geofences: geofences,
+        );
+
+        // 120 m out with ±10 m accuracy: 120 - 10 = 110 > 70 → real EXIT.
+        final far = pointNorth(centerLat, centerLng, 120);
+        final transitions = evaluator.evaluateProximity(
+          latitude: far.lat,
+          longitude: far.lng,
+          accuracy: 10,
+          geofences: geofences,
+        );
+        expect(transitions, hasLength(1));
+        expect(transitions[0].action, 'EXIT');
+      },
+    );
+
     test('polygon with integer vertices works', () {
       final geofences = <Map<String, Object?>>[
         {

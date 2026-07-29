@@ -79,7 +79,21 @@ impl GeofenceEvaluator {
     }
 
     /// Evaluates a location update and returns a list of triggered geofence transitions.
-    pub fn evaluate_proximity(&self, latitude: f64, longitude: f64, geofences: Vec<CoreGeofence>) -> Vec<GeofenceTransition> {
+    ///
+    /// `accuracy` is the fix's horizontal accuracy radius in meters (a 68%
+    /// confidence circle). It is used to make the EXIT decision drift-aware:
+    /// a circular geofence only EXITs once the *entire* accuracy circle clears
+    /// the fence (`distance - accuracy > radius + exitBuffer`). This prevents a
+    /// single high-drift fix — which is reported with a correspondingly large
+    /// accuracy value — from producing a false EXIT while the device is
+    /// stationary inside the fence (issue #274). Pass `0.0` (or any
+    /// non-positive/non-finite value) to disable accuracy gating and preserve
+    /// the legacy `distance`-only behavior. ENTER is intentionally left
+    /// accuracy-agnostic so arrivals still trigger promptly.
+    pub fn evaluate_proximity(&self, latitude: f64, longitude: f64, accuracy: f64, geofences: Vec<CoreGeofence>) -> Vec<GeofenceTransition> {
+        // Clamp unknown/invalid accuracy (iOS reports negative when invalid) to
+        // 0 so gating is a no-op rather than pulling the exit threshold inward.
+        let acc = if accuracy.is_finite() && accuracy > 0.0 { accuracy } else { 0.0 };
         let effective_geofences = self.resolve_geofences(latitude, longitude, geofences);
         let mut transitions = Vec::new();
         let mut inside_ids = self.inside_geofence_ids.write().unwrap();
@@ -123,7 +137,11 @@ impl GeofenceEvaluator {
             let exit_buffer = (gf.radius * GEOFENCE_EXIT_HYSTERESIS_FRACTION)
                 .max(GEOFENCE_MIN_EXIT_HYSTERESIS_METERS);
             let entered = distance <= gf.radius;
-            let exited = distance > gf.radius + exit_buffer;
+            // Accuracy-aware EXIT (#274): require the whole error circle to be
+            // beyond the fence, not just the reported point. `distance - acc`
+            // is the nearest the device could plausibly be to the center given
+            // the fix uncertainty; only exit when even that is clearly outside.
+            let exited = (distance - acc) > gf.radius + exit_buffer;
 
             if entered && !was_inside {
                 inside_ids.insert(identifier.clone());
@@ -239,7 +257,7 @@ mod tests {
         let (mut enters, mut exits) = (0usize, 0usize);
         for d in distances {
             let (plat, plng) = point_north(lat, lng, d);
-            let (e, x) = count(&eval.evaluate_proximity(plat, plng, vec![gf.clone()]));
+            let (e, x) = count(&eval.evaluate_proximity(plat, plng, 0.0, vec![gf.clone()]));
             enters += e;
             exits += x;
         }
@@ -258,12 +276,12 @@ mod tests {
 
         // Enter well inside.
         let (plat, plng) = point_north(lat, lng, 20.0);
-        let (e, _) = count(&eval.evaluate_proximity(plat, plng, vec![gf.clone()]));
+        let (e, _) = count(&eval.evaluate_proximity(plat, plng, 0.0, vec![gf.clone()]));
         assert_eq!(e, 1);
 
         // Move clearly outside (well past radius + 20 m buffer).
         let (plat, plng) = point_north(lat, lng, 400.0);
-        let (_, x) = count(&eval.evaluate_proximity(plat, plng, vec![gf.clone()]));
+        let (_, x) = count(&eval.evaluate_proximity(plat, plng, 0.0, vec![gf.clone()]));
         assert_eq!(x, 1, "a clear departure must fire exactly one EXIT");
     }
 
@@ -280,11 +298,55 @@ mod tests {
         let (mut enters, mut exits) = (0usize, 0usize);
         for d in distances {
             let (plat, plng) = point_north(lat, lng, d);
-            let (e, x) = count(&eval.evaluate_proximity(plat, plng, vec![gf.clone()]));
+            let (e, x) = count(&eval.evaluate_proximity(plat, plng, 0.0, vec![gf.clone()]));
             enters += e;
             exits += x;
         }
         assert_eq!(enters, 1);
         assert_eq!(exits, 0);
+    }
+
+    /// Regression for #274: a stationary device inside a small fence whose GPS
+    /// briefly drifts well past `radius + buffer` must NOT fire a false EXIT
+    /// when the fix carries a correspondingly large accuracy value.
+    #[test]
+    fn high_accuracy_drift_does_not_false_exit() {
+        let (lat, lng) = (37.4219983, -122.084);
+        let gf = circular("attendance", lat, lng, 50.0); // exit threshold = 70 m
+        let eval = GeofenceEvaluator::new();
+
+        // Solid fix inside with good accuracy → ENTER.
+        let (plat, plng) = point_north(lat, lng, 10.0);
+        let (e, x) = count(&eval.evaluate_proximity(plat, plng, 8.0, vec![gf.clone()]));
+        assert_eq!((e, x), (1, 0), "good-accuracy fix inside must ENTER once");
+
+        // Drift spike: reported 160 m out but with ±150 m accuracy. The nearest
+        // plausible position (160 - 150 = 10 m) is still inside → hold, no EXIT.
+        let (plat, plng) = point_north(lat, lng, 160.0);
+        let (_, x) = count(&eval.evaluate_proximity(plat, plng, 150.0, vec![gf.clone()]));
+        assert_eq!(x, 0, "high-drift low-confidence fix must not fire EXIT");
+
+        // Recovered accurate fix back inside → still no spurious transitions.
+        let (plat, plng) = point_north(lat, lng, 12.0);
+        let (e, x) = count(&eval.evaluate_proximity(plat, plng, 6.0, vec![gf.clone()]));
+        assert_eq!((e, x), (0, 0), "recovery must not re-ENTER or EXIT");
+    }
+
+    /// A genuine departure reported with good accuracy must still EXIT even
+    /// though accuracy gating is active — gating only holds when the error
+    /// circle overlaps the fence.
+    #[test]
+    fn accurate_departure_still_exits_with_gating() {
+        let (lat, lng) = (37.4219983, -122.084);
+        let gf = circular("attendance", lat, lng, 50.0); // exit threshold = 70 m
+        let eval = GeofenceEvaluator::new();
+
+        let (plat, plng) = point_north(lat, lng, 10.0);
+        let _ = eval.evaluate_proximity(plat, plng, 8.0, vec![gf.clone()]);
+
+        // 120 m out with ±10 m accuracy: 120 - 10 = 110 > 70 → real EXIT.
+        let (plat, plng) = point_north(lat, lng, 120.0);
+        let (_, x) = count(&eval.evaluate_proximity(plat, plng, 10.0, vec![gf.clone()]));
+        assert_eq!(x, 1, "an accurate genuine departure must still EXIT");
     }
 }

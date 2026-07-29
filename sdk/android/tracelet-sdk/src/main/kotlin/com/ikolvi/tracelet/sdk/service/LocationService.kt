@@ -1186,10 +1186,10 @@ class LocationService : Service(), DefaultLifecycleObserver {
             if (config.getGeofenceModeHighAccuracy()) {
                 geoManager.clearHighAccuracyState()
             }
-            bootLocationEngine?.onLocationUpdate = { lat, lng ->
+            bootLocationEngine?.onLocationUpdate = { lat, lng, accuracy ->
                 geoManager.updateProximity(lat, lng)
                 if (config.getGeofenceModeHighAccuracy()) {
-                    geoManager.evaluateHighAccuracyProximity(lat, lng)
+                    geoManager.evaluateHighAccuracyProximity(lat, lng, accuracy)
                 }
             }
             TraceletLog.debug("Geofence registrations restored after boot/task-removal (proximity stream wired)")

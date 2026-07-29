@@ -845,10 +845,10 @@ class TraceletSdk private constructor(private val context: Context) {
         }
 
         // Wire proximity-based geofence monitoring + trip waypoints
-        locationEngine.onLocationUpdate = { lat, lng ->
+        locationEngine.onLocationUpdate = { lat, lng, accuracy ->
             geofenceManager.updateProximity(lat, lng)
             if (configManager.getGeofenceModeHighAccuracy()) {
-                geofenceManager.evaluateHighAccuracyProximity(lat, lng)
+                geofenceManager.evaluateHighAccuracyProximity(lat, lng, accuracy)
             }
             tripManager.onLocationReceived(lat, lng, System.currentTimeMillis().toString())
         }
@@ -1023,10 +1023,10 @@ class TraceletSdk private constructor(private val context: Context) {
 
         geofenceManager.reRegisterAll()
 
-        locationEngine.onLocationUpdate = { lat, lng ->
+        locationEngine.onLocationUpdate = { lat, lng, accuracy ->
             geofenceManager.updateProximity(lat, lng)
             if (configManager.getGeofenceModeHighAccuracy()) {
-                geofenceManager.evaluateHighAccuracyProximity(lat, lng)
+                geofenceManager.evaluateHighAccuracyProximity(lat, lng, accuracy)
             }
         }
 
