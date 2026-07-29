@@ -110,6 +110,28 @@ final class LocationMapperTests: XCTestCase {
         XCTAssertNil(map["extras"])
     }
 
+    // #280: locationSource/reducedAccuracy persisted as first-class route_context
+    // keys must be promoted to top level (where Location.fromMap reads them) and
+    // must NOT leak into extras.route_context.
+    func testRouteContextLocationSourceAndReducedAccuracyGoTopLevelNotIntoExtras() {
+        let map = sampleMap(
+            routeContext: #"{"taskId":"task-1","locationSource":"gps","reducedAccuracy":true}"#
+        )
+        XCTAssertEqual(map["locationSource"] as? String, "gps")
+        XCTAssertEqual(map["reducedAccuracy"] as? Bool, true)
+
+        let rc = (map["extras"] as? [String: Any])?["route_context"] as? [String: Any]
+        XCTAssertEqual(rc?["taskId"] as? String, "task-1")
+        XCTAssertNil(rc?["locationSource"], "must not leak into extras.route_context")
+        XCTAssertNil(rc?["reducedAccuracy"], "must not leak into extras.route_context")
+    }
+
+    func testRouteContextWithoutLocationSourceLeavesKeysAbsent() {
+        let map = sampleMap(routeContext: #"{"taskId":"task-1"}"#)
+        XCTAssertNil(map["locationSource"])
+        XCTAssertNil(map["reducedAccuracy"])
+    }
+
     func testEventTypeAndPayloadSplice() {
         let map = LocationMapper.buildLocationMap(
             id: 99,
