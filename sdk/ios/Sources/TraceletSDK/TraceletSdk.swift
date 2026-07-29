@@ -1354,8 +1354,15 @@ public final class TraceletSdk {
         }
         let batteryMap = params["battery"] as? [String: Any]
         let extrasMap = params["extras"] as? [String: Any]
+        // #280: persist the location-source classification so it survives into
+        // DB-sourced reads (getLocations) and the sync payload, instead of only
+        // living on the live onLocation event. Stored as first-class
+        // route_context keys (like audit_*), not inside extras.
+        let locationSource = (params["locationSource"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let reducedAccuracy = params["reducedAccuracy"] as? Bool
 
-        if auditHash != nil || batteryMap != nil || (extrasMap != nil && !extrasMap!.isEmpty) {
+        if auditHash != nil || batteryMap != nil || (extrasMap != nil && !extrasMap!.isEmpty)
+            || locationSource != nil || reducedAccuracy != nil {
             var contextDict: [String: Any] = [:]
             if let rc = routeContext, let data = rc.data(using: .utf8) {
                 if let dict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
@@ -1376,6 +1383,12 @@ public final class TraceletSdk {
             }
             if let extrasMap = extrasMap, !extrasMap.isEmpty {
                 contextDict["extras"] = extrasMap
+            }
+            if let locationSource = locationSource {
+                contextDict["locationSource"] = locationSource
+            }
+            if let reducedAccuracy = reducedAccuracy {
+                contextDict["reducedAccuracy"] = reducedAccuracy
             }
 
             if let jsonData = try? JSONSerialization.data(withJSONObject: contextDict, options: []),

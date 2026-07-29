@@ -129,4 +129,29 @@ class LocationMapperTest {
         val map = sampleMap(routeContext = "not-json")
         assertFalse(map.containsKey("extras"))
     }
+
+    // #280: locationSource/reducedAccuracy persisted as first-class route_context
+    // keys must be promoted to top level (where Location.fromMap reads them) and
+    // must NOT leak into extras.route_context.
+    @Test
+    fun routeContext_locationSourceAndReducedAccuracy_goTopLevel_notIntoExtras() {
+        val map = sampleMap(
+            routeContext = """{"taskId":"task-1","locationSource":"gps","reducedAccuracy":true}""",
+        )
+        assertEquals("gps", map["locationSource"])
+        assertEquals(true, map["reducedAccuracy"])
+
+        @Suppress("UNCHECKED_CAST")
+        val rc = (map["extras"] as Map<String, Any?>)["route_context"] as Map<String, Any?>
+        assertEquals("task-1", rc["taskId"])
+        assertFalse(rc.containsKey("locationSource"), "must not leak into extras.route_context")
+        assertFalse(rc.containsKey("reducedAccuracy"), "must not leak into extras.route_context")
+    }
+
+    @Test
+    fun routeContext_withoutLocationSource_leavesKeysAbsent() {
+        val map = sampleMap(routeContext = """{"taskId":"task-1"}""")
+        assertFalse(map.containsKey("locationSource"))
+        assertFalse(map.containsKey("reducedAccuracy"))
+    }
 }

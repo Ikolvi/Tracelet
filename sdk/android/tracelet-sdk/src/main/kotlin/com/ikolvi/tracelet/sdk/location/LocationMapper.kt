@@ -109,6 +109,11 @@ object LocationMapper {
                 "audit_hash" -> map["audit_hash"] = json.optString(key)
                 "audit_previous_hash" -> map["audit_previous_hash"] = json.optString(key)
                 "audit_chain_index" -> map["audit_chain_index"] = json.optInt(key)
+                // #280: promote the persisted location-source classification to
+                // top level so getLocations()/sync report it instead of the
+                // "unknown"/false defaults. Kept out of extras.route_context.
+                "locationSource" -> map["locationSource"] = json.optString(key)
+                "reducedAccuracy" -> map["reducedAccuracy"] = json.optBoolean(key)
                 "battery" -> {
                     val batteryJson = json.optJSONObject(key)
                     if (batteryJson != null) {

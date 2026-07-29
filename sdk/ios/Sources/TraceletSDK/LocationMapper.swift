@@ -103,6 +103,13 @@ public enum LocationMapper {
                 map["audit_previous_hash"] = value
             case "audit_chain_index":
                 map["audit_chain_index"] = value
+            case "locationSource":
+                // #280: promote to top level so `Location.fromMap` restores it —
+                // otherwise DB-sourced reads/sync always report "unknown".
+                map["locationSource"] = value
+            case "reducedAccuracy":
+                // #280: promote to top level (kept out of extras).
+                map["reducedAccuracy"] = value
             case "battery":
                 if let dict = value as? [String: Any] {
                     var batteryMap: [String: Any] = [:]

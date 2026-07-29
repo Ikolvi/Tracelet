@@ -26,6 +26,7 @@ final class LocationMapperTests: XCTestCase {
             accuracy: 5.0,
             isMock: false,
             activity: "walking",
+            activityConfidence: 75,
             routeContext: routeContext,
             isMoving: isMoving,
             odometer: odometer
@@ -50,7 +51,9 @@ final class LocationMapperTests: XCTestCase {
         XCTAssertFalse(map["activity"] is String, "activity must be a nested map, not a String")
         let activity = map["activity"] as? [String: Any]
         XCTAssertEqual(activity?["type"] as? String, "walking")
-        XCTAssertEqual(activity?["confidence"] as? Int, 100)
+        // #245: the persisted confidence — no longer hardcoded 100. Mirrors the
+        // Android LocationMapperTest.
+        XCTAssertEqual(activity?["confidence"] as? Int, 75)
     }
 
     func testBatteryIsNestedMap() {
@@ -108,6 +111,28 @@ final class LocationMapperTests: XCTestCase {
     func testRouteContextInvalidJsonIsIgnoredGracefully() {
         let map = sampleMap(routeContext: "not-json")
         XCTAssertNil(map["extras"])
+    }
+
+    // #280: locationSource/reducedAccuracy persisted as first-class route_context
+    // keys must be promoted to top level (where Location.fromMap reads them) and
+    // must NOT leak into extras.route_context.
+    func testRouteContextLocationSourceAndReducedAccuracyGoTopLevelNotIntoExtras() {
+        let map = sampleMap(
+            routeContext: #"{"taskId":"task-1","locationSource":"gps","reducedAccuracy":true}"#
+        )
+        XCTAssertEqual(map["locationSource"] as? String, "gps")
+        XCTAssertEqual(map["reducedAccuracy"] as? Bool, true)
+
+        let rc = (map["extras"] as? [String: Any])?["route_context"] as? [String: Any]
+        XCTAssertEqual(rc?["taskId"] as? String, "task-1")
+        XCTAssertNil(rc?["locationSource"], "must not leak into extras.route_context")
+        XCTAssertNil(rc?["reducedAccuracy"], "must not leak into extras.route_context")
+    }
+
+    func testRouteContextWithoutLocationSourceLeavesKeysAbsent() {
+        let map = sampleMap(routeContext: #"{"taskId":"task-1"}"#)
+        XCTAssertNil(map["locationSource"])
+        XCTAssertNil(map["reducedAccuracy"])
     }
 
     func testEventTypeAndPayloadSplice() {
