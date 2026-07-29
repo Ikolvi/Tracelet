@@ -290,6 +290,7 @@ class TraceletHostApiImpl(
             put("geofenceInitialTriggerEntry", c.geofence.geofenceInitialTriggerEntry)
             put("geofenceProximityRadius", c.geofence.geofenceProximityRadius)
             put("geofenceInitialTrigger", c.geofence.geofenceInitialTrigger)
+            put("geofenceExitAccuracyMax", c.geofence.geofenceExitAccuracyMax)
         })
         put("persistence", buildMap {
             put("persistMode", c.persistence.persistMode.raw)

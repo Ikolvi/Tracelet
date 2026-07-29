@@ -689,6 +689,11 @@ class ConfigManager(context: Context) {
     fun getGeofenceProximityRadius(): Int =
         getInt("geofenceProximityRadius", DEFAULT_GEOFENCE_PROXIMITY_RADIUS)
 
+    /** Tunes the accuracy-aware geofence EXIT gating (#274/#276).
+     * -1 = full gating (default), 0 = disabled, N>0 = clamp accuracy to N meters. */
+    fun getGeofenceExitAccuracyMax(): Int =
+        getInt("geofenceExitAccuracyMax", -1)
+
     fun getGeofenceInitialTriggerEntry(): Boolean =
         getBool("geofenceInitialTriggerEntry", DEFAULT_GEOFENCE_INITIAL_TRIGGER_ENTRY)
 

@@ -260,6 +260,24 @@ void main() {
       },
     );
 
+    test(
+      'GeofenceConfig round-trip preserves geofenceExitAccuracyMax (#276)',
+      () {
+        const config = GeofenceConfig(geofenceExitAccuracyMax: 20);
+        final map = config.toMap();
+        expect(map['geofenceExitAccuracyMax'], 20);
+
+        final restored = GeofenceConfig.fromMap(map);
+        expect(restored.geofenceExitAccuracyMax, 20);
+
+        // Pigeon conversion carries the value too.
+        expect(config.toTlConfig().geofenceExitAccuracyMax, 20);
+
+        // Default is -1 (full accuracy-aware exit gating; issue #274).
+        expect(const GeofenceConfig().geofenceExitAccuracyMax, -1);
+      },
+    );
+
     test('ForegroundServiceConfig equality includes all fields', () {
       const a = ForegroundServiceConfig(
         channelId: 'ch1',

@@ -182,6 +182,12 @@ Cross-platform geofencing behavior (iOS + Android).
   Fire an ENTER immediately if the device is already inside a geofence when it is registered.
 - **`geofenceProximityRadius`**: `int` *(Default: `1000`)*
   Radius (meters) for proximity-based loading — only geofences within this distance are actively registered with the OS (lets you manage far more than the iOS 20-region limit).
+- **`geofenceExitAccuracyMax`**: `int` *(Default: `-1`)*
+  Tunes the accuracy-aware EXIT gating in **high-accuracy mode** (no effect in standard mode). A circular geofence only EXITs once the whole GPS error circle clears the fence (`distance - accuracy > radius + buffer`), which prevents a single high-drift fix from firing a false EXIT while a device sits still inside a small fence — at the cost of delaying a genuine exit by roughly the GPS uncertainty.
+  - **`-1` (default)** — full gating; most resistant to false exits.
+  - **`0`** — gating disabled; fastest exit, but drift-prone (pre-fix behavior).
+  - **`N > 0`** — clamp accuracy to `N` meters; absorbs drift up to `N` while bounding the worst-case exit delay to ~`N` meters.
+  [See GPS drift & false EXIT 📖](/en/core/geofencing)
 
 ---
 

@@ -738,6 +738,7 @@ void main() {
         geofenceProximityRadius: 1000,
         geofenceInitialTrigger: true,
         geofenceModeHighAccuracy: false,
+        geofenceExitAccuracyMax: -1,
       ),
       persistence: TlPersistenceConfig(
         persistMode: TlPersistMode.all,

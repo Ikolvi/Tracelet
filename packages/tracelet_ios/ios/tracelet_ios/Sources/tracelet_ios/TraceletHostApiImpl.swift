@@ -161,6 +161,9 @@ class TraceletHostApiImpl: TraceletHostApi {
         dict["geofenceInitialTriggerEntry"] = c.geofence.geofenceInitialTriggerEntry
         dict["geofenceProximityRadius"] = c.geofence.geofenceProximityRadius
         dict["geofenceInitialTrigger"] = c.geofence.geofenceInitialTrigger
+        // Tunes the accuracy-aware EXIT gating (#274/#276): -1 full gating
+        // (default), 0 disabled, N>0 clamp accuracy to N meters.
+        dict["geofenceExitAccuracyMax"] = c.geofence.geofenceExitAccuracyMax
         // High-accuracy geofencing: cross-platform GeofenceConfig flag, OR'd with
         // the deprecated Android-only flag for backward compatibility. When true,
         // iOS evaluates transitions from continuous GPS (reliable tight radii /

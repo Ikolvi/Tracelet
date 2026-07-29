@@ -342,6 +342,23 @@ class GeofenceManager(
      *
      * Called on each location update when `geofenceModeHighAccuracy` is enabled.
      */
+    /**
+     * Applies the [ConfigManager.getGeofenceExitAccuracyMax] policy to the raw
+     * fix accuracy before it reaches the evaluator's accuracy-aware EXIT test
+     * (#274/#276):
+     * - `-1` (default): pass accuracy through unchanged (full gating).
+     * - `0`: return 0 — disables gating (fastest, drift-prone EXIT).
+     * - `N > 0`: clamp accuracy to N, bounding the worst-case EXIT delay.
+     */
+    private fun effectiveExitAccuracy(accuracy: Double): Double {
+        val max = config.getGeofenceExitAccuracyMax()
+        return when {
+            max < 0 -> accuracy
+            max == 0 -> 0.0
+            else -> minOf(accuracy, max.toDouble())
+        }
+    }
+
     fun evaluateHighAccuracyProximity(latitude: Double, longitude: Double, accuracy: Double = 0.0) {
         val allGeofences = getCachedGeofences()
         if (allGeofences.isEmpty()) return
@@ -350,7 +367,7 @@ class GeofenceManager(
         val transitions = geofenceEvaluator.evaluateProximity(
             latitude = latitude,
             longitude = longitude,
-            accuracy = accuracy,
+            accuracy = effectiveExitAccuracy(accuracy),
             geofences = coreGeofences,
         )
         if (transitions.isEmpty()) return
