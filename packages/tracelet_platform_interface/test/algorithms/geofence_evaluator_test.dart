@@ -453,5 +453,90 @@ void main() async {
       expect(transitions, hasLength(1));
       expect(transitions[0].action, 'ENTER');
     });
+
+    // ── geofenceExitAccuracyMax regimes (#276) ────────────────────────────
+    //
+    // The native GeofenceManager clamps the raw fix accuracy before it reaches
+    // the evaluator. These tests exercise the evaluator with the exact clamp
+    // (`effectiveExitAccuracy`) the native layer applies, for a 50 m fence
+    // (exit threshold 70 m): ENTER inside, then a *stationary* ±150 m drift
+    // spike reported ~85 m out.
+    double effectiveExitAccuracy(double accuracy, int exitAccuracyMax) {
+      if (exitAccuracyMax < 0) return accuracy;
+      if (exitAccuracyMax == 0) return 0;
+      return accuracy < exitAccuracyMax ? accuracy : exitAccuracyMax.toDouble();
+    }
+
+    bool driftExitsUnder(int exitAccuracyMax, {required GeofenceEvaluator ev}) {
+      const centerLat = 37.4219983;
+      const centerLng = -122.084;
+      final geofences = <Map<String, Object?>>[
+        {
+          'identifier': 'gate',
+          'latitude': centerLat,
+          'longitude': centerLng,
+          'radius': 50.0,
+        },
+      ];
+      final inside = pointNorth(centerLat, centerLng, 10);
+      ev.evaluateProximity(
+        latitude: inside.lat,
+        longitude: inside.lng,
+        accuracy: effectiveExitAccuracy(8, exitAccuracyMax),
+        geofences: geofences,
+      );
+      final drift = pointNorth(centerLat, centerLng, 85);
+      final t = ev.evaluateProximity(
+        latitude: drift.lat,
+        longitude: drift.lng,
+        accuracy: effectiveExitAccuracy(150, exitAccuracyMax),
+        geofences: geofences,
+      );
+      return t.any((e) => e.action == 'EXIT');
+    }
+
+    test('geofenceExitAccuracyMax = -1 (full gating) absorbs drift (#276)', () {
+      expect(driftExitsUnder(-1, ev: evaluator), isFalse);
+    });
+
+    test('geofenceExitAccuracyMax = 0 (disabled) lets drift EXIT (#276)', () {
+      expect(driftExitsUnder(0, ev: evaluator), isTrue);
+    });
+
+    test('geofenceExitAccuracyMax = 20 (clamp) absorbs drift (#276)', () {
+      expect(driftExitsUnder(20, ev: evaluator), isFalse);
+    });
+
+    test(
+      'geofenceExitAccuracyMax = 20 still allows a genuine departure (#276)',
+      () {
+        const centerLat = 37.4219983;
+        const centerLng = -122.084;
+        final geofences = <Map<String, Object?>>[
+          {
+            'identifier': 'gate',
+            'latitude': centerLat,
+            'longitude': centerLng,
+            'radius': 50.0,
+          },
+        ];
+        final inside = pointNorth(centerLat, centerLng, 10);
+        evaluator.evaluateProximity(
+          latitude: inside.lat,
+          longitude: inside.lng,
+          accuracy: effectiveExitAccuracy(8, 20),
+          geofences: geofences,
+        );
+        // 120 m out, ±10 m: clamp keeps 10 → 120 - 10 = 110 > 70 → EXIT.
+        final far = pointNorth(centerLat, centerLng, 120);
+        final t = evaluator.evaluateProximity(
+          latitude: far.lat,
+          longitude: far.lng,
+          accuracy: effectiveExitAccuracy(10, 20),
+          geofences: geofences,
+        );
+        expect(t.where((e) => e.action == 'EXIT'), hasLength(1));
+      },
+    );
   });
 }
