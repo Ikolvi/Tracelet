@@ -124,15 +124,19 @@ class _Issue276CardState extends State<Issue276Card> {
       final off = results[0]!;
       final clamp = results[20]!;
 
-      // Documented behavior: full & clamp absorb the stationary drift yet still
-      // detect the genuine departure; disabling gating lets the drift through.
+      // Documented behavior:
+      // • -1 (full) and 20 (clamp) absorb the stationary drift (no false EXIT)
+      //   yet still fire EXIT on the genuine departure.
+      // • 0 (off) fires a false EXIT on the drift spike. Once that EXIT fires
+      //   the device is already "outside", so the later genuine departure is a
+      //   no-op (there is no second EXIT to fire) — we therefore only assert
+      //   that the drift itself exited for this mode.
       final ok =
           !full.driftExit &&
           full.realExit &&
           !clamp.driftExit &&
           clamp.realExit &&
-          off.driftExit &&
-          off.realExit;
+          off.driftExit;
 
       if (ok) {
         _set(
@@ -141,7 +145,8 @@ class _Issue276CardState extends State<Issue276Card> {
           '• -1 (default) and 20 m absorbed the ±150 m stationary drift AND '
           'still fired EXIT on the genuine departure.\n'
           '• 0 fired a false EXIT on the drift — the eager, pre-#274 behavior '
-          'you opt into for the fastest exits.',
+          'you opt into for the fastest exits. (It already left the fence on '
+          'the drift, so the later departure is a no-op.)',
         );
       } else {
         _set('❌ FAILED: unexpected behavior for one or more settings.\n\n$log');
