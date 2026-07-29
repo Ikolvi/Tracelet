@@ -26,6 +26,7 @@ final class LocationMapperTests: XCTestCase {
             accuracy: 5.0,
             isMock: false,
             activity: "walking",
+            activityConfidence: 75,
             routeContext: routeContext,
             isMoving: isMoving,
             odometer: odometer
@@ -50,7 +51,9 @@ final class LocationMapperTests: XCTestCase {
         XCTAssertFalse(map["activity"] is String, "activity must be a nested map, not a String")
         let activity = map["activity"] as? [String: Any]
         XCTAssertEqual(activity?["type"] as? String, "walking")
-        XCTAssertEqual(activity?["confidence"] as? Int, 100)
+        // #245: the persisted confidence — no longer hardcoded 100. Mirrors the
+        // Android LocationMapperTest.
+        XCTAssertEqual(activity?["confidence"] as? Int, 75)
     }
 
     func testBatteryIsNestedMap() {
