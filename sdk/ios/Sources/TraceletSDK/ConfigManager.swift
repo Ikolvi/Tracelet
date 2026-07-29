@@ -237,6 +237,9 @@ public final class ConfigManager {
     public func getStillSampleCount() -> Int { (cache["stillSampleCount"] as? NSNumber)?.intValue ?? 30 }
 
     // GeofenceConfig
+    /// Tunes the accuracy-aware geofence EXIT gating (#274/#276): -1 full gating
+    /// (default), 0 disabled, N>0 clamp accuracy to N meters.
+    public func getGeofenceExitAccuracyMax() -> Int { (cache["geofenceExitAccuracyMax"] as? NSNumber)?.intValue ?? -1 }
     public func getGeofenceInitialTriggerEntry() -> Bool { cache["geofenceInitialTriggerEntry"] as? Bool ?? true }
     public func getGeofenceInitialTrigger() -> Bool { cache["geofenceInitialTrigger"] as? Bool ?? true }
     public func getGeofenceModeKnockOut() -> Bool { cache["geofenceModeKnockOut"] as? Bool ?? false }
@@ -462,6 +465,7 @@ public final class ConfigManager {
             "disableElasticity": false,
             "elasticityMultiplier": 1.0,
             "geofenceProximityRadius": 1000.0,
+            "geofenceExitAccuracyMax": -1,
             "locationUpdateInterval": 1000,
             "fastestLocationUpdateInterval": -1,
             "deferTime": 0,

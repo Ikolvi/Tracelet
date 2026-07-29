@@ -1774,6 +1774,7 @@ class GeofenceConfig {
     this.geofenceInitialTrigger = true,
     this.geofenceProximityRadius = 1000,
     this.geofenceModeHighAccuracy = false,
+    this.geofenceExitAccuracyMax = -1,
   });
 
   /// Creates a [GeofenceConfig] from a map.
@@ -1794,6 +1795,10 @@ class GeofenceConfig {
       geofenceModeHighAccuracy: ensureBool(
         map['geofenceModeHighAccuracy'],
         fallback: false,
+      ),
+      geofenceExitAccuracyMax: ensureInt(
+        map['geofenceExitAccuracyMax'],
+        fallback: -1,
       ),
     );
   }
@@ -1828,6 +1833,29 @@ class GeofenceConfig {
   /// mode is enabled.
   final bool geofenceModeHighAccuracy;
 
+  /// Tunes the accuracy-aware geofence EXIT gating (high-accuracy mode only).
+  ///
+  /// In high-accuracy mode a circular geofence only fires EXIT once the whole
+  /// GPS error circle clears the fence — `distance - accuracy > radius + buffer`
+  /// — so a single high-drift, low-confidence fix can't produce a false EXIT
+  /// while a device sits still inside a small geofence (issue #274). The
+  /// tradeoff is that a *genuine* departure is delayed by roughly the fix's
+  /// horizontal accuracy, which matters most where GPS is chronically poor
+  /// (deep indoors, urban canyons).
+  ///
+  /// This value (in meters) tunes that behavior:
+  /// - `-1` (default): full gating — most resistant to drift-induced false
+  ///   exits; genuine exits may lag by the current GPS uncertainty.
+  /// - `0`: gating disabled — EXIT fires as soon as the reported point clears
+  ///   `radius + buffer` (fastest, pre-#274 behavior; drift-prone).
+  /// - `N > 0`: clamp — absorb drift up to `N` meters but never delay a genuine
+  ///   EXIT by more than ~`N` meters. A good middle ground for small fences in
+  ///   mixed GPS conditions (e.g. `20`).
+  ///
+  /// Has no effect in standard (OS region-monitoring) geofence mode, where the
+  /// OS decides EXIT.
+  final int geofenceExitAccuracyMax;
+
   /// Serializes to a map.
   Map<String, Object?> toMap() {
     return <String, Object?>{
@@ -1835,6 +1863,7 @@ class GeofenceConfig {
       'geofenceInitialTrigger': geofenceInitialTrigger,
       'geofenceProximityRadius': geofenceProximityRadius,
       'geofenceModeHighAccuracy': geofenceModeHighAccuracy,
+      'geofenceExitAccuracyMax': geofenceExitAccuracyMax,
     };
   }
 
@@ -1844,6 +1873,7 @@ class GeofenceConfig {
     geofenceProximityRadius: geofenceProximityRadius,
     geofenceInitialTrigger: geofenceInitialTrigger,
     geofenceModeHighAccuracy: geofenceModeHighAccuracy,
+    geofenceExitAccuracyMax: geofenceExitAccuracyMax,
   );
 
   @override
@@ -1854,7 +1884,8 @@ class GeofenceConfig {
           geofenceInitialTriggerEntry == other.geofenceInitialTriggerEntry &&
           geofenceInitialTrigger == other.geofenceInitialTrigger &&
           geofenceProximityRadius == other.geofenceProximityRadius &&
-          geofenceModeHighAccuracy == other.geofenceModeHighAccuracy;
+          geofenceModeHighAccuracy == other.geofenceModeHighAccuracy &&
+          geofenceExitAccuracyMax == other.geofenceExitAccuracyMax;
 
   @override
   int get hashCode => Object.hash(
@@ -1862,6 +1893,7 @@ class GeofenceConfig {
     geofenceInitialTrigger,
     geofenceProximityRadius,
     geofenceModeHighAccuracy,
+    geofenceExitAccuracyMax,
   );
 }
 

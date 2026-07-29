@@ -258,6 +258,18 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     /// and geofencesChange events via `TraceletEventSending`.
     ///
     /// Called on each location update when `geofenceModeHighAccuracy` is enabled.
+    /// Applies the `getGeofenceExitAccuracyMax` policy to the raw fix accuracy
+    /// before it reaches the evaluator's accuracy-aware EXIT test (#274/#276):
+    /// - `-1` (default): pass accuracy through unchanged (full gating).
+    /// - `0`: return 0 — disables gating (fastest, drift-prone EXIT).
+    /// - `N > 0`: clamp accuracy to N, bounding the worst-case EXIT delay.
+    private func effectiveExitAccuracy(_ accuracy: Double) -> Double {
+        let max = configManager.getGeofenceExitAccuracyMax()
+        if max < 0 { return accuracy }
+        if max == 0 { return 0.0 }
+        return Swift.min(accuracy, Double(max))
+    }
+
     public func evaluateHighAccuracyProximity(latitude: Double, longitude: Double, accuracy: Double = 0.0) {
         let allGeofences = getCachedGeofences()
         if allGeofences.isEmpty { return }
@@ -266,7 +278,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         let transitions = geofenceEvaluator.evaluateProximity(
             latitude: latitude,
             longitude: longitude,
-            accuracy: accuracy,
+            accuracy: effectiveExitAccuracy(accuracy),
             geofences: coreGeofences
         )
         if transitions.isEmpty { return }

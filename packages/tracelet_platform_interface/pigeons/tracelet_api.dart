@@ -417,11 +417,13 @@ class TlGeofenceConfig {
     required this.geofenceProximityRadius,
     required this.geofenceInitialTrigger,
     required this.geofenceModeHighAccuracy,
+    required this.geofenceExitAccuracyMax,
   });
   final bool geofenceInitialTriggerEntry;
   final int geofenceProximityRadius;
   final bool geofenceInitialTrigger;
   final bool geofenceModeHighAccuracy;
+  final int geofenceExitAccuracyMax;
 }
 
 class TlPersistenceConfig {

@@ -176,3 +176,64 @@ foreground service. That is continuous location — not "geofencing" in the poli
 sense — so only enable it when your app has a separate permitted location use
 case. For most apps, standard mode is the compliant and battery-efficient choice.
 </Callout>
+
+## 6. GPS drift and false EXIT events (high-accuracy mode)
+
+In high-accuracy mode, transitions are evaluated in-app from every GPS fix. A
+device standing still just inside a small geofence can occasionally receive a
+single fix that drifts well outside the radius — even though it never moved. To
+prevent that from firing a false EXIT, Tracelet's exit decision is
+**accuracy-aware**: a circular geofence only EXITs once the *entire* GPS error
+circle clears the fence:
+
+```text
+EXIT fires when:  distance - horizontalAccuracy > radius + buffer
+```
+
+A fix reported 160 m out but with ±150 m accuracy is only "10 m out" at its most
+optimistic, so it is treated as still inside and no EXIT fires. A confident,
+accurate fix at the same distance exits normally. ENTER is intentionally left
+accuracy-agnostic, so arrivals still trigger promptly.
+
+### The tradeoff
+
+Because the exit threshold grows with the fix's reported accuracy, a **genuine**
+departure is delayed by roughly the current GPS uncertainty. For a 50 m geofence
+(70 m exit threshold):
+
+| Horizontal accuracy | EXIT fires at ~ |
+| ------------------- | --------------- |
+| ±8 m (good, outdoors) | 78 m |
+| ±20 m (typical) | 90 m |
+| ±50 m (poor) | 120 m |
+| ±150 m (very poor) | 220 m |
+
+Outdoors with a good signal this is negligible. In chronically poor-GPS
+conditions (deep indoors, urban canyons) a real exit can lag noticeably.
+
+### Tuning it: `geofenceExitAccuracyMax`
+
+If your use case prefers a faster, more eager EXIT — or you want to bound the
+worst-case delay — set `GeofenceConfig.geofenceExitAccuracyMax` (in meters):
+
+| Value | Behavior |
+| ----- | -------- |
+| `-1` *(default)* | Full accuracy gating. Most resistant to drift-induced false exits; genuine exits may lag by the current GPS uncertainty. |
+| `0` | Gating disabled. EXIT fires as soon as the reported point clears `radius + buffer` — fastest exit, but a single drift spike can produce a false EXIT. |
+| `N > 0` | Clamp. Absorb drift up to `N` meters, but never delay a genuine EXIT by more than ~`N` meters. A good middle ground for small fences in mixed conditions (e.g. `20`). |
+
+```dart
+await tl.Tracelet.ready(const tl.Config(
+  geofence: tl.GeofenceConfig(
+    geofenceModeHighAccuracy: true,
+    // Absorb drift up to 20 m, but keep genuine exits reasonably prompt.
+    geofenceExitAccuracyMax: 20,
+  ),
+));
+```
+
+<Callout type="info">
+This gating applies only to the **high-accuracy** in-app path. In standard
+(OS region-monitoring) mode the operating system decides EXIT, and
+`geofenceExitAccuracyMax` has no effect.
+</Callout>
