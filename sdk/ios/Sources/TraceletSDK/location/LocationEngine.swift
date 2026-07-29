@@ -63,7 +63,12 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     public private(set) var lastEffectiveSpeed: Double = 0.0
 
     /// Optional callback invoked on every accepted location (for geofenceModeHighAccuracy).
-    public var onLocationUpdate: ((Double, Double) -> Void)?
+    ///
+    /// Params: latitude, longitude, horizontalAccuracy (meters). Accuracy feeds
+    /// the drift-aware geofence EXIT decision (issue #274). CLLocation reports a
+    /// negative `horizontalAccuracy` when invalid; the evaluator treats any
+    /// non-positive value as "unknown" and skips gating.
+    public var onLocationUpdate: ((Double, Double, Double) -> Void)?
 
     /// Optional callback invoked after a location is persisted to the database.
     /// Used by the plugin to trigger HTTP auto-sync.
@@ -1039,7 +1044,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
                 
                 enrichWithAddressIfNeeded(locationMap: data, location: location) { [weak self] enrichedData in
                     self?.eventDispatcher.sendLocation(enrichedData)
-                    self?.onLocationUpdate?(location.coordinate.latitude, location.coordinate.longitude)
+                    self?.onLocationUpdate?(location.coordinate.latitude, location.coordinate.longitude, location.horizontalAccuracy)
                     if self?.isPeriodicTracking == true {
                         self?.locationManager.stopUpdatingLocation()
                         self?.locationManager.allowsBackgroundLocationUpdates = false
@@ -1063,7 +1068,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
                 enrichWithAddressIfNeeded(locationMap: degraded, location: location) { [weak self] enrichedDegraded in
                     self?.persistLocationIfAllowed(enrichedDegraded, event: pzEventTag)
                     self?.eventDispatcher.sendLocation(enrichedDegraded)
-                    self?.onLocationUpdate?(location.coordinate.latitude, location.coordinate.longitude)
+                    self?.onLocationUpdate?(location.coordinate.latitude, location.coordinate.longitude, location.horizontalAccuracy)
                     if self?.isPeriodicTracking == true {
                         self?.locationManager.stopUpdatingLocation()
                         self?.locationManager.allowsBackgroundLocationUpdates = false
@@ -1095,7 +1100,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             self.eventDispatcher.sendLocation(enrichedMap)
 
             // Notify geofenceModeHighAccuracy listener (if active)
-            self.onLocationUpdate?(location.coordinate.latitude, location.coordinate.longitude)
+            self.onLocationUpdate?(location.coordinate.latitude, location.coordinate.longitude, location.horizontalAccuracy)
 
             // In periodic mode, immediately stop GPS after receiving the fix
             // to minimise blue-arrow visibility.

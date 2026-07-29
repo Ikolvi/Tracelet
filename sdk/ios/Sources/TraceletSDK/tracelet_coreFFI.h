@@ -794,7 +794,7 @@ void uniffi_tracelet_core_fn_method_geofenceevaluator_clear_index(uint64_t ptr, 
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRACELET_CORE_FN_METHOD_GEOFENCEEVALUATOR_EVALUATE_PROXIMITY
 #define UNIFFI_FFIDEF_UNIFFI_TRACELET_CORE_FN_METHOD_GEOFENCEEVALUATOR_EVALUATE_PROXIMITY
-RustBuffer uniffi_tracelet_core_fn_method_geofenceevaluator_evaluate_proximity(uint64_t ptr, double latitude, double longitude, RustBuffer geofences, RustCallStatus *_Nonnull out_status
+RustBuffer uniffi_tracelet_core_fn_method_geofenceevaluator_evaluate_proximity(uint64_t ptr, double latitude, double longitude, double accuracy, RustBuffer geofences, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRACELET_CORE_FN_METHOD_GEOFENCEEVALUATOR_INDEX_GEOFENCES

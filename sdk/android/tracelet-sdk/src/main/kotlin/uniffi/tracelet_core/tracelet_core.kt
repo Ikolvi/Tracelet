@@ -1108,7 +1108,7 @@ external fun uniffi_tracelet_core_fn_method_geofenceevaluator_clear(`ptr`: Long,
 ): Unit
 external fun uniffi_tracelet_core_fn_method_geofenceevaluator_clear_index(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
-external fun uniffi_tracelet_core_fn_method_geofenceevaluator_evaluate_proximity(`ptr`: Long,`latitude`: Double,`longitude`: Double,`geofences`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_tracelet_core_fn_method_geofenceevaluator_evaluate_proximity(`ptr`: Long,`latitude`: Double,`longitude`: Double,`accuracy`: Double,`geofences`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun uniffi_tracelet_core_fn_method_geofenceevaluator_index_geofences(`ptr`: Long,`geofences`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -1538,7 +1538,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_tracelet_core_checksum_method_geofenceevaluator_clear_index() != 37834.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tracelet_core_checksum_method_geofenceevaluator_evaluate_proximity() != 38287.toShort()) {
+    if (lib.uniffi_tracelet_core_checksum_method_geofenceevaluator_evaluate_proximity() != 39120.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_geofenceevaluator_index_geofences() != 2949.toShort()) {
@@ -4995,8 +4995,19 @@ public interface GeofenceEvaluatorInterface {
     
     /**
      * Evaluates a location update and returns a list of triggered geofence transitions.
+     *
+     * `accuracy` is the fix's horizontal accuracy radius in meters (a 68%
+     * confidence circle). It is used to make the EXIT decision drift-aware:
+     * a circular geofence only EXITs once the *entire* accuracy circle clears
+     * the fence (`distance - accuracy > radius + exitBuffer`). This prevents a
+     * single high-drift fix — which is reported with a correspondingly large
+     * accuracy value — from producing a false EXIT while the device is
+     * stationary inside the fence (issue #274). Pass `0.0` (or any
+     * non-positive/non-finite value) to disable accuracy gating and preserve
+     * the legacy `distance`-only behavior. ENTER is intentionally left
+     * accuracy-agnostic so arrivals still trigger promptly.
      */
-    fun `evaluateProximity`(`latitude`: kotlin.Double, `longitude`: kotlin.Double, `geofences`: List<CoreGeofence>): List<GeofenceTransition>
+    fun `evaluateProximity`(`latitude`: kotlin.Double, `longitude`: kotlin.Double, `accuracy`: kotlin.Double, `geofences`: List<CoreGeofence>): List<GeofenceTransition>
     
     /**
      * Indexes a collection of geofences for efficient spatial querying.
@@ -5148,13 +5159,24 @@ open class GeofenceEvaluator: Disposable, AutoCloseable, GeofenceEvaluatorInterf
     
     /**
      * Evaluates a location update and returns a list of triggered geofence transitions.
-     */override fun `evaluateProximity`(`latitude`: kotlin.Double, `longitude`: kotlin.Double, `geofences`: List<CoreGeofence>): List<GeofenceTransition> {
+     *
+     * `accuracy` is the fix's horizontal accuracy radius in meters (a 68%
+     * confidence circle). It is used to make the EXIT decision drift-aware:
+     * a circular geofence only EXITs once the *entire* accuracy circle clears
+     * the fence (`distance - accuracy > radius + exitBuffer`). This prevents a
+     * single high-drift fix — which is reported with a correspondingly large
+     * accuracy value — from producing a false EXIT while the device is
+     * stationary inside the fence (issue #274). Pass `0.0` (or any
+     * non-positive/non-finite value) to disable accuracy gating and preserve
+     * the legacy `distance`-only behavior. ENTER is intentionally left
+     * accuracy-agnostic so arrivals still trigger promptly.
+     */override fun `evaluateProximity`(`latitude`: kotlin.Double, `longitude`: kotlin.Double, `accuracy`: kotlin.Double, `geofences`: List<CoreGeofence>): List<GeofenceTransition> {
             return FfiConverterSequenceTypeGeofenceTransition.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
     UniffiLib.uniffi_tracelet_core_fn_method_geofenceevaluator_evaluate_proximity(
         it,
-        FfiConverterDouble.lower(`latitude`),FfiConverterDouble.lower(`longitude`),FfiConverterSequenceTypeCoreGeofence.lower(`geofences`),_status)
+        FfiConverterDouble.lower(`latitude`),FfiConverterDouble.lower(`longitude`),FfiConverterDouble.lower(`accuracy`),FfiConverterSequenceTypeCoreGeofence.lower(`geofences`),_status)
 }
     }
     )

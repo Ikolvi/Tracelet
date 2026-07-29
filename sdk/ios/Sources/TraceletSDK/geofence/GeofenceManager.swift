@@ -258,7 +258,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     /// and geofencesChange events via `TraceletEventSending`.
     ///
     /// Called on each location update when `geofenceModeHighAccuracy` is enabled.
-    public func evaluateHighAccuracyProximity(latitude: Double, longitude: Double) {
+    public func evaluateHighAccuracyProximity(latitude: Double, longitude: Double, accuracy: Double = 0.0) {
         let allGeofences = getCachedGeofences()
         if allGeofences.isEmpty { return }
 
@@ -266,6 +266,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         let transitions = geofenceEvaluator.evaluateProximity(
             latitude: latitude,
             longitude: longitude,
+            accuracy: accuracy,
             geofences: coreGeofences
         )
         if transitions.isEmpty { return }

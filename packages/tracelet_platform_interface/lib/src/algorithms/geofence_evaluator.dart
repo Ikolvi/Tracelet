@@ -140,11 +140,23 @@ class GeofenceEvaluator {
   /// - `vertices` (`List<List<double>>`) — optional polygon vertices
   ///   (`[[lat, lng], ...]`). When present with ≥ 3 vertices, the geofence
   ///   is treated as a polygon.
+  ///
+  /// [accuracy] is the fix's horizontal accuracy radius in meters. It makes the
+  /// circular EXIT decision drift-aware: a geofence only EXITs once the entire
+  /// accuracy circle clears the fence (`distance - accuracy > radius + buffer`),
+  /// preventing a single high-drift fix from firing a false EXIT (#274). Pass
+  /// `0.0` (the default) to disable gating and keep the legacy behavior.
   List<GeofenceTransition> evaluateProximity({
     required double latitude,
     required double longitude,
     required List<Map<String, Object?>> geofences,
+    double accuracy = 0.0,
   }) {
+    // Clamp unknown/invalid accuracy (some platforms report negative when the
+    // fix has no horizontal accuracy) to 0 so gating is a no-op rather than
+    // pulling the exit threshold inward (#274).
+    final acc = accuracy.isFinite && accuracy > 0 ? accuracy : 0.0;
+
     // When a spatial index exists, use it to narrow candidates.
     final effectiveGeofences = _resolveGeofences(
       latitude,
@@ -230,7 +242,14 @@ class GeofenceEvaluator {
           ? scaledBuffer
           : _minExitHysteresisMeters;
       final entered = distance <= gfRadius;
-      final exited = distance > gfRadius + exitBuffer;
+      // Accuracy-aware EXIT (#274): require the whole error circle to clear the
+      // fence, not just the reported point. `distance - acc` is the nearest the
+      // device could plausibly be given the fix uncertainty; only exit when even
+      // that is clearly beyond the boundary. This stops a single high-drift fix
+      // (reported with a correspondingly large accuracy) from firing a false
+      // EXIT while the device is stationary inside the fence. ENTER is left
+      // accuracy-agnostic so arrivals still trigger promptly.
+      final exited = (distance - acc) > gfRadius + exitBuffer;
 
       if (entered && !wasInside) {
         _insideGeofenceIds.add(identifier);

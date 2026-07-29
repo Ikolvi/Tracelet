@@ -342,7 +342,7 @@ class GeofenceManager(
      *
      * Called on each location update when `geofenceModeHighAccuracy` is enabled.
      */
-    fun evaluateHighAccuracyProximity(latitude: Double, longitude: Double) {
+    fun evaluateHighAccuracyProximity(latitude: Double, longitude: Double, accuracy: Double = 0.0) {
         val allGeofences = getCachedGeofences()
         if (allGeofences.isEmpty()) return
 
@@ -350,6 +350,7 @@ class GeofenceManager(
         val transitions = geofenceEvaluator.evaluateProximity(
             latitude = latitude,
             longitude = longitude,
+            accuracy = accuracy,
             geofences = coreGeofences,
         )
         if (transitions.isEmpty()) return
