@@ -60,7 +60,38 @@ class GeofenceManager(
 
         /** Timeout for Play Services geofence registration (ms). */
         private const val REGISTRATION_TIMEOUT_MS = 5000L
+
+        /**
+         * Category prefix for geofence log lines.
+         *
+         * The persisted log store has a `source` column, but Android hardcodes
+         * it to `"plugin"` and Dart's `LogEntry` drops it entirely, so a message
+         * prefix is currently the only category that survives to
+         * `Tracelet.getLogs()` and the Doctor bug report. Keep it greppable.
+         */
+        private const val GEOFENCE_LOG_TAG = "[geofence]"
+
+        /**
+         * Mirror of `GEOFENCE_EXIT_HYSTERESIS_FRACTION` in the Rust core's
+         * `geofence_evaluator.rs`. Used for logging only — the Rust evaluator
+         * remains the single source of truth for the actual decision.
+         *
+         * `GeofenceManagerTransitionLogTest` pins these against the evaluator's
+         * real behavior at the boundary, so a change on the Rust side fails a
+         * test rather than silently producing misleading log lines.
+         */
+        private const val EXIT_HYSTERESIS_FRACTION = 0.1
+
+        /** Mirror of `GEOFENCE_MIN_EXIT_HYSTERESIS_METERS` in the Rust core. */
+        private const val MIN_EXIT_HYSTERESIS_METERS = 20.0
     }
+
+    /** Exit-hysteresis band the Rust evaluator applies for [radius]. Logging only. */
+    private fun exitHysteresisMeters(radius: Double): Double =
+        maxOf(radius * EXIT_HYSTERESIS_FRACTION, MIN_EXIT_HYSTERESIS_METERS)
+
+    /** One-decimal formatter that avoids locale-dependent decimal separators in logs. */
+    private fun fmt1(value: Double): String = String.format(java.util.Locale.US, "%.1f", value)
 
     private var geofencePendingIntent: PendingIntent? = null
 
@@ -296,6 +327,14 @@ class GeofenceManager(
             val identifier = geofence.requestId
             val storedGf = getGeofence(identifier)
 
+            // The OS/AOSP path has no accuracy gating at all — the platform owns
+            // debouncing. Log it distinctly so a bug report makes clear which
+            // path produced the transition (source=os vs the in-app evaluator).
+            TraceletLog.info(
+                "$GEOFENCE_LOG_TAG $action $identifier source=os " +
+                    "transitionType=$transitionType (no accuracy gating on this path)"
+            )
+
             val eventData = mapOf(
                 "uuid" to java.util.UUID.randomUUID().toString(),
                 "event" to "geofence",
@@ -359,18 +398,92 @@ class GeofenceManager(
         }
     }
 
+    /**
+     * Builds the `[geofence]`-tagged decision trace logged alongside every
+     * transition.
+     *
+     * A geofence crossing is the SDK's primary product event, yet nothing was
+     * logged when one fired — so a field report of "occasional false EXIT" was
+     * undiagnosable from a bug report, at any log level. This line carries every
+     * input to the accuracy-aware EXIT test (#274/#276) so a drift-induced EXIT
+     * can be told apart from a genuine one without a reproduction:
+     *
+     * - `dist` vs `thr` shows how far past the boundary the fix landed
+     * - `accRaw`/`accEff` exposes the [effectiveExitAccuracy] clamp, including
+     *   the case where `geofenceExitAccuracyMax` is set but never binds
+     * - a small `accRaw` with a large `dist` is the signature of an
+     *   over-confident fix, which accuracy gating cannot defend against
+     */
+    private fun transitionTrace(
+        action: String,
+        identifier: String,
+        gfMap: Map<String, Any?>?,
+        latitude: Double,
+        longitude: Double,
+        accuracyRaw: Double,
+        accuracyEffective: Double,
+    ): String {
+        val builder = StringBuilder(GEOFENCE_LOG_TAG)
+        builder.append(' ').append(action).append(' ').append(identifier)
+
+        val gfLat = (gfMap?.get("latitude") as? Number)?.toDouble()
+        val gfLng = (gfMap?.get("longitude") as? Number)?.toDouble()
+        val radius = (gfMap?.get("radius") as? Number)?.toDouble()
+        val vertices = gfMap?.get("vertices")
+        val isPolygon = vertices is List<*> && vertices.size >= 3
+
+        if (isPolygon) {
+            // Polygon membership is a point-in-polygon test; radius, hysteresis
+            // and accuracy gating do not participate.
+            builder.append(" shape=polygon vertices=").append((vertices as List<*>).size)
+        } else if (gfLat != null && gfLng != null && radius != null && radius > 0.0) {
+            val distance = haversine(latitude, longitude, gfLat, gfLng)
+            val buffer = exitHysteresisMeters(radius)
+            val threshold = radius + buffer
+            builder.append(" dist=").append(fmt1(distance))
+                .append(" radius=").append(fmt1(radius))
+                .append(" buffer=").append(fmt1(buffer))
+                .append(" thr=").append(fmt1(threshold))
+                .append(" margin=").append(fmt1(distance - accuracyEffective - threshold))
+        }
+
+        builder.append(" accRaw=").append(fmt1(accuracyRaw))
+            .append(" accEff=").append(fmt1(accuracyEffective))
+            .append(" exitAccuracyMax=").append(config.getGeofenceExitAccuracyMax())
+
+        if (accuracyEffective < accuracyRaw) {
+            // The #276 clamp actually bound on this fix, weakening drift
+            // immunity relative to the -1 default. Worth calling out explicitly.
+            builder.append(" clampApplied=true")
+        }
+        return builder.toString()
+    }
+
     fun evaluateHighAccuracyProximity(latitude: Double, longitude: Double, accuracy: Double = 0.0) {
         val allGeofences = getCachedGeofences()
         if (allGeofences.isEmpty()) return
 
+        val effectiveAccuracy = effectiveExitAccuracy(accuracy)
         val coreGeofences = allGeofences.map { mapToCoreGeofence(it) }
         val transitions = geofenceEvaluator.evaluateProximity(
             latitude = latitude,
             longitude = longitude,
-            accuracy = effectiveExitAccuracy(accuracy),
+            accuracy = effectiveAccuracy,
             geofences = coreGeofences,
         )
-        if (transitions.isEmpty()) return
+        if (transitions.isEmpty()) {
+            if (effectiveAccuracy < accuracy) {
+                // No transition, but the clamp bound on this fix. Cheap to log
+                // and it surfaces a mis-set geofenceExitAccuracyMax without
+                // waiting for a crossing.
+                TraceletLog.debug(
+                    "$GEOFENCE_LOG_TAG no transition — accRaw=${fmt1(accuracy)} " +
+                        "accEff=${fmt1(effectiveAccuracy)} clampApplied=true " +
+                        "exitAccuracyMax=${config.getGeofenceExitAccuracyMax()}"
+                )
+            }
+            return
+        }
 
         val on = mutableListOf<Map<String, Any?>>()
         val off = mutableListOf<Map<String, Any?>>()
@@ -378,6 +491,22 @@ class GeofenceManager(
 
         for (t in transitions) {
             val gfMap = geofenceMapById[t.identifier]
+
+            // Logged at INFO, not DEBUG: production apps run at INFO, and a
+            // false EXIT is reported days later by an end user. Volume is a
+            // handful of lines per day, and the line carries no coordinates.
+            TraceletLog.info(
+                transitionTrace(
+                    action = t.action,
+                    identifier = t.identifier,
+                    gfMap = gfMap,
+                    latitude = latitude,
+                    longitude = longitude,
+                    accuracyRaw = accuracy,
+                    accuracyEffective = effectiveAccuracy,
+                )
+            )
+
             val eventData = mapOf(
                 "uuid" to java.util.UUID.randomUUID().toString(),
                 "event" to "geofence",
@@ -481,7 +610,17 @@ class GeofenceManager(
             events.sendGeofencesChange(mapOf("on" to on, "off" to off))
         }
 
-        TraceletLog.debug("Proximity update: ${activeGeofenceIds.size} active, +${toAdd.size}/-${toRemove.size}")
+        // Note for triage: this emits geofencesChange on/off for *monitoring*
+        // scope, not ENTER/EXIT. An `off` here means the fence left the
+        // geofenceProximityRadius window and was unregistered — it is not a
+        // boundary crossing and is deliberately not accuracy-gated. Apps that
+        // treat geofencesChange.off as an exit will see spurious "exits" from a
+        // single far-drifting fix, so make the distinction explicit in the log.
+        TraceletLog.debug(
+            "$GEOFENCE_LOG_TAG proximity scope update (not ENTER/EXIT): " +
+                "${activeGeofenceIds.size} active, +${toAdd.size}/-${toRemove.size}, " +
+                "proximityRadius=${proximityRadius}m"
+        )
     }
 
     /** Clear high-accuracy tracking state. */

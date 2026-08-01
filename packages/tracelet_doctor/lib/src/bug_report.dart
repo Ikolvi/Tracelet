@@ -10,6 +10,9 @@ import 'package:tracelet/tracelet.dart';
 ///    automatically redacted.
 /// 3. The most recent **device logs** (`Tracelet.getLogs`).
 /// 4. The most recent **telematics events** (`Tracelet.getTelematicsEvents`).
+/// 5. The **geofence decision trace** — every `[geofence]`-tagged log line,
+///    lifted into its own section so rare ENTER/EXIT transitions are not buried
+///    by routine lifecycle chatter.
 ///
 /// The output is GitHub-flavoured Markdown, ready to drop straight into an
 /// issue. Every section is gathered defensively — if one source fails (e.g.
@@ -50,9 +53,13 @@ class TraceletBugReport {
   /// - [appName] / [appVersion] — optional host-app identifiers shown in the
   ///   header (your `package_info_plus` values, for example).
   /// - [includeConfig] — set `false` to omit the configuration section.
+  /// - [geofenceTraceLimit] — how many recent log entries to scan for the
+  ///   geofence decision trace (default 2000). Scans deeper than [logLimit]
+  ///   because transitions are rare and routine chatter can bury them.
   static Future<String> build({
     int logLimit = 500,
     int telematicsLimit = 100,
+    int geofenceTraceLimit = 2000,
     String? appName,
     String? appVersion,
     bool includeConfig = true,
@@ -79,6 +86,7 @@ class TraceletBugReport {
     await _writeForegroundServiceHealth(buffer);
     if (includeConfig) _writeConfig(buffer);
     await _writeTelematics(buffer, telematicsLimit);
+    await _writeGeofenceTrace(buffer, geofenceTraceLimit);
     await _writeLogs(buffer, logLimit);
 
     return buffer.toString();
@@ -222,6 +230,49 @@ class TraceletBugReport {
       }
     } catch (e) {
       buffer.writeln('_Could not read telematics events: ${e}_');
+    }
+    buffer.writeln();
+  }
+
+  /// Writes the geofence decision trace: every `[geofence]`-tagged log line,
+  /// pulled out of the general log stream into its own section.
+  ///
+  /// Geofence transitions are rare (a handful a day) while routine lifecycle
+  /// chatter is not, so in a busy app the crossings get pushed out of the
+  /// `## Logs` window before anyone generates a report. This section scans
+  /// deeper than that window and keeps only the geofence lines, so an
+  /// ENTER/EXIT and its decision inputs survive even when the general log is
+  /// saturated.
+  ///
+  /// Each transition line carries the distance, radius, hysteresis buffer,
+  /// exit threshold, and both the raw and post-clamp accuracy, which is what
+  /// distinguishes a genuine departure from a drift-induced false EXIT.
+  static Future<void> _writeGeofenceTrace(
+    StringBuffer buffer,
+    int limit,
+  ) async {
+    buffer.writeln('## Geofence transitions (decision trace)');
+    buffer.writeln();
+    try {
+      final logs = await Tracelet.getLogs(limit);
+      final trace = logs
+          .where((log) => log.message.contains('[geofence]'))
+          .toList();
+      if (trace.isEmpty) {
+        buffer.writeln(
+          '_No geofence activity in the last $limit log entries._',
+        );
+      } else {
+        buffer.writeln('```');
+        for (final log in trace) {
+          buffer.writeln(
+            '${log.timestamp} [${log.level.toUpperCase()}] ${log.message}',
+          );
+        }
+        buffer.writeln('```');
+      }
+    } catch (e) {
+      buffer.writeln('_Could not read the geofence trace: ${e}_');
     }
     buffer.writeln();
   }
