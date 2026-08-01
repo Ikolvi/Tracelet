@@ -13,7 +13,12 @@ let package = Package(
         .library(name: "TraceletSDK", targets: ["TraceletSDK"]),
     ],
     targets: [
-        .binaryTarget(name: "TraceletCore", path: "TraceletCore.xcframework"),
+        // Points at the canonical build output of sdk/rust-core/build-ios.sh —
+        // the same path TraceletSDK.podspec vendors. `*.xcframework` is
+        // gitignored, so a copy under sdk/ios/ only exists on machines that have
+        // manually placed one; CI checks out without it and SwiftPM fails with
+        // "does not contain a binary artifact". Run build-ios.sh first.
+        .binaryTarget(name: "TraceletCore", path: "../rust-core/out/TraceletCore.xcframework"),
         .target(
             name: "TraceletSDK",
             dependencies: ["TraceletCore"],

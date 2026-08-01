@@ -352,6 +352,15 @@ jobs:
         working-directory: sdk/ios
         run: |
           set -euo pipefail
+          # Package.swift consumes the Rust core as a binaryTarget built by
+          # build-ios.sh (run earlier in this job). *.xcframework is gitignored,
+          # so assert it is present rather than letting SwiftPM fail with the
+          # opaque "does not contain a binary artifact".
+          XCF="../rust-core/out/TraceletCore.xcframework"
+          if [ ! -d "$XCF" ]; then
+            echo "❌ $XCF is missing — 'Build iOS Rust Core' must run before this step."
+            exit 1
+          fi
           # Resolve a concrete simulator UDID rather than hardcoding a device
           # name or OS version, both of which drift with the runner image.
           # `generic/platform=iOS Simulator` is not usable for `test`.
