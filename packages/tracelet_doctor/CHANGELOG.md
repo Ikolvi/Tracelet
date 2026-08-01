@@ -1,6 +1,10 @@
 ## 3.7.3
 
-Version alignment with tracelet 3.7.3.
+**FIX**: the Permissions card no longer reports a granted motion/activity permission as a red "Restricted". `HealthCheck.motionPermission` carries a `MotionAuthorizationStatus` index (`notDetermined`, `granted`, `deniedForever` → 0, 1, 2), but the card decoded it against CoreMotion's `CMAuthorizationStatus` scale, where index 1 is `restricted` — so a healthy device showed a red "Restricted" beside an "All Clear" warning list, the warning path checking `== 2` and being unaffected. The card now switches over the enum via the new `HealthCheck.motionAuthorization` getter, which makes the mapping exhaustive at compile time, and the dead `3 => 'Granted'` branch (unreachable — the enum has no index 3) is gone.
+
+**FIX**: the bug report prints the motion permission by name rather than as a bare index, so `Motion permission | 0` no longer reads as a boolean or a count.
+
+**FEAT**: the bug report gained a **Geofence transitions (decision trace)** section, filtering `[geofence]` log lines and scanning 2000 entries rather than the 500-entry general log window, so rare ENTER/EXIT crossings are not buried by lifecycle chatter. Both the copy and share actions include it.
 
 ## 3.7.2
 

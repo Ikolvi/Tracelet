@@ -27,18 +27,24 @@ class PermissionCard extends StatelessWidget {
       AuthorizationStatus.notDetermined => 'Not Determined',
     };
 
-    final motionLabel = switch (health.motionPermission) {
-      0 => 'Not Determined',
-      1 => 'Restricted',
-      2 => 'Denied',
-      3 => 'Granted',
-      _ => 'Unknown',
+    // Switch over the enum rather than raw indices: HealthCheck.motionPermission
+    // carries a MotionAuthorizationStatus index, and decoding it against
+    // CoreMotion's CMAuthorizationStatus scale reported `granted` (index 1) as a
+    // red "Restricted". An exhaustive switch also means adding an enum case
+    // fails to compile instead of silently falling through to "Unknown".
+    final motionStatus = health.motionAuthorization;
+    final motionLabel = switch (motionStatus) {
+      MotionAuthorizationStatus.notDetermined => 'Not Determined',
+      MotionAuthorizationStatus.granted => 'Granted',
+      MotionAuthorizationStatus.deniedForever => 'Denied',
+      null => 'Unknown',
     };
-    final motionColor = health.motionPermission == 3
-        ? DoctorTheme.success
-        : health.motionPermission == 0
-        ? DoctorTheme.warning
-        : DoctorTheme.error;
+    final motionColor = switch (motionStatus) {
+      MotionAuthorizationStatus.granted => DoctorTheme.success,
+      MotionAuthorizationStatus.notDetermined => DoctorTheme.warning,
+      MotionAuthorizationStatus.deniedForever => DoctorTheme.error,
+      null => DoctorTheme.warning,
+    };
 
     final accuracyLabel =
         health.accuracyAuthorization == AccuracyAuthorization.full

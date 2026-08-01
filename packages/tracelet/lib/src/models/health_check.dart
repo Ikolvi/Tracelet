@@ -425,14 +425,31 @@ class HealthCheck {
   /// Current location authorization status.
   final AuthorizationStatus locationPermission;
 
-  /// Motion / activity recognition permission status.
+  /// Motion / activity recognition permission status, as a
+  /// [MotionAuthorizationStatus] index.
   ///
-  /// Platform values:
-  /// - `0` — not determined
-  /// - `1` — restricted
-  /// - `2` — denied
-  /// - `3` — authorized / granted
+  /// - `0` — [MotionAuthorizationStatus.notDetermined]
+  /// - `1` — [MotionAuthorizationStatus.granted]
+  /// - `2` — [MotionAuthorizationStatus.deniedForever]
+  ///
+  /// Note this is **not** CoreMotion's `CMAuthorizationStatus` scale, which
+  /// orders the cases differently and has a separate `restricted` value. This
+  /// doc comment previously described that scale, and callers that decoded the
+  /// int accordingly reported a granted permission as "Restricted".
+  ///
+  /// Prefer [motionAuthorization], which returns the typed value so the
+  /// mapping cannot be misread.
   final int motionPermission;
+
+  /// [motionPermission] decoded into its source enum.
+  ///
+  /// Returns `null` if the value is outside the enum's range, which can happen
+  /// when a report is deserialized from a newer or malformed payload.
+  MotionAuthorizationStatus? get motionAuthorization =>
+      motionPermission >= 0 &&
+          motionPermission < MotionAuthorizationStatus.values.length
+      ? MotionAuthorizationStatus.values[motionPermission]
+      : null;
 
   /// Accuracy authorization level (iOS 14+).
   ///

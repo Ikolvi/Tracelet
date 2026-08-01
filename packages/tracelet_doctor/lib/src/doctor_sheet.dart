@@ -137,7 +137,8 @@ class _DoctorSheetContentState extends State<_DoctorSheetContent>
 
   bool _busyReport = false;
 
-  /// Builds the full bug report (health + config + logs + telematics).
+  /// Builds the full bug report (health + foreground-service health + config +
+  /// telematics + geofence decision trace + logs).
   Future<String?> _buildReport() async {
     setState(() => _busyReport = true);
     try {
