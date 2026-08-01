@@ -397,8 +397,14 @@ jobs:
           LCOV_FILES=""
           for pkg in tracelet tracelet_platform_interface tracelet_android tracelet_ios tracelet_web tracelet_doctor tracelet_sync tracelet_firebase tracelet_supabase; do
             FILE="coverage-artifacts/coverage-${pkg}/lcov.info"
-            if [ -f "$FILE" ]; then
+            if [ -s "$FILE" ]; then
               LCOV_FILES="$LCOV_FILES -a $FILE"
+            elif [ -f "$FILE" ]; then
+              # A package whose suite exercises no Dart library code (e.g.
+              # tracelet_sync, whose tests assert on native source invariants)
+              # emits a zero-byte lcov.info. lcov >=2 treats an empty trace file
+              # as a hard error, so leave it out of the merge.
+              echo "Skipping empty coverage file for ${pkg}"
             fi
           done
           if [ -n "$LCOV_FILES" ]; then

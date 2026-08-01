@@ -146,9 +146,19 @@ class TraceletHostApiImpl: TraceletHostApi {
         // source is honored (the native SDK exposes a single flag).
         dict["useSignificantChangesOnly"] =
             c.ios.useSignificantChangesOnly || c.motion.useSignificantChangesOnly
-        dict["shakeThreshold"] = c.motion.shakeThreshold
-        dict["stillThreshold"] = c.motion.stillThreshold
-        dict["stillSampleCount"] = c.motion.stillSampleCount
+        // Sensor thresholds are only forwarded when the app set them. Sending them
+        // unconditionally overrode the iOS-tuned defaults with Dart's (Android)
+        // values: 0.4 m/s² became 0.04 g, roughly four times stricter than the
+        // 0.15 g iOS default. Absent key ⇒ ConfigManager's own default applies.
+        if let shakeThreshold = c.motion.shakeThreshold {
+            dict["shakeThreshold"] = shakeThreshold
+        }
+        if let stillThreshold = c.motion.stillThreshold {
+            dict["stillThreshold"] = stillThreshold
+        }
+        if let stillSampleCount = c.motion.stillSampleCount {
+            dict["stillSampleCount"] = stillSampleCount
+        }
         dict["motionDetectionMode"] = c.motion.motionDetectionMode.rawValue
         dict["speedMovingThreshold"] = c.motion.speedMovingThreshold
         dict["speedStationaryDelay"] = c.motion.speedStationaryDelay

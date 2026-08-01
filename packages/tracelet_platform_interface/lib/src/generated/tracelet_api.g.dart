@@ -1251,9 +1251,9 @@ class TlMotionConfig {
     this.activityTypes,
     required this.stationaryRadius,
     required this.useSignificantChangesOnly,
-    required this.shakeThreshold,
-    required this.stillThreshold,
-    required this.stillSampleCount,
+    this.shakeThreshold,
+    this.stillThreshold,
+    this.stillSampleCount,
     required this.motionDetectionMode,
     required this.speedMovingThreshold,
     required this.speedStationaryDelay,
@@ -1287,11 +1287,11 @@ class TlMotionConfig {
 
   bool useSignificantChangesOnly;
 
-  double shakeThreshold;
+  double? shakeThreshold;
 
-  double stillThreshold;
+  double? stillThreshold;
 
-  int stillSampleCount;
+  int? stillSampleCount;
 
   TlMotionDetectionMode motionDetectionMode;
 
@@ -1354,9 +1354,9 @@ class TlMotionConfig {
           ?.cast<TlLocationActivityType?>(),
       stationaryRadius: result[10]! as double,
       useSignificantChangesOnly: result[11]! as bool,
-      shakeThreshold: result[12]! as double,
-      stillThreshold: result[13]! as double,
-      stillSampleCount: result[14]! as int,
+      shakeThreshold: result[12] as double?,
+      stillThreshold: result[13] as double?,
+      stillSampleCount: result[14] as int?,
       motionDetectionMode: result[15]! as TlMotionDetectionMode,
       speedMovingThreshold: result[16]! as double,
       speedStationaryDelay: result[17]! as int,

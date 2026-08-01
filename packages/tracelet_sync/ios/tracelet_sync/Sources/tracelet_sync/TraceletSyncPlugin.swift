@@ -328,14 +328,61 @@ class TraceletSyncSink: LocationDataSink, SyncProvider {
 
 @objc(TraceletSyncPlugin)
 public class TraceletSyncPlugin: NSObject, FlutterPlugin {
+  /// The one and only sink for this process (#286).
+  ///
+  /// `register(with:)` runs once per `FlutterPluginRegistrar`, i.e. once per
+  /// `FlutterEngine`, and it used to build a brand-new `TraceletSyncSink` every
+  /// time, append it to the shared `TraceletSdk.shared.locationEngine` and assign
+  /// it as the SDK's `syncProvider`. Nothing ever removed it: iOS had no
+  /// `detachFromEngine(for:)` here, `LocationEngine.registerSink` was a bare
+  /// `append`, and there was no replace-and-unregister step. Hosts that create
+  /// secondary engines (`workmanager` does so per background task, plus headless
+  /// engines and engine groups) therefore accumulated sinks, each with its own
+  /// `SyncCoordinator` actor — so the per-sink debounce could not serialize
+  /// across them and one persisted fix fanned out into N concurrent syncs.
+  ///
+  /// `TraceletSdk` is a singleton and only one sync provider can be active, so
+  /// the sink is created on first registration and reused by every later engine.
+  private static var sharedSink: TraceletSyncSink?
+  private static let sharedSinkLock = NSLock()
+
+  /// The process-wide sink, created on first use. `created` is true only for the
+  /// very first registrar, which keeps the log honest about how many exist.
+  static func obtainSharedSink() -> (sink: TraceletSyncSink, created: Bool) {
+    sharedSinkLock.lock()
+    defer { sharedSinkLock.unlock() }
+    if let existing = sharedSink {
+      return (existing, false)
+    }
+    let sink = TraceletSyncSink()
+    sharedSink = sink
+    return (sink, true)
+  }
+
+  /// Visible for tests: forget the process-wide sink between cases.
+  static func resetSharedSinkForTesting() {
+    sharedSinkLock.lock()
+    defer { sharedSinkLock.unlock() }
+    sharedSink = nil
+  }
+
+  private var channel: FlutterMethodChannel?
+
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "tracelet_sync", binaryMessenger: registrar.messenger())
     let instance = TraceletSyncPlugin()
-    
-    let sink = TraceletSyncSink()
-    TraceletSdk.shared.locationEngine.registerSink(sink)
-    TraceletSdk.shared.syncProvider = sink
-    print("TraceletSync: Native iOS sink registered!")
+    instance.channel = channel
+
+    let (sink, created) = obtainSharedSink()
+    // Assign the provider only — its `didSet` subscribes the sink to the
+    // LocationEngine, and `initialize()` re-subscribes the current provider when
+    // it builds a new engine. Subscribing here as well used to add the same sink
+    // to the engine's list twice per engine, and it force unwrapped the engine,
+    // which made registration order-dependent.
+    if (TraceletSdk.shared.syncProvider as AnyObject?) !== sink {
+      TraceletSdk.shared.syncProvider = sink
+    }
+    print("TraceletSync: Native iOS sink \(created ? "registered" : "reused for an additional engine (process-wide, #286)")!")
 
     registrar.addMethodCallDelegate(instance, channel: channel)
   }
@@ -346,5 +393,14 @@ public class TraceletSyncPlugin: NSObject, FlutterPlugin {
     } else {
       result(FlutterMethodNotImplemented)
     }
+  }
+
+  public func detachFromEngine(for registrar: FlutterPluginRegistrar) {
+    channel?.setMethodCallHandler(nil)
+    channel = nil
+    // The sink is deliberately NOT torn down: it is process-wide now, so there is
+    // nothing to accumulate, and native tracking keeps persisting locations after
+    // an engine (often a short-lived background one) goes away. TraceletSdk.stop()
+    // still calls cancelPendingSync() when the user stops tracking (#213).
   }
 }

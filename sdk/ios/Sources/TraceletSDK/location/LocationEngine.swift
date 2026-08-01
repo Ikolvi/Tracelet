@@ -18,7 +18,9 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     private let configManager: ConfigManager
     private let stateManager: StateManager
     private let eventDispatcher: TraceletEventSending
-    private var sinks: [LocationDataSink] = []
+    /// Internally readable so tests can assert what is subscribed (#286).
+    /// Production code only mutates this through register/unregisterSink.
+    internal private(set) var sinks: [LocationDataSink] = []
 
     private var lastLocation: CLLocation?
     /// Last GPS-quality location (horizontalAccuracy ≤ 100m).
@@ -205,7 +207,20 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     }
 
     public func registerSink(_ sink: LocationDataSink) {
+        // Dedupe (parity with Android, #204/#286): the same sink was otherwise
+        // added more than once — the sync plugin registered it directly *and*
+        // through the `TraceletSdk.syncProvider` didSet, and `initialize()`
+        // re-registers the current provider — and every duplicate entry fans a
+        // single persisted location out into another insertLocation call.
+        if sinks.contains(where: { ($0 as AnyObject) === (sink as AnyObject) }) { return }
         sinks.append(sink)
+    }
+
+    /// Removes a previously registered sink (used when a sync provider is
+    /// replaced). Android has had this since #204; iOS had no way to detach a
+    /// sink at all, so stale sync providers stayed subscribed forever (#286).
+    public func unregisterSink(_ sink: LocationDataSink) {
+        sinks.removeAll { ($0 as AnyObject) === (sink as AnyObject) }
     }
 
     /// Merges per-call [local] extras on top of any existing (global) extras in

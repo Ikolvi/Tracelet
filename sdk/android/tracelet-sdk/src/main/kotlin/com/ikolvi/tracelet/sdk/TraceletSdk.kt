@@ -877,6 +877,14 @@ class TraceletSdk private constructor(private val context: Context) {
                 eventSender.sendMotionChange(locationMap)
             }
         } else if (motionMode == com.ikolvi.tracelet.sdk.model.MotionDetectionMode.SMART) {
+            // Re-sync the Rust coordinator with the mode this start() just set.
+            // syncCurrentMode() otherwise only ran in initialize(), from the
+            // *persisted* trackingMode — so a session that ended stationary left
+            // the coordinator on STATIONARY_PERIODIC while start() set CONTINUOUS.
+            // Its evaluate_state only emits a stationary action when it believes
+            // the current mode is Continuous, so the pace could never leave
+            // MOVING again until the process was killed.
+            smartMotionCoordinator.syncCurrentMode()
             speedMotionManager.start(forceMoving = shouldForceMoving)
             if (!shouldForceMoving) {
                 val restoredMoving = speedMotionManager.getCurrentState() != "stationary"
@@ -895,6 +903,18 @@ class TraceletSdk private constructor(private val context: Context) {
                     locationEngine.enrichLocation(it, "motionchange")
                 } ?: mapOf("is_moving" to stateManager.isMoving)
                 eventSender.sendMotionChange(locationMap)
+            }
+
+            // Seed the coordinator's accelerometer flag to the state we are
+            // actually starting in. The Rust coordinator initialises
+            // is_accel_moving = false and on_accel_state_change() early-returns
+            // when the flag is unchanged, so starting in MOVING left the accel
+            // input inert: MotionDetector's stopTimeout would fire
+            // declareStationary() → onAccelStateChange(false) → no change → no
+            // action, and the accelerometer could never contribute to a stationary
+            // decision until something had first declared moving.
+            if (stateManager.isMoving) {
+                smartMotionCoordinator.onAccelStateChange(true)
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

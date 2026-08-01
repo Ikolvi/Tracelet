@@ -1383,9 +1383,9 @@ class MotionConfig {
     this.activityTypes,
     this.stationaryRadius = 25.0,
     this.useSignificantChangesOnly = false,
-    this.shakeThreshold = 2.5,
-    this.stillThreshold = 0.4,
-    this.stillSampleCount = 25,
+    double? shakeThreshold,
+    double? stillThreshold,
+    int? stillSampleCount,
     this.motionDetectionMode = MotionDetectionMode.accelerometer,
     this.speedMovingThreshold = 1.5,
     this.speedStationaryDelay = 180,
@@ -1393,7 +1393,13 @@ class MotionConfig {
     this.stationaryPeriodicInterval = 120,
     this.stationaryPeriodicAccuracy = DesiredAccuracy.high,
     this.speedWakeConfirmCount = 1,
-  }) : assert(speedStationaryDelay >= 0, 'speedStationaryDelay must be >= 0'),
+  }) : shakeThreshold = shakeThreshold ?? 2.5,
+       stillThreshold = stillThreshold ?? 0.4,
+       stillSampleCount = stillSampleCount ?? 25,
+       hasExplicitShakeThreshold = shakeThreshold != null,
+       hasExplicitStillThreshold = stillThreshold != null,
+       hasExplicitStillSampleCount = stillSampleCount != null,
+       assert(speedStationaryDelay >= 0, 'speedStationaryDelay must be >= 0'),
        assert(speedWakeConfirmCount >= 1, 'speedWakeConfirmCount must be >= 1'),
        assert(speedMovingThreshold > 0, 'speedMovingThreshold must be > 0');
 
@@ -1442,9 +1448,18 @@ class MotionConfig {
         map['useSignificantChangesOnly'],
         fallback: false,
       ),
-      shakeThreshold: ensureDouble(map['shakeThreshold'], fallback: 2.5),
-      stillThreshold: ensureDouble(map['stillThreshold'], fallback: 0.4),
-      stillSampleCount: ensureInt(map['stillSampleCount'], fallback: 25),
+      // Absent means "never set", which must stay unset so the platform keeps
+      // its own tuned default. Passing the Dart fallback here would silently
+      // promote it to an explicit override on the next setConfig round-trip.
+      shakeThreshold: map.containsKey('shakeThreshold')
+          ? ensureDouble(map['shakeThreshold'], fallback: 2.5)
+          : null,
+      stillThreshold: map.containsKey('stillThreshold')
+          ? ensureDouble(map['stillThreshold'], fallback: 0.4)
+          : null,
+      stillSampleCount: map.containsKey('stillSampleCount')
+          ? ensureInt(map['stillSampleCount'], fallback: 25)
+          : null,
       motionDetectionMode: _parseMotionDetectionMode(
         map['motionDetectionMode'],
       ),
@@ -1523,17 +1538,50 @@ class MotionConfig {
   /// Defaults to `false`.
   final bool useSignificantChangesOnly;
 
-  /// The acceleration threshold (in m/s²) to trigger a transition from stationary to moving.
-  /// Defaults to `2.5`.
+  /// The acceleration threshold (in m/s²) to trigger a transition from
+  /// stationary to moving.
+  ///
+  /// Leave this unset to let each platform apply its own tuned default —
+  /// `2.5 m/s²` on Android, `0.35 g` on iOS. The two are deliberately different:
+  /// Android subtracts gravity from raw, noisier ~5 Hz samples, while iOS reads
+  /// clean gravity-subtracted user-acceleration at 10 Hz. Reading this property
+  /// reports `2.5` when unset, which is the Android default.
+  ///
+  /// Setting it sends the value to both platforms; iOS converts m/s² to g by
+  /// dividing by 9.81, so `2.5` becomes `0.25 g` there — more sensitive than the
+  /// iOS default. Prefer leaving it unset unless you have measured on both.
   final double shakeThreshold;
 
-  /// The acceleration threshold (in m/s²) below which a sample is counted as still.
-  /// Defaults to `0.4`.
+  /// Whether [shakeThreshold] was set explicitly. When `false` the value is not
+  /// sent to the platform, so each platform keeps its own tuned default.
+  final bool hasExplicitShakeThreshold;
+
+  /// The acceleration threshold (in m/s²) below which a sample is counted as
+  /// still.
+  ///
+  /// Leave this unset to let each platform apply its own tuned default —
+  /// `0.4 m/s²` on Android, `0.15 g` on iOS. Setting it sends the value to both;
+  /// iOS divides by 9.81, so `0.4` becomes `0.04 g`, roughly four times stricter
+  /// than the iOS default. Reading this property reports `0.4` when unset.
   final double stillThreshold;
 
-  /// The number of consecutive still samples required to initiate the [stopTimeout].
-  /// Defaults to `25`.
+  /// Whether [stillThreshold] was set explicitly. When `false` the value is not
+  /// sent to the platform, so each platform keeps its own tuned default.
+  final bool hasExplicitStillThreshold;
+
+  /// The number of consecutive still samples required to initiate the
+  /// [stopTimeout].
+  ///
+  /// Leave this unset to let each platform target the same ~5 s dwell window
+  /// with its own sampling rate — 25 samples at ~5 Hz on Android, 50 at 10 Hz on
+  /// iOS. Setting it is taken as a literal sample count on both platforms, so
+  /// the dwell duration then differs per platform. Reading this property reports
+  /// `25` when unset.
   final int stillSampleCount;
+
+  /// Whether [stillSampleCount] was set explicitly. When `false` the value is
+  /// not sent to the platform, so each platform keeps its own tuned default.
+  final bool hasExplicitStillSampleCount;
 
   /// Selects the motion detection strategy.
   ///
@@ -1658,9 +1706,11 @@ class MotionConfig {
         'activityTypes': activityTypes!.map((e) => e.index).toList(),
       'stationaryRadius': stationaryRadius,
       'useSignificantChangesOnly': useSignificantChangesOnly,
-      'shakeThreshold': shakeThreshold,
-      'stillThreshold': stillThreshold,
-      'stillSampleCount': stillSampleCount,
+      // Emitted only when set, so a round-trip through fromMap cannot turn a
+      // platform default into an explicit override.
+      if (hasExplicitShakeThreshold) 'shakeThreshold': shakeThreshold,
+      if (hasExplicitStillThreshold) 'stillThreshold': stillThreshold,
+      if (hasExplicitStillSampleCount) 'stillSampleCount': stillSampleCount,
       'motionDetectionMode': motionDetectionMode.index,
       'speedMovingThreshold': speedMovingThreshold,
       'speedStationaryDelay': speedStationaryDelay,
@@ -1684,9 +1734,10 @@ class MotionConfig {
     stopOnStationary: stopOnStationary,
     stationaryRadius: stationaryRadius,
     useSignificantChangesOnly: useSignificantChangesOnly,
-    shakeThreshold: shakeThreshold,
-    stillThreshold: stillThreshold,
-    stillSampleCount: stillSampleCount,
+    // null tells the platform to keep its own tuned default.
+    shakeThreshold: hasExplicitShakeThreshold ? shakeThreshold : null,
+    stillThreshold: hasExplicitStillThreshold ? stillThreshold : null,
+    stillSampleCount: hasExplicitStillSampleCount ? stillSampleCount : null,
     activityTypes: activityTypes
         ?.map((e) => TlLocationActivityType.values[e.index])
         .toList(),
@@ -1721,8 +1772,11 @@ class MotionConfig {
           stationaryRadius == other.stationaryRadius &&
           useSignificantChangesOnly == other.useSignificantChangesOnly &&
           shakeThreshold == other.shakeThreshold &&
+          hasExplicitShakeThreshold == other.hasExplicitShakeThreshold &&
           stillThreshold == other.stillThreshold &&
+          hasExplicitStillThreshold == other.hasExplicitStillThreshold &&
           stillSampleCount == other.stillSampleCount &&
+          hasExplicitStillSampleCount == other.hasExplicitStillSampleCount &&
           motionDetectionMode == other.motionDetectionMode &&
           speedMovingThreshold == other.speedMovingThreshold &&
           speedStationaryDelay == other.speedStationaryDelay &&
@@ -1753,8 +1807,11 @@ class MotionConfig {
     stationaryRadius,
     useSignificantChangesOnly,
     shakeThreshold,
+    hasExplicitShakeThreshold,
     stillThreshold,
+    hasExplicitStillThreshold,
     stillSampleCount,
+    hasExplicitStillSampleCount,
     motionDetectionMode,
     speedMovingThreshold,
     speedStationaryDelay,

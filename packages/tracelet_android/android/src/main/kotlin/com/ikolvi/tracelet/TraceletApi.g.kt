@@ -1205,9 +1205,9 @@ data class TlMotionConfig (
   val activityTypes: List<TlLocationActivityType?>? = null,
   val stationaryRadius: Double,
   val useSignificantChangesOnly: Boolean,
-  val shakeThreshold: Double,
-  val stillThreshold: Double,
-  val stillSampleCount: Long,
+  val shakeThreshold: Double? = null,
+  val stillThreshold: Double? = null,
+  val stillSampleCount: Long? = null,
   val motionDetectionMode: TlMotionDetectionMode,
   val speedMovingThreshold: Double,
   val speedStationaryDelay: Long,
@@ -1231,9 +1231,9 @@ data class TlMotionConfig (
       val activityTypes = pigeonVar_list[9] as List<TlLocationActivityType?>?
       val stationaryRadius = pigeonVar_list[10] as Double
       val useSignificantChangesOnly = pigeonVar_list[11] as Boolean
-      val shakeThreshold = pigeonVar_list[12] as Double
-      val stillThreshold = pigeonVar_list[13] as Double
-      val stillSampleCount = pigeonVar_list[14] as Long
+      val shakeThreshold = pigeonVar_list[12] as Double?
+      val stillThreshold = pigeonVar_list[13] as Double?
+      val stillSampleCount = pigeonVar_list[14] as Long?
       val motionDetectionMode = pigeonVar_list[15] as TlMotionDetectionMode
       val speedMovingThreshold = pigeonVar_list[16] as Double
       val speedStationaryDelay = pigeonVar_list[17] as Long

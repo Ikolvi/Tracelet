@@ -284,9 +284,14 @@ class TraceletHostApiImpl(
             put("activityTypes", c.motion.activityTypes?.map { it?.raw })
             put("stationaryRadius", c.motion.stationaryRadius)
             put("useSignificantChangesOnly", c.motion.useSignificantChangesOnly)
-            put("shakeThreshold", c.motion.shakeThreshold)
-            put("stillThreshold", c.motion.stillThreshold)
-            put("stillSampleCount", c.motion.stillSampleCount)
+            // Sensor thresholds are only forwarded when the app set them. Sending
+            // them unconditionally overrode each platform's tuned default with a
+            // single cross-platform scalar (Dart's defaults are the Android ones),
+            // which on iOS landed ~4x stricter on stillness after the m/s²→g
+            // conversion. Absent key ⇒ ConfigManager's own default applies.
+            c.motion.shakeThreshold?.let { put("shakeThreshold", it) }
+            c.motion.stillThreshold?.let { put("stillThreshold", it) }
+            c.motion.stillSampleCount?.let { put("stillSampleCount", it) }
             put("motionDetectionMode", c.motion.motionDetectionMode.raw)
             put("speedMovingThreshold", c.motion.speedMovingThreshold)
             put("speedStationaryDelay", c.motion.speedStationaryDelay)

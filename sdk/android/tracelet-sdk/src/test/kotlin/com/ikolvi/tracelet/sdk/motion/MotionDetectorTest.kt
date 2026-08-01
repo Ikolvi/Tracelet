@@ -183,3 +183,126 @@ class MotionDetectorTest {
         override fun hasListener(eventName: String): Boolean = false
     }
 }
+
+/**
+ * Regression tests for who owns `isMoving` in SMART mode.
+ *
+ * In SMART mode the accelerometer is only one of two inputs: the coordinator
+ * combines it with the GPS-speed machine and decides. `declareStationary()` used
+ * to write `state.isMoving = false` itself, so the accelerometer claimed the
+ * transition on its own word — leaving `getState().isMoving` reporting stationary
+ * while the coordinator (and therefore the last motionchange event, and the
+ * actual GPS behaviour) still said moving.
+ */
+@RunWith(RobolectricTestRunner::class)
+class MotionDetectorSmartModeStateOwnershipTest {
+
+    private lateinit var config: ConfigManager
+    private lateinit var state: StateManager
+    private lateinit var detector: MotionDetector
+    private val reportedTransitions = mutableListOf<Boolean>()
+
+    private fun start(smart: Boolean) {
+        val context = RuntimeEnvironment.getApplication()
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        shadowOf(sensorManager).addSensor(
+            Sensor.TYPE_ACCELEROMETER,
+            org.robolectric.shadows.ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER),
+        )
+
+        config = ConfigManager(context)
+        state = StateManager(context)
+        config.setConfig(
+            mapOf(
+                "disableMotionActivityUpdates" to true,
+                "stopTimeout" to 1,
+                // 2 = smart, 0 = accelerometer
+                "motionDetectionMode" to if (smart) 2 else 0,
+            ),
+        )
+        state.isMoving = true
+
+        val logger = com.ikolvi.tracelet.sdk.util.TraceletLogger(context, config)
+        detector = MotionDetector(context, config, state, DummySender(), logger)
+        detector.onMotionStateChanged = { isMoving -> reportedTransitions.add(isMoving) }
+        detector.start()
+    }
+
+    private fun driveToStationary() {
+        val listener = accelerometerListener()!!
+        repeat(25) { sendSample(listener, floatArrayOf(0f, 0f, 9.81f)) }
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMinutes(2))
+    }
+
+    @Test
+    fun `smart mode reports the transition but leaves isMoving to the coordinator`() {
+        start(smart = true)
+
+        driveToStationary()
+
+        assertEquals(
+            listOf(false),
+            reportedTransitions,
+            "the detector must still report stationary to the coordinator",
+        )
+        assertTrue(
+            state.isMoving,
+            "in SMART mode the coordinator owns isMoving — the accelerometer must " +
+                "not claim the transition on its own",
+        )
+    }
+
+    @Test
+    fun `accelerometer mode still owns isMoving itself`() {
+        start(smart = false)
+
+        driveToStationary()
+
+        assertEquals(listOf(false), reportedTransitions)
+        assertFalse(
+            state.isMoving,
+            "outside SMART mode the detector is the only input and still owns the flag",
+        )
+    }
+
+    private fun accelerometerListener(): SensorEventListener? {
+        val field = MotionDetector::class.java.getDeclaredField("accelerometerListener")
+        field.isAccessible = true
+        return field.get(detector) as? SensorEventListener
+    }
+
+    private fun sendSample(listener: SensorEventListener, values: FloatArray) {
+        val constructor = SensorEvent::class.java.declaredConstructors
+            .first { it.parameterTypes.size == 1 }
+        constructor.isAccessible = true
+        val event = constructor.newInstance(values.size) as SensorEvent
+        System.arraycopy(values, 0, event.values, 0, values.size)
+        listener.onSensorChanged(event)
+    }
+
+    private class DummySender : TraceletEventSender {
+        override fun sendDrivingEvent(data: Map<String, Any?>) {}
+        override fun sendImpact(data: Map<String, Any?>) {}
+        override fun sendModeChange(data: Map<String, Any?>) {}
+        override fun sendMotionChange(data: Map<String, Any?>) {}
+        override fun sendSpeedMotionChange(data: Map<String, Any?>) {}
+        override fun sendLocation(data: Map<String, Any?>) {}
+        override fun sendActivityChange(data: Map<String, Any?>) {}
+        override fun sendGeofencesChange(data: Map<String, Any?>) {}
+        override fun sendGeofence(data: Map<String, Any?>) {}
+        override fun sendHeartbeat(data: Map<String, Any?>) {}
+        override fun sendHttp(data: Map<String, Any?>) {}
+        override fun sendProviderChange(data: Map<String, Any?>) {}
+        override fun sendConnectivityChange(data: Map<String, Any?>) {}
+        override fun sendEnabledChange(enabled: Boolean) {}
+        override fun sendPowerSaveChange(isPowerSaveMode: Boolean) {}
+        override fun sendNotificationAction(action: String) {}
+        override fun sendAuthorization(data: Map<String, Any?>) {}
+        override fun sendRemoteConfigEvent(data: Map<String, Any?>) {}
+        override fun sendSchedule(data: Map<String, Any?>) {}
+        override fun sendWatchPosition(data: Map<String, Any?>) {}
+        override fun sendTrip(data: Map<String, Any?>) {}
+        override fun sendBudgetAdjustment(data: Map<String, Any?>) {}
+        override fun hasListener(eventName: String): Boolean = false
+    }
+}

@@ -101,15 +101,75 @@ class SpeedMotionManagerTest {
         assertEquals(0, event["trackingMode"]) // CONTINUOUS
     }
 
+    // =========================================================================
+    // GPS speed noise must not restart the SLOWING countdown
+    // =========================================================================
+
+    /**
+     * A phone sitting on a desk reports a stream of `0.00 m/s` fixes with the
+     * occasional blip above the threshold (observed on-device: `1.56 m/s`).
+     * Cancelling the countdown on one such fix restarted the whole
+     * `speedStationaryDelay` window, so the device stayed MOVING indefinitely
+     * while the accelerometer had already reported sustained stillness.
+     */
     @Test
-    fun `SLOWING returns to MOVING when speed climbs back above threshold`() {
+    fun `single high-speed blip does not cancel the SLOWING countdown`() {
+        configure(movingThreshold = 1.5, stationaryDelaySeconds = 30)
+
+        manager.onLocation(5.0)
+        manager.onLocation(0.0) // SLOWING — countdown starts
+        assertEquals("slowing", manager.getCurrentState())
+
+        org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofSeconds(20))
+        manager.onLocation(1.56) // isolated noise blip, 20s into the countdown
+        assertEquals("slowing", manager.getCurrentState())
+
+        // The countdown kept its original start time, so only the remaining ~10s
+        // is needed — not another full 30s window.
+        org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofSeconds(11))
+        manager.onLocation(0.0)
+        assertEquals("stationary", manager.getCurrentState())
+        assertTrue(callback.switchedToStationaryPeriodic)
+    }
+
+    @Test
+    fun `two high-speed blips still do not cancel the countdown`() {
+        configure(movingThreshold = 1.5, stationaryDelaySeconds = 30)
+
+        manager.onLocation(5.0)
+        manager.onLocation(0.0)
+        manager.onLocation(1.6)
+        manager.onLocation(1.6)
+        assertEquals("slowing", manager.getCurrentState())
+    }
+
+    @Test
+    fun `a low fix resets the noise streak so blips cannot accumulate`() {
+        configure(movingThreshold = 1.5, stationaryDelaySeconds = 30)
+
+        manager.onLocation(5.0)
+        manager.onLocation(0.0)
+        // Two blips, a quiet fix, two more blips: never 3 in a row.
+        manager.onLocation(1.6)
+        manager.onLocation(1.6)
+        manager.onLocation(0.0)
+        manager.onLocation(1.6)
+        manager.onLocation(1.6)
+        assertEquals("slowing", manager.getCurrentState())
+    }
+
+    @Test
+    fun `SLOWING returns to MOVING when speed stays above threshold`() {
         configure(movingThreshold = 1.5, stationaryDelaySeconds = 60)
 
         manager.onLocation(5.0)
         manager.onLocation(0.3)        // slowing
         assertEquals("slowing", manager.getCurrentState())
 
-        manager.onLocation(3.0)        // back to moving
+        // Sustained motion — 3 consecutive fixes, see SPEED_ABORT_FIX_COUNT.
+        manager.onLocation(3.0)
+        manager.onLocation(3.0)
+        manager.onLocation(3.0)
         assertEquals("moving", manager.getCurrentState())
         assertEquals(0, state.speedLowCount)
     }

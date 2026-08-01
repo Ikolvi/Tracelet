@@ -214,27 +214,50 @@ public final class ConfigManager {
     public func getStationaryPeriodicAccuracy() -> Int { (cache["stationaryPeriodicAccuracy"] as? NSNumber)?.intValue ?? 1 }
     public func getSpeedWakeConfirmCount() -> Int { (cache["speedWakeConfirmCount"] as? NSNumber)?.intValue ?? 1 }
 
-    /// Shake threshold (gravity-subtracted magnitude).
+    /// Shake threshold above which a sample counts as movement, in g
+    /// (gravity-subtracted, which is what `CMMotionManager` reports directly).
     ///
-    /// Dart sends this value in m/s². We divide by 9.81 to convert to g-force.
+    /// Dart sends this value in m/s², so it is divided by 9.81. The fallback is
+    /// the iOS-tuned default and is only used when the app leaves
+    /// `MotionConfig.shakeThreshold` unset — a Dart-provided value always wins,
+    /// including one that happens to equal the Dart default.
+    ///
+    /// Lower than the Android equivalent (2.5 m/s² ≈ 0.25 g) because CoreMotion
+    /// provides clean gravity-subtracted values, so a smaller threshold detects
+    /// movement reliably without false positives.
     public func getShakeThreshold() -> Double {
         if let val = (cache["shakeThreshold"] as? NSNumber)?.doubleValue {
             return val / 9.81
         }
         return 0.35
     }
-    /// Still threshold (gravity-subtracted magnitude).
+    /// Acceleration magnitude below which a sample counts as "still", in g
+    /// (gravity-subtracted).
     ///
-    /// Dart sends this value in m/s². We divide by 9.81 to convert to g-force.
+    /// Dart sends this value in m/s², so it is divided by 9.81. The fallback is
+    /// the iOS-tuned default, used only when the app leaves
+    /// `MotionConfig.stillThreshold` unset.
+    ///
+    /// Higher than the Android equivalent converted to g (0.4 m/s² ≈ 0.04 g):
+    /// Android needs a tighter residual because it subtracts gravity from raw,
+    /// noisier ~5 Hz samples, while CoreMotion reports user-acceleration cleanly.
     public func getStillThreshold() -> Double {
         if let val = (cache["stillThreshold"] as? NSNumber)?.doubleValue {
             return val / 9.81
         }
         return 0.15
     }
-    /// Consecutive still samples needed before triggering stillness.
-    /// At 10 Hz, 30 samples ≈ 3 seconds of sustained stillness.
-    public func getStillSampleCount() -> Int { (cache["stillSampleCount"] as? NSNumber)?.intValue ?? 30 }
+    /// Consecutive still samples required before the stop-timeout countdown starts.
+    ///
+    /// The fallback targets the same ~5 s dwell window as Android: 50 samples at
+    /// the 10 Hz accelerometer cadence, where Android uses 25 at ~5 Hz. It was
+    /// previously 30 (≈3 s), which contradicted both the documented intent and the
+    /// (unreferenced) constant in `MotionDetector`.
+    ///
+    /// A Dart-provided `stillSampleCount` is taken as a literal sample count, so a
+    /// cross-platform value dwells for different durations per platform — think in
+    /// samples, not seconds, when overriding it.
+    public func getStillSampleCount() -> Int { (cache["stillSampleCount"] as? NSNumber)?.intValue ?? 50 }
 
     // GeofenceConfig
     /// Tunes the accuracy-aware geofence EXIT gating (#274/#276): -1 full gating

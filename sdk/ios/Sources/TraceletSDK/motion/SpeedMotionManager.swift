@@ -51,6 +51,29 @@ public final class SpeedMotionManager {
 
     /// Timestamp of the first low-speed sample that initiated the current
     /// SLOWING phase. Used for elapsed-time calculation.
+    /// Consecutive above-threshold fixes required to abandon an in-progress
+    /// SLOWING countdown.
+    ///
+    /// GPS speed is noisy while a device is physically still: a stream of
+    /// `0.00 m/s` fixes can contain an isolated blip above the threshold
+    /// (observed on Android: `1.56 m/s` from a phone on a desk). Treating one
+    /// such fix as "moving again" cancelled the countdown and restarted the whole
+    /// `speedStationaryDelay` window, so a still device could take several
+    /// windows — or never — to reach STATIONARY.
+    ///
+    /// Requiring sustained motion mirrors `MotionDetector.motionAbortCount` for
+    /// accelerometer noise. It is safe because SLOWING is still *continuous*
+    /// tracking, so delaying the return to MOVING by a couple of fixes costs no
+    /// location fidelity.
+    ///
+    /// - SeeAlso: Android `SpeedMotionManager.SPEED_ABORT_FIX_COUNT` (3)
+    static let speedAbortFixCount = 3
+
+    /// Consecutive above-threshold fixes seen while SLOWING — see
+    /// [speedAbortFixCount]. Deliberately not persisted: an isolated blip must
+    /// not survive a process restart.
+    private var highSpeedCount = 0
+
     private var slowingStartTime: TimeInterval = 0
 
     /// Timestamp of the last `onLocation` call, for approximate inter-fix interval.
@@ -121,6 +144,7 @@ public final class SpeedMotionManager {
             state = .moving
             lowSpeedCount = 0
             wakeCount = 0
+            highSpeedCount = 0
             stateManager.speedMotionState = state.rawValue
             stateManager.speedLowCount = 0
             stateManager.speedWakeCount = 0
@@ -154,6 +178,7 @@ public final class SpeedMotionManager {
         if isMoving {
             lowSpeedCount = 0
             wakeCount = 0
+            highSpeedCount = 0
             stopSlowingTimer()
             let previousState = state
             state = .moving
@@ -167,6 +192,7 @@ public final class SpeedMotionManager {
         } else {
             lowSpeedCount = 0
             wakeCount = 0
+            highSpeedCount = 0
             stopSlowingTimer()
             let previousState = state
             state = .stationary
@@ -221,6 +247,7 @@ public final class SpeedMotionManager {
             state = .slowing
             lowSpeedCount = 1
             wakeCount = 0
+            highSpeedCount = 0
             slowingStartTime = now
             TraceletLog.debug(String(format: "[SpeedMotion] MOVING -> SLOWING (speed=%.2f < threshold=%.2f)",
                   speed, speedMovingThreshold))
@@ -280,16 +307,26 @@ public final class SpeedMotionManager {
 
     private func handleSlowing(speed: Double, now: TimeInterval) {
         if speed >= speedMovingThreshold {
+            highSpeedCount += 1
+            if highSpeedCount < SpeedMotionManager.speedAbortFixCount {
+                // Almost certainly GPS noise on a still device. Keep the countdown
+                // running: cancelling it restarts the whole speedStationaryDelay
+                // window and can postpone STATIONARY indefinitely.
+                TraceletLog.debug(String(format: "[SpeedMotion] SLOWING: ignoring high-speed fix %d/%d (speed=%.2f >= threshold=%.2f) — countdown continues",
+                      highSpeedCount, SpeedMotionManager.speedAbortFixCount, speed, speedMovingThreshold))
+                return
+            }
             // Back to moving
             let previousState = state
             state = .moving
             lowSpeedCount = 0
+            highSpeedCount = 0
             stopSlowingTimer()
-            TraceletLog.debug(String(format: "[SpeedMotion] SLOWING -> MOVING (speed=%.2f >= threshold=%.2f)",
-                  speed, speedMovingThreshold))
-                  
+            TraceletLog.debug(String(format: "[SpeedMotion] SLOWING -> MOVING (sustained speed=%.2f >= threshold=%.2f for %d fixes)",
+                  speed, speedMovingThreshold, SpeedMotionManager.speedAbortFixCount))
+
             delegate?.speedMotionDidCancelSlowing()
-            
+
             if state != previousState {
                 persistState()
                 emitEvent(previous: previousState, current: state)
@@ -297,7 +334,8 @@ public final class SpeedMotionManager {
             return
         }
 
-        // Still slow — increment and check elapsed time
+        // Still slow — any partial high-speed streak was noise.
+        highSpeedCount = 0
         lowSpeedCount += 1
         let elapsed = now - slowingStartTime
         if elapsed >= Double(speedStationaryDelay) {

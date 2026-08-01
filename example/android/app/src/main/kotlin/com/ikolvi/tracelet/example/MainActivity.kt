@@ -184,9 +184,201 @@ class MainActivity : FlutterActivity() {
                     } catch (e: Exception) {
                         result.error("FG_GUARD_ERROR", e.message, null)
                     }
+                } else if (call.method == "debugIssue288EffectiveThresholds") {
+                    // #288: report what the native SDK is *actually* using for the
+                    // sensor thresholds. Dart used to transmit its own defaults —
+                    // the Android-tuned numbers — for every app that configured any
+                    // motion field, so each platform's tuned default was
+                    // unreachable. Unset values must now fall back to these.
+                    try {
+                        val config = com.ikolvi.tracelet.sdk.TraceletSdk
+                            .getInstance(applicationContext).configManager
+                        result.success(
+                            mapOf(
+                                "platform" to "android",
+                                // Android compares raw m/s² residuals at ~5 Hz.
+                                "unit" to "m/s2",
+                                "shakeThreshold" to config.getShakeThreshold(),
+                                "stillThreshold" to config.getStillThreshold(),
+                                "stillSampleCount" to config.getStillSampleCount(),
+                                "tunedShakeThreshold" to 2.5,
+                                "tunedStillThreshold" to 0.4,
+                                "tunedStillSampleCount" to 25,
+                            ),
+                        )
+                    } catch (e: Throwable) {
+                        result.error("ISSUE_288_ERROR", e.toString(), null)
+                    }
+                } else if (call.method == "debugIssue286SyncSinkAccumulation") {
+                    // #286 VERIFICATION ONLY (no fix): does every attaching
+                    // FlutterEngine create a NEW TraceletSyncSink that is never
+                    // torn down on detach?
+                    //
+                    // Reproduces the reporter's environment (workmanager_android
+                    // does `FlutterEngine(applicationContext)` per task, then
+                    // `engine.destroy()`) and then measures:
+                    //   1. how many DISTINCT sink instances the SDK saw
+                    //      (1 = process-wide sink, N+1 = one per engine),
+                    //   2. whether each abandoned sink's CoroutineScope is still
+                    //      active AFTER its engine was destroyed (no teardown),
+                    //   3. how many sinks are registered as LocationDataSinks on
+                    //      the live LocationEngine (fan-out per persisted fix),
+                    //   4. whether the plugin holds the sink in an instance field
+                    //      (per engine) or a static/companion holder (shared).
+                    try {
+                        val requested = call.argument<Int>("engines") ?: 2
+                        val engineCount = requested.coerceIn(1, 4)
+
+                        val sdk = com.ikolvi.tracelet.sdk.TraceletSdk
+                            .getInstance(applicationContext)
+
+                        // identityHashCode -> strong ref, insertion-ordered, so a
+                        // re-registered same instance is not double counted.
+                        val observed = LinkedHashMap<Int, Any>()
+                        sdk.syncProvider?.let {
+                            observed[System.identityHashCode(it)] = it
+                        }
+                        val baselineSinks = observed.size
+                        val registeredBefore = countSyncSinks(readLocationEngine(sdk))
+
+                        val spawned = mutableListOf<FlutterEngine>()
+                        repeat(engineCount) {
+                            // Plugins auto-register in the constructor, so this
+                            // alone runs TraceletSyncPlugin.onAttachedToEngine.
+                            val secondary = FlutterEngine(applicationContext)
+                            spawned.add(secondary)
+                            sdk.syncProvider?.let { p ->
+                                observed[System.identityHashCode(p)] = p
+                            }
+                        }
+                        val providerAfterAttach =
+                            sdk.syncProvider?.let { System.identityHashCode(it) } ?: 0
+
+                        // Background task finished → engine goes away.
+                        spawned.forEach { it.destroy() }
+
+                        val providerAfterDestroy =
+                            sdk.syncProvider?.let { System.identityHashCode(it) } ?: 0
+
+                        // Are the sinks belonging to destroyed engines still alive?
+                        var aliveAfterDestroy = 0
+                        var scopesInspected = 0
+                        val scopeStates = mutableListOf<String>()
+                        for (sink in observed.values) {
+                            val scope = readPrivateField(sink, "scope") ?: continue
+                            scopesInspected++
+                            val active = coroutineScopeIsActive(scope)
+                            if (active == true) aliveAfterDestroy++
+                            scopeStates.add(
+                                "${sink.javaClass.simpleName}@" +
+                                    "${System.identityHashCode(sink)}: " +
+                                    when (active) {
+                                        true -> "scope ACTIVE"
+                                        false -> "scope cancelled"
+                                        null -> "scope state unknown"
+                                    },
+                            )
+                        }
+
+                        val pluginClass =
+                            Class.forName("com.ikolvi.tracelet_sync.TraceletSyncPlugin")
+                        val instanceSinkField = pluginClass.declaredFields.any {
+                            !java.lang.reflect.Modifier.isStatic(it.modifiers) &&
+                                it.type.name.contains("TraceletSyncSink")
+                        }
+                        val staticSinkHolder = pluginClass.declaredFields.any {
+                            java.lang.reflect.Modifier.isStatic(it.modifiers) &&
+                                it.type.name.contains("TraceletSyncSink")
+                        }
+
+                        // Android's LocationEngine can drop a sink again, which
+                        // is why registerSyncProvider() is able to trim the
+                        // foreground list. iOS has no such method.
+                        val canUnregister = try {
+                            Class.forName(
+                                "com.ikolvi.tracelet.sdk.location.LocationEngine",
+                            ).declaredMethods.any { it.name == "unregisterSink" }
+                        } catch (e: Throwable) {
+                            false
+                        }
+
+                        result.success(
+                            mapOf(
+                                "platform" to "android",
+                                "canUnregister" to canUnregister,
+                                "enginesSpawned" to engineCount,
+                                "baselineSinks" to baselineSinks,
+                                "distinctSinks" to observed.size,
+                                "aliveAfterDestroy" to aliveAfterDestroy,
+                                "scopesInspected" to scopesInspected,
+                                "scopeStates" to scopeStates,
+                                "registeredBefore" to registeredBefore,
+                                "registeredAfter" to
+                                    countSyncSinks(readLocationEngine(sdk)),
+                                "registeredBootAfter" to
+                                    countSyncSinks(readBootLocationEngine()),
+                                "providerReplacedByDeadEngine" to
+                                    (providerAfterDestroy != 0 &&
+                                        providerAfterDestroy == providerAfterAttach &&
+                                        observed.size > baselineSinks),
+                                "instanceSinkField" to instanceSinkField,
+                                "staticSinkHolder" to staticSinkHolder,
+                            ),
+                        )
+                    } catch (e: Throwable) {
+                        result.error("ISSUE_286_ERROR", e.toString(), null)
+                    }
                 } else {
                     result.notImplemented()
                 }
             }
+    }
+
+    // ==== #286 verification helpers (reflection: internals are not public) ====
+
+    private fun readPrivateField(target: Any, name: String): Any? = try {
+        target.javaClass.getDeclaredField(name).apply { isAccessible = true }.get(target)
+    } catch (e: Throwable) {
+        null
+    }
+
+    /**
+     * The SDK's foreground engine, read through its backing field so an
+     * uninitialized `lateinit` returns null instead of throwing.
+     */
+    private fun readLocationEngine(sdk: Any): Any? = readPrivateField(sdk, "locationEngine")
+
+    /** `LocationService.bootLocationEngine` (companion → static backing field). */
+    private fun readBootLocationEngine(): Any? = try {
+        val cls = Class.forName("com.ikolvi.tracelet.sdk.service.LocationService")
+        cls.getDeclaredField("bootLocationEngine").apply { isAccessible = true }.get(null)
+    } catch (e: Throwable) {
+        null
+    }
+
+    /** Number of TraceletSyncSink instances in a LocationEngine's sink list. */
+    @Suppress("UNCHECKED_CAST")
+    private fun countSyncSinks(engine: Any?): Int {
+        if (engine == null) return -1
+        return try {
+            val sinks = engine.javaClass.getDeclaredField("sinks")
+                .apply { isAccessible = true }.get(engine) as? List<Any?> ?: return -1
+            sinks.count { it != null && it.javaClass.name.contains("TraceletSyncSink") }
+        } catch (e: Throwable) {
+            -1
+        }
+    }
+
+    /** `scope.coroutineContext[Job]?.isActive`, or null when not determinable. */
+    private fun coroutineScopeIsActive(scope: Any): Boolean? = try {
+        val ctx = scope.javaClass.getMethod("getCoroutineContext").invoke(scope)
+        val jobIface = Class.forName("kotlinx.coroutines.Job")
+        val jobKey = jobIface.getField("Key").get(null)
+        val keyIface = Class.forName("kotlin.coroutines.CoroutineContext\$Key")
+        val ctxIface = Class.forName("kotlin.coroutines.CoroutineContext")
+        val job = ctxIface.getMethod("get", keyIface).invoke(ctx, jobKey)
+        if (job == null) null else jobIface.getMethod("isActive").invoke(job) as? Boolean
+    } catch (e: Throwable) {
+        null
     }
 }

@@ -49,6 +49,18 @@ public final class TraceletSdk {
 
     public var syncProvider: SyncProvider? = nil {
         didSet {
+            // Replacing a provider must detach the old one (parity with Android's
+            // registerSyncProvider, #204/#286). Without this, a superseded
+            // provider — e.g. the NativeSyncProvider created during a background
+            // boot, or a sink left behind by an earlier engine — stayed
+            // subscribed and independently debounced + POSTed the same batch.
+            if let previous = oldValue,
+               (previous as AnyObject) !== (syncProvider as AnyObject?) {
+                previous.cancelPendingSync()
+                if let previousSink = previous as? LocationDataSink {
+                    locationEngine?.unregisterSink(previousSink)
+                }
+            }
             if let sink = syncProvider as? LocationDataSink {
                 locationEngine?.registerSink(sink)
             }
@@ -425,6 +437,15 @@ public final class TraceletSdk {
             startSpeedMotionManager(forceMoving: shouldForceMoving)
         } else if motionMode == .smart {
             startSpeedMotionManager(forceMoving: shouldForceMoving)
+            // Seed the coordinator's accelerometer flag to the state we are
+            // actually starting in. The Rust coordinator initialises
+            // is_accel_moving = false and on_accel_state_change() early-returns on
+            // an unchanged flag, so starting in MOVING left the accel input inert:
+            // the stop-timeout would fire, report stationary, and the coordinator
+            // would see no change and emit no action.
+            if stateManager.isMoving {
+                smartMotionCoordinator.onAccelStateChange(isMoving: true)
+            }
             motionDetector.start()
         } else {
             motionDetector.start()
