@@ -179,6 +179,21 @@ class GeofenceManagerTransitionLogTest {
     }
 
     @Test
+    fun `trace flags a fix with no valid accuracy as gating-disabled`() {
+        // Location.getAccuracy() returns 0.0f when the fix carries no accuracy,
+        // and the evaluator maps non-positive accuracy to "gating disabled" — so
+        // unknown uncertainty behaves as zero uncertainty. That inverted default
+        // makes a false EXIT much more likely and is invisible without this flag.
+        geoManager.evaluateHighAccuracyProximity(centerLat, centerLng, 8.0)
+        geoManager.evaluateHighAccuracyProximity(north(200.0), centerLng, 0.0)
+
+        val exit = firstExitAtInfo()
+        requireNotNull(exit) { "expected an EXIT line, got: ${geofenceLines()}" }
+        assertTrue(exit.contains("accuracyInvalid=true"), "invalid accuracy must be flagged: $exit")
+        assertTrue(exit.contains("gatingDisabled=true"), "disabled gating must be flagged: $exit")
+    }
+
+    @Test
     fun `trace reports pass-through accuracy under the default policy`() {
         config.setConfig(mapOf("geofenceExitAccuracyMax" to -1))
         geoManager.evaluateHighAccuracyProximity(centerLat, centerLng, 8.0)

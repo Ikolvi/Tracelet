@@ -12,6 +12,16 @@ public final class TraceletLogger {
     /// execution preserves persisted log ordering (#130).
     private let persistQueue = DispatchQueue(label: "com.tracelet.logger.persist")
 
+    /// Writes since the last prune. Confined to `persistQueue`. See `log(_:_:source:)`.
+    private var writesSincePrune = 0
+
+    /// Amortization window for log pruning.
+    ///
+    /// Retention is 500-2000 rows, so letting the table run this many rows past
+    /// the limit between prunes is harmless and removes a DELETE from every
+    /// single log write.
+    private static let pruneIntervalWrites = 50
+
     /// Log levels: OFF(0), ERROR(1), WARNING(2), INFO(3), DEBUG(4), VERBOSE(5)
     enum Level: Int, Comparable {
         case off = 0, error = 1, warning = 2, info = 3, debug = 4, verbose = 5
@@ -142,8 +152,20 @@ public final class TraceletLogger {
         persistQueue.async { [weak self] in
             do {
                 try db?.insertLog(level: level.label, message: built, source: source)
-                // Prune old logs to maintain dynamic limits
-                self?.pruneOldLogs()
+                // Prune old logs to maintain dynamic limits.
+                //
+                // Previously ran a DELETE after every single insert. Retention is
+                // 500-2000 rows, so pruning per write is pure overhead — amortize
+                // it. Matters more now that geofence transitions log at INFO.
+                //
+                // `writesSincePrune` is only ever touched inside this serial
+                // queue, so it needs no additional synchronization.
+                guard let self else { return }
+                self.writesSincePrune += 1
+                if self.writesSincePrune >= TraceletLogger.pruneIntervalWrites {
+                    self.writesSincePrune = 0
+                    self.pruneOldLogs()
+                }
             } catch {
                 NSLog("[Tracelet] Failed to persist log to Rust Database: \(error.localizedDescription)")
             }

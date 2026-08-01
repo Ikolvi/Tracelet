@@ -20,6 +20,21 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     /// Maximum number of monitored regions (iOS limit).
     private static let maxRegions = 20
 
+    /// Category prefix for geofence log lines.
+    ///
+    /// Must stay identical to the Android constant: the Doctor bug report lifts
+    /// geofence activity into its own section by filtering on this literal, so a
+    /// divergence here would silently make that section Android-only.
+    private static let logTag = "[geofence]"
+
+    /// Mirror of `GEOFENCE_EXIT_HYSTERESIS_FRACTION` in the Rust core's
+    /// `geofence_evaluator.rs`. Used for logging only — the Rust evaluator
+    /// remains the single source of truth for the actual decision.
+    private static let exitHysteresisFraction = 0.1
+
+    /// Mirror of `GEOFENCE_MIN_EXIT_HYSTERESIS_METERS` in the Rust core.
+    private static let minExitHysteresisMeters = 20.0
+
     /// High-accuracy mode: track which geofences the device is currently inside.
     private var insideGeofenceIds = Set<String>()
 
@@ -270,18 +285,101 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         return Swift.min(accuracy, Double(max))
     }
 
+    /// One-decimal formatter that avoids locale-dependent decimal separators.
+    private func fmt1(_ value: Double) -> String {
+        String(format: "%.1f", value)
+    }
+
+    /// Exit-hysteresis band the Rust evaluator applies for `radius`. Logging only.
+    private func exitHysteresisMeters(_ radius: Double) -> Double {
+        Swift.max(radius * GeofenceManager.exitHysteresisFraction,
+                  GeofenceManager.minExitHysteresisMeters)
+    }
+
+    /// Builds the `[geofence]`-tagged decision trace logged alongside every
+    /// transition. Mirrors the Android implementation field-for-field so a bug
+    /// report reads identically on both platforms and the Doctor section's
+    /// `[geofence]` filter works cross-platform.
+    ///
+    /// Carries every input to the accuracy-aware EXIT test (#274/#276) so a
+    /// drift-induced EXIT can be told apart from a genuine one without a
+    /// reproduction. Deliberately excludes absolute coordinates.
+    private func transitionTrace(
+        action: String,
+        identifier: String,
+        gfMap: [String: Any]?,
+        latitude: Double,
+        longitude: Double,
+        accuracyRaw: Double,
+        accuracyEffective: Double
+    ) -> String {
+        var parts = ["\(GeofenceManager.logTag) \(action) \(identifier)"]
+
+        let vertices = gfMap?["vertices"] as? [[Double]]
+        let isPolygon = (vertices?.count ?? 0) >= 3
+
+        if isPolygon {
+            // Polygon membership is a point-in-polygon test; radius, hysteresis
+            // and accuracy gating do not participate.
+            parts.append("shape=polygon vertices=\(vertices?.count ?? 0)")
+        } else if let gfLat = gfMap?["latitude"] as? Double,
+                  let gfLng = gfMap?["longitude"] as? Double,
+                  let radius = gfMap?["radius"] as? Double, radius > 0 {
+            // Same Rust haversine the evaluator uses, so the logged distance
+            // cannot disagree with the decision.
+            let distance = haversine(lat1: latitude, lon1: longitude, lat2: gfLat, lon2: gfLng)
+            let buffer = exitHysteresisMeters(radius)
+            let threshold = radius + buffer
+            parts.append("dist=\(fmt1(distance))")
+            parts.append("radius=\(fmt1(radius))")
+            parts.append("buffer=\(fmt1(buffer))")
+            parts.append("thr=\(fmt1(threshold))")
+            parts.append("margin=\(fmt1(distance - accuracyEffective - threshold))")
+        }
+
+        parts.append("accRaw=\(fmt1(accuracyRaw))")
+        parts.append("accEff=\(fmt1(accuracyEffective))")
+        parts.append("exitAccuracyMax=\(configManager.getGeofenceExitAccuracyMax())")
+
+        if accuracyRaw <= 0 {
+            // CoreLocation reports a negative horizontalAccuracy when the fix
+            // has no valid accuracy, and the evaluator maps any non-positive
+            // value to "gating disabled". Unknown uncertainty therefore behaves
+            // as zero uncertainty — flag it, because it makes a false EXIT far
+            // more likely and is invisible otherwise.
+            parts.append("accuracyInvalid=true gatingDisabled=true")
+        } else if accuracyEffective < accuracyRaw {
+            // The #276 clamp bound on this fix, weakening drift immunity
+            // relative to the -1 default.
+            parts.append("clampApplied=true")
+        }
+        return parts.joined(separator: " ")
+    }
+
     public func evaluateHighAccuracyProximity(latitude: Double, longitude: Double, accuracy: Double = 0.0) {
         let allGeofences = getCachedGeofences()
         if allGeofences.isEmpty { return }
 
+        let effectiveAccuracy = effectiveExitAccuracy(accuracy)
         let coreGeofences = allGeofences.map { mapToCoreGeofence($0) }
         let transitions = geofenceEvaluator.evaluateProximity(
             latitude: latitude,
             longitude: longitude,
-            accuracy: effectiveExitAccuracy(accuracy),
+            accuracy: effectiveAccuracy,
             geofences: coreGeofences
         )
-        if transitions.isEmpty { return }
+        if transitions.isEmpty {
+            if effectiveAccuracy < accuracy {
+                // No transition, but the clamp bound on this fix. Surfaces a
+                // mis-set geofenceExitAccuracyMax without waiting for a crossing.
+                TraceletLog.debug(
+                    "\(GeofenceManager.logTag) no transition — accRaw=\(fmt1(accuracy)) " +
+                    "accEff=\(fmt1(effectiveAccuracy)) clampApplied=true " +
+                    "exitAccuracyMax=\(configManager.getGeofenceExitAccuracyMax())"
+                )
+            }
+            return
+        }
 
         var on: [[String: Any]] = []
         var off: [[String: Any]] = []
@@ -291,6 +389,22 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
 
         for t in transitions {
             let gfMap = geofenceMapById[t.identifier]
+
+            // Logged at INFO, not DEBUG: production apps run at INFO, and a
+            // false EXIT is reported days later by an end user. Volume is a
+            // handful of lines per day, and the line carries no coordinates.
+            TraceletLog.info(
+                transitionTrace(
+                    action: t.action,
+                    identifier: t.identifier,
+                    gfMap: gfMap,
+                    latitude: latitude,
+                    longitude: longitude,
+                    accuracyRaw: accuracy,
+                    accuracyEffective: effectiveAccuracy
+                )
+            )
+
             let eventData: [String: Any] = [
                 "uuid": UUID().uuidString,
                 "event": "geofence",
@@ -399,7 +513,17 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
             eventDispatcher.sendGeofencesChange(["on": on, "off": off])
         }
 
-        TraceletLog.debug("[Tracelet] Proximity update: \(activeGeofenceIds.count) active, +\(toAdd.count)/-\(toRemove.count)")
+        // Note for triage: this emits geofencesChange on/off for *monitoring*
+        // scope, not ENTER/EXIT. An `off` here means the region left the
+        // geofenceProximityRadius window and was unregistered — it is not a
+        // boundary crossing and is deliberately not accuracy-gated. Apps that
+        // treat geofencesChange.off as an exit will see spurious "exits" from a
+        // single far-drifting fix, so make the distinction explicit.
+        TraceletLog.debug(
+            "\(GeofenceManager.logTag) proximity scope update (not ENTER/EXIT): " +
+            "\(activeGeofenceIds.count) active, +\(toAdd.count)/-\(toRemove.count), " +
+            "proximityRadius=\(proximityRadius)m"
+        )
     }
 
     /// Clear high-accuracy tracking state.
@@ -535,6 +659,14 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
 
         let geofenceData = getGeofence(region.identifier)
         let location = locationManager.location
+
+        // The OS region-monitoring path has no accuracy gating — CoreLocation
+        // owns the debouncing. Log it distinctly so a bug report makes clear
+        // which path produced the transition.
+        TraceletLog.info(
+            "\(GeofenceManager.logTag) \(action) \(region.identifier) source=os " +
+            "radius=\(fmt1(region.radius)) (no accuracy gating on this path)"
+        )
 
         let lat = location?.coordinate.latitude ?? region.center.latitude
         let lng = location?.coordinate.longitude ?? region.center.longitude

@@ -451,7 +451,15 @@ class GeofenceManager(
             .append(" accEff=").append(fmt1(accuracyEffective))
             .append(" exitAccuracyMax=").append(config.getGeofenceExitAccuracyMax())
 
-        if (accuracyEffective < accuracyRaw) {
+        if (accuracyRaw <= 0.0) {
+            // Android returns 0.0f from Location.getAccuracy() when the fix
+            // carries no accuracy, and the evaluator maps any non-positive value
+            // to "gating disabled". Unknown uncertainty therefore behaves as zero
+            // uncertainty — flag it, because it makes a false EXIT far more
+            // likely and is otherwise invisible. Mirrors the iOS trace, where
+            // CoreLocation reports a negative horizontalAccuracy instead.
+            builder.append(" accuracyInvalid=true gatingDisabled=true")
+        } else if (accuracyEffective < accuracyRaw) {
             // The #276 clamp actually bound on this fix, weakening drift
             // immunity relative to the -1 default. Worth calling out explicitly.
             builder.append(" clampApplied=true")
