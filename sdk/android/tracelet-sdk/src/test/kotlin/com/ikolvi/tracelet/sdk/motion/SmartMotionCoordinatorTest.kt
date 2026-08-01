@@ -116,3 +116,94 @@ class SmartMotionCoordinatorTest {
         verify(locationEngine, times(1)).start()
     }
 }
+
+/**
+ * Regression tests for the accelerometer flag being unseeded at start().
+ *
+ * The Rust coordinator initialises `is_accel_moving = false` and
+ * `on_accel_state_change()` early-returns when the flag is unchanged. Starting a
+ * session in MOVING therefore left the accelerometer input inert: the
+ * stop-timeout would fire, report stationary, and the coordinator would see no
+ * change and emit no action — so the accelerometer could never contribute to a
+ * stationary decision until something had first declared moving.
+ *
+ * `TraceletSdk.start()` now seeds the flag when it starts in MOVING. These tests
+ * pin both halves of that behaviour.
+ */
+@RunWith(RobolectricTestRunner::class)
+class SmartMotionCoordinatorAccelSeedTest {
+    private lateinit var config: ConfigManager
+    private lateinit var state: StateManager
+    private lateinit var locationEngine: LocationEngine
+    private lateinit var coordinator: SmartMotionCoordinator
+
+    @Before
+    fun setUp() {
+        val context = RuntimeEnvironment.getApplication()
+        config = ConfigManager(context)
+        state = StateManager(context)
+        state.isMoving = true
+        state.trackingMode = TrackingMode.CONTINUOUS
+        locationEngine = mock(LocationEngine::class.java)
+        coordinator = SmartMotionCoordinator(
+            context,
+            config,
+            state,
+            mock(TraceletEventSender::class.java),
+            locationEngine,
+            mock(MotionDetector::class.java),
+            mock(com.ikolvi.tracelet.sdk.util.TraceletLogger::class.java),
+        )
+        coordinator.syncCurrentMode()
+    }
+
+    @Test
+    fun `unseeded accel flag makes a stationary accel report a no-op`() {
+        // Speed says stationary, accel reports stationary — but the flag was never
+        // true, so the coordinator sees no transition at all.
+        coordinator.onSpeedStateChange(false)
+        val action = coordinator.onAccelStateChange(false)
+
+        assertEquals(uniffi.tracelet_core.CoordinatorAction.NONE, action)
+    }
+
+    @Test
+    fun `seeding the accel flag lets the accelerometer drive a stationary switch`() {
+        // Walking speed: above the 0.15 m/s hand-tremor cutoff, so onSpeedStateChange
+        // trusts the accelerometer instead of overriding it to false. That leaves the
+        // accelerometer as the last input to settle — the exact case that was inert
+        // when the flag started at false.
+        val walking = android.location.Location("test").apply { speed = 0.5f }
+        org.mockito.Mockito.`when`(locationEngine.getLastLocation()).thenReturn(walking)
+
+        // What start() now does when it starts in MOVING.
+        coordinator.onAccelStateChange(true)
+        assertTrue(coordinator.isAccelMoving)
+
+        // Speed settles first; accel still reports moving, so nothing changes yet.
+        coordinator.onSpeedStateChange(false)
+        assertTrue(state.isMoving)
+
+        // Now the accelerometer's stop-timeout fires. With the flag seeded this is a
+        // real transition, so both inputs agree and the pace finally changes.
+        val action = coordinator.onAccelStateChange(false)
+
+        assertEquals(
+            uniffi.tracelet_core.CoordinatorAction.SWITCH_TO_STATIONARY_PERIODIC,
+            action,
+        )
+        assertFalse(state.isMoving)
+    }
+
+    @Test
+    fun `seeded accel alone does not force stationary while speed still moves`() {
+        coordinator.onAccelStateChange(true)
+
+        // Accel goes still but GPS speed still reports motion: both inputs must
+        // agree before the pace changes.
+        val action = coordinator.onAccelStateChange(false)
+
+        assertEquals(uniffi.tracelet_core.CoordinatorAction.NONE, action)
+        assertTrue(state.isMoving)
+    }
+}

@@ -437,6 +437,15 @@ public final class TraceletSdk {
             startSpeedMotionManager(forceMoving: shouldForceMoving)
         } else if motionMode == .smart {
             startSpeedMotionManager(forceMoving: shouldForceMoving)
+            // Seed the coordinator's accelerometer flag to the state we are
+            // actually starting in. The Rust coordinator initialises
+            // is_accel_moving = false and on_accel_state_change() early-returns on
+            // an unchanged flag, so starting in MOVING left the accel input inert:
+            // the stop-timeout would fire, report stationary, and the coordinator
+            // would see no change and emit no action.
+            if stateManager.isMoving {
+                smartMotionCoordinator.onAccelStateChange(isMoving: true)
+            }
             motionDetector.start()
         } else {
             motionDetector.start()

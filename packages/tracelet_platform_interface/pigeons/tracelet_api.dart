@@ -375,9 +375,6 @@ class TlMotionConfig {
     required this.stopOnStationary,
     required this.stationaryRadius,
     required this.useSignificantChangesOnly,
-    required this.shakeThreshold,
-    required this.stillThreshold,
-    required this.stillSampleCount,
     required this.motionDetectionMode,
     required this.speedMovingThreshold,
     required this.speedStationaryDelay,
@@ -386,6 +383,15 @@ class TlMotionConfig {
     required this.stationaryPeriodicAccuracy,
     required this.speedWakeConfirmCount,
     this.activityTypes,
+    // Sensor thresholds are optional: null means "use the platform's own tuned
+    // default". A single cross-platform scalar cannot express both platforms'
+    // tuning (Android compares raw m/s² residuals at ~5 Hz, iOS clean
+    // gravity-subtracted g at 10 Hz), so sending Dart's defaults unconditionally
+    // silently overrode the iOS-tuned values for every app that set any motion
+    // field.
+    this.shakeThreshold,
+    this.stillThreshold,
+    this.stillSampleCount,
   });
   final int stopTimeout;
   final int motionTriggerDelay;
@@ -399,9 +405,9 @@ class TlMotionConfig {
   final List<TlLocationActivityType?>? activityTypes;
   final double stationaryRadius;
   final bool useSignificantChangesOnly;
-  final double shakeThreshold;
-  final double stillThreshold;
-  final int stillSampleCount;
+  final double? shakeThreshold;
+  final double? stillThreshold;
+  final int? stillSampleCount;
   final TlMotionDetectionMode motionDetectionMode;
   final double speedMovingThreshold;
   final int speedStationaryDelay;

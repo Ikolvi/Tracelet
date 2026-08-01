@@ -1144,9 +1144,9 @@ struct TlMotionConfig: Hashable {
   var activityTypes: [TlLocationActivityType?]? = nil
   var stationaryRadius: Double
   var useSignificantChangesOnly: Bool
-  var shakeThreshold: Double
-  var stillThreshold: Double
-  var stillSampleCount: Int64
+  var shakeThreshold: Double? = nil
+  var stillThreshold: Double? = nil
+  var stillSampleCount: Int64? = nil
   var motionDetectionMode: TlMotionDetectionMode
   var speedMovingThreshold: Double
   var speedStationaryDelay: Int64
@@ -1170,9 +1170,9 @@ struct TlMotionConfig: Hashable {
     let activityTypes: [TlLocationActivityType?]? = nilOrValue(pigeonVar_list[9])
     let stationaryRadius = pigeonVar_list[10] as! Double
     let useSignificantChangesOnly = pigeonVar_list[11] as! Bool
-    let shakeThreshold = pigeonVar_list[12] as! Double
-    let stillThreshold = pigeonVar_list[13] as! Double
-    let stillSampleCount = pigeonVar_list[14] as! Int64
+    let shakeThreshold: Double? = nilOrValue(pigeonVar_list[12])
+    let stillThreshold: Double? = nilOrValue(pigeonVar_list[13])
+    let stillSampleCount: Int64? = nilOrValue(pigeonVar_list[14])
     let motionDetectionMode = pigeonVar_list[15] as! TlMotionDetectionMode
     let speedMovingThreshold = pigeonVar_list[16] as! Double
     let speedStationaryDelay = pigeonVar_list[17] as! Int64

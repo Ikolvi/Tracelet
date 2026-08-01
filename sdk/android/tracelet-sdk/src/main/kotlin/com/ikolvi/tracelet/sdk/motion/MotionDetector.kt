@@ -591,7 +591,18 @@ class MotionDetector(
             logger.debug("declareStationary() SKIPPED — already stationary")
             return
         }
-        state.isMoving = false
+        // In SMART mode the accelerometer is only one of two inputs: the
+        // coordinator ANDs it with the GPS-speed machine and owns isMoving. Writing
+        // it here would claim STATIONARY on the accelerometer's word alone, leaving
+        // getState().isMoving disagreeing with the last motionchange event whenever
+        // the coordinator decides to stay continuous.
+        val smartMode = config.getMotionDetectionMode() ==
+            com.ikolvi.tracelet.sdk.model.MotionDetectionMode.SMART
+        if (smartMode) {
+            logger.debug("declareStationary() — SMART mode: leaving isMoving to the coordinator")
+        } else {
+            state.isMoving = false
+        }
         
         // Stop the stillness monitor before we transition to stationary state
         stopAccelerometerMonitoring()

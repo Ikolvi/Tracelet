@@ -47,34 +47,13 @@ public final class MotionDetector {
     private var currentActivity: String = "unknown"
     private var currentConfidence: Int = -1
 
-    /// Consecutive low-acceleration samples before triggering stillness.
-    /// At 10Hz (accelerometer update interval), 50 samples ≈ 5 seconds.
-    ///
-    /// Android uses 25 samples at ~5 Hz (SENSOR_DELAY_NORMAL) ≈ 5 seconds.
-    /// Both platforms target a ~5 second dwell window to balance fast
-    /// stationary detection with avoiding false positives from brief stops.
-    ///
-    /// - SeeAlso: Android `MotionDetector.STILL_SAMPLE_COUNT` (25 at ~5 Hz ≈ 5s)
-    private static let stillSampleCount = 50
-
-    /// Acceleration magnitude (gravity-subtracted) below which a sample is "still".
-    ///
-    /// Lower than the Android equivalent (0.4) because iOS `CMMotionManager`
-    /// reports gravity-subtracted user-acceleration directly with higher
-    /// precision. Android uses raw accelerometer with gravity included,
-    /// producing noisier residuals after gravity subtraction.
-    ///
-    /// - SeeAlso: Android `MotionDetector.STILL_THRESHOLD` (0.4)
-    private static let stillThreshold: Double = 0.15
-
-    /// Acceleration magnitude (gravity-subtracted) above which a sample is "shake".
-    ///
-    /// Lower than the Android equivalent (2.5) for the same reason:
-    /// CoreMotion provides clean gravity-subtracted values, so a smaller
-    /// threshold reliably detects movement without false positives.
-    ///
-    /// - SeeAlso: Android `MotionDetector.SHAKE_THRESHOLD` (2.5)
-    private static let shakeThreshold: Double = 0.35
+    // NOTE: the iOS-tuned stillness/shake thresholds and sample count are NOT
+    // declared here. They used to be `private static let` constants that nothing
+    // referenced — the live values come from `ConfigManager.getStillThreshold()`,
+    // `getShakeThreshold()` and `getStillSampleCount()`, whose fallbacks carry the
+    // tuning (and whose doc comments now carry the rationale). Keeping a second,
+    // unreferenced copy here meant the documented iOS defaults (0.15 g / 0.35 g /
+    // 50 samples) silently disagreed with the effective ones.
 
     /// Accel-only STATIONARY duty cycle (#130): sample a short burst, then idle.
     /// Burst long enough to catch sustained motion; period bounds resume latency.
@@ -663,7 +642,16 @@ public final class MotionDetector {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             guard self.stateManager.isMoving != isMoving else { return }
-            self.stateManager.isMoving = isMoving
+            // In SMART mode the accelerometer is only one of two inputs: the
+            // coordinator combines it with the GPS-speed machine and owns
+            // isMoving. Writing it here would claim the transition on the
+            // accelerometer's word alone, leaving the reported state disagreeing
+            // with the last motionchange event whenever the coordinator decides
+            // otherwise. TraceletSdk.switchTo*Force() sets it once the
+            // coordinator has actually decided.
+            if self.configManager.getMotionDetectionMode() != .smart {
+                self.stateManager.isMoving = isMoving
+            }
             self.onMotionStateChanged?(isMoving)
 
             if !isMoving && self.configManager.getStopOnStationary() {
