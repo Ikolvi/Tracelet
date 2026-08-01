@@ -97,27 +97,83 @@ interface TraceletServicesProvider {
     fun getEventExtractor(): TraceletEventExtractor
 }
 
+/**
+ * The three independent questions the Play services availability probe asks,
+ * extracted behind an interface so the decision policy in
+ * [TraceletServices.resolveGmsAvailability] can be exercised without a real GMS
+ * install — including simulating a minified release build, where the reflective
+ * lookup throws even though Play services is perfectly healthy.
+ */
+internal interface GmsProbe {
+    /** Whether the GMS location classes are linked into this APK. */
+    fun locationClassesLinked(): Boolean
+
+    /**
+     * The `GoogleApiAvailability.isGooglePlayServicesAvailable` result code
+     * (`0` == `ConnectionResult.SUCCESS`).
+     *
+     * Throws when the probe itself cannot run. Most importantly this throws
+     * [NoSuchMethodException] in a minified build where R8 has renamed the
+     * reflected method, which says nothing about whether GMS is present.
+     */
+    fun availabilityResultCode(context: Context): Int
+
+    /**
+     * Whether the Play services package is installed and enabled, asked
+     * directly of the OS package manager.
+     *
+     * Immune to R8 because it never reflects into our own shrunk code, which
+     * makes it a trustworthy second opinion when [availabilityResultCode] fails.
+     */
+    fun playServicesPackageEnabled(context: Context): Boolean
+}
+
+/** Production [GmsProbe] backed by real class loading, reflection and the package manager. */
+internal object DefaultGmsProbe : GmsProbe {
+    private const val GMS_PACKAGE = "com.google.android.gms"
+
+    override fun locationClassesLinked(): Boolean = try {
+        Class.forName("com.google.android.gms.location.LocationServices")
+        true
+    } catch (e: Throwable) {
+        false
+    }
+
+    override fun availabilityResultCode(context: Context): Int {
+        // Reflection (rather than a typed call) keeps play-services-base a soft
+        // dependency: the SDK ships it compileOnly, so a direct reference would
+        // risk NoClassDefFoundError in apps that omit GMS entirely.
+        val apiAvailabilityClass = Class.forName("com.google.android.gms.common.GoogleApiAvailability")
+        val getInstanceMethod = apiAvailabilityClass.getMethod("getInstance")
+        val availabilityInstance = getInstanceMethod.invoke(null)
+        val isAvailableMethod = apiAvailabilityClass.getMethod("isGooglePlayServicesAvailable", Context::class.java)
+        return isAvailableMethod.invoke(availabilityInstance, context) as Int
+    }
+
+    override fun playServicesPackageEnabled(context: Context): Boolean = try {
+        context.packageManager.getApplicationInfo(GMS_PACKAGE, 0).enabled
+    } catch (e: Throwable) {
+        false
+    }
+}
+
 object TraceletServices {
     private var provider: TraceletServicesProvider? = null
 
     /**
-     * Checks if GMS classes are compiled in AND if GMS is actually 
-     * active on the physical device at runtime.
+     * Decides whether the Play services location stack should be used.
+     *
+     * Split out from [isGmsAvailable] so the policy is unit-testable against a
+     * fake [GmsProbe].
      */
-    fun isGmsAvailable(context: Context): Boolean {
+    internal fun resolveGmsAvailability(context: Context, probe: GmsProbe): Boolean {
         return try {
             // 1. Verify GMS SDK classes are compiled
-            Class.forName("com.google.android.gms.location.LocationServices")
-            
-            // 2. Verify GMS framework is active on the device using Reflection 
-            // to avoid NoClassDefFoundError if play-services-base is excluded
-            val apiAvailabilityClass = Class.forName("com.google.android.gms.common.GoogleApiAvailability")
-            val getInstanceMethod = apiAvailabilityClass.getMethod("getInstance")
-            val availabilityInstance = getInstanceMethod.invoke(null)
-            
-            val isAvailableMethod = apiAvailabilityClass.getMethod("isGooglePlayServicesAvailable", Context::class.java)
-            val resultCode = isAvailableMethod.invoke(availabilityInstance, context) as Int
-            
+            if (!probe.locationClassesLinked()) {
+                throw ClassNotFoundException("com.google.android.gms.location.LocationServices")
+            }
+            // 2. Verify GMS framework is active on the device
+            val resultCode = probe.availabilityResultCode(context)
             TraceletLog.debug("GooglePlayServices availability check resultCode: $resultCode")
             // ConnectionResult.SUCCESS is 0
             resultCode == 0
@@ -126,6 +182,12 @@ object TraceletServices {
             false
         }
     }
+
+    /**
+     * Checks if GMS classes are compiled in AND if GMS is actually 
+     * active on the physical device at runtime.
+     */
+    fun isGmsAvailable(context: Context): Boolean = resolveGmsAvailability(context, DefaultGmsProbe)
 
     fun getInstance(context: Context): TraceletServicesProvider = getProvider(context)
 
