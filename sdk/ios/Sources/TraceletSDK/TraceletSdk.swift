@@ -49,6 +49,18 @@ public final class TraceletSdk {
 
     public var syncProvider: SyncProvider? = nil {
         didSet {
+            // Replacing a provider must detach the old one (parity with Android's
+            // registerSyncProvider, #204/#286). Without this, a superseded
+            // provider — e.g. the NativeSyncProvider created during a background
+            // boot, or a sink left behind by an earlier engine — stayed
+            // subscribed and independently debounced + POSTed the same batch.
+            if let previous = oldValue,
+               (previous as AnyObject) !== (syncProvider as AnyObject?) {
+                previous.cancelPendingSync()
+                if let previousSink = previous as? LocationDataSink {
+                    locationEngine?.unregisterSink(previousSink)
+                }
+            }
             if let sink = syncProvider as? LocationDataSink {
                 locationEngine?.registerSink(sink)
             }

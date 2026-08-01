@@ -306,7 +306,58 @@ class TraceletSyncSink(private val sdk: TraceletSdk) : LocationDataSink, Tracele
 /** TraceletSyncPlugin */
 class TraceletSyncPlugin : FlutterPlugin, MethodCallHandler {
     private lateinit var channel: MethodChannel
-    private var syncSink: TraceletSyncSink? = null
+
+    companion object {
+        /**
+         * The one and only sink for this process (#286).
+         *
+         * `onAttachedToEngine` used to build a NEW [TraceletSyncSink] for every
+         * `FlutterEngine` that attached, and `onDetachedFromEngine` never tore it
+         * down. Hosts that spawn secondary engines — `workmanager_android` creates
+         * one per task, plus headless services and engine groups — therefore
+         * accumulated sinks for the lifetime of the process. Each surviving sink
+         * owns its own [CoroutineScope], [Mutex] and `SyncManager`, so the
+         * per-sink guards (`syncJob?.isActive`, `syncMutex`) could no longer
+         * serialize anything: one persisted location fanned out into N blocking
+         * auto-syncs, each pinning 1–2 threads, which surfaced in production as
+         * `OutOfMemoryError: pthread_create failed` and heap exhaustion (plus
+         * duplicate points server-side and racing `clearLocationsUpTo` calls).
+         *
+         * [TraceletSdk] is a process singleton and exactly one sync provider can
+         * be active, so the sink is created on first attach and reused by every
+         * later engine. That keeps the concurrency guards meaningful no matter how
+         * many engines come and go.
+         */
+        @Volatile
+        private var sharedSink: TraceletSyncSink? = null
+
+        private val sinkLock = Any()
+
+        /**
+         * Returns the process-wide sink, creating it on first use.
+         *
+         * Double-checked locking: attaches happen on each engine's platform
+         * thread, and a background engine can attach while the UI engine is
+         * still attaching.
+         */
+        @JvmStatic
+        internal fun obtainSharedSink(sdk: TraceletSdk): TraceletSyncSink {
+            sharedSink?.let { return it }
+            return synchronized(sinkLock) {
+                sharedSink ?: TraceletSyncSink(sdk).also { sharedSink = it }
+            }
+        }
+
+        /** Visible for tests: the current process-wide sink, if one was created. */
+        @JvmStatic
+        internal fun sharedSinkOrNull(): TraceletSyncSink? = sharedSink
+
+        /** Visible for tests: forget the process-wide sink between cases. */
+        @JvmStatic
+        internal fun resetSharedSinkForTesting() {
+            synchronized(sinkLock) { sharedSink = null }
+        }
+    }
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(binding.binaryMessenger, "tracelet_sync")
@@ -315,12 +366,21 @@ class TraceletSyncPlugin : FlutterPlugin, MethodCallHandler {
         try {
             val context = binding.applicationContext
             val traceletSdk = TraceletSdk.getInstance(context)
-            
-            val sink = TraceletSyncSink(traceletSdk)
+
+            val isFirstAttach = sharedSinkOrNull() == null
+            val sink = obtainSharedSink(traceletSdk)
+            // Idempotent for the same instance: registerSyncProvider() skips the
+            // cancel/unregister path when the provider is unchanged, and both
+            // LocationEngine.registerSink() calls dedupe.
             traceletSdk.registerSyncProvider(sink)
-            syncSink = sink
-            
-            traceletSdk.logger.info("Sync sink registered!")
+
+            if (isFirstAttach) {
+                traceletSdk.logger.info("Sync sink registered!")
+            } else {
+                traceletSdk.logger.info(
+                    "Sync sink reused for an additional FlutterEngine (process-wide, #286)",
+                )
+            }
         } catch (e: Exception) {
             val ctx = binding.applicationContext
             TraceletSdk.getInstance(ctx).logger.error("Failed to init sync engine: ${e.message}")
@@ -337,5 +397,11 @@ class TraceletSyncPlugin : FlutterPlugin, MethodCallHandler {
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel.setMethodCallHandler(null)
+        // The sink is deliberately NOT cancelled here. It is process-wide now, so
+        // there is nothing to accumulate, and native/headless tracking keeps
+        // persisting locations after an engine (often a short-lived background
+        // one) goes away — tearing the sink down would silently stop auto-sync for
+        // the rest of the process. TraceletSdk.stop() still calls
+        // cancelPendingSync() when the user stops tracking (#213).
     }
 }
