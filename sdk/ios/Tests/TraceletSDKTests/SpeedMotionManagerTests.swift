@@ -72,15 +72,66 @@ final class SpeedMotionManagerTests: XCTestCase {
         XCTAssertEqual(event?["trackingMode"], "0")
     }
 
-    func testSlowingReturnsToMovingWhenSpeedClimbs() {
+    func testSlowingReturnsToMovingWhenSpeedStaysHigh() {
         makeManager(stationaryDelaySeconds: 60)
 
         manager.onLocation(speed: 5.0)
         manager.onLocation(speed: 0.5)
         XCTAssertEqual(manager.state, .slowing)
 
-        manager.onLocation(speed: 3.0)
+        // Sustained motion is required — see SpeedMotionManager.speedAbortFixCount.
+        for _ in 0..<SpeedMotionManager.speedAbortFixCount {
+            manager.onLocation(speed: 3.0)
+        }
         XCTAssertEqual(manager.state, .moving)
+    }
+
+    // MARK: - GPS speed noise must not restart the SLOWING countdown
+
+    /// A still device reports a stream of `0.00 m/s` fixes with the occasional
+    /// blip above the threshold (observed on-device: `1.56 m/s`). Cancelling the
+    /// countdown on one such fix restarted the whole `speedStationaryDelay`
+    /// window, so the device could stay MOVING indefinitely (#286 follow-up).
+    func testSingleHighSpeedBlipDoesNotCancelSlowing() {
+        makeManager(stationaryDelaySeconds: 60)
+
+        manager.onLocation(speed: 5.0)
+        manager.onLocation(speed: 0.0)
+        XCTAssertEqual(manager.state, .slowing)
+
+        manager.onLocation(speed: 1.56)
+        XCTAssertEqual(manager.state, .slowing, "one high fix is GPS noise")
+
+        manager.onLocation(speed: 1.56)
+        XCTAssertEqual(manager.state, .slowing, "two high fixes are still noise")
+    }
+
+    func testLowFixResetsTheNoiseStreak() {
+        makeManager(stationaryDelaySeconds: 60)
+
+        manager.onLocation(speed: 5.0)
+        manager.onLocation(speed: 0.0)
+        // Two blips, a quiet fix, two more blips: never `speedAbortFixCount` in a row.
+        manager.onLocation(speed: 1.6)
+        manager.onLocation(speed: 1.6)
+        manager.onLocation(speed: 0.0)
+        manager.onLocation(speed: 1.6)
+        manager.onLocation(speed: 1.6)
+        XCTAssertEqual(manager.state, .slowing)
+    }
+
+    func testCountdownKeepsItsStartTimeAcrossANoiseBlip() {
+        // 0s delay: the fix *after* entering SLOWING trips the elapsed check. If a
+        // blip reset the countdown, the following low fix would not transition.
+        makeManager(stationaryDelaySeconds: 0)
+
+        manager.onLocation(speed: 5.0)
+        manager.onLocation(speed: 0.1)   // enter SLOWING
+        manager.onLocation(speed: 1.56)  // noise — must not restart anything
+        manager.onLocation(speed: 0.1)   // elapsed >= 0 => STATIONARY
+
+        XCTAssertEqual(manager.state, .stationary)
+        XCTAssertTrue(delegate.switchedToStationaryPeriodic)
     }
 
     // MARK: - SLOWING -> STATIONARY

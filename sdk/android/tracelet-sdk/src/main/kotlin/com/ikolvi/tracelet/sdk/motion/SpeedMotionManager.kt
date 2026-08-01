@@ -35,6 +35,26 @@ class SpeedMotionManager(
 ) {
     companion object {
         private const val TAG = "SpeedMotion"
+
+        /**
+         * Consecutive above-threshold fixes required to abandon an in-progress
+         * SLOWING countdown.
+         *
+         * GPS speed is noisy while the device is physically still: a stream of
+         * `0.00 m/s` fixes can contain an isolated blip well above the threshold
+         * (observed: `1.56 m/s` on a phone sitting on a desk). Treating one such
+         * fix as "moving again" cancelled the countdown and restarted it from
+         * zero, so a still device took several `speedStationaryDelay` windows —
+         * or never — to reach STATIONARY, while the accelerometer had already
+         * reported sustained stillness.
+         *
+         * Requiring sustained motion is the same remedy [MotionDetector] applies
+         * to accelerometer noise (`MOTION_ABORT_COUNT`). It is safe because
+         * SLOWING is still *continuous* tracking: delaying the return to MOVING
+         * by a couple of fixes costs no location fidelity, it only stops sensor
+         * noise from stranding the device in the moving state.
+         */
+        private const val SPEED_ABORT_FIX_COUNT = 3
     }
     /**
      * Callback interface for mode switching, implemented by the host
@@ -50,6 +70,13 @@ class SpeedMotionManager(
     private var currentState: SpeedMotionState = SpeedMotionState.MOVING
     private var lowSpeedCount: Int = 0
     private var wakeCount: Int = 0
+
+    /**
+     * Consecutive above-threshold fixes seen while SLOWING — see
+     * [SPEED_ABORT_FIX_COUNT]. Not persisted: an isolated blip must not survive
+     * a process restart.
+     */
+    private var highSpeedCount: Int = 0
 
     // Timing for SLOWING -> STATIONARY countdown
     private var lastFixTime: Long = 0L
@@ -107,6 +134,7 @@ class SpeedMotionManager(
             currentState = SpeedMotionState.MOVING
             lowSpeedCount = 0
             wakeCount = 0
+            highSpeedCount = 0
             state.speedMotionState = currentState
             state.speedLowCount = 0
             state.speedWakeCount = 0
@@ -140,12 +168,14 @@ class SpeedMotionManager(
         if (isMoving) {
             lowSpeedCount = 0
             wakeCount = 0
+            highSpeedCount = 0
             stopSlowingTimer()
             transitionTo(SpeedMotionState.MOVING)
             callback.switchToContinuous()
         } else {
             lowSpeedCount = 0
             wakeCount = 0
+            highSpeedCount = 0
             stopSlowingTimer()
             transitionTo(SpeedMotionState.STATIONARY)
             switchToStationary()
@@ -197,6 +227,7 @@ class SpeedMotionManager(
         if (speed < speedMovingThreshold) {
             TraceletLog.debug("MOVING -> SLOWING (speed=${formatSpeed(speed)} < threshold=$speedMovingThreshold)")
             lowSpeedCount = 1
+            highSpeedCount = 0
             slowingStartTimeMs = SystemClock.elapsedRealtime()
             transitionTo(SpeedMotionState.SLOWING)
             startSlowingTimer()
@@ -242,13 +273,31 @@ class SpeedMotionManager(
 
     private fun onLocationSlowing(speed: Double) {
         if (speed >= speedMovingThreshold) {
-            TraceletLog.debug("SLOWING -> MOVING (speed=${formatSpeed(speed)} >= threshold=$speedMovingThreshold)")
+            highSpeedCount++
+            if (highSpeedCount < SPEED_ABORT_FIX_COUNT) {
+                // Almost certainly GPS noise on a still device. Keep the countdown
+                // running: cancelling it here restarted the whole
+                // speedStationaryDelay window, which could postpone STATIONARY
+                // indefinitely.
+                TraceletLog.debug(
+                    "SLOWING: ignoring high-speed fix $highSpeedCount/$SPEED_ABORT_FIX_COUNT " +
+                        "(speed=${formatSpeed(speed)} >= threshold=$speedMovingThreshold) — countdown continues"
+                )
+                return
+            }
+            TraceletLog.debug(
+                "SLOWING -> MOVING (sustained speed=${formatSpeed(speed)} >= " +
+                    "threshold=$speedMovingThreshold for $highSpeedCount fixes)"
+            )
             lowSpeedCount = 0
+            highSpeedCount = 0
             stopSlowingTimer()
             transitionTo(SpeedMotionState.MOVING)
             return
         }
 
+        // A low fix — any partial high-speed streak was noise.
+        highSpeedCount = 0
         lowSpeedCount++
         state.speedLowCount = lowSpeedCount
 
