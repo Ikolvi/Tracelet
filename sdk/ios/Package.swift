@@ -42,6 +42,10 @@ let package = Package(
                 // #280: pure LocationMapper API (buildLocationMap) — current, not
                 // stale — wired up so the persisted-metadata mapping is covered.
                 "LocationMapperTests.swift",
+                // Geofence transition decision trace. Pins the `[geofence]` tag
+                // and field names that the Doctor bug report filters on, so the
+                // trace cannot silently drift into being Android-only.
+                "GeofenceManagerTransitionLogTests.swift",
             ]
         ),
     ]

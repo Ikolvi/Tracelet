@@ -15,8 +15,20 @@ class TraceletLogger(
 ) {
     var rustDatabase: uniffi.tracelet_core.DatabaseManager? = null
 
+    /** Writes since the last prune. See [logInternal]. */
+    private val writesSincePrune = java.util.concurrent.atomic.AtomicInteger(0)
+
     companion object {
         private const val TAG = "Tracelet"
+
+        /**
+         * Amortization window for log pruning.
+         *
+         * Retention is 500-2000 rows, so letting the table run this many rows
+         * past the limit between prunes is harmless, and it removes a DELETE
+         * from every single log write.
+         */
+        private const val PRUNE_INTERVAL_WRITES = 50
 
         // Log level constants matching Dart LogLevel enum
         const val LEVEL_OFF = 0
@@ -138,8 +150,16 @@ class TraceletLogger(
         try {
             val levelName = levelToString(level)
             rustDatabase?.insertLog(levelName, message, "plugin")
-            // Prune to maintain dynamic limits
-            pruneOldLogs()
+            // Prune to maintain dynamic limits.
+            //
+            // Previously this ran a DELETE on every single log write. The
+            // retention limits are 500-2000 rows, so pruning per write is pure
+            // overhead — amortize it instead. Matters more now that geofence
+            // transitions are logged at INFO.
+            if (writesSincePrune.incrementAndGet() >= PRUNE_INTERVAL_WRITES) {
+                writesSincePrune.set(0)
+                pruneOldLogs()
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to persist log to Rust Database: ${e.message}")
         }
