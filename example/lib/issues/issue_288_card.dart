@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:tracelet/tracelet.dart' as tl;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
 
@@ -42,6 +43,8 @@ class Issue288Card extends StatefulWidget {
 }
 
 class _Issue288CardState extends State<Issue288Card> {
+  static const _debug = MethodChannel('com.tracelet/debug');
+
   String _status = 'Idle';
   bool _running = false;
 
@@ -147,6 +150,17 @@ class _Issue288CardState extends State<Issue288Card> {
       stopwatch.stop();
 
       final elapsed = (stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(1);
+
+      // Defect: MotionDetector used to write isMoving itself in smart mode, where
+      // the coordinator owns it — so the reported state could disagree with the
+      // last event. Whatever the pace ended up as, the two must agree.
+      final finalState = await tl.Tracelet.getState();
+      final ownershipConsistent = reached
+          ? !finalState.isMoving
+          : finalState.isMoving;
+
+      final thresholds = await _effectiveThresholds();
+
       final facts = StringBuffer()
         ..writeln(
           'motionDetectionMode:      ${motion.motionDetectionMode.name}',
@@ -157,16 +171,27 @@ class _Issue288CardState extends State<Issue288Card> {
         ..writeln('SLOWING → MOVING flips:   $slowingToMovingFlips')
         ..writeln('speed machine STATIONARY: $speedReachedStationary')
         ..writeln('pace STATIONARY:          $reached  (after ${elapsed}s)')
+        ..writeln(
+          'getState() agrees w/ event: $ownershipConsistent  '
+          '(isMoving=${finalState.isMoving})',
+        )
         ..writeln()
+        ..writeln(thresholds)
         ..writeln(timeline.join('\n'));
 
       final String verdict;
-      if (reached && slowingToMovingFlips == 0) {
+      if (reached && !ownershipConsistent) {
+        verdict =
+            '🔴 REPRODUCED — the pace reported STATIONARY but getState() still '
+            'says moving. In smart mode the coordinator owns isMoving; something '
+            'is writing it independently again.';
+      } else if (reached && slowingToMovingFlips == 0) {
         verdict =
             '🟢 PASSED — the pace reached STATIONARY after ${elapsed}s with no '
-            'countdown restarts. Isolated GPS speed blips are being absorbed: '
-            'SLOWING now needs three consecutive above-threshold fixes to give '
-            'up, and the countdown keeps its original start time.';
+            'countdown restarts, and getState() agrees with the event. Isolated '
+            'GPS speed blips are being absorbed: SLOWING now needs three '
+            'consecutive above-threshold fixes to give up, and the countdown '
+            'keeps its original start time.';
       } else if (reached && slowingToMovingFlips > 0) {
         verdict =
             '🟠 PASSED LATE — the pace did reach STATIONARY after ${elapsed}s, '
@@ -217,6 +242,98 @@ class _Issue288CardState extends State<Issue288Card> {
     }
   }
 
+  /// Reports what the native SDK is actually using for the sensor thresholds.
+  ///
+  /// Dart's defaults are the Android-tuned numbers and used to be transmitted
+  /// unconditionally, so each platform's own tuned default was unreachable for
+  /// any app that configured *any* motion field. The example sets
+  /// `shakeThreshold: 2` explicitly and leaves the other two alone, so this is a
+  /// direct check of both halves: the explicit value must be honoured, the unset
+  /// ones must fall back to the platform's tuning.
+  Future<String> _effectiveThresholds() async {
+    try {
+      final res = await _debug.invokeMapMethod<String, dynamic>(
+        'debugIssue288EffectiveThresholds',
+      );
+      if (res == null) return 'effective thresholds: unavailable\n';
+
+      final unit = res['unit'];
+      final motion = tl.Tracelet.activeConfig.motion;
+      final shake = (res['shakeThreshold'] as num?)?.toDouble();
+      final still = (res['stillThreshold'] as num?)?.toDouble();
+      final count = res['stillSampleCount'] as int?;
+      final tunedShake = (res['tunedShakeThreshold'] as num?)?.toDouble();
+      final tunedStill = (res['tunedStillThreshold'] as num?)?.toDouble();
+      final tunedCount = res['tunedStillSampleCount'] as int?;
+
+      String line(
+        String name,
+        Object? effective,
+        Object? tuned,
+        bool explicit,
+      ) {
+        final String note;
+        if (explicit) {
+          note = 'app-set (honoured)';
+        } else if (effective == tuned) {
+          note = 'platform default ✓';
+        } else {
+          note = 'NOT the platform default ($tuned) ✗';
+        }
+        return '  $name: $effective $unit — $note';
+      }
+
+      final buffer = StringBuffer()
+        ..writeln('effective native thresholds (${res['platform']}):')
+        ..writeln(
+          line(
+            'shakeThreshold ',
+            shake,
+            tunedShake,
+            motion.hasExplicitShakeThreshold,
+          ),
+        )
+        ..writeln(
+          line(
+            'stillThreshold ',
+            still,
+            tunedStill,
+            motion.hasExplicitStillThreshold,
+          ),
+        )
+        ..writeln(
+          line(
+            'stillSampleCount',
+            count,
+            tunedCount,
+            motion.hasExplicitStillSampleCount,
+          ),
+        );
+
+      final leaked = <String>[
+        if (!motion.hasExplicitStillThreshold && still != tunedStill)
+          'stillThreshold',
+        if (!motion.hasExplicitStillSampleCount && count != tunedCount)
+          'stillSampleCount',
+        if (!motion.hasExplicitShakeThreshold && shake != tunedShake)
+          'shakeThreshold',
+      ];
+      if (leaked.isNotEmpty) {
+        buffer.writeln(
+          '  ⚠️ ${leaked.join(", ")} was never set in Dart but the native side '
+          'is not using its own default — a cross-platform scalar is still being '
+          'pushed down (#288).',
+        );
+      }
+      return buffer.toString();
+    } on PlatformException catch (e) {
+      return 'effective thresholds: ${e.code} — ${e.message}\n';
+    } on MissingPluginException {
+      return 'effective thresholds: no debug handler in this build '
+          '(rebuild the example app)\n';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return IssueCardShell(
@@ -231,9 +348,12 @@ class _Issue288CardState extends State<Issue288Card> {
           'accelerometer flag was never seeded so the stop-timeout could not '
           'compensate, and on Android a stale coordinator mode could block the '
           'switch entirely. This card watches the real speed machine and pace '
-          'events and times how long a still device takes to reach STATIONARY. '
-          'Start tracking first, put the phone on a desk, and do not touch it '
-          'while it runs.',
+          'events and times how long a still device takes to reach STATIONARY, '
+          'then checks that getState() agrees with the event (the coordinator '
+          'owns isMoving in smart mode) and reports the thresholds the native '
+          'SDK is actually using, so an unset one must show its platform '
+          'default. Start tracking first, put the phone on a desk, and do not '
+          'touch it while it runs.',
       status: _status,
       running: _running,
       runLabel: 'Verify',

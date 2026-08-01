@@ -33,6 +33,37 @@ import TraceletSDK
                  "returnType": "n/a",
                  "gated": true
              ])
+          } else if call.method == "debugIssue288EffectiveThresholds" {
+             // #288: report what the native SDK is *actually* using for the sensor
+             // thresholds. Dart used to transmit its own defaults — the
+             // Android-tuned numbers — for every app that configured any motion
+             // field, so iOS never saw its own tuning: 0.4 m/s² arrived as 0.04 g
+             // against an intended 0.15 g. Unset values must now fall back to these.
+             #if canImport(TraceletSDK)
+             if let config = TraceletSdk.shared.configManager {
+                result([
+                    "platform": "ios",
+                    // iOS compares gravity-subtracted user-acceleration in g at 10 Hz.
+                    "unit": "g",
+                    "shakeThreshold": config.getShakeThreshold(),
+                    "stillThreshold": config.getStillThreshold(),
+                    "stillSampleCount": config.getStillSampleCount(),
+                    "tunedShakeThreshold": 0.35,
+                    "tunedStillThreshold": 0.15,
+                    "tunedStillSampleCount": 50,
+                ])
+             } else {
+                result(FlutterError(
+                    code: "ISSUE_288_UNAVAILABLE",
+                    message: "TraceletSdk.configManager is nil — call ready() first.",
+                    details: nil))
+             }
+             #else
+             result(FlutterError(
+                code: "ISSUE_288_UNAVAILABLE",
+                message: "TraceletSDK is not importable from Runner in this build.",
+                details: nil))
+             #endif
           } else if call.method == "debugIssue286SyncSinkAccumulation" {
              let requested = (call.arguments as? [String: Any])?["engines"] as? Int ?? 2
              AppDelegate.probeIssue286(engines: min(max(requested, 1), 4), result: result)

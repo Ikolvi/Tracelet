@@ -1,6 +1,6 @@
 ## 3.7.2
 
-Version alignment with tracelet 3.7.2.
+**FIX**: `TlMotionConfig.shakeThreshold`, `stillThreshold` and `stillSampleCount` are now nullable, so "unset" can be expressed across the platform channel. They were required, which meant Dart's defaults (the Android-tuned values) were transmitted unconditionally and silently overrode each platform's own tuned defaults — on iOS `stillThreshold: 0.4 m/s²` arrived as `0.04 g`, about four times stricter than the `0.15 g` iOS default. `null` now means "use the platform default"; the Pigeon bindings were regenerated from the schema ([#288](https://github.com/Ikolvi/Tracelet/issues/288)).
 
 ## 3.7.1
 

@@ -184,6 +184,31 @@ class MainActivity : FlutterActivity() {
                     } catch (e: Exception) {
                         result.error("FG_GUARD_ERROR", e.message, null)
                     }
+                } else if (call.method == "debugIssue288EffectiveThresholds") {
+                    // #288: report what the native SDK is *actually* using for the
+                    // sensor thresholds. Dart used to transmit its own defaults —
+                    // the Android-tuned numbers — for every app that configured any
+                    // motion field, so each platform's tuned default was
+                    // unreachable. Unset values must now fall back to these.
+                    try {
+                        val config = com.ikolvi.tracelet.sdk.TraceletSdk
+                            .getInstance(applicationContext).configManager
+                        result.success(
+                            mapOf(
+                                "platform" to "android",
+                                // Android compares raw m/s² residuals at ~5 Hz.
+                                "unit" to "m/s2",
+                                "shakeThreshold" to config.getShakeThreshold(),
+                                "stillThreshold" to config.getStillThreshold(),
+                                "stillSampleCount" to config.getStillSampleCount(),
+                                "tunedShakeThreshold" to 2.5,
+                                "tunedStillThreshold" to 0.4,
+                                "tunedStillSampleCount" to 25,
+                            ),
+                        )
+                    } catch (e: Throwable) {
+                        result.error("ISSUE_288_ERROR", e.toString(), null)
+                    }
                 } else if (call.method == "debugIssue286SyncSinkAccumulation") {
                     // #286 VERIFICATION ONLY (no fix): does every attaching
                     // FlutterEngine create a NEW TraceletSyncSink that is never
