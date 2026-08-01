@@ -6,6 +6,8 @@
 
 **FEAT**: `TraceletBugReport` gained a **Geofence transitions (decision trace)** section that lifts `[geofence]` lines out of the general log stream and scans `geofenceTraceLimit` (2000) entries rather than the 500-entry log window. Crossings are rare while lifecycle chatter is not, so in a busy app the transitions were being pushed out of the exported window before anyone generated a report.
 
+**FIX**: `HealthCheck.motionPermission` is documented correctly and gained a typed `HealthCheck.motionAuthorization` getter. The field carries a `MotionAuthorizationStatus` index (`notDetermined`, `granted`, `deniedForever` → 0, 1, 2), but its doc comment described CoreMotion's `CMAuthorizationStatus` scale, which orders the cases differently and has a separate `restricted` value. Callers that implemented the documented contract — including Tracelet Doctor — reported a *granted* permission as "Restricted". The new getter returns the typed value (`null` when out of range) so the mapping cannot be misread.
+
 **PERF**: the native loggers no longer run a `DELETE` after every log write. Retention is 500-2000 rows, so pruning is now amortized every 50 writes on both platforms.
 
 ## 3.7.2

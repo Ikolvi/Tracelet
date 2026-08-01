@@ -120,7 +120,15 @@ class TraceletBugReport {
       buffer.writeln(
         '| Location permission | ${health.locationPermission.name} |',
       );
-      buffer.writeln('| Motion permission | ${health.motionPermission} |');
+      // Name, not the raw index. `Motion permission | 0` in a bug report is
+      // ambiguous — it reads as a boolean or a count, and it can't be checked
+      // against the enum without opening the source. Keep the index alongside
+      // it since the field is still an int on the wire.
+      buffer.writeln(
+        '| Motion permission | '
+        '${health.motionAuthorization?.name ?? 'unknown'} '
+        '(${health.motionPermission}) |',
+      );
       buffer.writeln('| Accuracy | ${health.accuracyAuthorization.name} |');
       buffer.writeln(
         '| Location services | ${health.locationServicesEnabled} |',
