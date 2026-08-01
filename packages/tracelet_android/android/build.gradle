@@ -63,7 +63,7 @@ android {
         // dependency; it only raises the resolved version to a compatible floor
         // when the Flutter host app pulls it in directly or transitively.
         constraints {
-            implementation("com.google.android.gms:play-services-location:21.2.0") {
+            implementation("com.google.android.gms:play-services-location:21.4.0") {
                 because("Tracelet uses the interface-based Fused/ActivityRecognition clients (>= 21.2.0); older versions crash with IncompatibleClassChangeError (issue #263).")
             }
         }
