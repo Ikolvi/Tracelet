@@ -43,6 +43,17 @@
 # Play Integrity (optional — only applied if present on classpath)
 -dontwarn com.google.android.play.core.integrity.**
 
+# GMS availability probe (TraceletServices.isGmsAvailable).
+#
+# The probe resolves GoogleApiAvailability reflectively so play-services-base
+# stays a soft dependency. R8 rewrites the Class.forName string literal to the
+# renamed class but does NOT rewrite the getMethod("getInstance") argument, so
+# without this rule the lookup throws NoSuchMethodException in every minified
+# release build. The SDK then wrongly concludes Play services is absent and
+# drops to the AOSP fallback (raw LocationManager, coarse NETWORK_PROVIDER
+# fixes, deprecated addProximityAlert, no activity recognition).
+-keep class com.google.android.gms.common.GoogleApiAvailability { *; }
+
 # Security-crypto (optional — only needed with SQLCipher)
 -dontwarn androidx.security.crypto.**
 

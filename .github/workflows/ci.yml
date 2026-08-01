@@ -240,6 +240,15 @@ jobs:
         working-directory: example/android
         run: ./gradlew :tracelet_android:testDebugUnitTest
 
+      # Gate the native tracelet-sdk / tracelet-sync-sdk Kotlin unit tests too.
+      # These previously ran only in release.yml, so a regression could sit on
+      # main until release day — the #274/#276 geofence exit-accuracy coverage is
+      # exactly the kind of test that must gate every PR. Reuses the host Rust
+      # library built above and exposed via jna.library.path.
+      - name: Run tracelet-sdk unit tests
+        working-directory: sdk/android
+        run: ./gradlew :tracelet-sdk:testDebugUnitTest :tracelet-sync-sdk:testDebugUnitTest
+
   build-ios:
     name: Build iOS
     runs-on: macos-latest

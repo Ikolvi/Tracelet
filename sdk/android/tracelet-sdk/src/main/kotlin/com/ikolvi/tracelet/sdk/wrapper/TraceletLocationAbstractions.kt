@@ -167,19 +167,41 @@ object TraceletServices {
      * fake [GmsProbe].
      */
     internal fun resolveGmsAvailability(context: Context, probe: GmsProbe): Boolean {
+        // 1. Are the GMS location classes linked into this build at all? If not
+        //    there is nothing to call into, and that verdict is final.
+        if (!probe.locationClassesLinked()) {
+            TraceletLog.info("GMS location classes are not linked into this build. Using AOSP fallback.")
+            return false
+        }
+
+        // 2. Ask the framework whether Play services is usable on this device.
         return try {
-            // 1. Verify GMS SDK classes are compiled
-            if (!probe.locationClassesLinked()) {
-                throw ClassNotFoundException("com.google.android.gms.location.LocationServices")
-            }
-            // 2. Verify GMS framework is active on the device
             val resultCode = probe.availabilityResultCode(context)
             TraceletLog.debug("GooglePlayServices availability check resultCode: $resultCode")
             // ConnectionResult.SUCCESS is 0
             resultCode == 0
         } catch (e: Throwable) {
-            TraceletLog.error("Exception in isGmsAvailable reflection check: ${e.message}", e)
-            false
+            // 3. The probe itself could not answer. Crucially this is NOT the
+            //    same as "GMS is absent": in a minified build R8 rewrites the
+            //    Class.forName string literal to the renamed class but leaves
+            //    getMethod("getInstance") untouched, so the lookup throws
+            //    NoSuchMethodException on devices with perfectly healthy Play
+            //    services. Treating that as absent silently downgrades the
+            //    entire location stack to the AOSP fallback, costing fix quality
+            //    and feeding coarse network fixes to the geofence evaluator.
+            //
+            //    Ask the OS directly instead — a package query cannot be broken
+            //    by our own shrinker.
+            val installed = probe.playServicesPackageEnabled(context)
+            TraceletLog.warning(
+                "GooglePlayServices availability probe failed " +
+                    "(${e.javaClass.simpleName}: ${e.message}); " +
+                    "falling back to a package-manager check — installed=$installed. " +
+                    "In a minified build, keep GoogleApiAvailability so the probe " +
+                    "can report precise availability: " +
+                    "-keep class com.google.android.gms.common.GoogleApiAvailability { *; }"
+            )
+            installed
         }
     }
 
