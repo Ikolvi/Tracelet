@@ -5,6 +5,7 @@ import android.Manifest
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.location.Location
 import android.os.Build
@@ -60,6 +61,16 @@ class GeofenceManager(
 
         /** Timeout for Play Services geofence registration (ms). */
         private const val REGISTRATION_TIMEOUT_MS = 5000L
+
+        /**
+         * SharedPreferences store for the persisted high-accuracy inside-set
+         * ([knownInsideIds]). Kept separate from `com.tracelet.state` so a full
+         * state reset does not clear crossing history and vice-versa (#292).
+         */
+        private const val GEOFENCE_STATE_PREFS = "com.tracelet.geofence.state"
+
+        /** Key for the persisted set of geofence ids the device is inside (#292). */
+        private const val KEY_KNOWN_INSIDE = "knownInsideIds"
 
         /**
          * Category prefix for geofence log lines.
@@ -161,6 +172,105 @@ class GeofenceManager(
     /** High-accuracy mode: track which geofences the device is currently inside. */
     private val insideGeofenceIds = mutableSetOf<String>()
 
+    private val geofenceStatePrefs: SharedPreferences by lazy {
+        context.getSharedPreferences(GEOFENCE_STATE_PREFS, Context.MODE_PRIVATE)
+    }
+
+    /**
+     * Geofences the device is inside per the last *emitted* high-accuracy
+     * transition, persisted across process death.
+     *
+     * The Rust evaluator's own inside-set is in-memory only and is wiped on
+     * every resume/boot by [clearHighAccuracyState] (via `startGeofences()` on
+     * each `ready()`/takeover, and by `LocationService` after boot/task-removal).
+     * A stationary device inside a fence therefore re-satisfies
+     * `entered && !was_inside` after each wipe and the evaluator re-emits ENTER.
+     * On an attendance backend every such ENTER becomes a false punch-in (#292).
+     *
+     * This set survives those resets, so [evaluateHighAccuracyProximity]
+     * suppresses an ENTER for a fence it already reported and an EXIT for a
+     * fence it never reported entering. It is cleared only by
+     * [resetHighAccuracyInsideState] (fresh start) and [destroy].
+     */
+    private val knownInsideIds: MutableSet<String> by lazy {
+        // getStringSet's returned instance must not be mutated (Android docs),
+        // so copy into an owned mutable set.
+        (geofenceStatePrefs.getStringSet(KEY_KNOWN_INSIDE, emptySet()) ?: emptySet())
+            .toMutableSet()
+    }
+
+    /** Flushes [knownInsideIds] to disk. Passes a fresh copy (put must not alias). */
+    private fun persistKnownInside() {
+        geofenceStatePrefs.edit()
+            .putStringSet(KEY_KNOWN_INSIDE, knownInsideIds.toSet())
+            .apply()
+    }
+
+    /**
+     * True once the freshly-constructed evaluator has been reconciled with the
+     * persisted [knownInsideIds] for this manager lifetime (see
+     * [seedEvaluatorFromKnownInside]).
+     */
+    private var evaluatorSeeded = false
+
+    /**
+     * Reconcile the newly-constructed (empty) evaluator with the persisted
+     * [knownInsideIds] by replaying one synthetic in-fence fix per known-inside
+     * geofence, so the evaluator — not a side table — stays the single source of
+     * truth across process death (#292):
+     *
+     *  - a device still inside a fence produces no ENTER (the evaluator already
+     *    knows it is inside), and
+     *  - a device that left a fence *while the process was dead* produces a real
+     *    EXIT on the first outside fix, instead of the inside-state getting
+     *    stuck and suppressing the next genuine ENTER.
+     *
+     * The synthetic ENTERs are discarded — [knownInsideIds] already reflects
+     * them. Runs once per manager lifetime, before the first real evaluation.
+     */
+    private fun seedEvaluatorFromKnownInside(byId: Map<String?, Map<String, Any?>>) {
+        if (evaluatorSeeded) return
+        evaluatorSeeded = true
+        if (knownInsideIds.isEmpty()) return
+        for (id in knownInsideIds) {
+            val gf = byId[id] ?: continue
+            val point = insidePoint(gf) ?: continue
+            // Discard the synthetic ENTER; we only want the adopted inside-state.
+            geofenceEvaluator.evaluateProximity(point.first, point.second, 0.0, listOf(mapToCoreGeofence(gf)))
+        }
+    }
+
+    /**
+     * A point guaranteed inside [gf] used to seed the evaluator: the centre for
+     * a circle, the vertex centroid for a polygon (inside for convex polygons;
+     * a concave polygon whose centroid falls outside simply is not seeded and
+     * falls back to the persisted-set dedup).
+     */
+    private fun insidePoint(gf: Map<String, Any?>): Pair<Double, Double>? {
+        val vertices = gf["vertices"]
+        if (vertices is List<*> && vertices.size >= 3) {
+            var sumLat = 0.0
+            var sumLng = 0.0
+            var n = 0
+            for (v in vertices) {
+                if (v is List<*> && v.size >= 2) {
+                    val vLat = (v[0] as? Number)?.toDouble()
+                    val vLng = (v[1] as? Number)?.toDouble()
+                    if (vLat != null && vLng != null) {
+                        sumLat += vLat
+                        sumLng += vLng
+                        n++
+                    }
+                }
+            }
+            if (n == 0) return null
+            return Pair(sumLat / n, sumLng / n)
+        }
+        val lat = (gf["latitude"] as? Number)?.toDouble() ?: return null
+        val lng = (gf["longitude"] as? Number)?.toDouble() ?: return null
+        return Pair(lat, lng)
+    }
+
     /** High-accuracy geofence evaluator (polygon + circular). */
     private val geofenceEvaluator = GeofenceEvaluator()
 
@@ -250,6 +360,11 @@ class GeofenceManager(
             TraceletLog.error("Failed to delete geofence from Rust DB", e)
         }
         invalidateGeofenceCache()
+        // Forget any inside-state for this fence so a later re-add — or an id
+        // reused for a different location — starts clean instead of having its
+        // ENTER suppressed by stale persisted state (#292).
+        if (knownInsideIds.remove(identifier)) persistKnownInside()
+        geofenceEvaluator.removeGeofence(identifier)
         return unregisterGeofence(identifier)
     }
 
@@ -261,6 +376,13 @@ class GeofenceManager(
             TraceletLog.error("Failed to clear geofences from Rust DB", e)
         }
         invalidateGeofenceCache()
+        // No fences means the device is inside nothing — forget all inside-state
+        // so a subsequent add/enter is reported cleanly (#292).
+        if (knownInsideIds.isNotEmpty()) {
+            knownInsideIds.clear()
+            persistKnownInside()
+        }
+        geofenceEvaluator.clear()
         return unregisterAllGeofences()
     }
 
@@ -471,6 +593,11 @@ class GeofenceManager(
         val allGeofences = getCachedGeofences()
         if (allGeofences.isEmpty()) return
 
+        val geofenceMapById = allGeofences.associateBy { it["identifier"] as? String }
+        // Reconcile a cold-started evaluator with the persisted inside-set before
+        // the first real fix, so a leave-while-dead is caught (#292).
+        seedEvaluatorFromKnownInside(geofenceMapById)
+
         val effectiveAccuracy = effectiveExitAccuracy(accuracy)
         val coreGeofences = allGeofences.map { mapToCoreGeofence(it) }
         val transitions = geofenceEvaluator.evaluateProximity(
@@ -495,9 +622,35 @@ class GeofenceManager(
 
         val on = mutableListOf<Map<String, Any?>>()
         val off = mutableListOf<Map<String, Any?>>()
-        val geofenceMapById = allGeofences.associateBy { it["identifier"] as? String }
 
         for (t in transitions) {
+            // Persisted-state dedup (#292). The evaluator's in-memory inside-set
+            // is wiped on every resume/boot, so a stationary device inside a
+            // fence re-produces an ENTER the app already emitted. knownInsideIds
+            // survives that reset: suppress an ENTER for a fence we already
+            // reported inside, and an EXIT for a fence we never reported
+            // entering. Genuine crossings still pass through and flip the set.
+            val alreadyInside = knownInsideIds.contains(t.identifier)
+            if (t.action == "ENTER" && alreadyInside) {
+                TraceletLog.debug(
+                    "$GEOFENCE_LOG_TAG suppressed duplicate ENTER ${t.identifier} " +
+                        "— already inside per persisted state (resume/boot re-entry)"
+                )
+                continue
+            }
+            if (t.action == "EXIT" && !alreadyInside) {
+                TraceletLog.debug(
+                    "$GEOFENCE_LOG_TAG suppressed EXIT ${t.identifier} " +
+                        "— not inside per persisted state"
+                )
+                continue
+            }
+            when (t.action) {
+                "ENTER" -> knownInsideIds.add(t.identifier)
+                "EXIT" -> knownInsideIds.remove(t.identifier)
+            }
+            persistKnownInside()
+
             val gfMap = geofenceMapById[t.identifier]
 
             // Logged at INFO, not DEBUG: production apps run at INFO, and a
@@ -631,10 +784,32 @@ class GeofenceManager(
         )
     }
 
-    /** Clear high-accuracy tracking state. */
+    /**
+     * Clear the *in-memory* high-accuracy evaluator state.
+     *
+     * Deliberately does NOT touch the persisted [knownInsideIds]: this is called
+     * on every resume/boot, and the persisted set is exactly what lets
+     * [evaluateHighAccuracyProximity] suppress the re-ENTER a freshly-reset
+     * evaluator would otherwise produce for a stationary device (#292). Use
+     * [resetHighAccuracyInsideState] for a full reset that forgets crossings.
+     */
     fun clearHighAccuracyState() {
         insideGeofenceIds.clear()
         geofenceEvaluator.clear()
+    }
+
+    /**
+     * Full reset of high-accuracy inside-state — the in-memory evaluator AND the
+     * persisted [knownInsideIds].
+     *
+     * Called only on a *fresh* `startGeofences()` (not a resume/boot) and on
+     * [destroy], so a genuine fresh start re-emits the initial-entry ENTER once
+     * while a resume/boot preserves the persisted set (#292).
+     */
+    fun resetHighAccuracyInsideState() {
+        knownInsideIds.clear()
+        persistKnownInside()
+        clearHighAccuracyState()
     }
 
     /** Destroy and clean up. */
@@ -642,6 +817,8 @@ class GeofenceManager(
         unregisterAllGeofences()
         insideGeofenceIds.clear()
         geofenceEvaluator.clear()
+        knownInsideIds.clear()
+        persistKnownInside()
         invalidateGeofenceCache()
     }
 

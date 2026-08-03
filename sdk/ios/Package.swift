@@ -51,6 +51,9 @@ let package = Package(
                 // and field names that the Doctor bug report filters on, so the
                 // trace cannot silently drift into being Android-only.
                 "GeofenceManagerTransitionLogTests.swift",
+                // #292: resume/boot must not re-emit ENTER for a stationary
+                // device (persisted knownInsideIds dedup).
+                "GeofenceManagerResumeChurnTests.swift",
             ]
         ),
     ]

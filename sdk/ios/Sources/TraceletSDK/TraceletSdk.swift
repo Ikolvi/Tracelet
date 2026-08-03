@@ -361,7 +361,7 @@ public final class TraceletSdk {
                     startPeriodic()
                 case .geofences:
                     TraceletLog.debug("[Tracelet] ready: Resuming geofence tracking")
-                    startGeofences()
+                    _ = startGeofences(isResume: true)
                 }
             }
         }
@@ -518,8 +518,18 @@ public final class TraceletSdk {
     ///
     /// - Returns: Updated state as a dictionary.
     @discardableResult
-    public func startGeofences() -> [String: Any] {
+    public func startGeofences(isResume: Bool = false) -> [String: Any] {
         precondition(isReady, "TraceletSdk.ready() must be called before startGeofences()")
+
+        // A redundant re-start — already tracking in .geofences mode — is not a
+        // fresh session, even when the host app (not the SDK's own resume path)
+        // makes the call. Apps commonly call startGeofences() on every launch to
+        // "refresh" fences; treating that as a fresh start would reset the
+        // inside-set and re-ENTER a stationary device on every launch (#292). So
+        // only a genuine transition into geofence mode (from stopped or another
+        // mode) resets inside-state; a redundant call is treated as a resume.
+        let treatAsResume = isResume ||
+            (stateManager.enabled && stateManager.trackingMode == .geofences)
 
         stateManager.enabled = true
         stateManager.trackingMode = .geofences
@@ -542,7 +552,17 @@ public final class TraceletSdk {
 
         // geofenceModeHighAccuracy: start GPS for in-app transition detection.
         if configManager.getGeofenceModeHighAccuracy() {
-            geofenceManager.clearHighAccuracyState()
+            // A fresh start resets inside-state so the initial-entry trigger
+            // fires exactly once. A resume/boot/redundant re-start must NOT reset
+            // it, or a stationary device inside a fence re-emits ENTER on every
+            // ready()/takeover or app-start refresh — false attendance punch-ins
+            // (#292). The persisted knownInsideIds additionally suppresses the
+            // re-ENTER a cold-start (empty evaluator) would otherwise produce.
+            if treatAsResume {
+                geofenceManager.clearHighAccuracyState()
+            } else {
+                geofenceManager.resetHighAccuracyInsideState()
+            }
             locationEngine.start()
 
             preventSuspendManager.start()
@@ -773,7 +793,7 @@ public final class TraceletSdk {
                     case .periodic:
                         _ = startPeriodic()
                     case .geofences:
-                        _ = startGeofences()
+                        _ = startGeofences(isResume: true)
                     default:
                         _ = start(isResume: true)
                     }
