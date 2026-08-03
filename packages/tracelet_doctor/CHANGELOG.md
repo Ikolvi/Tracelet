@@ -1,3 +1,7 @@
+## 3.7.4
+
+Version alignment with tracelet 3.7.4.
+
 ## 3.7.3
 
 **FIX**: the Permissions card no longer reports a granted motion/activity permission as a red "Restricted". `HealthCheck.motionPermission` carries a `MotionAuthorizationStatus` index (`notDetermined`, `granted`, `deniedForever` → 0, 1, 2), but the card decoded it against CoreMotion's `CMAuthorizationStatus` scale, where index 1 is `restricted` — so a healthy device showed a red "Restricted" beside an "All Clear" warning list, the warning path checking `== 2` and being unaffected. The card now switches over the enum via the new `HealthCheck.motionAuthorization` getter, which makes the mapping exhaustive at compile time, and the dead `3 => 'Granted'` branch (unreachable — the enum has no index 3) is gone.
