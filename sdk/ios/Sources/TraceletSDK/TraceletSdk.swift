@@ -361,7 +361,7 @@ public final class TraceletSdk {
                     startPeriodic()
                 case .geofences:
                     TraceletLog.debug("[Tracelet] ready: Resuming geofence tracking")
-                    startGeofences()
+                    _ = startGeofences(isResume: true)
                 }
             }
         }
@@ -518,7 +518,7 @@ public final class TraceletSdk {
     ///
     /// - Returns: Updated state as a dictionary.
     @discardableResult
-    public func startGeofences() -> [String: Any] {
+    public func startGeofences(isResume: Bool = false) -> [String: Any] {
         precondition(isReady, "TraceletSdk.ready() must be called before startGeofences()")
 
         stateManager.enabled = true
@@ -542,7 +542,17 @@ public final class TraceletSdk {
 
         // geofenceModeHighAccuracy: start GPS for in-app transition detection.
         if configManager.getGeofenceModeHighAccuracy() {
-            geofenceManager.clearHighAccuracyState()
+            // A fresh start resets inside-state so the initial-entry trigger
+            // fires exactly once. A resume/boot must NOT reset it, or a
+            // stationary device inside a fence re-emits ENTER on every
+            // ready()/takeover — false attendance punch-ins (#292). The
+            // persisted knownInsideIds additionally suppresses the re-ENTER a
+            // cold-start (empty evaluator) would otherwise produce.
+            if isResume {
+                geofenceManager.clearHighAccuracyState()
+            } else {
+                geofenceManager.resetHighAccuracyInsideState()
+            }
             locationEngine.start()
 
             preventSuspendManager.start()
@@ -773,7 +783,7 @@ public final class TraceletSdk {
                     case .periodic:
                         _ = startPeriodic()
                     case .geofences:
-                        _ = startGeofences()
+                        _ = startGeofences(isResume: true)
                     default:
                         _ = start(isResume: true)
                     }

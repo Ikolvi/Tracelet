@@ -776,7 +776,7 @@ class TraceletSdk private constructor(private val context: Context) {
                     }
                     TrackingMode.GEOFENCES -> {
                         logger.info("Resuming geofence tracking on ready/takeover")
-                        startGeofences()
+                        startGeofences(isResume = true)
                     }
                 }
             }
@@ -1035,7 +1035,7 @@ class TraceletSdk private constructor(private val context: Context) {
     // Lifecycle — startGeofences
     // =========================================================================
 
-    fun startGeofences(): String? {
+    fun startGeofences(isResume: Boolean = false): String? {
         if (!isReady) return "NOT_READY"
 
         stateManager.enabled = true
@@ -1064,7 +1064,17 @@ class TraceletSdk private constructor(private val context: Context) {
         // geofence-only Tracelet app non-compliant. Any FGS left over from a
         // previous continuous/high-accuracy session is torn down.
         if (configManager.getGeofenceModeHighAccuracy()) {
-            geofenceManager.clearHighAccuracyState()
+            // A fresh start resets inside-state so the initial-entry trigger
+            // fires exactly once. A resume/boot must NOT reset it, or a
+            // stationary device inside a fence re-emits ENTER on every
+            // ready()/takeover — false attendance punch-ins (#292). The
+            // persisted knownInsideIds additionally suppresses the re-ENTER a
+            // cold-start (empty evaluator) would otherwise produce.
+            if (isResume) {
+                geofenceManager.clearHighAccuracyState()
+            } else {
+                geofenceManager.resetHighAccuracyInsideState()
+            }
             locationEngine.start()
             if (configManager.isForegroundServiceEnabled()) {
                 LocationService.start(context)
@@ -1302,7 +1312,7 @@ class TraceletSdk private constructor(private val context: Context) {
                     when (currentMode) {
                         TrackingMode.CONTINUOUS -> start(isResume = true)
                         TrackingMode.PERIODIC -> startPeriodic()
-                        TrackingMode.GEOFENCES -> startGeofences()
+                        TrackingMode.GEOFENCES -> startGeofences(isResume = true)
                     }
                 }
             }

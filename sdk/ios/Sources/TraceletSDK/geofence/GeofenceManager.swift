@@ -38,6 +38,30 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     /// High-accuracy mode: track which geofences the device is currently inside.
     private var insideGeofenceIds = Set<String>()
 
+    /// UserDefaults key for the persisted high-accuracy inside-set (#292).
+    private static let knownInsideDefaultsKey = "com.tracelet.geofence.knownInsideIds"
+
+    /// Geofences the device is inside per the last *emitted* high-accuracy
+    /// transition, persisted across process death.
+    ///
+    /// The Rust evaluator's own inside-set is in-memory only and is wiped on
+    /// every resume/boot by `clearHighAccuracyState()` (via `startGeofences()` on
+    /// each `ready()`/takeover). A stationary device inside a fence therefore
+    /// re-satisfies `entered && !was_inside` after each wipe and the evaluator
+    /// re-emits ENTER — a false attendance punch-in on the backend (#292).
+    ///
+    /// This set survives those resets, so `evaluateHighAccuracyProximity`
+    /// suppresses an ENTER for a fence it already reported and an EXIT for a
+    /// fence it never reported entering. Cleared only by
+    /// `resetHighAccuracyInsideState()` (fresh start) and `destroy()`.
+    private lazy var knownInsideIds: Set<String> =
+        Set(UserDefaults.standard.stringArray(forKey: GeofenceManager.knownInsideDefaultsKey) ?? [])
+
+    /// Flushes `knownInsideIds` to disk.
+    private func persistKnownInside() {
+        UserDefaults.standard.set(Array(knownInsideIds), forKey: GeofenceManager.knownInsideDefaultsKey)
+    }
+
     /// High-accuracy geofence evaluator (polygon + circular).
     private let geofenceEvaluator = GeofenceEvaluator()
 
@@ -388,6 +412,34 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         })
 
         for t in transitions {
+            // Persisted-state dedup (#292). The evaluator's in-memory inside-set
+            // is wiped on every resume/boot, so a stationary device inside a
+            // fence re-produces an ENTER the app already emitted. knownInsideIds
+            // survives that reset: suppress an ENTER for a fence we already
+            // reported inside, and an EXIT for a fence we never reported
+            // entering. Genuine crossings still pass through and flip the set.
+            let alreadyInside = knownInsideIds.contains(t.identifier)
+            if t.action == "ENTER" && alreadyInside {
+                TraceletLog.debug(
+                    "\(GeofenceManager.logTag) suppressed duplicate ENTER \(t.identifier) " +
+                    "— already inside per persisted state (resume/boot re-entry)"
+                )
+                continue
+            }
+            if t.action == "EXIT" && !alreadyInside {
+                TraceletLog.debug(
+                    "\(GeofenceManager.logTag) suppressed EXIT \(t.identifier) " +
+                    "— not inside per persisted state"
+                )
+                continue
+            }
+            if t.action == "ENTER" {
+                knownInsideIds.insert(t.identifier)
+            } else if t.action == "EXIT" {
+                knownInsideIds.remove(t.identifier)
+            }
+            persistKnownInside()
+
             let gfMap = geofenceMapById[t.identifier]
 
             // Logged at INFO, not DEBUG: production apps run at INFO, and a
@@ -526,10 +578,28 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         )
     }
 
-    /// Clear high-accuracy tracking state.
+    /// Clear the *in-memory* high-accuracy evaluator state.
+    ///
+    /// Deliberately does NOT touch the persisted `knownInsideIds`: this is called
+    /// on every resume/boot, and the persisted set is exactly what lets
+    /// `evaluateHighAccuracyProximity` suppress the re-ENTER a freshly-reset
+    /// evaluator would otherwise produce for a stationary device (#292). Use
+    /// `resetHighAccuracyInsideState()` for a full reset that forgets crossings.
     public func clearHighAccuracyState() {
         insideGeofenceIds.removeAll()
         geofenceEvaluator.clear()
+    }
+
+    /// Full reset of high-accuracy inside-state — the in-memory evaluator AND the
+    /// persisted `knownInsideIds`.
+    ///
+    /// Called only on a *fresh* `startGeofences()` (not a resume/boot) and on
+    /// `destroy()`, so a genuine fresh start re-emits the initial-entry ENTER
+    /// once while a resume/boot preserves the persisted set (#292).
+    public func resetHighAccuracyInsideState() {
+        knownInsideIds.removeAll()
+        persistKnownInside()
+        clearHighAccuracyState()
     }
 
     public func destroy() {
@@ -538,6 +608,8 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         }
         insideGeofenceIds.removeAll()
         geofenceEvaluator.clear()
+        knownInsideIds.removeAll()
+        persistKnownInside()
     }
 
     // MARK: - System registration / unregistration
