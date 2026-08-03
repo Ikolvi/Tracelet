@@ -117,6 +117,38 @@ final class GeofenceManagerResumeChurnTests: XCTestCase {
         XCTAssertEqual(count("EXIT"), 1)
     }
 
+    func testLeaveWhileDeadIsReportedAsExitOnColdStartNotStuck() {
+        // Device ENTERs the office; the app is later killed with the persisted
+        // inside-set still holding OFFICE.
+        manager.evaluateHighAccuracyProximity(latitude: centerLat, longitude: centerLng, accuracy: 8.0)
+        XCTAssertEqual(count("ENTER"), 1)
+
+        // New process (evaluator starts empty). The device left the office while
+        // dead, so the first fix is well outside. Seeded from the persisted set,
+        // the cold-started evaluator must EXIT rather than get stuck inside.
+        manager = newManager()
+        manager.evaluateHighAccuracyProximity(latitude: north(200.0), longitude: centerLng, accuracy: 8.0)
+        XCTAssertEqual(count("EXIT"), 1, "a leave-while-dead must EXIT on the first outside fix (#292)")
+
+        // Returning to the office then fires a fresh ENTER — state was not stuck.
+        manager.evaluateHighAccuracyProximity(latitude: north(12.0), longitude: centerLng, accuracy: 8.0)
+        XCTAssertEqual(count("ENTER"), 2, "a genuine return after the exit must ENTER")
+    }
+
+    func testRemoveGeofenceClearsInsideStateSoAReAddedFenceCanEnterAgain() {
+        manager.evaluateHighAccuracyProximity(latitude: centerLat, longitude: centerLng, accuracy: 8.0)
+        XCTAssertEqual(count("ENTER"), 1)
+
+        // Remove the fence, then add it back (a fence-list refresh, or an id
+        // reused for a different location).
+        _ = manager.removeGeofence("OFFICE")
+        try? db.insertGeofence(identifier: "OFFICE", lat: centerLat, lng: centerLng, radius: radius, vertices: nil, extras: nil)
+
+        // Being inside the re-added fence must ENTER again.
+        manager.evaluateHighAccuracyProximity(latitude: centerLat, longitude: centerLng, accuracy: 8.0)
+        XCTAssertEqual(count("ENTER"), 2, "a re-added fence must be able to ENTER again (#292)")
+    }
+
     func testFreshStartReEmitsTheInitialEnter() {
         manager.evaluateHighAccuracyProximity(latitude: centerLat, longitude: centerLng, accuracy: 8.0)
         XCTAssertEqual(count("ENTER"), 1)

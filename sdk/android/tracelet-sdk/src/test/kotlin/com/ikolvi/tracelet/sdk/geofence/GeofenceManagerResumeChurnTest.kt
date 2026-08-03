@@ -130,6 +130,41 @@ class GeofenceManagerResumeChurnTest {
     }
 
     @Test
+    fun `leave while the app is dead is reported as EXIT on cold start, not stuck`() {
+        // Device ENTERs the office; the app is later killed with the persisted
+        // inside-set still holding OFFICE.
+        geoManager.evaluateHighAccuracyProximity(centerLat, centerLng, 8.0)
+        assertEquals(1, countAction("ENTER"))
+
+        // New process (evaluator starts empty). The device left the office while
+        // dead, so the first fix is well outside. Seeded from the persisted set,
+        // the cold-started evaluator must EXIT rather than get stuck inside.
+        geoManager = newManager()
+        geoManager.evaluateHighAccuracyProximity(north(200.0), centerLng, 8.0)
+        assertEquals(1, countAction("EXIT"), "a leave-while-dead must EXIT on the first outside fix (#292)")
+
+        // Returning to the office then fires a fresh ENTER — the state was not stuck.
+        geoManager.evaluateHighAccuracyProximity(north(12.0), centerLng, 8.0)
+        assertEquals(2, countAction("ENTER"), "a genuine return after the exit must ENTER")
+    }
+
+    @Test
+    fun `removeGeofence clears inside-state so a re-added fence can ENTER again`() {
+        geoManager.evaluateHighAccuracyProximity(centerLat, centerLng, 8.0)
+        assertEquals(1, countAction("ENTER"))
+
+        // Remove the fence, then add it back (a fence-list refresh, or an id
+        // reused for a different location).
+        geoManager.removeGeofence("OFFICE")
+        db.insertGeofence("OFFICE", centerLat, centerLng, radius, null, null)
+
+        // Being inside the re-added fence must ENTER again — the prior
+        // inside-state must not suppress it.
+        geoManager.evaluateHighAccuracyProximity(centerLat, centerLng, 8.0)
+        assertEquals(2, countAction("ENTER"), "a re-added fence must be able to ENTER again (#292)")
+    }
+
+    @Test
     fun `fresh start re-emits the initial ENTER`() {
         geoManager.evaluateHighAccuracyProximity(centerLat, centerLng, 8.0)
         assertEquals(1, countAction("ENTER"))

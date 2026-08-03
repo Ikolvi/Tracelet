@@ -5,7 +5,6 @@ import android.app.Application
 import android.content.Context
 import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
-import com.ikolvi.tracelet.sdk.model.TrackingMode
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -14,19 +13,17 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * Regression for #292 (integration): calling `startGeofences()` again while
  * already tracking in GEOFENCES mode — the common "refresh my fences on every
  * app launch" pattern — must be treated as a resume and must NOT wipe the
- * persisted high-accuracy inside-set. Otherwise a stationary device inside a
- * fence re-emits ENTER (a false attendance punch-in) on every launch.
+ * high-accuracy inside-set. Otherwise a stationary device inside a fence
+ * re-emits ENTER (a false attendance punch-in) on every launch.
  *
- * A genuine fresh start (first enable, or after `stop()`) is a new session and
- * DOES reset the inside-set so the initial-entry ENTER fires exactly once.
- *
- * The persisted set is observed directly through its SharedPreferences store
- * (`com.tracelet.geofence.state` / `knownInsideIds`).
+ * Driven through the real SDK pipeline and asserted on emitted ENTER events, so
+ * it is robust to the process-wide singleton's in-memory-vs-persisted state.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])
@@ -34,21 +31,15 @@ class GeofenceStartIdempotencyTest {
 
     private lateinit var context: Context
     private lateinit var sdk: TraceletSdk
+    private val captured = mutableListOf<Map<String, Any?>>()
 
-    private val prefsName = "com.tracelet.geofence.state"
-    private val key = "knownInsideIds"
+    private val centerLat = 10.787929
+    private val centerLng = 76.684183
+    private val radius = 50.0
 
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-
-        // Isolate from any process-wide singleton state a prior test left behind
-        // (enabled/trackingMode live in com.tracelet.state; the inside-set in
-        // com.tracelet.geofence.state).
-        context.getSharedPreferences("com.tracelet.state", Context.MODE_PRIVATE)
-            .edit().clear().commit()
-        context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
-            .edit().clear().commit()
 
         androidx.work.testing.WorkManagerTestInitHelper.initializeTestWorkManager(
             context,
@@ -70,62 +61,61 @@ class GeofenceStartIdempotencyTest {
 
     @After
     fun tearDown() {
+        try { sdk.geofenceManager.onGeofenceEvent = null } catch (_: Exception) {}
+        try { sdk.removeGeofences() } catch (_: Exception) {}
         try { sdk.stop() } catch (_: Exception) {}
-        context.getSharedPreferences(prefsName, Context.MODE_PRIVATE).edit().clear().commit()
         idle()
         ConfigManager.resetInstance()
     }
 
     private fun idle() = shadowOf(Looper.getMainLooper()).idle()
 
-    private fun prefs() = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
-
-    private fun seedInside(vararg ids: String) {
-        prefs().edit().putStringSet(key, ids.toSet()).commit()
+    private fun enterCount(): Int = captured.count {
+        ((it["geofence"] as? Map<*, *>)?.get("action") as? String) == "ENTER"
     }
 
-    private fun persistedInside(): Set<String> =
-        prefs().getStringSet(key, emptySet()) ?: emptySet()
-
     @Test
-    fun `fresh start clears inside-state and a redundant re-start preserves it`() {
+    fun `a redundant startGeofences does not re-ENTER a stationary device`() {
         var ready = false
         sdk.ready(mapOf("geofenceModeHighAccuracy" to true)) { ready = true }
         idle()
         assert(ready)
-
-        // Force a deterministic "not yet tracking" baseline: TraceletSdk is a
-        // process-wide singleton and a prior test's drained async work can leave
-        // enabled=true on it. StateManager reads this straight from prefs.
-        context.getSharedPreferences("com.tracelet.state", Context.MODE_PRIVATE)
-            .edit().putBoolean("enabled", false).commit()
-
-        // A stale inside-set from before. The FIRST startGeofences() is a genuine
-        // transition into geofence mode (not yet enabled) → a fresh session that
-        // MUST reset the inside-set so the initial-entry ENTER fires once.
-        seedInside("STALE_ZONE")
-        sdk.startGeofences()
-        idle()
-        assertEquals(TrackingMode.GEOFENCES, sdk.stateManager.trackingMode)
-        assertEquals(
-            emptySet(),
-            persistedInside(),
-            "a fresh start must clear the persisted inside-set so the initial ENTER fires",
+        // Guard against config leaking from a prior test in the shared singleton:
+        // startGeofences() only resets/preserves inside-state in high-accuracy mode.
+        assertTrue(
+            sdk.configManager.getGeofenceModeHighAccuracy(),
+            "test precondition: geofenceModeHighAccuracy must be active",
         )
 
-        // The device ENTERs the fence.
-        seedInside("OFFICE_ZONE")
+        // A fence the device is sitting inside.
+        sdk.addGeofence(
+            mapOf(
+                "identifier" to "OFFICE",
+                "latitude" to centerLat,
+                "longitude" to centerLng,
+                "radius" to radius,
+            ),
+        )
+        val mgr = sdk.geofenceManager
+        mgr.onGeofenceEvent = { captured.add(it) }
+        // Clean, synced baseline (in-memory evaluator + persisted set).
+        mgr.resetHighAccuracyInsideState()
+        captured.clear()
 
-        // Redundant re-start: the app calls startGeofences() again (e.g. on the
-        // next launch to "refresh" fences) while already enabled + GEOFENCES.
-        // This is NOT a fresh session — it must be treated as a resume and must
-        // NOT wipe the inside-set, or a stationary device re-ENTERs (#292).
+        // Start geofences and register the initial entry.
         sdk.startGeofences()
         idle()
-        assertEquals(
-            setOf("OFFICE_ZONE"),
-            persistedInside(),
-            "a redundant startGeofences() must preserve the persisted inside-set (#292)",
-        )
+        mgr.evaluateHighAccuracyProximity(centerLat, centerLng, 8.0)
+        assertEquals(1, enterCount(), "the first fix inside must ENTER once")
+
+        // The app calls startGeofences() again while already enabled + GEOFENCES
+        // (the "refresh fences on every launch" pattern). It must be treated as a
+        // resume and preserve the inside-set — the stationary device must NOT
+        // re-ENTER (#292). Were it treated as a fresh start it would reset the
+        // set and this fix would ENTER a second time.
+        sdk.startGeofences()
+        idle()
+        mgr.evaluateHighAccuracyProximity(centerLat, centerLng, 8.0)
+        assertEquals(1, enterCount(), "a redundant startGeofences() must not re-emit ENTER")
     }
 }

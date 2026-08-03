@@ -62,6 +62,63 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         UserDefaults.standard.set(Array(knownInsideIds), forKey: GeofenceManager.knownInsideDefaultsKey)
     }
 
+    /// True once the freshly-constructed evaluator has been reconciled with the
+    /// persisted `knownInsideIds` for this manager lifetime.
+    private var evaluatorSeeded = false
+
+    /// Reconcile the newly-constructed (empty) evaluator with the persisted
+    /// `knownInsideIds` by replaying one synthetic in-fence fix per known-inside
+    /// geofence, so the evaluator — not a side table — stays the single source of
+    /// truth across process death (#292):
+    ///
+    ///  - a device still inside a fence produces no ENTER (already known), and
+    ///  - a device that left a fence *while the process was dead* produces a real
+    ///    EXIT on the first outside fix, instead of the inside-state getting
+    ///    stuck and suppressing the next genuine ENTER.
+    ///
+    /// The synthetic ENTERs are discarded — `knownInsideIds` already reflects
+    /// them. Runs once per manager lifetime, before the first real evaluation.
+    private func seedEvaluatorFromKnownInside(_ byId: [String: [String: Any]]) {
+        if evaluatorSeeded { return }
+        evaluatorSeeded = true
+        if knownInsideIds.isEmpty { return }
+        for id in knownInsideIds {
+            guard let gf = byId[id], let point = insidePoint(gf) else { continue }
+            // Discard the synthetic ENTER; we only want the adopted inside-state.
+            _ = geofenceEvaluator.evaluateProximity(
+                latitude: point.0,
+                longitude: point.1,
+                accuracy: 0.0,
+                geofences: [mapToCoreGeofence(gf)]
+            )
+        }
+    }
+
+    /// A point guaranteed inside `gf` used to seed the evaluator: the centre for
+    /// a circle, the vertex centroid for a polygon (inside for convex polygons;
+    /// a concave polygon whose centroid falls outside simply is not seeded and
+    /// falls back to the persisted-set dedup).
+    private func insidePoint(_ gf: [String: Any]) -> (Double, Double)? {
+        if let vertices = gf["vertices"] as? [[Any]], vertices.count >= 3 {
+            var sumLat = 0.0
+            var sumLng = 0.0
+            var n = 0
+            for v in vertices where v.count >= 2 {
+                if let vLat = (v[0] as? NSNumber)?.doubleValue,
+                   let vLng = (v[1] as? NSNumber)?.doubleValue {
+                    sumLat += vLat
+                    sumLng += vLng
+                    n += 1
+                }
+            }
+            if n == 0 { return nil }
+            return (sumLat / Double(n), sumLng / Double(n))
+        }
+        guard let lat = (gf["latitude"] as? NSNumber)?.doubleValue,
+              let lng = (gf["longitude"] as? NSNumber)?.doubleValue else { return nil }
+        return (lat, lng)
+    }
+
     /// High-accuracy geofence evaluator (polygon + circular).
     private let geofenceEvaluator = GeofenceEvaluator()
 
@@ -205,6 +262,12 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
 
         cachedGeofences = nil
 
+        // Forget any inside-state for this fence so a later re-add — or an id
+        // reused for a different location — starts clean instead of having its
+        // ENTER suppressed by stale persisted state (#292).
+        if knownInsideIds.remove(identifier) != nil { persistKnownInside() }
+        geofenceEvaluator.removeGeofence(identifier: identifier)
+
         // Find the actual monitored region by identifier instead of creating
         // a dummy region with fake coordinates (I-M5).
         if let region = locationManager.monitoredRegions.first(where: { $0.identifier == identifier }) {
@@ -222,6 +285,13 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         }
 
         cachedGeofences = nil
+        // No fences means the device is inside nothing — forget all inside-state
+        // so a subsequent add/enter is reported cleanly (#292).
+        if !knownInsideIds.isEmpty {
+            knownInsideIds.removeAll()
+            persistKnownInside()
+        }
+        geofenceEvaluator.clear()
         for region in locationManager.monitoredRegions {
             locationManager.stopMonitoring(for: region)
         }
@@ -384,6 +454,13 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         let allGeofences = getCachedGeofences()
         if allGeofences.isEmpty { return }
 
+        let geofenceMapById = Dictionary(uniqueKeysWithValues: allGeofences.compactMap {
+            if let id = $0["identifier"] as? String { return (id, $0) } else { return nil }
+        })
+        // Reconcile a cold-started evaluator with the persisted inside-set before
+        // the first real fix, so a leave-while-dead is caught (#292).
+        seedEvaluatorFromKnownInside(geofenceMapById)
+
         let effectiveAccuracy = effectiveExitAccuracy(accuracy)
         let coreGeofences = allGeofences.map { mapToCoreGeofence($0) }
         let transitions = geofenceEvaluator.evaluateProximity(
@@ -407,9 +484,6 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
 
         var on: [[String: Any]] = []
         var off: [[String: Any]] = []
-        let geofenceMapById = Dictionary(uniqueKeysWithValues: allGeofences.compactMap {
-            if let id = $0["identifier"] as? String { return (id, $0) } else { return nil }
-        })
 
         for t in transitions {
             // Persisted-state dedup (#292). The evaluator's in-memory inside-set
