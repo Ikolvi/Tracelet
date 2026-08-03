@@ -1038,6 +1038,16 @@ class TraceletSdk private constructor(private val context: Context) {
     fun startGeofences(isResume: Boolean = false): String? {
         if (!isReady) return "NOT_READY"
 
+        // A redundant re-start — already tracking in GEOFENCES mode — is not a
+        // fresh session, even when the host app (not the SDK's own resume path)
+        // makes the call. Apps commonly call startGeofences() on every launch to
+        // "refresh" fences; treating that as a fresh start would reset the
+        // inside-set and re-ENTER a stationary device on every launch (#292). So
+        // only a genuine transition into geofence mode (from stopped or another
+        // mode) resets inside-state; a redundant call is treated as a resume.
+        val treatAsResume = isResume ||
+            (stateManager.enabled && stateManager.trackingMode == TrackingMode.GEOFENCES)
+
         stateManager.enabled = true
         stateManager.trackingMode = TrackingMode.GEOFENCES
 
@@ -1065,12 +1075,12 @@ class TraceletSdk private constructor(private val context: Context) {
         // previous continuous/high-accuracy session is torn down.
         if (configManager.getGeofenceModeHighAccuracy()) {
             // A fresh start resets inside-state so the initial-entry trigger
-            // fires exactly once. A resume/boot must NOT reset it, or a
-            // stationary device inside a fence re-emits ENTER on every
-            // ready()/takeover — false attendance punch-ins (#292). The
-            // persisted knownInsideIds additionally suppresses the re-ENTER a
-            // cold-start (empty evaluator) would otherwise produce.
-            if (isResume) {
+            // fires exactly once. A resume/boot/redundant re-start must NOT reset
+            // it, or a stationary device inside a fence re-emits ENTER on every
+            // ready()/takeover or app-start refresh — false attendance punch-ins
+            // (#292). The persisted knownInsideIds additionally suppresses the
+            // re-ENTER a cold-start (empty evaluator) would otherwise produce.
+            if (treatAsResume) {
                 geofenceManager.clearHighAccuracyState()
             } else {
                 geofenceManager.resetHighAccuracyInsideState()
