@@ -117,7 +117,9 @@ class GeofenceManagerTransitionLogTest {
     @Test
     fun `EXIT is logged at INFO carrying every input to the accuracy-aware test`() {
         geoManager.evaluateHighAccuracyProximity(centerLat, centerLng, 8.0)
-        // Genuine departure: 200 m out with a tight ±10 m fix -> 190 > 70 -> EXIT.
+        // Genuine, sustained departure: 200 m out with a tight ±10 m fix ->
+        // 190 > 70. Two consecutive fixes confirm the EXIT.
+        geoManager.evaluateHighAccuracyProximity(north(200.0), centerLng, 10.0)
         geoManager.evaluateHighAccuracyProximity(north(200.0), centerLng, 10.0)
 
         val exit = firstExitAtInfo()
@@ -169,6 +171,7 @@ class GeofenceManagerTransitionLogTest {
         config.setConfig(mapOf("geofenceExitAccuracyMax" to 20))
         geoManager.evaluateHighAccuracyProximity(centerLat, centerLng, 8.0)
         geoManager.evaluateHighAccuracyProximity(north(200.0), centerLng, 150.0)
+        geoManager.evaluateHighAccuracyProximity(north(200.0), centerLng, 150.0)
 
         val exit = firstExitAtInfo()
         requireNotNull(exit) { "expected an EXIT line, got: ${geofenceLines()}" }
@@ -186,6 +189,7 @@ class GeofenceManagerTransitionLogTest {
         // makes a false EXIT much more likely and is invisible without this flag.
         geoManager.evaluateHighAccuracyProximity(centerLat, centerLng, 8.0)
         geoManager.evaluateHighAccuracyProximity(north(200.0), centerLng, 0.0)
+        geoManager.evaluateHighAccuracyProximity(north(200.0), centerLng, 0.0)
 
         val exit = firstExitAtInfo()
         requireNotNull(exit) { "expected an EXIT line, got: ${geofenceLines()}" }
@@ -197,6 +201,7 @@ class GeofenceManagerTransitionLogTest {
     fun `trace reports pass-through accuracy under the default policy`() {
         config.setConfig(mapOf("geofenceExitAccuracyMax" to -1))
         geoManager.evaluateHighAccuracyProximity(centerLat, centerLng, 8.0)
+        geoManager.evaluateHighAccuracyProximity(north(200.0), centerLng, 12.0)
         geoManager.evaluateHighAccuracyProximity(north(200.0), centerLng, 12.0)
 
         val exit = firstExitAtInfo()
@@ -222,7 +227,9 @@ class GeofenceManagerTransitionLogTest {
             "69 m must not exit a 70 m threshold: ${geofenceLines()}",
         )
 
-        // Just outside -> exits, and the line must report thr=70.0.
+        // Just outside -> exits (confirmed across two fixes), and the line must
+        // report thr=70.0.
+        geoManager.evaluateHighAccuracyProximity(north(71.0), centerLng, 0.0)
         geoManager.evaluateHighAccuracyProximity(north(71.0), centerLng, 0.0)
         val exit = firstExitAtInfo()
         requireNotNull(exit) { "71 m must exit a 70 m threshold: ${geofenceLines()}" }

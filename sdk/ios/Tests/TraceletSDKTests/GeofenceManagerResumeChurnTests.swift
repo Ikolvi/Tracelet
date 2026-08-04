@@ -106,7 +106,9 @@ final class GeofenceManagerResumeChurnTests: XCTestCase {
 
     func testGenuineDepartureThenReturnStillEmitsExitThenAFreshEnter() {
         manager.evaluateHighAccuracyProximity(latitude: centerLat, longitude: centerLng, accuracy: 8.0)      // ENTER
-        manager.evaluateHighAccuracyProximity(latitude: north(120.0), longitude: centerLng, accuracy: 8.0)   // EXIT: 120-8 > 70
+        // Sustained departure confirmed across two fixes (first is held).
+        manager.evaluateHighAccuracyProximity(latitude: north(120.0), longitude: centerLng, accuracy: 8.0)   // held
+        manager.evaluateHighAccuracyProximity(latitude: north(120.0), longitude: centerLng, accuracy: 8.0)   // confirmed EXIT
         XCTAssertEqual(count("ENTER"), 1)
         XCTAssertEqual(count("EXIT"), 1)
 
@@ -124,11 +126,13 @@ final class GeofenceManagerResumeChurnTests: XCTestCase {
         XCTAssertEqual(count("ENTER"), 1)
 
         // New process (evaluator starts empty). The device left the office while
-        // dead, so the first fix is well outside. Seeded from the persisted set,
-        // the cold-started evaluator must EXIT rather than get stuck inside.
+        // dead, so the fixes are well outside. Seeded from the persisted set, the
+        // cold-started evaluator confirms the departure across two fixes and
+        // EXITs rather than getting stuck inside.
         manager = newManager()
-        manager.evaluateHighAccuracyProximity(latitude: north(200.0), longitude: centerLng, accuracy: 8.0)
-        XCTAssertEqual(count("EXIT"), 1, "a leave-while-dead must EXIT on the first outside fix (#292)")
+        manager.evaluateHighAccuracyProximity(latitude: north(200.0), longitude: centerLng, accuracy: 8.0)  // held
+        manager.evaluateHighAccuracyProximity(latitude: north(200.0), longitude: centerLng, accuracy: 8.0)  // confirmed EXIT
+        XCTAssertEqual(count("EXIT"), 1, "a sustained leave-while-dead must EXIT on cold start (#292)")
 
         // Returning to the office then fires a fresh ENTER — state was not stuck.
         manager.evaluateHighAccuracyProximity(latitude: north(12.0), longitude: centerLng, accuracy: 8.0)

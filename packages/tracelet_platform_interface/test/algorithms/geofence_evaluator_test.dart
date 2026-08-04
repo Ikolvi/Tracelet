@@ -76,7 +76,13 @@ void main() async {
         geofences: geofences,
       );
 
-      // EXIT — far away.
+      // EXIT — far away. Confirmed across two consecutive out-of-fence fixes
+      // (#294): the first is held, the second fires EXIT.
+      evaluator.evaluateProximity(
+        latitude: 37.4300,
+        longitude: -122.0841,
+        geofences: geofences,
+      );
       final transitions = evaluator.evaluateProximity(
         latitude: 37.4300,
         longitude: -122.0841,
@@ -140,7 +146,12 @@ void main() async {
         geofences: geofences,
       );
 
-      // EXIT — outside polygon.
+      // EXIT — outside polygon, confirmed across two consecutive fixes (#294).
+      evaluator.evaluateProximity(
+        latitude: 37.4200,
+        longitude: -122.0800,
+        geofences: geofences,
+      );
       final transitions = evaluator.evaluateProximity(
         latitude: 37.4200,
         longitude: -122.0800,
@@ -177,15 +188,22 @@ void main() async {
       expect(t1[0].identifier, 'a');
       expect(t1[0].action, 'ENTER');
 
-      // Outside A, inside B → EXIT A + ENTER B.
+      // Move to B. ENTER B fires immediately (accuracy-agnostic); EXIT A is held
+      // for confirmation on this first out-of-A fix (#294).
       final t2 = evaluator.evaluateProximity(
         latitude: 37.5000,
         longitude: -122.0841,
         geofences: geofences,
       );
-      expect(t2, hasLength(2));
-      final actions = t2.map((t) => '${t.action}:${t.identifier}').toSet();
-      expect(actions, containsAll(['EXIT:a', 'ENTER:b']));
+      expect(t2.map((t) => '${t.action}:${t.identifier}').toSet(), {'ENTER:b'});
+
+      // Second fix at B confirms the departure from A → EXIT A.
+      final t3 = evaluator.evaluateProximity(
+        latitude: 37.5000,
+        longitude: -122.0841,
+        geofences: geofences,
+      );
+      expect(t3.map((t) => '${t.action}:${t.identifier}').toSet(), {'EXIT:a'});
     });
 
     test('skips geofences with invalid data', () {
@@ -342,8 +360,14 @@ void main() async {
         geofences: geofences,
       );
 
-      // Move clearly outside (well past radius + 20 m buffer).
+      // Move clearly outside (well past radius + 20 m buffer), sustained across
+      // two consecutive fixes → confirmed EXIT (#294).
       final far = pointNorth(centerLat, centerLng, 400);
+      evaluator.evaluateProximity(
+        latitude: far.lat,
+        longitude: far.lng,
+        geofences: geofences,
+      );
       final transitions = evaluator.evaluateProximity(
         latitude: far.lat,
         longitude: far.lng,
@@ -415,8 +439,15 @@ void main() async {
           geofences: geofences,
         );
 
-        // 120 m out with ±10 m accuracy: 120 - 10 = 110 > 70 → real EXIT.
+        // 120 m out with ±10 m accuracy: 120 - 10 = 110 > 70. Sustained across
+        // two consecutive fixes → real EXIT (#294).
         final far = pointNorth(centerLat, centerLng, 120);
+        evaluator.evaluateProximity(
+          latitude: far.lat,
+          longitude: far.lng,
+          accuracy: 10,
+          geofences: geofences,
+        );
         final transitions = evaluator.evaluateProximity(
           latitude: far.lat,
           longitude: far.lng,
@@ -427,6 +458,86 @@ void main() async {
         expect(transitions[0].action, 'EXIT');
       },
     );
+
+    test('single over-confident fix is absorbed, no false EXIT (#294)', () {
+      const centerLat = 10.787929;
+      const centerLng = 76.684183;
+      final geofences = <Map<String, Object?>>[
+        {
+          'identifier': 'office',
+          'latitude': centerLat,
+          'longitude': centerLng,
+          'radius': 50.0, // exit threshold = 70 m
+        },
+      ];
+
+      final inside = pointNorth(centerLat, centerLng, 10);
+      evaluator.evaluateProximity(
+        latitude: inside.lat,
+        longitude: inside.lng,
+        accuracy: 5,
+        geofences: geofences,
+      );
+
+      // Over-confident glitch: 200 m out at 1.7 m accuracy (200 - 1.7 = 198 >
+      // 70, so it passes the accuracy gate) — but it is a lone fix.
+      final glitch = pointNorth(centerLat, centerLng, 200);
+      final held = evaluator.evaluateProximity(
+        latitude: glitch.lat,
+        longitude: glitch.lng,
+        accuracy: 1.7,
+        geofences: geofences,
+      );
+      expect(held, isEmpty, reason: 'a lone over-confident fix must not EXIT');
+
+      // Back inside on the very next fix → no EXIT, no re-ENTER.
+      final back = pointNorth(centerLat, centerLng, 9);
+      final recovered = evaluator.evaluateProximity(
+        latitude: back.lat,
+        longitude: back.lng,
+        accuracy: 5,
+        geofences: geofences,
+      );
+      expect(recovered, isEmpty, reason: 'the glitch must leave no trace');
+    });
+
+    test('alternating out/in glitches never confirm an EXIT (#294)', () {
+      const centerLat = 10.787929;
+      const centerLng = 76.684183;
+      final geofences = <Map<String, Object?>>[
+        {
+          'identifier': 'office',
+          'latitude': centerLat,
+          'longitude': centerLng,
+          'radius': 50.0,
+        },
+      ];
+
+      final inside = pointNorth(centerLat, centerLng, 10);
+      evaluator.evaluateProximity(
+        latitude: inside.lat,
+        longitude: inside.lng,
+        accuracy: 5,
+        geofences: geofences,
+      );
+
+      var exits = 0;
+      for (final d in <double>[200, 10, 220, 12, 210]) {
+        final p = pointNorth(centerLat, centerLng, d);
+        final ts = evaluator.evaluateProximity(
+          latitude: p.lat,
+          longitude: p.lng,
+          accuracy: 1.7,
+          geofences: geofences,
+        );
+        exits += ts.where((t) => t.action == 'EXIT').length;
+      }
+      expect(
+        exits,
+        0,
+        reason: 'alternating glitches must never confirm an EXIT',
+      );
+    });
 
     test('polygon with integer vertices works', () {
       final geofences = <Map<String, Object?>>[
@@ -485,14 +596,21 @@ void main() async {
         accuracy: effectiveExitAccuracy(8, exitAccuracyMax),
         geofences: geofences,
       );
+      // Feed the drift spike twice: a config under which the spike is
+      // "confidently outside" confirms the EXIT on the second fix (#294); a
+      // config that absorbs it produces no EXIT on either.
       final drift = pointNorth(centerLat, centerLng, 85);
-      final t = ev.evaluateProximity(
-        latitude: drift.lat,
-        longitude: drift.lng,
-        accuracy: effectiveExitAccuracy(150, exitAccuracyMax),
-        geofences: geofences,
-      );
-      return t.any((e) => e.action == 'EXIT');
+      var sawExit = false;
+      for (var i = 0; i < 2; i++) {
+        final t = ev.evaluateProximity(
+          latitude: drift.lat,
+          longitude: drift.lng,
+          accuracy: effectiveExitAccuracy(150, exitAccuracyMax),
+          geofences: geofences,
+        );
+        if (t.any((e) => e.action == 'EXIT')) sawExit = true;
+      }
+      return sawExit;
     }
 
     test('geofenceExitAccuracyMax = -1 (full gating) absorbs drift (#276)', () {
@@ -527,8 +645,15 @@ void main() async {
           accuracy: effectiveExitAccuracy(8, 20),
           geofences: geofences,
         );
-        // 120 m out, ±10 m: clamp keeps 10 → 120 - 10 = 110 > 70 → EXIT.
+        // 120 m out, ±10 m: clamp keeps 10 → 120 - 10 = 110 > 70. Sustained
+        // across two fixes → EXIT (#294).
         final far = pointNorth(centerLat, centerLng, 120);
+        evaluator.evaluateProximity(
+          latitude: far.lat,
+          longitude: far.lng,
+          accuracy: effectiveExitAccuracy(10, 20),
+          geofences: geofences,
+        );
         final t = evaluator.evaluateProximity(
           latitude: far.lat,
           longitude: far.lng,

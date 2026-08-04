@@ -118,7 +118,10 @@ class GeofenceManagerResumeChurnTest {
     @Test
     fun `genuine departure then return still emits EXIT then a fresh ENTER`() {
         geoManager.evaluateHighAccuracyProximity(centerLat, centerLng, 8.0)     // ENTER
-        geoManager.evaluateHighAccuracyProximity(north(120.0), centerLng, 8.0)  // EXIT: 120-8 > 70
+        // A sustained departure: two consecutive out-of-fence fixes confirm the
+        // EXIT (the first is held pending confirmation).
+        geoManager.evaluateHighAccuracyProximity(north(120.0), centerLng, 8.0)  // held
+        geoManager.evaluateHighAccuracyProximity(north(120.0), centerLng, 8.0)  // confirmed EXIT
         assertEquals(1, countAction("ENTER"))
         assertEquals(1, countAction("EXIT"))
 
@@ -137,11 +140,13 @@ class GeofenceManagerResumeChurnTest {
         assertEquals(1, countAction("ENTER"))
 
         // New process (evaluator starts empty). The device left the office while
-        // dead, so the first fix is well outside. Seeded from the persisted set,
-        // the cold-started evaluator must EXIT rather than get stuck inside.
+        // dead, so the fixes are well outside. Seeded from the persisted set, the
+        // cold-started evaluator confirms the departure across two fixes and
+        // EXITs rather than getting stuck inside.
         geoManager = newManager()
-        geoManager.evaluateHighAccuracyProximity(north(200.0), centerLng, 8.0)
-        assertEquals(1, countAction("EXIT"), "a leave-while-dead must EXIT on the first outside fix (#292)")
+        geoManager.evaluateHighAccuracyProximity(north(200.0), centerLng, 8.0)  // held
+        geoManager.evaluateHighAccuracyProximity(north(200.0), centerLng, 8.0)  // confirmed EXIT
+        assertEquals(1, countAction("EXIT"), "a sustained leave-while-dead must EXIT on cold start (#292)")
 
         // Returning to the office then fires a fresh ENTER — the state was not stuck.
         geoManager.evaluateHighAccuracyProximity(north(12.0), centerLng, 8.0)

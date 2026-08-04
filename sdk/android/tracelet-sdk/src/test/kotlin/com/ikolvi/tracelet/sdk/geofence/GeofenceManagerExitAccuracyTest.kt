@@ -96,7 +96,10 @@ class GeofenceManagerExitAccuracyTest {
     fun `gating disabled fires EXIT on the drift spike`() {
         configure(0)
         enterThenDrift()
-        assertTrue(exitCount() >= 1, "with gating off, the drift spike should fire EXIT")
+        // With gating off the spike is "confidently outside"; a second such fix
+        // confirms it (a single fix is held by the confirmation gate).
+        geoManager.evaluateHighAccuracyProximity(north(85.0), centerLng, 150.0)
+        assertTrue(exitCount() >= 1, "with gating off, the sustained drift spike should fire EXIT")
     }
 
     @Test
@@ -105,8 +108,10 @@ class GeofenceManagerExitAccuracyTest {
         enterThenDrift()
         assertEquals(0, exitCount(), "clamp 20 m must absorb the ±150 m drift spike")
 
-        // Genuine, accurate departure ~120 m out: 120 - 10 = 110 > 70 -> EXIT.
+        // Genuine, accurate, sustained departure ~120 m out: 120 - 10 = 110 > 70.
+        // Two consecutive fixes confirm the EXIT.
         geoManager.evaluateHighAccuracyProximity(north(120.0), centerLng, 10.0)
-        assertTrue(exitCount() >= 1, "a genuine accurate departure must still EXIT")
+        geoManager.evaluateHighAccuracyProximity(north(120.0), centerLng, 10.0)
+        assertTrue(exitCount() >= 1, "a genuine, sustained departure must still EXIT")
     }
 }
