@@ -78,7 +78,14 @@ final class GeofenceManagerTransitionLogTests: XCTestCase {
 
     /// iOS persists logs asynchronously on a serial queue, so poll rather than
     /// assuming the write has landed.
-    private func geofenceLines(timeout: TimeInterval = 2.0) -> [(level: String, message: String)] {
+    ///
+    /// `until` lets callers wait for a *specific* line (e.g. the EXIT, which is
+    /// written several async hops after the ENTER). Without it the poller would
+    /// return the moment any `[geofence]` line lands and race the later writes.
+    private func geofenceLines(
+        until: (([(level: String, message: String)]) -> Bool)? = nil,
+        timeout: TimeInterval = 2.0
+    ) -> [(level: String, message: String)] {
         let deadline = Date().addingTimeInterval(timeout)
         var found: [(level: String, message: String)] = []
         repeat {
@@ -87,7 +94,7 @@ final class GeofenceManagerTransitionLogTests: XCTestCase {
                 .filter { $0.message.contains("[geofence]") }
                 .map { (level: $0.level, message: $0.message) }
                 .reversed()
-            if !found.isEmpty { return found }
+            if until == nil ? !found.isEmpty : until!(found) { return found }
             usleep(25_000)
         } while Date() < deadline
         return found
@@ -98,7 +105,10 @@ final class GeofenceManagerTransitionLogTests: XCTestCase {
     }
 
     private func firstExitAtInfo() -> String? {
-        infoLines().first { $0.contains("EXIT") }
+        geofenceLines(until: { lines in
+            lines.contains { $0.level == "INFO" && $0.message.contains("EXIT") }
+        })
+        .first { $0.level == "INFO" && $0.message.contains("EXIT") }
     }
 
     // MARK: - Transitions must be visible at INFO
