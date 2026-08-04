@@ -73,8 +73,25 @@ class GeofenceEvaluator {
   /// gets a 20 m band rather than 5 m).
   static const double _minExitHysteresisMeters = 20;
 
+  /// Number of consecutive out-of-fence fixes required to confirm an EXIT
+  /// (mirror of `GEOFENCE_EXIT_CONFIRMATIONS` in the Rust core).
+  ///
+  /// Hysteresis is the *spatial* half of a robust exit test; this is the
+  /// *temporal* half. Consumer GNSS routinely emits a lone "over-confident"
+  /// fix — one that lands far outside while reporting a tight accuracy the
+  /// accuracy-aware gate (#274) cannot see through — and such a fix is always
+  /// transient (the device is back inside on the very next fix). Requiring the
+  /// device to be confidently outside for N consecutive fixes absorbs those
+  /// glitches, while a genuine departure still fires exactly one EXIT, delayed
+  /// only by (N-1) fix intervals (issue #294).
+  static const int _exitConfirmations = 2;
+
   /// Set of geofence identifiers the device is currently inside.
   final Set<String> _insideGeofenceIds = <String>{};
+
+  /// Per-fence count of consecutive out-of-fence fixes seen while still inside,
+  /// pending EXIT confirmation. Reset the moment the device is back inside.
+  final Map<String, int> _pendingExitCounts = <String, int>{};
 
   /// Cached unmodifiable view — invalidated when [_insideGeofenceIds] changes (D-M4).
   Set<String>? _cachedInsideView;
@@ -201,6 +218,7 @@ class GeofenceEvaluator {
 
           if (isInside && !wasInside) {
             _insideGeofenceIds.add(identifier);
+            _pendingExitCounts.remove(identifier);
             _cachedInsideView = null;
             transitions.add(
               GeofenceTransition(
@@ -209,16 +227,21 @@ class GeofenceEvaluator {
                 geofence: gf,
               ),
             );
-          } else if (!isInside && wasInside) {
-            _insideGeofenceIds.remove(identifier);
-            _cachedInsideView = null;
-            transitions.add(
-              GeofenceTransition(
-                identifier: identifier,
-                action: 'EXIT',
-                geofence: gf,
-              ),
-            );
+          } else if (wasInside) {
+            if (isInside) {
+              // Back inside: cancel any pending exit (transient excursion).
+              _pendingExitCounts.remove(identifier);
+            } else if (_confirmExit(identifier)) {
+              _insideGeofenceIds.remove(identifier);
+              _cachedInsideView = null;
+              transitions.add(
+                GeofenceTransition(
+                  identifier: identifier,
+                  action: 'EXIT',
+                  geofence: gf,
+                ),
+              );
+            }
           }
           continue; // Skip circular check.
         }
@@ -253,6 +276,7 @@ class GeofenceEvaluator {
 
       if (entered && !wasInside) {
         _insideGeofenceIds.add(identifier);
+        _pendingExitCounts.remove(identifier);
         _cachedInsideView = null;
         transitions.add(
           GeofenceTransition(
@@ -262,28 +286,53 @@ class GeofenceEvaluator {
             geofence: gf,
           ),
         );
-      } else if (exited && wasInside) {
-        _insideGeofenceIds.remove(identifier);
-        _cachedInsideView = null;
-        transitions.add(
-          GeofenceTransition(
-            identifier: identifier,
-            action: 'EXIT',
-            distance: distance,
-            geofence: gf,
-          ),
-        );
+      } else if (wasInside) {
+        if (exited) {
+          // Confirmed-exit gate (#294): a lone over-confident fix that lands
+          // outside is a transient glitch, so require the device to be
+          // confidently outside for [_exitConfirmations] consecutive fixes
+          // before emitting EXIT.
+          if (_confirmExit(identifier)) {
+            _insideGeofenceIds.remove(identifier);
+            _cachedInsideView = null;
+            transitions.add(
+              GeofenceTransition(
+                identifier: identifier,
+                action: 'EXIT',
+                distance: distance,
+                geofence: gf,
+              ),
+            );
+          }
+        } else {
+          // Within `radius + exitBuffer` while inside: still in. Any in-flight
+          // exit excursion was transient — reset its count.
+          _pendingExitCounts.remove(identifier);
+        }
       }
-      // Between `radius` and `radius + exitBuffer` while already inside: hold
-      // the current state (no transition) to absorb boundary jitter.
     }
 
     return transitions;
   }
 
+  /// Records one more consecutive out-of-fence observation for [identifier] and
+  /// returns true once [_exitConfirmations] have accumulated — clearing the
+  /// count so a later re-entry then exit starts fresh. Returns false (holding
+  /// the EXIT) while confirmations are still accruing.
+  bool _confirmExit(String identifier) {
+    final count = (_pendingExitCounts[identifier] ?? 0) + 1;
+    if (count >= _exitConfirmations) {
+      _pendingExitCounts.remove(identifier);
+      return true;
+    }
+    _pendingExitCounts[identifier] = count;
+    return false;
+  }
+
   /// Clear all tracking state. Call when tracking restarts.
   void clear() {
     _insideGeofenceIds.clear();
+    _pendingExitCounts.clear();
     _cachedInsideView = null;
     clearIndex();
   }
@@ -293,6 +342,7 @@ class GeofenceEvaluator {
   /// Useful for knockout mode — after EXIT, the geofence is removed.
   void removeGeofence(String identifier) {
     _insideGeofenceIds.remove(identifier);
+    _pendingExitCounts.remove(identifier);
     _cachedInsideView = null;
   }
 

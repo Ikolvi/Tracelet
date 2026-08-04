@@ -78,7 +78,9 @@ class GeofenceManagerProximityTest {
         geoManager.evaluateHighAccuracyProximity(centerLat, centerLng)
         assertEquals("ENTER", lastAction(), "Crossing inside should fire ENTER")
 
-        // Move ~1.1 km away → EXIT.
+        // Move ~1.1 km away → a sustained departure confirmed across two fixes
+        // fires EXIT (the first out-of-fence fix is held for confirmation).
+        geoManager.evaluateHighAccuracyProximity(centerLat + 0.01, centerLng)
         geoManager.evaluateHighAccuracyProximity(centerLat + 0.01, centerLng)
         assertEquals("EXIT", lastAction(), "Crossing back outside should fire EXIT")
     }

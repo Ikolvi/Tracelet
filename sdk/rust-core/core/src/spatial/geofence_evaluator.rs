@@ -19,6 +19,23 @@ const GEOFENCE_EXIT_HYSTERESIS_FRACTION: f64 = 0.1;
 /// geofence still gets a 20 m band rather than 5 m).
 const GEOFENCE_MIN_EXIT_HYSTERESIS_METERS: f64 = 20.0;
 
+/// Number of consecutive out-of-fence fixes required to confirm an EXIT.
+///
+/// Hysteresis (the exit buffer) is the *spatial* half of a robust exit test;
+/// this is the *temporal* half. A boundary crossing is a sustained state
+/// change, so inferring it from a single fix is unsound: consumer GNSS
+/// routinely emits an isolated "over-confident" fix — one that lands hundreds
+/// of metres away while reporting a tight accuracy the accuracy-aware gate
+/// (#274) cannot see through. Such a fix is always transient: the device
+/// jumps out and is back inside on the very next fix. Requiring the device to
+/// be confidently outside for N *consecutive* fixes absorbs those glitches on
+/// every device, while a genuine departure — which stays outside — still fires
+/// exactly one EXIT, delayed only by (N-1) fix intervals.
+///
+/// `2` is the minimal principled value: "do not act on a lone fix; require one
+/// corroborating fix." It adds no per-device tuning and no magic distances.
+const GEOFENCE_EXIT_CONFIRMATIONS: u32 = 2;
+
 #[derive(uniffi::Record, Clone, Debug)]
 /// Defines a geofence with a spatial polygon or circular radius for evaluation.
 pub struct CoreGeofence {
@@ -41,8 +58,29 @@ pub struct GeofenceTransition {
 /// Evaluates location updates against active geofences to detect boundary crossings.
 pub struct GeofenceEvaluator {
     inside_geofence_ids: std::sync::RwLock<HashSet<String>>,
+    /// Per-fence count of consecutive out-of-fence fixes observed while the
+    /// device is still considered inside, pending EXIT confirmation. Reset the
+    /// moment the device is back within the fence (a transient glitch) and
+    /// cleared on ENTER/removal/clear. See [GEOFENCE_EXIT_CONFIRMATIONS].
+    pending_exit_counts: std::sync::RwLock<HashMap<String, u32>>,
     rtree: std::sync::RwLock<Option<RTree<CoreGeofence>>>,
     indexed_geofences: std::sync::RwLock<Option<HashMap<String, CoreGeofence>>>,
+}
+
+/// Records one more consecutive out-of-fence observation for `identifier` and
+/// returns `true` once [GEOFENCE_EXIT_CONFIRMATIONS] have accumulated — at which
+/// point the pending count is cleared so a later re-entry then exit starts
+/// fresh. Returns `false` (holding the EXIT) while confirmations are still
+/// accruing.
+fn confirm_exit(pending: &mut HashMap<String, u32>, identifier: &str) -> bool {
+    let count = pending.get(identifier).copied().unwrap_or(0) + 1;
+    if count >= GEOFENCE_EXIT_CONFIRMATIONS {
+        pending.remove(identifier);
+        true
+    } else {
+        pending.insert(identifier.to_string(), count);
+        false
+    }
 }
 
 #[uniffi::export]
@@ -52,6 +90,7 @@ impl GeofenceEvaluator {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             inside_geofence_ids: std::sync::RwLock::new(HashSet::new()),
+            pending_exit_counts: std::sync::RwLock::new(HashMap::new()),
             rtree: std::sync::RwLock::new(None),
             indexed_geofences: std::sync::RwLock::new(None),
         })
@@ -97,6 +136,7 @@ impl GeofenceEvaluator {
         let effective_geofences = self.resolve_geofences(latitude, longitude, geofences);
         let mut transitions = Vec::new();
         let mut inside_ids = self.inside_geofence_ids.write().unwrap();
+        let mut pending = self.pending_exit_counts.write().unwrap();
 
         for gf in effective_geofences {
             let identifier = &gf.identifier;
@@ -108,16 +148,22 @@ impl GeofenceEvaluator {
 
                 if is_inside && !was_inside {
                     inside_ids.insert(identifier.clone());
+                    pending.remove(identifier);
                     transitions.push(GeofenceTransition {
                         identifier: identifier.clone(),
                         action: "ENTER".to_string(),
                     });
-                } else if !is_inside && was_inside {
-                    inside_ids.remove(identifier);
-                    transitions.push(GeofenceTransition {
-                        identifier: identifier.clone(),
-                        action: "EXIT".to_string(),
-                    });
+                } else if was_inside {
+                    if is_inside {
+                        // Back inside (or never really left): cancel any pending exit.
+                        pending.remove(identifier);
+                    } else if confirm_exit(&mut pending, identifier) {
+                        inside_ids.remove(identifier);
+                        transitions.push(GeofenceTransition {
+                            identifier: identifier.clone(),
+                            action: "EXIT".to_string(),
+                        });
+                    }
                 }
                 continue; // Skip circular check
             }
@@ -145,19 +191,30 @@ impl GeofenceEvaluator {
 
             if entered && !was_inside {
                 inside_ids.insert(identifier.clone());
+                pending.remove(identifier);
                 transitions.push(GeofenceTransition {
                     identifier: identifier.clone(),
                     action: "ENTER".to_string(),
                 });
-            } else if exited && was_inside {
-                inside_ids.remove(identifier);
-                transitions.push(GeofenceTransition {
-                    identifier: identifier.clone(),
-                    action: "EXIT".to_string(),
-                });
+            } else if was_inside {
+                if exited {
+                    // Confirmed-exit gate: a lone over-confident fix that lands
+                    // outside is a transient glitch, so require the device to be
+                    // confidently outside for GEOFENCE_EXIT_CONFIRMATIONS
+                    // consecutive fixes before emitting EXIT (see the constant).
+                    if confirm_exit(&mut pending, identifier) {
+                        inside_ids.remove(identifier);
+                        transitions.push(GeofenceTransition {
+                            identifier: identifier.clone(),
+                            action: "EXIT".to_string(),
+                        });
+                    }
+                } else {
+                    // Within `radius + exit_buffer` while inside: still in. Any
+                    // in-flight exit excursion was transient — reset its count.
+                    pending.remove(identifier);
+                }
             }
-            // Between `radius` and `radius + exit_buffer` while already inside:
-            // hold the current state (no transition) to absorb boundary jitter.
         }
 
         transitions
@@ -165,11 +222,13 @@ impl GeofenceEvaluator {
 
     pub fn clear(&self) {
         self.inside_geofence_ids.write().unwrap().clear();
+        self.pending_exit_counts.write().unwrap().clear();
         self.clear_index();
     }
 
     pub fn remove_geofence(&self, identifier: String) {
         self.inside_geofence_ids.write().unwrap().remove(&identifier);
+        self.pending_exit_counts.write().unwrap().remove(&identifier);
     }
 }
 
@@ -266,8 +325,8 @@ mod tests {
         assert_eq!(exits, 0, "boundary jitter must not produce any EXIT, got {exits}");
     }
 
-    /// A genuine departure — clearly beyond radius + hysteresis band — must
-    /// still produce exactly one EXIT.
+    /// A genuine departure — clearly beyond radius + hysteresis band, and
+    /// *sustained* — must produce exactly one EXIT once confirmed.
     #[test]
     fn genuine_exit_beyond_buffer_fires_once() {
         let (lat, lng) = (37.4219983, -122.084);
@@ -279,10 +338,65 @@ mod tests {
         let (e, _) = count(&eval.evaluate_proximity(plat, plng, 0.0, vec![gf.clone()]));
         assert_eq!(e, 1);
 
-        // Move clearly outside (well past radius + 20 m buffer).
+        // Move clearly outside (well past radius + 20 m buffer). The first
+        // out-of-fence fix is held pending confirmation, not emitted.
         let (plat, plng) = point_north(lat, lng, 400.0);
         let (_, x) = count(&eval.evaluate_proximity(plat, plng, 0.0, vec![gf.clone()]));
-        assert_eq!(x, 1, "a clear departure must fire exactly one EXIT");
+        assert_eq!(x, 0, "a lone out-of-fence fix must be held pending confirmation");
+
+        // Still outside on the next fix → confirmed departure → exactly one EXIT.
+        let (_, x) = count(&eval.evaluate_proximity(plat, plng, 0.0, vec![gf.clone()]));
+        assert_eq!(x, 1, "a sustained departure must fire exactly one EXIT");
+    }
+
+    /// Regression for the over-confident-drift pattern (vivo/Samsung field logs):
+    /// a stationary device inside the fence gets a single fix that lands far
+    /// outside while *reporting a tight accuracy* — the accuracy gate (#274)
+    /// cannot see through it. It must be absorbed as the transient glitch it is
+    /// (the device is back inside on the next fix), producing no EXIT.
+    #[test]
+    fn single_overconfident_fix_is_absorbed() {
+        let (lat, lng) = (10.787929, 76.684183);
+        let gf = circular("office", lat, lng, 50.0); // exit threshold = 70 m
+        let eval = GeofenceEvaluator::new();
+
+        // Inside.
+        let (plat, plng) = point_north(lat, lng, 10.0);
+        let (e, x) = count(&eval.evaluate_proximity(plat, plng, 5.0, vec![gf.clone()]));
+        assert_eq!((e, x), (1, 0));
+
+        // Over-confident glitch: 200 m out at 1.7 m accuracy (200 - 1.7 = 198 >
+        // 70, so it passes the accuracy gate) — but it is a lone fix.
+        let (plat, plng) = point_north(lat, lng, 200.0);
+        let (_, x) = count(&eval.evaluate_proximity(plat, plng, 1.7, vec![gf.clone()]));
+        assert_eq!(x, 0, "a lone over-confident out-of-fence fix must not EXIT");
+
+        // Back inside on the very next fix → no EXIT, no re-ENTER.
+        let (plat, plng) = point_north(lat, lng, 9.0);
+        let (e, x) = count(&eval.evaluate_proximity(plat, plng, 5.0, vec![gf.clone()]));
+        assert_eq!((e, x), (0, 0), "the glitch must leave no trace");
+    }
+
+    /// The confirmation counter resets the moment the device is back inside, so
+    /// a device that repeatedly glitches out and returns never EXITs.
+    #[test]
+    fn exit_confirmation_resets_on_return() {
+        let (lat, lng) = (10.787929, 76.684183);
+        let gf = circular("office", lat, lng, 50.0);
+        let eval = GeofenceEvaluator::new();
+
+        let (plat, plng) = point_north(lat, lng, 10.0);
+        let _ = eval.evaluate_proximity(plat, plng, 5.0, vec![gf.clone()]);
+
+        // out, in, out, in, out — each excursion is a single fix.
+        let seq = [200.0, 10.0, 220.0, 12.0, 210.0];
+        let mut exits = 0usize;
+        for d in seq {
+            let (plat, plng) = point_north(lat, lng, d);
+            let (_, x) = count(&eval.evaluate_proximity(plat, plng, 1.7, vec![gf.clone()]));
+            exits += x;
+        }
+        assert_eq!(exits, 0, "alternating out/in glitches must never confirm an EXIT");
     }
 
     /// Small-radius geofences use the meter floor for their hysteresis band, so
@@ -344,9 +458,12 @@ mod tests {
         let (plat, plng) = point_north(lat, lng, 10.0);
         let _ = eval.evaluate_proximity(plat, plng, 8.0, vec![gf.clone()]);
 
-        // 120 m out with ±10 m accuracy: 120 - 10 = 110 > 70 → real EXIT.
+        // 120 m out with ±10 m accuracy: 120 - 10 = 110 > 70. Sustained across
+        // two consecutive fixes → real EXIT (the first is held for confirmation).
         let (plat, plng) = point_north(lat, lng, 120.0);
         let (_, x) = count(&eval.evaluate_proximity(plat, plng, 10.0, vec![gf.clone()]));
-        assert_eq!(x, 1, "an accurate genuine departure must still EXIT");
+        assert_eq!(x, 0, "first out-of-fence fix is held pending confirmation");
+        let (_, x) = count(&eval.evaluate_proximity(plat, plng, 10.0, vec![gf.clone()]));
+        assert_eq!(x, 1, "an accurate, sustained departure must still EXIT");
     }
 }

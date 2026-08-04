@@ -237,3 +237,32 @@ This gating applies only to the **high-accuracy** in-app path. In standard
 (OS region-monitoring) mode the operating system decides EXIT, and
 `geofenceExitAccuracyMax` has no effect.
 </Callout>
+
+### Confirmed exit: a single bad fix never triggers an EXIT
+
+Accuracy gating only helps when a drifting fix is *honest* about its uncertainty
+(large reported accuracy). Some devices do the opposite: they emit an
+**over-confident** fix that lands hundreds of metres outside the fence while
+reporting a *tight* accuracy. Because the reported accuracy is small, gating
+cannot see through it — `200 m − 1.7 m = 198 m` still clears the threshold.
+
+Tracelet catches these with a second, complementary defense: an EXIT must be
+**confirmed across two consecutive out-of-fence fixes**. The reasoning is
+physical — leaving a geofence is a *sustained* change, whereas an over-confident
+glitch is always a single fix that jumps out and is back inside on the very next
+one:
+
+```text
+fix 1: 200 m out  → held (pending confirmation), no EXIT
+fix 2: back inside → pending cleared, glitch absorbed
+```
+
+A **genuine** departure stays outside, so the second fix confirms it and exactly
+one EXIT fires — delayed only by one location update (≈1 s in high-accuracy
+mode). Hysteresis is the *spatial* half of the exit decision and this is the
+*temporal* half; the two work together.
+
+This is on by default and needs no configuration. The decision lives in the Rust
+core, so Android and iOS behave identically. (Like accuracy gating, it applies
+only to the high-accuracy in-app path — in standard OS region-monitoring mode the
+operating system owns the EXIT decision.)

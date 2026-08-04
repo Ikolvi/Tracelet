@@ -114,7 +114,9 @@ final class GeofenceManagerTransitionLogTests: XCTestCase {
 
     func testExitIsLoggedAtInfoCarryingEveryInputToTheAccuracyAwareTest() {
         manager.evaluateHighAccuracyProximity(latitude: centerLat, longitude: centerLng, accuracy: 8.0)
-        // Genuine departure: 200 m out with a tight ±10 m fix -> 190 > 70 -> EXIT.
+        // Genuine, sustained departure: 200 m out with a tight ±10 m fix ->
+        // 190 > 70. Two consecutive fixes confirm the EXIT.
+        manager.evaluateHighAccuracyProximity(latitude: north(200.0), longitude: centerLng, accuracy: 10.0)
         manager.evaluateHighAccuracyProximity(latitude: north(200.0), longitude: centerLng, accuracy: 10.0)
 
         guard let exit = firstExitAtInfo() else {
@@ -132,6 +134,7 @@ final class GeofenceManagerTransitionLogTests: XCTestCase {
 
     func testTraceDoesNotLeakRawCoordinates() {
         manager.evaluateHighAccuracyProximity(latitude: centerLat, longitude: centerLng, accuracy: 8.0)
+        manager.evaluateHighAccuracyProximity(latitude: north(200.0), longitude: centerLng, accuracy: 10.0)
         manager.evaluateHighAccuracyProximity(latitude: north(200.0), longitude: centerLng, accuracy: 10.0)
 
         // These reports get pasted into public issues. Distance-from-centre is
@@ -152,6 +155,7 @@ final class GeofenceManagerTransitionLogTests: XCTestCase {
         _ = config.setConfig(["geofenceExitAccuracyMax": 20])
         manager.evaluateHighAccuracyProximity(latitude: centerLat, longitude: centerLng, accuracy: 8.0)
         manager.evaluateHighAccuracyProximity(latitude: north(200.0), longitude: centerLng, accuracy: 150.0)
+        manager.evaluateHighAccuracyProximity(latitude: north(200.0), longitude: centerLng, accuracy: 150.0)
 
         guard let exit = firstExitAtInfo() else {
             return XCTFail("expected an EXIT line, got: \(geofenceLines())")
@@ -169,6 +173,7 @@ final class GeofenceManagerTransitionLogTests: XCTestCase {
         // uncertainty behaves as zero uncertainty — an inverted safe default that
         // makes a false EXIT far more likely and is invisible without this flag.
         manager.evaluateHighAccuracyProximity(latitude: centerLat, longitude: centerLng, accuracy: 8.0)
+        manager.evaluateHighAccuracyProximity(latitude: north(200.0), longitude: centerLng, accuracy: -1.0)
         manager.evaluateHighAccuracyProximity(latitude: north(200.0), longitude: centerLng, accuracy: -1.0)
 
         guard let exit = firstExitAtInfo() else {
@@ -191,7 +196,9 @@ final class GeofenceManagerTransitionLogTests: XCTestCase {
         manager.evaluateHighAccuracyProximity(latitude: north(69.0), longitude: centerLng, accuracy: 0.0)
         XCTAssertNil(firstExitAtInfo(), "69 m must not exit a 70 m threshold: \(geofenceLines())")
 
-        // Just outside -> exits, and the line must report thr=70.0.
+        // Just outside -> exits (confirmed across two fixes), and the line must
+        // report thr=70.0.
+        manager.evaluateHighAccuracyProximity(latitude: north(71.0), longitude: centerLng, accuracy: 0.0)
         manager.evaluateHighAccuracyProximity(latitude: north(71.0), longitude: centerLng, accuracy: 0.0)
         guard let exit = firstExitAtInfo() else {
             return XCTFail("71 m must exit a 70 m threshold: \(geofenceLines())")
