@@ -54,6 +54,10 @@ let package = Package(
                 // #292: resume/boot must not re-emit ENTER for a stationary
                 // device (persisted knownInsideIds dedup).
                 "GeofenceManagerResumeChurnTests.swift",
+                // High-accuracy geofence starvation: a stationary device must
+                // still be delivered fixes (distanceFilter=None) and crossings
+                // must evaluate on the raw stream, before the persistence filter.
+                "LocationEngineGeofenceStarvationTests.swift",
             ]
         ),
     ]
