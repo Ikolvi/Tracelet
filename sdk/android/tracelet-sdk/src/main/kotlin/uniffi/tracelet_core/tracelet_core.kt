@@ -642,6 +642,8 @@ external fun uniffi_tracelet_core_checksum_func_is_point_in_polygon(
 ): Short
 external fun uniffi_tracelet_core_checksum_func_compute_accel_window(
 ): Short
+external fun uniffi_tracelet_core_checksum_func_tuning_for_transport_mode(
+): Short
 external fun uniffi_tracelet_core_checksum_func_build_canonical_string(
 ): Short
 external fun uniffi_tracelet_core_checksum_func_compute_genesis_hash(
@@ -682,6 +684,8 @@ external fun uniffi_tracelet_core_checksum_method_kalmanlocationfilter_reset(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_adaptivesamplingengine_compute(
 ): Short
+external fun uniffi_tracelet_core_checksum_method_locationprocessor_current_tuning(
+): Short
 external fun uniffi_tracelet_core_checksum_method_locationprocessor_has_last_location(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_locationprocessor_last_effective_speed(
@@ -689,6 +693,10 @@ external fun uniffi_tracelet_core_checksum_method_locationprocessor_last_effecti
 external fun uniffi_tracelet_core_checksum_method_locationprocessor_process(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_locationprocessor_reset(
+): Short
+external fun uniffi_tracelet_core_checksum_method_locationprocessor_restore_base_tuning(
+): Short
+external fun uniffi_tracelet_core_checksum_method_locationprocessor_retune(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_scheduleparser_calculate_next_alarms(
 ): Short
@@ -956,6 +964,8 @@ external fun uniffi_tracelet_core_fn_free_locationprocessor(`handle`: Long,uniff
 ): Unit
 external fun uniffi_tracelet_core_fn_constructor_locationprocessor_new(`distanceFilter`: Double,`disableElasticity`: Byte,`elasticityMultiplier`: Double,`enableAdaptiveMode`: Byte,`trackingAccuracyThreshold`: Int,`filterPolicy`: Int,`maxImpliedSpeed`: Int,`odometerAccuracyThreshold`: Int,`rejectMockLocations`: Byte,`mockDetectionLevel`: Int,`enableSparseUpdates`: Byte,`sparseDistanceThreshold`: Double,`sparseMaxIdleSeconds`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
+external fun uniffi_tracelet_core_fn_method_locationprocessor_current_tuning(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 external fun uniffi_tracelet_core_fn_method_locationprocessor_has_last_location(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
 external fun uniffi_tracelet_core_fn_method_locationprocessor_last_effective_speed(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -963,6 +973,10 @@ external fun uniffi_tracelet_core_fn_method_locationprocessor_last_effective_spe
 external fun uniffi_tracelet_core_fn_method_locationprocessor_process(`ptr`: Long,`latitude`: Double,`longitude`: Double,`accuracy`: Double,`speed`: Double,`timestampMs`: Long,`isMock`: Byte,`adaptiveContext`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun uniffi_tracelet_core_fn_method_locationprocessor_reset(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_tracelet_core_fn_method_locationprocessor_restore_base_tuning(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_tracelet_core_fn_method_locationprocessor_retune(`ptr`: Long,`tuning`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 external fun uniffi_tracelet_core_fn_clone_scheduleparser(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
@@ -1188,6 +1202,8 @@ external fun uniffi_tracelet_core_fn_func_is_point_in_polygon(`lat`: Double,`lng
 ): Byte
 external fun uniffi_tracelet_core_fn_func_compute_accel_window(`magnitudesG`: RustBuffer.ByValue,`durationMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+external fun uniffi_tracelet_core_fn_func_tuning_for_transport_mode(`mode`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 external fun uniffi_tracelet_core_fn_func_build_canonical_string(`previousHash`: RustBuffer.ByValue,`chainIndex`: Int,`loc`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun uniffi_tracelet_core_fn_func_compute_genesis_hash(`deviceId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1322,6 +1338,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_tracelet_core_checksum_func_compute_accel_window() != 29960.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_tracelet_core_checksum_func_tuning_for_transport_mode() != 24165.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_tracelet_core_checksum_func_build_canonical_string() != 7071.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1382,6 +1401,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_tracelet_core_checksum_method_adaptivesamplingengine_compute() != 3823.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_current_tuning() != 27721.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_has_last_location() != 24404.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1391,7 +1413,13 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_process() != 9433.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_reset() != 105.toShort()) {
+    if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_reset() != 34209.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_restore_base_tuning() != 17132.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_retune() != 24775.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_scheduleparser_calculate_next_alarms() != 37817.toShort()) {
@@ -6149,13 +6177,39 @@ public object FfiConverterTypeKalmanLocationFilter: FfiConverter<KalmanLocationF
  */
 public interface LocationProcessorInterface {
     
+    /**
+     * The thresholds currently in force.
+     */
+    fun `currentTuning`(): LocationTuning
+    
     fun `hasLastLocation`(): kotlin.Boolean
     
     fun `lastEffectiveSpeed`(): kotlin.Double
     
     fun `process`(`latitude`: kotlin.Double, `longitude`: kotlin.Double, `accuracy`: kotlin.Double, `speed`: kotlin.Double, `timestampMs`: kotlin.Long, `isMock`: kotlin.Boolean, `adaptiveContext`: AdaptiveContext?): LocationProcessorResult
     
+    /**
+     * Clears the positional history. Leaves the active tuning in place — a
+     * reset is about forgetting where we were, not which mode we are in.
+     */
     fun `reset`()
+    
+    /**
+     * Restores the thresholds the processor was constructed with, undoing any
+     * [`Self::retune`]. Used when the classifier drops back to `Unknown` and
+     * the host's own configuration should take over again.
+     */
+    fun `restoreBaseTuning`()
+    
+    /**
+     * Swaps the distance/accuracy/odometer/speed thresholds in place.
+     *
+     * Deliberately leaves the positional state (last lat/lng/timestamp) alone:
+     * rebuilding the processor to change thresholds would drop the anchor point
+     * and silently forfeit one inter-fix delta from the odometer every time the
+     * transport mode changed.
+     */
+    fun `retune`(`tuning`: LocationTuning)
     
     companion object
 }
@@ -6267,6 +6321,22 @@ open class LocationProcessor: Disposable, AutoCloseable, LocationProcessorInterf
         }
     }
 
+    
+    /**
+     * The thresholds currently in force.
+     */override fun `currentTuning`(): LocationTuning {
+            return FfiConverterTypeLocationTuning.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_locationprocessor_current_tuning(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
     override fun `hasLastLocation`(): kotlin.Boolean {
             return FfiConverterBoolean.lift(
     callWithHandle {
@@ -6306,13 +6376,54 @@ open class LocationProcessor: Disposable, AutoCloseable, LocationProcessorInterf
     }
     
 
-    override fun `reset`()
+    
+    /**
+     * Clears the positional history. Leaves the active tuning in place — a
+     * reset is about forgetting where we were, not which mode we are in.
+     */override fun `reset`()
         = 
     callWithHandle {
     uniffiRustCall() { _status ->
     UniffiLib.uniffi_tracelet_core_fn_method_locationprocessor_reset(
         it,
         _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Restores the thresholds the processor was constructed with, undoing any
+     * [`Self::retune`]. Used when the classifier drops back to `Unknown` and
+     * the host's own configuration should take over again.
+     */override fun `restoreBaseTuning`()
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_locationprocessor_restore_base_tuning(
+        it,
+        _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Swaps the distance/accuracy/odometer/speed thresholds in place.
+     *
+     * Deliberately leaves the positional state (last lat/lng/timestamp) alone:
+     * rebuilding the processor to change thresholds would drop the anchor point
+     * and silently forfeit one inter-fix delta from the odometer every time the
+     * transport mode changed.
+     */override fun `retune`(`tuning`: LocationTuning)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_locationprocessor_retune(
+        it,
+        FfiConverterTypeLocationTuning.lower(`tuning`),_status)
 }
     }
     
@@ -10420,6 +10531,74 @@ public object FfiConverterTypeLocationRecord: FfiConverterRustBuffer<LocationRec
 
 
 /**
+ * The four thresholds that govern how much distance a fix may contribute.
+ *
+ * Split out from the rest of the processor config because these — and only
+ * these — may be swapped at runtime by transport-mode auto-tuning. See
+ * [`crate::algorithms::transport_mode::tuning_for_transport_mode`].
+ */
+data class LocationTuning (
+    /**
+     * Minimum movement (m) between recorded fixes.
+     */
+    var `distanceFilter`: kotlin.Double
+    , 
+    /**
+     * Reject fixes with accuracy worse than this (m). `<= 0` disables.
+     */
+    var `trackingAccuracyThreshold`: kotlin.Int
+    , 
+    /**
+     * Only fixes at least this accurate (m) contribute to the odometer.
+     * `<= 0` disables, letting every accepted fix count.
+     */
+    var `odometerAccuracyThreshold`: kotlin.Int
+    , 
+    /**
+     * Reject fixes implying a speed above this (m/s). `<= 0` disables.
+     */
+    var `maxImpliedSpeed`: kotlin.Int
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLocationTuning: FfiConverterRustBuffer<LocationTuning> {
+    override fun read(buf: ByteBuffer): LocationTuning {
+        return LocationTuning(
+            FfiConverterDouble.read(buf),
+            FfiConverterInt.read(buf),
+            FfiConverterInt.read(buf),
+            FfiConverterInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LocationTuning) = (
+            FfiConverterDouble.allocationSize(value.`distanceFilter`) +
+            FfiConverterInt.allocationSize(value.`trackingAccuracyThreshold`) +
+            FfiConverterInt.allocationSize(value.`odometerAccuracyThreshold`) +
+            FfiConverterInt.allocationSize(value.`maxImpliedSpeed`)
+    )
+
+    override fun write(value: LocationTuning, buf: ByteBuffer) {
+            FfiConverterDouble.write(value.`distanceFilter`, buf)
+            FfiConverterInt.write(value.`trackingAccuracyThreshold`, buf)
+            FfiConverterInt.write(value.`odometerAccuracyThreshold`, buf)
+            FfiConverterInt.write(value.`maxImpliedSpeed`, buf)
+    }
+}
+
+
+
+/**
  * Represents a single log entry persisted in the database.
  */
 data class LogEntry (
@@ -11928,6 +12107,38 @@ public object FfiConverterOptionalTypeLocationRecord: FfiConverterRustBuffer<Loc
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeLocationTuning: FfiConverterRustBuffer<LocationTuning?> {
+    override fun read(buf: ByteBuffer): LocationTuning? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeLocationTuning.read(buf)
+    }
+
+    override fun allocationSize(value: LocationTuning?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeLocationTuning.allocationSize(value)
+        }
+    }
+
+    override fun write(value: LocationTuning?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeLocationTuning.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypeTelematicsConfig: FfiConverterRustBuffer<TelematicsConfig?> {
     override fun read(buf: ByteBuffer): TelematicsConfig? {
         if (buf.get().toInt() == 0) {
@@ -12580,6 +12791,33 @@ public object FfiConverterMapStringString: FfiConverterRustBuffer<Map<kotlin.Str
     UniffiLib.uniffi_tracelet_core_fn_func_compute_accel_window(
     
         FfiConverterSequenceDouble.lower(`magnitudesG`),FfiConverterLong.lower(`durationMs`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Location-filter thresholds appropriate to a detected [`TransportMode`].
+         *
+         * Returns `None` for [`TransportMode::Unknown`], meaning "leave the host's own
+         * configuration alone" — an unclassified stretch is not evidence for any
+         * particular tuning, so the caller should keep whatever it already had.
+         *
+         * The values are chosen for distance fidelity, which is the opposite tension
+         * from [`crate::algorithms::location_processor::AdaptiveSamplingEngine`]: that
+         * engine widens the distance filter for slow movers to spare the radio, while
+         * this table *tightens* it, because walking is exactly where GPS noise is
+         * largest relative to real displacement and where an over-wide odometer
+         * accuracy gate inflates distance most.
+         *
+         * `max_implied_speed` sits roughly 2x above each mode's realistic ceiling, so
+         * it rejects teleport spikes without clipping genuine bursts.
+         */ fun `tuningForTransportMode`(`mode`: TransportMode): LocationTuning? {
+            return FfiConverterOptionalTypeLocationTuning.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_func_tuning_for_transport_mode(
+    
+        FfiConverterTypeTransportMode.lower(`mode`),_status)
 }
     )
     }

@@ -143,6 +143,13 @@ public final class TraceletSdk {
     private var accelWindowTimer: Timer?
     private var impactConfirmTimer: Timer?
     private var lastSpeedMps: Double = 0
+
+    /// Speed (m/s) of the most recent **raw** fix, fed by `LocationEngine.rawSpeedSink`.
+    ///
+    /// Only the transport classifier reads this. Telematics and impact detection
+    /// deliberately keep using `lastSpeedMps` (accepted fixes) — their thresholds
+    /// are calibrated against filtered speeds.
+    private var lastRawSpeedMps: Double = 0
     private var lastLat: Double = 0
     private var lastLng: Double = 0
     private static let accelWindowInterval: TimeInterval = 1.0
@@ -2400,6 +2407,13 @@ public final class TraceletSdk {
                 minConfidence: configManager.getMinModeConfidence()))
             : nil
 
+        // #299: classify from raw pre-filter speeds. Left attached while the
+        // classifier exists and detached with it, so a disabled classifier costs
+        // nothing on the location path.
+        locationEngine?.rawSpeedSink = transportClassifier != nil
+            ? { [weak self] speed in self?.lastRawSpeedMps = speed }
+            : nil
+
         impactDetector = (configManager.getEnableCrashDetection() || configManager.getEnableFallDetection())
             ? ImpactDetector(config: ImpactConfig(
                 enableCrash: configManager.getEnableCrashDetection(),
@@ -2629,16 +2643,34 @@ public final class TraceletSdk {
         let window = computeAccelWindow(magnitudesG: samples, durationMs: Int64(Self.accelWindowInterval * 1000))
 
         if let classifier = transportClassifier {
-            let result = classifier.classify(window: window, speedMps: lastSpeedMps, nowMs: nowMs)
+            // #299: classify from raw pre-filter speeds, so auto-tuning the distance
+            // filter cannot feed back into the mode that selected it.
+            let result = classifier.classify(window: window, speedMps: lastRawSpeedMps, nowMs: nowMs)
             // #214 pt3: keep the engine's fused mode fresh every window so it can be
             // persisted into the location's activity column when authoritative.
-            locationEngine?.fusedTransportMode = String(describing: result.mode).lowercased()
+            let mode = String(describing: result.mode).lowercased()
+            locationEngine?.fusedTransportMode = mode
             locationEngine?.fusedTransportModeConfidence = result.confidence
             if result.changed {
-                eventSender.sendModeChange([
-                    "mode": String(describing: result.mode).lowercased(),
+                // #299: retune the location filters for the newly committed mode.
+                // Only on a *commit* — confidence-gated and dwell-debounced — so the
+                // thresholds cannot chatter with per-window classification noise.
+                let tuning = locationEngine?.applyTransportModeTuning(mode)
+                var payload: [String: Any] = [
+                    "mode": mode,
                     "confidence": result.confidence,
-                ])
+                ]
+                // Report the applied thresholds so an auto-tune is visible to the
+                // host rather than being a silent config mutation.
+                if let tuning = tuning {
+                    payload["appliedTuning"] = [
+                        "distanceFilter": tuning.distanceFilter,
+                        "trackingAccuracyThreshold": tuning.trackingAccuracyThreshold,
+                        "odometerAccuracyThreshold": tuning.odometerAccuracyThreshold,
+                        "maxImpliedSpeed": tuning.maxImpliedSpeed,
+                    ]
+                }
+                eventSender.sendModeChange(payload)
             }
         }
         if let detector = impactDetector {

@@ -209,6 +209,24 @@ impl LocationProcessorResult {
     }
 }
 
+/// The four thresholds that govern how much distance a fix may contribute.
+///
+/// Split out from the rest of the processor config because these — and only
+/// these — may be swapped at runtime by transport-mode auto-tuning. See
+/// [`crate::algorithms::transport_mode::tuning_for_transport_mode`].
+#[derive(uniffi::Record, Clone, Copy, Debug, PartialEq)]
+pub struct LocationTuning {
+    /// Minimum movement (m) between recorded fixes.
+    pub distance_filter: f64,
+    /// Reject fixes with accuracy worse than this (m). `<= 0` disables.
+    pub tracking_accuracy_threshold: i32,
+    /// Only fixes at least this accurate (m) contribute to the odometer.
+    /// `<= 0` disables, letting every accepted fix count.
+    pub odometer_accuracy_threshold: i32,
+    /// Reject fixes implying a speed above this (m/s). `<= 0` disables.
+    pub max_implied_speed: i32,
+}
+
 struct LocationProcessorState {
     last_latitude: Option<f64>,
     last_longitude: Option<f64>,
@@ -217,19 +235,24 @@ struct LocationProcessorState {
     sparse_last_lng: Option<f64>,
     sparse_last_timestamp_ms: i64,
     last_effective_speed: f64,
+    /// Anchor the odometer measures from. Advances only on fixes that clear the
+    /// accuracy gate, so coarse fixes defer distance rather than losing it.
+    odo_last_latitude: Option<f64>,
+    odo_last_longitude: Option<f64>,
+    /// Live thresholds. Seeded from the constructor, replaced by `retune`.
+    tuning: LocationTuning,
+    /// The constructor's thresholds, kept so `restore_base_tuning` can undo an
+    /// auto-tune when the mode goes back to Unknown.
+    base_tuning: LocationTuning,
 }
 
 /// Core location processing engine that handles filtering out inaccurate or redundant points.
 #[derive(uniffi::Object)]
 pub struct LocationProcessor {
-    distance_filter: f64,
     disable_elasticity: bool,
     elasticity_multiplier: f64,
     enable_adaptive_mode: bool,
-    tracking_accuracy_threshold: i32,
     filter_policy: i32,
-    max_implied_speed: i32,
-    odometer_accuracy_threshold: i32,
     reject_mock_locations: bool,
     mock_detection_level: i32,
     enable_sparse_updates: bool,
@@ -256,15 +279,17 @@ impl LocationProcessor {
         sparse_distance_threshold: f64,
         sparse_max_idle_seconds: i32,
     ) -> Self {
-        Self {
+        let base_tuning = LocationTuning {
             distance_filter,
+            tracking_accuracy_threshold,
+            odometer_accuracy_threshold,
+            max_implied_speed,
+        };
+        Self {
             disable_elasticity,
             elasticity_multiplier,
             enable_adaptive_mode,
-            tracking_accuracy_threshold,
             filter_policy,
-            max_implied_speed,
-            odometer_accuracy_threshold,
             reject_mock_locations,
             mock_detection_level,
             enable_sparse_updates,
@@ -278,6 +303,10 @@ impl LocationProcessor {
                 sparse_last_lng: None,
                 sparse_last_timestamp_ms: 0,
                 last_effective_speed: 0.0,
+                odo_last_latitude: None,
+                odo_last_longitude: None,
+                tuning: base_tuning,
+                base_tuning,
             }),
         }
     }
@@ -288,6 +317,29 @@ impl LocationProcessor {
 
     pub fn has_last_location(&self) -> bool {
         self.state.lock().unwrap().last_latitude.is_some()
+    }
+
+    /// Swaps the distance/accuracy/odometer/speed thresholds in place.
+    ///
+    /// Deliberately leaves the positional state (last lat/lng/timestamp) alone:
+    /// rebuilding the processor to change thresholds would drop the anchor point
+    /// and silently forfeit one inter-fix delta from the odometer every time the
+    /// transport mode changed.
+    pub fn retune(&self, tuning: LocationTuning) {
+        self.state.lock().unwrap().tuning = tuning;
+    }
+
+    /// Restores the thresholds the processor was constructed with, undoing any
+    /// [`Self::retune`]. Used when the classifier drops back to `Unknown` and
+    /// the host's own configuration should take over again.
+    pub fn restore_base_tuning(&self) {
+        let mut state = self.state.lock().unwrap();
+        state.tuning = state.base_tuning;
+    }
+
+    /// The thresholds currently in force.
+    pub fn current_tuning(&self) -> LocationTuning {
+        self.state.lock().unwrap().tuning
     }
 
     pub fn process(
@@ -301,6 +353,7 @@ impl LocationProcessor {
         adaptive_context: Option<AdaptiveContext>,
     ) -> LocationProcessorResult {
         let mut state = self.state.lock().unwrap();
+        let tuning = state.tuning;
 
         if self.reject_mock_locations && is_mock {
             return if self.filter_policy == 2 {
@@ -346,32 +399,34 @@ impl LocationProcessor {
         };
         let effective_speed = if speed > 0.0 { speed } else { computed_speed };
 
-        let mut effective_distance = self.distance_filter;
+        let mut effective_distance = tuning.distance_filter;
         if self.enable_adaptive_mode {
             let mut ctx = adaptive_context.unwrap_or_default();
             if ctx.speed <= 0.0 {
                 ctx.speed = effective_speed;
             }
-            let engine = AdaptiveSamplingEngine::new(self.distance_filter, self.elasticity_multiplier);
+            let engine = AdaptiveSamplingEngine::new(tuning.distance_filter, self.elasticity_multiplier);
             effective_distance = engine.compute(ctx).effective_distance_filter;
         } else if !self.disable_elasticity && effective_speed > 0.0 {
             let multiplier = self.elasticity_multiplier.max(0.1);
             let speed_factor = (effective_speed / 10.0).clamp(1.0, 10.0);
-            effective_distance = self.distance_filter * speed_factor * multiplier;
+            effective_distance = tuning.distance_filter * speed_factor * multiplier;
         }
 
         if state.last_latitude.is_some() && distance < effective_distance {
             return LocationProcessorResult::filtered("DISTANCE_FILTER");
         }
 
-        if self.tracking_accuracy_threshold > 0 && accuracy > self.tracking_accuracy_threshold as f64 {
+        if tuning.tracking_accuracy_threshold > 0
+            && accuracy > tuning.tracking_accuracy_threshold as f64
+        {
             match self.filter_policy {
                 2 => {
                     return LocationProcessorResult::error(
                         "ACCURACY_FILTER",
                         &format!(
                             "Location accuracy {}m exceeds threshold {}m",
-                            accuracy, self.tracking_accuracy_threshold
+                            accuracy, tuning.tracking_accuracy_threshold
                         ),
                     )
                 }
@@ -384,15 +439,15 @@ impl LocationProcessor {
             }
         }
 
-        if self.max_implied_speed > 0 && state.last_latitude.is_some() && time_delta > 0.0 {
+        if tuning.max_implied_speed > 0 && state.last_latitude.is_some() && time_delta > 0.0 {
             let implied_speed = distance / time_delta;
-            if implied_speed > self.max_implied_speed as f64 {
+            if implied_speed > tuning.max_implied_speed as f64 {
                 return if self.filter_policy == 2 {
                     LocationProcessorResult::error(
                         "SPEED_FILTER",
                         &format!(
                             "Implied speed {:.1}m/s exceeds max {}m/s",
-                            implied_speed, self.max_implied_speed
+                            implied_speed, tuning.max_implied_speed
                         ),
                     )
                 } else {
@@ -401,10 +456,26 @@ impl LocationProcessor {
             }
         }
 
-        let odometer_delta = if self.odometer_accuracy_threshold <= 0
-            || accuracy <= self.odometer_accuracy_threshold as f64
-        {
-            distance
+        // The odometer keeps its own anchor, separate from the tracking anchor.
+        //
+        // A fix too coarse to trust must *defer* its distance, not delete it. The
+        // anchor only advances on a fix that passes the accuracy gate, so the
+        // next trustworthy fix measures the whole span it covered. Advancing
+        // unconditionally — as this did before — silently dropped every segment
+        // that happened to end on a coarse fix, which systematically
+        // under-reported distance in exactly the conditions the gate exists for.
+        // That under-reporting scales with how tight the gate is, so it bites
+        // hardest on foot, where the gate is tightest.
+        let passes_odometer_gate = tuning.odometer_accuracy_threshold <= 0
+            || accuracy <= tuning.odometer_accuracy_threshold as f64;
+        let odometer_delta = if passes_odometer_gate {
+            match (state.odo_last_latitude, state.odo_last_longitude) {
+                (Some(prev_lat), Some(prev_lng)) => {
+                    haversine(prev_lat, prev_lng, latitude, longitude)
+                }
+                // First trustworthy fix: nothing to measure from yet.
+                _ => 0.0,
+            }
         } else {
             0.0
         };
@@ -435,10 +506,16 @@ impl LocationProcessor {
         state.last_longitude = Some(longitude);
         state.last_timestamp_ms = timestamp_ms;
         state.last_effective_speed = effective_speed;
+        if passes_odometer_gate {
+            state.odo_last_latitude = Some(latitude);
+            state.odo_last_longitude = Some(longitude);
+        }
 
         LocationProcessorResult::accept(effective_speed, odometer_delta, distance)
     }
 
+    /// Clears the positional history. Leaves the active tuning in place — a
+    /// reset is about forgetting where we were, not which mode we are in.
     pub fn reset(&self) {
         let mut state = self.state.lock().unwrap();
         state.last_latitude = None;
@@ -448,5 +525,211 @@ impl LocationProcessor {
         state.sparse_last_lat = None;
         state.sparse_last_lng = None;
         state.sparse_last_timestamp_ms = 0;
+        state.odo_last_latitude = None;
+        state.odo_last_longitude = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const BASE_LAT: f64 = 52.0;
+    const BASE_LNG: f64 = 13.0;
+    /// Metres per degree of latitude — lets tests express offsets in metres.
+    const M_PER_DEG_LAT: f64 = 111_320.0;
+
+    /// A processor with elasticity off so `distance_filter` is exactly what the
+    /// tuning says, which is what these tests are asserting about.
+    fn processor(tuning: LocationTuning) -> LocationProcessor {
+        LocationProcessor::new(
+            tuning.distance_filter,
+            true, // disable_elasticity
+            1.0,
+            false, // enable_adaptive_mode
+            tuning.tracking_accuracy_threshold,
+            0, // filter_policy: adjust
+            tuning.max_implied_speed,
+            tuning.odometer_accuracy_threshold,
+            false,
+            0,
+            false,
+            0.0,
+            0,
+        )
+    }
+
+    fn walking() -> LocationTuning {
+        LocationTuning {
+            distance_filter: 8.0,
+            tracking_accuracy_threshold: 15,
+            odometer_accuracy_threshold: 10,
+            max_implied_speed: 4,
+        }
+    }
+
+    fn vehicle() -> LocationTuning {
+        LocationTuning {
+            distance_filter: 30.0,
+            tracking_accuracy_threshold: 50,
+            odometer_accuracy_threshold: 30,
+            max_implied_speed: 60,
+        }
+    }
+
+    /// A fix `metres` north of the base point.
+    fn fix_at(p: &LocationProcessor, metres: f64, accuracy: f64, ts_ms: i64) -> LocationProcessorResult {
+        p.process(
+            BASE_LAT + metres / M_PER_DEG_LAT,
+            BASE_LNG,
+            accuracy,
+            0.0,
+            ts_ms,
+            false,
+            None,
+        )
+    }
+
+    #[test]
+    fn retune_swaps_thresholds_without_dropping_the_anchor() {
+        let p = processor(walking());
+        // Seed the anchor.
+        assert!(fix_at(&p, 0.0, 5.0, 1_000).accepted);
+
+        p.retune(vehicle());
+
+        // 20 m is past walking's 8 m filter but short of vehicle's 30 m, so the
+        // new tuning is in force...
+        assert!(!fix_at(&p, 20.0, 5.0, 3_000).accepted);
+        // ...and the anchor survived, so a 40 m move still measures 40 m rather
+        // than restarting from zero the way a rebuild would.
+        let r = fix_at(&p, 40.0, 5.0, 5_000);
+        assert!(r.accepted);
+        assert!((r.distance - 40.0).abs() < 0.5, "distance was {}", r.distance);
+        assert!((r.odometer_delta - 40.0).abs() < 0.5);
+    }
+
+    #[test]
+    fn restore_base_tuning_undoes_a_retune() {
+        let p = processor(walking());
+        p.retune(vehicle());
+        assert_eq!(p.current_tuning(), vehicle());
+
+        p.restore_base_tuning();
+        assert_eq!(p.current_tuning(), walking());
+
+        // And the restored thresholds actually apply. Fixes are spaced at a
+        // realistic 1 m/s so they clear walking's own implied-speed ceiling.
+        assert!(fix_at(&p, 0.0, 5.0, 1_000).accepted);
+        assert!(fix_at(&p, 10.0, 5.0, 11_000).accepted, "10 m clears walking's 8 m filter");
+    }
+
+    #[test]
+    fn tightened_odometer_gate_excludes_coarse_fixes_from_distance() {
+        // The reported bug: with a loose gate, a coarse fix contributes its full
+        // delta to the odometer.
+        // Both processors keep a wide tracking gate so the 40 m fix is recorded
+        // either way; the odometer gate is the only difference under test.
+        let loose = processor(LocationTuning {
+            tracking_accuracy_threshold: 50,
+            odometer_accuracy_threshold: 50, // the shipped default
+            ..walking()
+        });
+        // 30 m over 30 s — a genuine walking pace, so only the accuracy gates
+        // are under test here.
+        assert!(fix_at(&loose, 0.0, 5.0, 1_000).accepted);
+        let r = fix_at(&loose, 30.0, 40.0, 31_000);
+        assert!(r.accepted);
+        assert!(r.odometer_delta > 0.0, "loose gate lets a 40 m-accuracy fix count");
+
+        // Walking's 10 m gate keeps recording the fix but stops it inflating
+        // distance. Its 15 m tracking gate would reject a 40 m-accuracy fix, so
+        // widen only that to isolate the odometer gate.
+        let tight = processor(LocationTuning {
+            tracking_accuracy_threshold: 50,
+            ..walking()
+        });
+        assert!(fix_at(&tight, 0.0, 5.0, 1_000).accepted);
+        let r = fix_at(&tight, 30.0, 40.0, 31_000);
+        assert!(r.accepted, "still recorded for the map");
+        assert_eq!(r.odometer_delta, 0.0, "but contributes no distance");
+    }
+
+    #[test]
+    fn retuned_implied_speed_ceiling_rejects_teleport_spikes() {
+        let p = processor(walking());
+        assert!(fix_at(&p, 0.0, 5.0, 1_000).accepted);
+        // 100 m in 2 s = 50 m/s, far past walking's 4 m/s ceiling.
+        let r = fix_at(&p, 100.0, 5.0, 3_000);
+        assert!(!r.accepted);
+        assert_eq!(r.reason.as_deref(), Some("SPEED_FILTER"));
+
+        // The same jump is legitimate in a vehicle.
+        let p = processor(vehicle());
+        assert!(fix_at(&p, 0.0, 5.0, 1_000).accepted);
+        assert!(fix_at(&p, 100.0, 5.0, 3_000).accepted);
+    }
+
+    #[test]
+    fn a_coarse_fix_defers_distance_rather_than_deleting_it() {
+        // Walking's 10 m odometer gate with a wide tracking gate, so the coarse
+        // fix is still recorded — only its contribution to distance is in doubt.
+        let p = processor(LocationTuning {
+            tracking_accuracy_threshold: 60,
+            ..walking()
+        });
+        assert!(fix_at(&p, 0.0, 5.0, 1_000).accepted);
+
+        // 20 m on, but too coarse to trust: contributes nothing yet.
+        let coarse = fix_at(&p, 20.0, 40.0, 21_000);
+        assert!(coarse.accepted, "still recorded for the map");
+        assert_eq!(coarse.odometer_delta, 0.0);
+
+        // 40 m on, trustworthy again. The odometer must now book the full 40 m
+        // from the last *trusted* anchor — not just the 20 m since the coarse
+        // fix. Advancing the anchor on the coarse fix would have lost 20 m
+        // permanently, under-reporting by exactly the distance the gate was
+        // supposed to be protecting.
+        let good = fix_at(&p, 40.0, 5.0, 41_000);
+        assert!(good.accepted);
+        assert!(
+            (good.odometer_delta - 40.0).abs() < 0.5,
+            "expected the deferred 40 m, got {}",
+            good.odometer_delta,
+        );
+    }
+
+    #[test]
+    fn a_run_of_coarse_fixes_does_not_accumulate_phantom_distance() {
+        // The deferral must not double-count: total booked distance over a walk
+        // interrupted by coarse fixes should match the straight-line span.
+        let p = processor(LocationTuning {
+            tracking_accuracy_threshold: 60,
+            ..walking()
+        });
+        let mut total = 0.0;
+        assert!(fix_at(&p, 0.0, 5.0, 1_000).accepted);
+        for (i, metres) in [10.0, 20.0, 30.0, 40.0, 50.0].iter().enumerate() {
+            // Every other fix is too coarse for the odometer.
+            let accuracy = if i % 2 == 0 { 40.0 } else { 5.0 };
+            let r = fix_at(&p, *metres, accuracy, 1_000 + (i as i64 + 1) * 10_000);
+            total += r.odometer_delta;
+        }
+        assert!(
+            (total - 40.0).abs() < 0.5,
+            "booked {total} m over a 40 m span ending on a trusted fix",
+        );
+    }
+
+    #[test]
+    fn reset_clears_position_but_keeps_the_active_tuning() {
+        let p = processor(walking());
+        p.retune(vehicle());
+        assert!(fix_at(&p, 0.0, 5.0, 1_000).accepted);
+
+        p.reset();
+
+        assert!(!p.has_last_location());
+        assert_eq!(p.current_tuning(), vehicle(), "reset forgets where, not which mode");
     }
 }

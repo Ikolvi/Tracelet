@@ -634,6 +634,7 @@ void main() {
         fusedClassifierAuthoritative: false,
         modeSwitchDwellMs: 1000,
         minModeConfidence: 50,
+        autoTuneFromTransportMode: false,
       ),
       impact: TlImpactConfig(
         enableCrashDetection: false,

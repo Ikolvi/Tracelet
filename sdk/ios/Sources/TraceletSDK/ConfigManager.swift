@@ -414,6 +414,9 @@ public final class ConfigManager {
     public func getFusedClassifierAuthoritative() -> Bool { cache["fusedClassifierAuthoritative"] as? Bool ?? false }
     public func getModeSwitchDwellMs() -> Int64 { (cache["modeSwitchDwellMs"] as? NSNumber)?.int64Value ?? 8000 }
     public func getMinModeConfidence() -> Double { (cache["minModeConfidence"] as? NSNumber)?.doubleValue ?? 0.6 }
+    /// Whether a committed transport mode retunes the location filter thresholds (#299).
+    /// Off by default so existing integrations keep the thresholds they configured.
+    public func getAutoTuneFromTransportMode() -> Bool { cache["autoTuneFromTransportMode"] as? Bool ?? false }
 
     public func getEnableCrashDetection() -> Bool { cache["enableCrashDetection"] as? Bool ?? false }
     public func getEnableFallDetection() -> Bool { cache["enableFallDetection"] as? Bool ?? false }

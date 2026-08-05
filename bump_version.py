@@ -1,7 +1,7 @@
 import os
 
-version_from = "3.7.5"
-version_to = "3.7.6"
+version_from = "3.7.6"
+version_to = "3.8.0-alpha"
 
 # 1. Bump version strings
 exact_replacements = [
@@ -53,11 +53,11 @@ exact_replacements = [
 
 for file_path, old_str, new_str in exact_replacements:
     if os.path.exists(file_path):
-        with open(file_path, 'r') as f:
+        with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
         if old_str in content:
             content = content.replace(old_str, new_str)
-            with open(file_path, 'w') as f:
+            with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(content)
             print(f"Updated {file_path}")
         else:
@@ -84,9 +84,16 @@ generic_changelogs = [
 
 changelog_addition = f"""## {version_to}
 
-**FIX**: (Android + iOS) high-accuracy geofence ENTER/EXIT transitions no longer intermittently fail to fire for a stationary device. In `geofenceModeHighAccuracy` the crossing evaluator is now fed the **raw** fix stream and the provider is requested with time-based delivery (`minUpdateDistanceMeters = 0` / `kCLDistanceFilterNone`), decoupling geofence evaluation from the tracking distance filter. That filter is a *persistence*-volume control, but it was also gating the fixes reaching the evaluator: a device standing still on a stable provider — GMS FusedLocationProvider (Android, since 3.7.3) or CoreLocation with a distance filter (iOS) — never moves the filter's distance, so no fix was delivered and no transition was evaluated (field logs show an iPhone parked inside a 50 m zone emitting many ENTERs and never an EXIT). Persistence is unchanged — the Rust `LocationProcessor` keeps its distance filter, so stored/synced location volume does not increase — and the decision logic (accuracy gating [#274](https://github.com/Ikolvi/Tracelet/issues/274), 2-fix confirmation [#294](https://github.com/Ikolvi/Tracelet/issues/294), hysteresis) is untouched; it simply now sees every fix. Standard OS region-monitoring geofence mode is unaffected ([#297](https://github.com/Ikolvi/Tracelet/issues/297)).
+**FIX**: (Android + iOS) `useKalmanFilter: true` now affects recorded **distance**, not just the rendered track. The odometer accumulated raw inter-fix deltas because Kalman smoothing ran *after* the location processor and fed only `coords`, so enabling the filter visibly smoothed the map while distance kept integrating GPS jitter — over-reporting badly on foot, where noise is large relative to real displacement. Smoothing now runs **before** the processor on both platforms, so the distance filter, accuracy filter, implied-speed filter and the odometer all operate on the de-noised track. Every fix feeds the filter (not only accepted ones), keeping its velocity estimate continuous across rejections ([#299](https://github.com/Ikolvi/Tracelet/issues/299)).
+
+**FIX**: (Android + iOS) `fusedClassifierAuthoritative: true` now genuinely drives sampling. The adaptive sampler was built from the raw platform Activity-Recognition value rather than the effective activity, so the fused classifier never reached `AdaptiveSamplingEngine` despite the option being documented as overriding the platform activity for sampling ([#299](https://github.com/Ikolvi/Tracelet/issues/299)).
+
+**FIX**: (iOS) the `classifier` config section was dropped entirely when flattening the plugin config, making `enableFusedClassifier` — and every other classifier option — undeliverable from Flutter on iOS ([#299](https://github.com/Ikolvi/Tracelet/issues/299)).
+
+**FEAT**: (Android + iOS) new `ClassifierConfig.autoTuneFromTransportMode` (default `false`). When enabled, a **committed** transport mode retunes `distanceFilter`, `trackingAccuracyThreshold`, `odometerAccuracyThreshold` and `maxImpliedSpeed` for that mode — tighter on foot, looser in a vehicle — from a table shared by both platforms via the Rust core. This removes the hand-tuning that distance-accurate tracking previously required, and which neither the app developer nor the end user can get right in advance: a single session routinely contains walking, jogging and running. Retuning happens only on a committed change (confidence-gated and debounced by `modeSwitchDwellMs`), never per accelerometer window, and swaps thresholds **in place** so the odometer stays continuous across the change. A mode of `unknown` restores your configured values, and the applied thresholds ride on the `modechange` payload so an auto-tune is never silent. Requires `enableFusedClassifier: true` ([#299](https://github.com/Ikolvi/Tracelet/issues/299)).
 
 """
+
 generic_addition = f"""## {version_to}
 
 Version alignment with tracelet {version_to}.
@@ -95,20 +102,20 @@ Version alignment with tracelet {version_to}.
 
 for cl in changelogs:
     if os.path.exists(cl):
-        with open(cl, 'r') as f:
+        with open(cl, 'r', encoding='utf-8') as f:
             content = f.read()
         if f"## {version_to}" not in content:
             content = changelog_addition + content
-            with open(cl, 'w') as f:
+            with open(cl, 'w', encoding='utf-8') as f:
                 f.write(content)
             print(f"Added entry to {cl}")
 
 for cl in generic_changelogs:
     if os.path.exists(cl):
-        with open(cl, 'r') as f:
+        with open(cl, 'r', encoding='utf-8') as f:
             content = f.read()
         if f"## {version_to}" not in content:
             content = generic_addition + content
-            with open(cl, 'w') as f:
+            with open(cl, 'w', encoding='utf-8') as f:
                 f.write(content)
             print(f"Added entry to {cl}")

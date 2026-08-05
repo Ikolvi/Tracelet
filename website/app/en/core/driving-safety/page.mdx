@@ -121,12 +121,71 @@ Tracelet.onModeChange((event) {
 | `fusedClassifierAuthoritative` | `false` | If `true`, the fused mode overrides the OS's activity for battery decisions. If `false` (default), it just **annotates** — the OS value stays in charge |
 | `modeSwitchDwellMs` | `8000` | A new mode must persist this long before it's reported (stops flickering) |
 | `minModeConfidence` | `0.6` | Below this, the mode is reported as `unknown` |
+| `autoTuneFromTransportMode` | `false` | If `true`, a committed mode also retunes the location filters. See below |
 
 <Callout type="info">
 **Annotate vs. override:** by default the classifier is a *second opinion* — it
 reports a mode but doesn't change how Tracelet samples GPS. Most apps want this.
 Only set `fusedClassifierAuthoritative: true` if you specifically want the fused
 result to drive battery/sampling behaviour.
+</Callout>
+
+### Auto-tuning the location filters
+
+<Callout type="info">
+**New in 3.8.0-alpha.**
+</Callout>
+
+Distance-accurate tracking needs different filter thresholds for different
+activities. Walking is the hard case: at ~1.4 m/s the GPS noise floor is a large
+fraction of how far you actually moved, so a loose filter records jitter as
+distance. In a car the opposite holds — tight thresholds throw away real
+movement.
+
+You cannot pick one set up front. Your users don't declare "I am now jogging",
+and a single session routinely contains a walk to the trailhead, a run, and a
+walk back. So let the classifier decide:
+
+```dart
+await Tracelet.ready(Config(
+  classifier: ClassifierConfig(
+    enableFusedClassifier: true,        // required
+    autoTuneFromTransportMode: true,
+  ),
+));
+```
+
+When a mode **commits**, Tracelet swaps four thresholds for values suited to it:
+
+| Mode | `distanceFilter` | `trackingAccuracyThreshold` | `odometerAccuracyThreshold` | `maxImpliedSpeed` |
+|---|---|---|---|---|
+| `still` | 25 m | 15 m | 10 m | 3 m/s |
+| `walking` | 8 m | 15 m | 10 m | 4 m/s |
+| `running` | 12 m | 25 m | 15 m | 9 m/s |
+| `cycling` | 20 m | 30 m | 20 m | 20 m/s |
+| `vehicle` | 30 m | 50 m | 30 m | 60 m/s |
+| `unknown` | *your configured values are restored* | | | |
+
+Jogging has no row on purpose — it falls inside the `running` band (6–20 km/h),
+which is exactly why a user-facing "jogging preset" would have been fiction.
+
+**How it stays predictable:**
+
+- Retuning happens only on a **committed** mode change — already confidence-gated
+  and debounced by `modeSwitchDwellMs` — never per sensor reading, so thresholds
+  cannot chatter.
+- Thresholds are swapped **in place**. Your odometer stays continuous across a
+  mode change rather than losing a segment.
+- The applied values are reported on the `modechange` payload and in the debug
+  log, so an auto-tune is never silent.
+- `unknown` restores whatever you configured. Tracelet does not guess when it
+  does not know.
+
+<Callout type="warning">
+This **overrides** the `geo.distanceFilter` and `geo.filter.*` values you set,
+for as long as a mode is committed. That is the point of the feature, but it does
+mean your configured thresholds are not what is in force at runtime. Leave it
+`false` (the default) if you need your exact values honoured.
 </Callout>
 
 ---

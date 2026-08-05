@@ -1802,6 +1802,7 @@ class TlClassifierConfig {
     required this.fusedClassifierAuthoritative,
     required this.modeSwitchDwellMs,
     required this.minModeConfidence,
+    required this.autoTuneFromTransportMode,
   });
 
   bool enableFusedClassifier;
@@ -1812,12 +1813,15 @@ class TlClassifierConfig {
 
   double minModeConfidence;
 
+  bool autoTuneFromTransportMode;
+
   List<Object?> _toList() {
     return <Object?>[
       enableFusedClassifier,
       fusedClassifierAuthoritative,
       modeSwitchDwellMs,
       minModeConfidence,
+      autoTuneFromTransportMode,
     ];
   }
 
@@ -1832,6 +1836,7 @@ class TlClassifierConfig {
       fusedClassifierAuthoritative: result[1]! as bool,
       modeSwitchDwellMs: result[2]! as int,
       minModeConfidence: result[3]! as double,
+      autoTuneFromTransportMode: result[4]! as bool,
     );
   }
 
@@ -1850,7 +1855,11 @@ class TlClassifierConfig {
           other.fusedClassifierAuthoritative,
         ) &&
         _deepEquals(modeSwitchDwellMs, other.modeSwitchDwellMs) &&
-        _deepEquals(minModeConfidence, other.minModeConfidence);
+        _deepEquals(minModeConfidence, other.minModeConfidence) &&
+        _deepEquals(
+          autoTuneFromTransportMode,
+          other.autoTuneFromTransportMode,
+        );
   }
 
   @override

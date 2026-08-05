@@ -168,6 +168,15 @@ class TraceletSdk private constructor(private val context: Context) {
     private var accelWindowRunnable: Runnable? = null
     private var impactConfirmRunnable: Runnable? = null
     @Volatile private var lastSpeedMps: Double = 0.0
+
+    /**
+     * Speed (m/s) of the most recent **raw** fix, fed by `LocationEngine.rawSpeedSink`.
+     *
+     * Only the transport classifier reads this. Telematics and impact detection
+     * deliberately keep using [lastSpeedMps] (accepted fixes) — their thresholds
+     * are calibrated against filtered speeds.
+     */
+    @Volatile private var lastRawSpeedMps: Double = 0.0
     @Volatile private var lastLat: Double = 0.0
     @Volatile private var lastLng: Double = 0.0
     private val accelWindowMs = 1000L
@@ -1362,6 +1371,7 @@ class TraceletSdk private constructor(private val context: Context) {
         // crash model. initBehaviorEngines() is idempotent.
         val behaviorKeys = listOf(
             "enableDrivingEvents", "enableFusedClassifier",
+            "autoTuneFromTransportMode",
             "enableCrashDetection", "enableFallDetection",
             "crashModelUrl", "crashModelUnlockUrl", "crashModelLicenseKey",
             "crashModelSha256", "crashModelThreshold",
@@ -2839,6 +2849,17 @@ class TraceletSdk private constructor(private val context: Context) {
             null
         }
 
+        // #299: classify from raw pre-filter speeds. Left attached while the
+        // classifier exists and detached with it, so a disabled classifier costs
+        // nothing on the location path.
+        if (::locationEngine.isInitialized) {
+            locationEngine.rawSpeedSink = if (transportClassifier != null) {
+                { speed -> lastRawSpeedMps = speed }
+            } else {
+                null
+            }
+        }
+
         impactDetector = if (configManager.getEnableCrashDetection() ||
             configManager.getEnableFallDetection()
         ) {
@@ -3136,7 +3157,7 @@ class TraceletSdk private constructor(private val context: Context) {
         }
 
         transportClassifier?.let { classifier ->
-            val result = classifier.classify(window, lastSpeedMps, now)
+            val result = classifier.classify(window, lastRawSpeedMps, now)
             // #214 pt3: keep the engine's fused mode fresh every window so it can be
             // persisted into the location's activity column when authoritative — this
             // is what survives termination / syncs historically.
@@ -3145,12 +3166,30 @@ class TraceletSdk private constructor(private val context: Context) {
                 locationEngine.fusedTransportModeConfidence = result.confidence
             }
             if (result.changed) {
-                eventSender.sendModeChange(
-                    mapOf(
-                        "mode" to result.mode.name.lowercase(),
-                        "confidence" to result.confidence,
-                    ),
+                val mode = result.mode.name.lowercase()
+                // #299: retune the location filters for the newly committed mode.
+                // Only on a *commit* — confidence-gated and dwell-debounced — so the
+                // thresholds cannot chatter with per-window classification noise.
+                val tuning = if (::locationEngine.isInitialized) {
+                    locationEngine.applyTransportModeTuning(mode)
+                } else {
+                    null
+                }
+                val payload = mutableMapOf<String, Any?>(
+                    "mode" to mode,
+                    "confidence" to result.confidence,
                 )
+                // Report the applied thresholds so an auto-tune is visible to the
+                // host rather than being a silent config mutation.
+                if (tuning != null) {
+                    payload["appliedTuning"] = mapOf(
+                        "distanceFilter" to tuning.distanceFilter,
+                        "trackingAccuracyThreshold" to tuning.trackingAccuracyThreshold,
+                        "odometerAccuracyThreshold" to tuning.odometerAccuracyThreshold,
+                        "maxImpliedSpeed" to tuning.maxImpliedSpeed,
+                    )
+                }
+                eventSender.sendModeChange(payload)
             }
         }
 

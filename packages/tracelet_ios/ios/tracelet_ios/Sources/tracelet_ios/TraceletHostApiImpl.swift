@@ -216,6 +216,16 @@ class TraceletHostApiImpl: TraceletHostApi {
         dict["crashModelUnlockUrl"] = c.impact.crashModelUnlockUrl
         dict["crashModelLicenseKey"] = c.impact.crashModelLicenseKey
 
+        // Transport-mode classifier. Flattened so the iOS ConfigManager picks
+        // these up (parity with Android). This section was previously dropped
+        // entirely, which made `enableFusedClassifier` undeliverable from
+        // Flutter on iOS — and with it `autoTuneFromTransportMode` (#299).
+        dict["enableFusedClassifier"] = c.classifier.enableFusedClassifier
+        dict["fusedClassifierAuthoritative"] = c.classifier.fusedClassifierAuthoritative
+        dict["modeSwitchDwellMs"] = c.classifier.modeSwitchDwellMs
+        dict["minModeConfidence"] = c.classifier.minModeConfidence
+        dict["autoTuneFromTransportMode"] = c.classifier.autoTuneFromTransportMode
+
         return dict
     }
 

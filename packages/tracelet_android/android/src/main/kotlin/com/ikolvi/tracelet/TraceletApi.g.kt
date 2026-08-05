@@ -1628,7 +1628,8 @@ data class TlClassifierConfig (
   val enableFusedClassifier: Boolean,
   val fusedClassifierAuthoritative: Boolean,
   val modeSwitchDwellMs: Long,
-  val minModeConfidence: Double
+  val minModeConfidence: Double,
+  val autoTuneFromTransportMode: Boolean
 )
  {
   companion object {
@@ -1637,7 +1638,8 @@ data class TlClassifierConfig (
       val fusedClassifierAuthoritative = pigeonVar_list[1] as Boolean
       val modeSwitchDwellMs = pigeonVar_list[2] as Long
       val minModeConfidence = pigeonVar_list[3] as Double
-      return TlClassifierConfig(enableFusedClassifier, fusedClassifierAuthoritative, modeSwitchDwellMs, minModeConfidence)
+      val autoTuneFromTransportMode = pigeonVar_list[4] as Boolean
+      return TlClassifierConfig(enableFusedClassifier, fusedClassifierAuthoritative, modeSwitchDwellMs, minModeConfidence, autoTuneFromTransportMode)
     }
   }
   fun toList(): List<Any?> {
@@ -1646,6 +1648,7 @@ data class TlClassifierConfig (
       fusedClassifierAuthoritative,
       modeSwitchDwellMs,
       minModeConfidence,
+      autoTuneFromTransportMode,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -1656,7 +1659,7 @@ data class TlClassifierConfig (
       return true
     }
     val other = other as TlClassifierConfig
-    return TraceletApiPigeonUtils.deepEquals(this.enableFusedClassifier, other.enableFusedClassifier) && TraceletApiPigeonUtils.deepEquals(this.fusedClassifierAuthoritative, other.fusedClassifierAuthoritative) && TraceletApiPigeonUtils.deepEquals(this.modeSwitchDwellMs, other.modeSwitchDwellMs) && TraceletApiPigeonUtils.deepEquals(this.minModeConfidence, other.minModeConfidence)
+    return TraceletApiPigeonUtils.deepEquals(this.enableFusedClassifier, other.enableFusedClassifier) && TraceletApiPigeonUtils.deepEquals(this.fusedClassifierAuthoritative, other.fusedClassifierAuthoritative) && TraceletApiPigeonUtils.deepEquals(this.modeSwitchDwellMs, other.modeSwitchDwellMs) && TraceletApiPigeonUtils.deepEquals(this.minModeConfidence, other.minModeConfidence) && TraceletApiPigeonUtils.deepEquals(this.autoTuneFromTransportMode, other.autoTuneFromTransportMode)
   }
 
   override fun hashCode(): Int {
@@ -1665,6 +1668,7 @@ data class TlClassifierConfig (
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.fusedClassifierAuthoritative)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.modeSwitchDwellMs)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.minModeConfidence)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.autoTuneFromTransportMode)
     return result
   }
 }

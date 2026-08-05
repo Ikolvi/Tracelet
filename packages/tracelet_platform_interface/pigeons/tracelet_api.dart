@@ -498,11 +498,13 @@ class TlClassifierConfig {
     required this.fusedClassifierAuthoritative,
     required this.modeSwitchDwellMs,
     required this.minModeConfidence,
+    required this.autoTuneFromTransportMode,
   });
   final bool enableFusedClassifier;
   final bool fusedClassifierAuthoritative;
   final int modeSwitchDwellMs;
   final double minModeConfidence;
+  final bool autoTuneFromTransportMode;
 }
 
 /// Crash & fall detection config. See `ImpactDetector`.
