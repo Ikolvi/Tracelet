@@ -72,6 +72,33 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// non-positive value as "unknown" and skips gating.
     public var onLocationUpdate: ((Double, Double, Double) -> Void)?
 
+    /// Optional callback invoked on every **raw** fix — before the Rust
+    /// `LocationProcessor` distance/accuracy/sparse filter — for
+    /// geofenceModeHighAccuracy crossing evaluation.
+    ///
+    /// The tracking distance filter reduces *persistence* volume: a stationary
+    /// device's repeated fixes are dropped so the DB and sync queue don't fill
+    /// with duplicates. But geofence crossing detection needs *every* fix — a
+    /// device drifting across a boundary, or one whose EXIT must be confirmed
+    /// across two consecutive out-of-fence fixes (#294), is starved if crossings
+    /// only run on fixes that survive the persistence filter. With
+    /// `distanceFilter > 0`, CoreLocation itself withholds updates from a
+    /// stationary device, so `onLocationUpdate` never fires and transitions are
+    /// missed (field reports of "ENTER/EXIT not happening").
+    ///
+    /// This callback decouples the two: crossings evaluate on the raw stream
+    /// while persistence keeps its distance filter. Params: latitude, longitude,
+    /// horizontalAccuracy (meters); CoreLocation reports negative when invalid.
+    public var onRawGeofenceLocation: ((Double, Double, Double) -> Void)?
+
+    /// When true, CoreLocation is configured with `distanceFilter =
+    /// kCLDistanceFilterNone` so a stationary/backgrounded device is still
+    /// delivered fixes for `onRawGeofenceLocation` to evaluate. The persistence
+    /// distance filter (the Rust `LocationProcessor`) is unchanged, so this does
+    /// not increase stored/synced location volume. Set by the plugin around
+    /// startGeofences() when geofenceModeHighAccuracy is on.
+    public var geofenceHighAccuracyMode: Bool = false
+
     /// Optional callback invoked after a location is persisted to the database.
     /// Used by the plugin to trigger HTTP auto-sync.
     public var onLocationPersisted: (() -> Void)?
@@ -304,7 +331,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         stopPeriodicTimer()
         runtimeDesiredAccuracy = nil
         runtimeDistanceFilter = nil
-        
+
         if #available(iOS 17.0, *) {
             #if canImport(ActivityKit)
             // Left running while a setConfig() restart is in progress so the
@@ -652,7 +679,10 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
 
         let distanceFilter = runtimeDistanceFilter ?? configManager.getDistanceFilter()
         let isSpeedMode = configManager.getMotionDetectionMode() == .speed
-        if isStopTimeoutActive {
+        // High-accuracy geofence mode needs time-based delivery so a stationary
+        // device still gets fixes to evaluate crossings against. Persistence
+        // volume is unaffected — the Rust processor keeps its own distance filter.
+        if isStopTimeoutActive || geofenceHighAccuracyMode {
             locationManager.distanceFilter = kCLDistanceFilterNone
         } else {
             locationManager.distanceFilter = (distanceFilter > 0 && !isSpeedMode) ? distanceFilter : kCLDistanceFilterNone
@@ -958,6 +988,17 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             return // Drop the mock location entirely.
         }
 
+        // --- Geofence crossing evaluation on the RAW stream ---
+        // Runs before the persistence distance filter below so a stationary
+        // device (whose fixes that filter drops) is never starved of crossing
+        // evaluations. See `onRawGeofenceLocation`. Persistence is unaffected —
+        // the processor filter still gates what reaches the DB/sync queue.
+        onRawGeofenceLocation?(
+            location.coordinate.latitude,
+            location.coordinate.longitude,
+            location.horizontalAccuracy
+        )
+
         // Feed multi-sample collection if active
         let consumedBySampler = feedSample(location)
 
@@ -1182,7 +1223,9 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             if !isTracking {
                 locationManager.stopUpdatingLocation()
             }
-            locationManager.distanceFilter = configManager.getDistanceFilter()
+            locationManager.distanceFilter = geofenceHighAccuracyMode
+                ? kCLDistanceFilterNone
+                : configManager.getDistanceFilter()
 
             if !state.collected.isEmpty {
                 deliverBest(samples: state.collected, persist: state.persist, extras: state.extras, callback: state.callback)

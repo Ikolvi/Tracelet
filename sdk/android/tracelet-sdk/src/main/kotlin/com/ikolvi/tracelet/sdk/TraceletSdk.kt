@@ -844,13 +844,21 @@ class TraceletSdk private constructor(private val context: Context) {
             )
         }
 
-        // Wire proximity-based geofence monitoring + trip waypoints
-        locationEngine.onLocationUpdate = { lat, lng, accuracy ->
+        // Wire proximity-based geofence monitoring + trip waypoints. Crossing
+        // detection rides the raw stream (see startGeofences() for why) so a
+        // stationary device isn't starved of transitions by the persistence
+        // distance filter; proximity scope and trip waypoints stay on the
+        // filtered stream where they belong.
+        val highAccuracyGeofence = configManager.getGeofenceModeHighAccuracy()
+        locationEngine.onLocationUpdate = { lat, lng, _ ->
             geofenceManager.updateProximity(lat, lng)
-            if (configManager.getGeofenceModeHighAccuracy()) {
-                geofenceManager.evaluateHighAccuracyProximity(lat, lng, accuracy)
-            }
             tripManager.onLocationReceived(lat, lng, System.currentTimeMillis().toString())
+        }
+        locationEngine.geofenceHighAccuracyMode = highAccuracyGeofence
+        locationEngine.onRawGeofenceLocation = if (highAccuracyGeofence) {
+            { lat, lng, accuracy -> geofenceManager.evaluateHighAccuracyProximity(lat, lng, accuracy) }
+        } else {
+            null
         }
 
         // Start the appropriate motion detector
@@ -983,6 +991,8 @@ class TraceletSdk private constructor(private val context: Context) {
         if (::locationEngine.isInitialized) {
             locationEngine.stop()
             locationEngine.onLocationUpdate = null
+            locationEngine.onRawGeofenceLocation = null
+            locationEngine.geofenceHighAccuracyMode = false
             locationEngine.speedMotionSpeedSink = null
         }
         // Cancel any pending/in-flight background sync so it doesn't keep POSTing
@@ -1053,11 +1063,24 @@ class TraceletSdk private constructor(private val context: Context) {
 
         geofenceManager.reRegisterAll()
 
-        locationEngine.onLocationUpdate = { lat, lng, accuracy ->
+        val highAccuracy = configManager.getGeofenceModeHighAccuracy()
+
+        // Proximity *scope* (which fences the native client monitors) only needs
+        // re-evaluating when the device moves, so it rides the persistence-filtered
+        // stream. Crossing *detection*, however, must see every fix — a stationary
+        // device inside a small fence emits no accepted fixes on a stable provider
+        // (GMS Fused since 3.7.3), which starved evaluateHighAccuracyProximity and
+        // dropped ENTER/EXIT transitions. Route crossings through the raw stream so
+        // the tracking distance filter (a persistence-volume control) can't gate
+        // them; persistence itself is unchanged.
+        locationEngine.onLocationUpdate = { lat, lng, _ ->
             geofenceManager.updateProximity(lat, lng)
-            if (configManager.getGeofenceModeHighAccuracy()) {
-                geofenceManager.evaluateHighAccuracyProximity(lat, lng, accuracy)
-            }
+        }
+        locationEngine.geofenceHighAccuracyMode = highAccuracy
+        locationEngine.onRawGeofenceLocation = if (highAccuracy) {
+            { lat, lng, accuracy -> geofenceManager.evaluateHighAccuracyProximity(lat, lng, accuracy) }
+        } else {
+            null
         }
 
         // Only high-accuracy geofence mode needs continuous GPS (for in-app
@@ -1073,7 +1096,7 @@ class TraceletSdk private constructor(private val context: Context) {
         // geofencing as of 2026-10-28. Starting an FGS here would make every
         // geofence-only Tracelet app non-compliant. Any FGS left over from a
         // previous continuous/high-accuracy session is torn down.
-        if (configManager.getGeofenceModeHighAccuracy()) {
+        if (highAccuracy) {
             // A fresh start resets inside-state so the initial-entry trigger
             // fires exactly once. A resume/boot/redundant re-start must NOT reset
             // it, or a stationary device inside a fence re-emits ENTER on every

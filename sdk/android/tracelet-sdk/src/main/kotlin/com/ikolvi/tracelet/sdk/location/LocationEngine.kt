@@ -250,6 +250,37 @@ class LocationEngine(
      */
     var onLocationUpdate: ((Double, Double, Double) -> Unit)? = null
 
+    /**
+     * Optional callback invoked on every **raw** fix — before the Rust
+     * [LocationProcessor] distance/accuracy/sparse filter — for
+     * geofenceModeHighAccuracy crossing evaluation.
+     *
+     * The tracking distance filter exists to reduce *persistence* volume: a
+     * stationary device's repeated fixes are dropped so the DB and sync queue
+     * don't fill with duplicate points. But geofence crossing detection needs
+     * to see *every* fix — a device drifting a few metres across a boundary, or
+     * one whose EXIT must be confirmed across two consecutive out-of-fence
+     * fixes (#294), is starved if the crossing evaluation only runs on the
+     * fixes that survive the persistence filter. On a stable provider (GMS
+     * Fused, since 3.7.3) a stationary device emits no accepted fixes at all,
+     * so [onLocationUpdate] never fires and transitions are missed.
+     *
+     * This callback decouples the two: crossings are evaluated on the raw
+     * stream while persistence keeps its distance filter. Params: latitude,
+     * longitude, horizontalAccuracy (meters); pass 0.0 when accuracy unknown.
+     */
+    var onRawGeofenceLocation: ((Double, Double, Double) -> Unit)? = null
+
+    /**
+     * When true, the fused provider is requested with a **time-based** cadence
+     * (minUpdateDistanceMeters = 0) so a stationary/backgrounded device is still
+     * delivered fixes for [onRawGeofenceLocation] to evaluate. The persistence
+     * distance filter (the Rust [LocationProcessor]) is unchanged, so this does
+     * not increase stored/synced location volume. Set by the plugin around
+     * startGeofences() when geofenceModeHighAccuracy is on.
+     */
+    var geofenceHighAccuracyMode: Boolean = false
+
     /** Optional callback invoked after a location is persisted to the database.
      *  Used by the plugin to trigger HTTP auto-sync. */
     var onLocationPersisted: (() -> Unit)? = null
@@ -875,6 +906,15 @@ class LocationEngine(
             return // Drop the mock location entirely.
         }
 
+        // --- Geofence crossing evaluation on the RAW stream ---
+        // Runs before the persistence distance filter below so a stationary
+        // device (whose fixes that filter drops) is never starved of crossing
+        // evaluations. See [onRawGeofenceLocation]. Persistence is unaffected —
+        // the processor filter still gates what reaches the DB/sync queue.
+        onRawGeofenceLocation?.invoke(
+            location.latitude, location.longitude, location.accuracy.toDouble(),
+        )
+
         // Calculate distance from last location for odometer
         val distance = lastLocation?.distanceTo(location)?.toDouble() ?: 0.0
 
@@ -1255,7 +1295,11 @@ class LocationEngine(
         val deferTime = config.getDeferTime().toLong()
 
         val isSpeedMode = config.getMotionDetectionMode() == com.ikolvi.tracelet.sdk.model.MotionDetectionMode.SPEED
-        val distanceFilter = if (isSpeedMode) 0f else effectiveDistanceFilter().toFloat()
+        // High-accuracy geofence mode needs time-based delivery so a stationary
+        // device still gets fixes to evaluate crossings against (0 = no distance
+        // gate). Persistence volume is unaffected — the Rust processor keeps its
+        // own distance filter.
+        val distanceFilter = if (isSpeedMode || geofenceHighAccuracyMode) 0f else effectiveDistanceFilter().toFloat()
 
         return TraceletLocationRequest(
             priority = priority,
@@ -1324,7 +1368,9 @@ class LocationEngine(
 
         val deferTime = config.getDeferTime().toLong()
         val isSpeedMode = config.getMotionDetectionMode() == com.ikolvi.tracelet.sdk.model.MotionDetectionMode.SPEED
-        val distanceFilter = if (isSpeedMode) 0f else effectiveDistanceFilter().toFloat()
+        // See buildLocationRequest(): geofence high-accuracy mode delivers
+        // time-based fixes so a stationary device isn't starved of crossings.
+        val distanceFilter = if (isSpeedMode || geofenceHighAccuracyMode) 0f else effectiveDistanceFilter().toFloat()
 
         return TraceletLocationRequest(
             priority = effectivePriority,

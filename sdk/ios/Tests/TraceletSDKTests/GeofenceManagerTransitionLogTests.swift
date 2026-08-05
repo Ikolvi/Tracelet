@@ -108,7 +108,8 @@ final class GeofenceManagerTransitionLogTests: XCTestCase {
         geofenceLines(until: { lines in
             lines.contains { $0.level == "INFO" && $0.message.contains("EXIT") }
         })
-        .first { $0.level == "INFO" && $0.message.contains("EXIT") }
+        .first { $0.level == "INFO" && $0.message.contains("EXIT") }?
+        .message
     }
 
     // MARK: - Transitions must be visible at INFO

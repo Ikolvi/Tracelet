@@ -419,20 +419,10 @@ public final class TraceletSdk {
         periodicRefreshScheduler.stop()
 
         // Wire proximity-based geofence monitoring + trip waypoints.
-        locationEngine.onLocationUpdate = { [weak self] lat, lng, accuracy in
-            self?.geofenceManager.updateProximity(latitude: lat, longitude: lng)
-            if self?.configManager.getGeofenceModeHighAccuracy() == true {
-                self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng, accuracy: accuracy)
-            }
-            self?.tripManager.onLocationReceived(
-                latitude: lat,
-                longitude: lng,
-                timestamp: ISO8601DateFormatter().string(from: Date())
-            )
-        }
+        wireGeofenceLocationCallbacks(includeTripWaypoints: true)
 
         let motionMode = configManager.getMotionDetectionMode()
-        
+
         if motionMode == .speed {
             startSpeedMotionManager(forceMoving: shouldForceMoving)
         } else if motionMode == .smart {
@@ -471,6 +461,43 @@ public final class TraceletSdk {
         return stateManager.toMap(configManager.getConfig())
     }
 
+    /// Wires the location callbacks used by every tracking mode that also does
+    /// geofencing.
+    ///
+    /// Geofence **crossing** detection rides `LocationEngine.onRawGeofenceLocation`
+    /// — the raw fix stream, before the persistence distance filter — so a
+    /// stationary device inside a small fence isn't starved of ENTER/EXIT
+    /// transitions when CoreLocation withholds updates under `distanceFilter`
+    /// (field reports of "ENTER/EXIT not happening"). Proximity *scope* and trip
+    /// waypoints stay on the persistence-filtered `onLocationUpdate` stream where
+    /// their movement-driven cadence belongs.
+    ///
+    /// Setting `geofenceHighAccuracyMode` here (before the caller's
+    /// `locationEngine.start()`) makes `configureLocationManager()` request
+    /// time-based delivery for the high-accuracy path. Call this *before*
+    /// starting the engine.
+    private func wireGeofenceLocationCallbacks(includeTripWaypoints: Bool) {
+        locationEngine.onLocationUpdate = { [weak self] lat, lng, _ in
+            guard let self = self else { return }
+            self.geofenceManager.updateProximity(latitude: lat, longitude: lng)
+            if includeTripWaypoints {
+                self.tripManager.onLocationReceived(
+                    latitude: lat,
+                    longitude: lng,
+                    timestamp: ISO8601DateFormatter().string(from: Date())
+                )
+            }
+        }
+
+        let highAccuracy = configManager.getGeofenceModeHighAccuracy()
+        locationEngine.geofenceHighAccuracyMode = highAccuracy
+        locationEngine.onRawGeofenceLocation = highAccuracy
+            ? { [weak self] lat, lng, accuracy in
+                self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng, accuracy: accuracy)
+            }
+            : nil
+    }
+
     /// Stop all tracking.
     ///
     /// - Returns: Updated state as a dictionary.
@@ -482,6 +509,8 @@ public final class TraceletSdk {
 
             locationEngine.stop()
             locationEngine.speedSink = nil
+            locationEngine.onRawGeofenceLocation = nil
+            locationEngine.geofenceHighAccuracyMode = false
             // Cancel any in-flight debounced auto-sync so stop() halts background
             // network activity immediately instead of firing ~autoSyncDelay later (#213).
             syncProvider?.cancelPendingSync()
@@ -543,12 +572,7 @@ public final class TraceletSdk {
         geofenceManager.reRegisterAll()
 
         // Wire proximity-based geofence monitoring.
-        locationEngine.onLocationUpdate = { [weak self] lat, lng, accuracy in
-            self?.geofenceManager.updateProximity(latitude: lat, longitude: lng)
-            if self?.configManager.getGeofenceModeHighAccuracy() == true {
-                self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng, accuracy: accuracy)
-            }
-        }
+        wireGeofenceLocationCallbacks(includeTripWaypoints: false)
 
         // geofenceModeHighAccuracy: start GPS for in-app transition detection.
         if configManager.getGeofenceModeHighAccuracy() {
@@ -622,12 +646,7 @@ public final class TraceletSdk {
         locationEngine.startPeriodic()
 
         // Wire proximity-based geofence monitoring.
-        locationEngine.onLocationUpdate = { [weak self] lat, lng, accuracy in
-            self?.geofenceManager.updateProximity(latitude: lat, longitude: lng)
-            if self?.configManager.getGeofenceModeHighAccuracy() == true {
-                self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng, accuracy: accuracy)
-            }
-        }
+        wireGeofenceLocationCallbacks(includeTripWaypoints: false)
 
         startStopAfterElapsedTimer()
 
@@ -3065,18 +3084,10 @@ public final class TraceletSdk {
 
         switch trackingMode {
         case .continuous:
+            // Wire before start() so the high-accuracy geofence path requests
+            // time-based delivery (distanceFilter=None) from the outset.
+            wireGeofenceLocationCallbacks(includeTripWaypoints: true)
             locationEngine.start()
-            locationEngine.onLocationUpdate = { [weak self] lat, lng, accuracy in
-                self?.geofenceManager.updateProximity(latitude: lat, longitude: lng)
-                if self?.configManager.getGeofenceModeHighAccuracy() == true {
-                    self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng, accuracy: accuracy)
-                }
-                self?.tripManager.onLocationReceived(
-                    latitude: lat,
-                    longitude: lng,
-                    timestamp: ISO8601DateFormatter().string(from: Date())
-                )
-            }
             let motionMode = configManager.getMotionDetectionMode()
             if motionMode == .speed {
                 startSpeedMotionManager(forceMoving: stateManager.isMoving)
@@ -3093,12 +3104,7 @@ public final class TraceletSdk {
 
         case .geofences:
             geofenceManager.reRegisterAll()
-            locationEngine.onLocationUpdate = { [weak self] lat, lng, accuracy in
-                self?.geofenceManager.updateProximity(latitude: lat, longitude: lng)
-                if self?.configManager.getGeofenceModeHighAccuracy() == true {
-                    self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng, accuracy: accuracy)
-                }
-            }
+            wireGeofenceLocationCallbacks(includeTripWaypoints: false)
             locationEngine.start()
             preventSuspendManager.start()
             backgroundActivitySessionManager.start()
@@ -3106,12 +3112,7 @@ public final class TraceletSdk {
 
         case .periodic:
             locationEngine.startPeriodic()
-            locationEngine.onLocationUpdate = { [weak self] lat, lng, accuracy in
-                self?.geofenceManager.updateProximity(latitude: lat, longitude: lng)
-                if self?.configManager.getGeofenceModeHighAccuracy() == true {
-                    self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng, accuracy: accuracy)
-                }
-            }
+            wireGeofenceLocationCallbacks(includeTripWaypoints: false)
             let interval = TimeInterval(configManager.getPeriodicLocationInterval())
             periodicRefreshScheduler.start(interval: interval)
             if configManager.getPreventSuspend() {
