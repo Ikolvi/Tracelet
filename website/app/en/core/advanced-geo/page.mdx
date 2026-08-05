@@ -27,6 +27,23 @@ final config = Config.highAccuracy(
 );
 ```
 
+<Callout type="warning">
+**Changed in 3.8.0-alpha.** Smoothing now runs *before* the location filters, so
+it also applies to the **odometer**. Before 3.8.0-alpha it only affected the
+`coords` you received — the odometer kept accumulating raw, jagged deltas, so
+turning the filter on smoothed your map but left distance over-reported. If you
+read `Tracelet.getOdometer()`, expect your recorded distances to drop after
+upgrading. That drop is the noise you were previously being charged for.
+</Callout>
+
+<Callout type="info">
+**Smoothing alone will not fix distance.** The Kalman filter removes jitter, but
+the odometer also depends on `odometerAccuracyThreshold` (default `50` m — quite
+loose) and `maxImpliedSpeed`. On foot, where GPS noise is large relative to real
+movement, those two matter more than the smoother. Rather than tune them by
+hand, see [auto-tuning by transport mode](/en/core/driving-safety#transport-mode).
+</Callout>
+
 ---
 
 ## 2. Dead Reckoning (Tunnels & GPS Denied)

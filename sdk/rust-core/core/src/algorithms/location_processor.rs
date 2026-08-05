@@ -235,6 +235,10 @@ struct LocationProcessorState {
     sparse_last_lng: Option<f64>,
     sparse_last_timestamp_ms: i64,
     last_effective_speed: f64,
+    /// Anchor the odometer measures from. Advances only on fixes that clear the
+    /// accuracy gate, so coarse fixes defer distance rather than losing it.
+    odo_last_latitude: Option<f64>,
+    odo_last_longitude: Option<f64>,
     /// Live thresholds. Seeded from the constructor, replaced by `retune`.
     tuning: LocationTuning,
     /// The constructor's thresholds, kept so `restore_base_tuning` can undo an
@@ -299,6 +303,8 @@ impl LocationProcessor {
                 sparse_last_lng: None,
                 sparse_last_timestamp_ms: 0,
                 last_effective_speed: 0.0,
+                odo_last_latitude: None,
+                odo_last_longitude: None,
                 tuning: base_tuning,
                 base_tuning,
             }),
@@ -450,10 +456,26 @@ impl LocationProcessor {
             }
         }
 
-        let odometer_delta = if tuning.odometer_accuracy_threshold <= 0
-            || accuracy <= tuning.odometer_accuracy_threshold as f64
-        {
-            distance
+        // The odometer keeps its own anchor, separate from the tracking anchor.
+        //
+        // A fix too coarse to trust must *defer* its distance, not delete it. The
+        // anchor only advances on a fix that passes the accuracy gate, so the
+        // next trustworthy fix measures the whole span it covered. Advancing
+        // unconditionally — as this did before — silently dropped every segment
+        // that happened to end on a coarse fix, which systematically
+        // under-reported distance in exactly the conditions the gate exists for.
+        // That under-reporting scales with how tight the gate is, so it bites
+        // hardest on foot, where the gate is tightest.
+        let passes_odometer_gate = tuning.odometer_accuracy_threshold <= 0
+            || accuracy <= tuning.odometer_accuracy_threshold as f64;
+        let odometer_delta = if passes_odometer_gate {
+            match (state.odo_last_latitude, state.odo_last_longitude) {
+                (Some(prev_lat), Some(prev_lng)) => {
+                    haversine(prev_lat, prev_lng, latitude, longitude)
+                }
+                // First trustworthy fix: nothing to measure from yet.
+                _ => 0.0,
+            }
         } else {
             0.0
         };
@@ -484,6 +506,10 @@ impl LocationProcessor {
         state.last_longitude = Some(longitude);
         state.last_timestamp_ms = timestamp_ms;
         state.last_effective_speed = effective_speed;
+        if passes_odometer_gate {
+            state.odo_last_latitude = Some(latitude);
+            state.odo_last_longitude = Some(longitude);
+        }
 
         LocationProcessorResult::accept(effective_speed, odometer_delta, distance)
     }
@@ -499,6 +525,8 @@ impl LocationProcessor {
         state.sparse_last_lat = None;
         state.sparse_last_lng = None;
         state.sparse_last_timestamp_ms = 0;
+        state.odo_last_latitude = None;
+        state.odo_last_longitude = None;
     }
 }
 
@@ -640,6 +668,57 @@ mod tests {
         let p = processor(vehicle());
         assert!(fix_at(&p, 0.0, 5.0, 1_000).accepted);
         assert!(fix_at(&p, 100.0, 5.0, 3_000).accepted);
+    }
+
+    #[test]
+    fn a_coarse_fix_defers_distance_rather_than_deleting_it() {
+        // Walking's 10 m odometer gate with a wide tracking gate, so the coarse
+        // fix is still recorded — only its contribution to distance is in doubt.
+        let p = processor(LocationTuning {
+            tracking_accuracy_threshold: 60,
+            ..walking()
+        });
+        assert!(fix_at(&p, 0.0, 5.0, 1_000).accepted);
+
+        // 20 m on, but too coarse to trust: contributes nothing yet.
+        let coarse = fix_at(&p, 20.0, 40.0, 21_000);
+        assert!(coarse.accepted, "still recorded for the map");
+        assert_eq!(coarse.odometer_delta, 0.0);
+
+        // 40 m on, trustworthy again. The odometer must now book the full 40 m
+        // from the last *trusted* anchor — not just the 20 m since the coarse
+        // fix. Advancing the anchor on the coarse fix would have lost 20 m
+        // permanently, under-reporting by exactly the distance the gate was
+        // supposed to be protecting.
+        let good = fix_at(&p, 40.0, 5.0, 41_000);
+        assert!(good.accepted);
+        assert!(
+            (good.odometer_delta - 40.0).abs() < 0.5,
+            "expected the deferred 40 m, got {}",
+            good.odometer_delta,
+        );
+    }
+
+    #[test]
+    fn a_run_of_coarse_fixes_does_not_accumulate_phantom_distance() {
+        // The deferral must not double-count: total booked distance over a walk
+        // interrupted by coarse fixes should match the straight-line span.
+        let p = processor(LocationTuning {
+            tracking_accuracy_threshold: 60,
+            ..walking()
+        });
+        let mut total = 0.0;
+        assert!(fix_at(&p, 0.0, 5.0, 1_000).accepted);
+        for (i, metres) in [10.0, 20.0, 30.0, 40.0, 50.0].iter().enumerate() {
+            // Every other fix is too coarse for the odometer.
+            let accuracy = if i % 2 == 0 { 40.0 } else { 5.0 };
+            let r = fix_at(&p, *metres, accuracy, 1_000 + (i as i64 + 1) * 10_000);
+            total += r.odometer_delta;
+        }
+        assert!(
+            (total - 40.0).abs() < 0.5,
+            "booked {total} m over a 40 m span ending on a trusted fix",
+        );
     }
 
     #[test]

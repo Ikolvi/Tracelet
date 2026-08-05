@@ -69,6 +69,7 @@ Cleans up bad GPS data before it hits your database.
 - **Default:** `50` (meters)
 - **What:** Points with accuracy worse than this value are not added to the total trip distance odometer.
 - **When to override:** If you are paying gig-economy drivers by the mile, a bad GPS bounce of 500 meters across a river will unfairly inflate their paycheck. Keeping this threshold tight (e.g., `30`) ensures you only pay for provable, highly-accurate distance.
+- **On foot:** the `50` m default is loose for pedestrians — at walking pace a 40 m-accuracy fix can contribute more "distance" than the user actually covered. Tighten to ~`10` for walking, or let [auto-tuning](/en/core/driving-safety#auto-tuning-the-location-filters) pick it per detected activity.
 
 ### `rejectMockLocations`
 - **Default:** `false`
