@@ -79,7 +79,8 @@ class _Issue297CardState extends State<Issue297Card> {
     for (final (meters, acc) in raw) {
       // The persistence distance filter: accept the first fix, then only fixes
       // that moved at least the distance filter from the last accepted one.
-      final accepted = lastPersistedMeters == null ||
+      final accepted =
+          lastPersistedMeters == null ||
           _gap(meters, lastPersistedMeters) >= _distanceFilter;
       if (accepted) {
         persisted++;
@@ -123,10 +124,14 @@ class _Issue297CardState extends State<Issue297Card> {
         (121, 8), // standing still outside (duplicate → filtered)
       ];
 
-      final (starvedEnter, starvedExit, starvedPersist) =
-          _run1(raw: raw, feedEveryRawFix: false);
-      final (fedEnter, fedExit, fedPersist) =
-          _run1(raw: raw, feedEveryRawFix: true);
+      final (starvedEnter, starvedExit, starvedPersist) = _run1(
+        raw: raw,
+        feedEveryRawFix: false,
+      );
+      final (fedEnter, fedExit, fedPersist) = _run1(
+        raw: raw,
+        feedEveryRawFix: true,
+      );
 
       // 1. Reproduce the bug: the starved (old) path never confirms the EXIT,
       //    because the stationary duplicate that would confirm it was filtered.
