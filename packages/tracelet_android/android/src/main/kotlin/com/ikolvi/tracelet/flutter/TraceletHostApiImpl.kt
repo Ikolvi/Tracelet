@@ -347,6 +347,7 @@ class TraceletHostApiImpl(
             put("fusedClassifierAuthoritative", c.classifier.fusedClassifierAuthoritative)
             put("modeSwitchDwellMs", c.classifier.modeSwitchDwellMs)
             put("minModeConfidence", c.classifier.minModeConfidence)
+            put("autoTuneFromTransportMode", c.classifier.autoTuneFromTransportMode)
         })
         put("impact", buildMap {
             put("enableCrashDetection", c.impact.enableCrashDetection)

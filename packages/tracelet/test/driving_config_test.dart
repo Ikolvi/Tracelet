@@ -41,6 +41,8 @@ void main() {
       expect(c.fusedClassifierAuthoritative, isFalse);
       expect(c.modeSwitchDwellMs, 8000);
       expect(c.minModeConfidence, 0.6);
+      // Off by default: existing integrations keep the thresholds they set.
+      expect(c.autoTuneFromTransportMode, isFalse);
     });
 
     test('round-trips through map', () {
@@ -48,8 +50,21 @@ void main() {
         enableFusedClassifier: true,
         fusedClassifierAuthoritative: true,
         modeSwitchDwellMs: 5000,
+        autoTuneFromTransportMode: true,
       );
-      expect(ClassifierConfig.fromMap(c.toMap()), c);
+      final back = ClassifierConfig.fromMap(c.toMap());
+      expect(back, c);
+      expect(back.autoTuneFromTransportMode, isTrue);
+    });
+
+    test('auto-tune survives the pigeon conversion', () {
+      // The native side reads this off TlClassifierConfig, so a gap here would
+      // silently disable auto-tuning on device while the Dart config looked right.
+      const c = ClassifierConfig(
+        enableFusedClassifier: true,
+        autoTuneFromTransportMode: true,
+      );
+      expect(c.toTlConfig().autoTuneFromTransportMode, isTrue);
     });
   });
 

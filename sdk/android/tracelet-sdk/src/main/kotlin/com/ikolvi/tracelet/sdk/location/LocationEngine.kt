@@ -27,6 +27,8 @@ import uniffi.tracelet_core.LocationProcessorResult
 import uniffi.tracelet_core.AdaptiveContext
 import uniffi.tracelet_core.ActivityType as RustActivityType
 import uniffi.tracelet_core.ActivityConfidence as RustActivityConfidence
+import uniffi.tracelet_core.LocationTuning
+import uniffi.tracelet_core.TransportMode as RustTransportMode
 import android.os.SystemClock
 import android.os.Handler
 import java.text.SimpleDateFormat
@@ -236,6 +238,47 @@ class LocationEngine(
         }
     }
 
+    /**
+     * Applies the filter thresholds appropriate to a committed transport mode (#299).
+     *
+     * Called only when the classifier *commits* a mode change — already gated by
+     * confidence and an 8 s dwell — never per accelerometer window, so the
+     * thresholds cannot chatter. A mode with no tuning (`unknown`) restores the
+     * host's own configuration rather than guessing.
+     *
+     * Returns the applied tuning, or `null` when auto-tuning is disabled or the
+     * mode carries no opinion. Callers surface it on the `modeChange` event so an
+     * auto-tune shows up in logs instead of being a silent config mutation.
+     */
+    fun applyTransportModeTuning(mode: String): LocationTuning? {
+        if (!config.getAutoTuneFromTransportMode()) return null
+        val processor = getProcessor()
+        val tuning = uniffi.tracelet_core.tuningForTransportMode(rustTransportMode(mode))
+        if (tuning == null) {
+            processor.restoreBaseTuning()
+            TraceletLog.debug("auto-tune: '$mode' has no tuning — restored configured thresholds")
+            return null
+        }
+        processor.retune(tuning)
+        TraceletLog.debug(
+            "auto-tune: '$mode' → distanceFilter=${tuning.distanceFilter}m " +
+                "trackingAccuracy=${tuning.trackingAccuracyThreshold}m " +
+                "odometerAccuracy=${tuning.odometerAccuracyThreshold}m " +
+                "maxImpliedSpeed=${tuning.maxImpliedSpeed}m/s",
+        )
+        return tuning
+    }
+
+    /** Maps a classifier mode name back to the Rust [RustTransportMode] enum. */
+    private fun rustTransportMode(mode: String): RustTransportMode = when (mode.lowercase()) {
+        "still" -> RustTransportMode.STILL
+        "walking" -> RustTransportMode.WALKING
+        "running" -> RustTransportMode.RUNNING
+        "cycling" -> RustTransportMode.CYCLING
+        "vehicle" -> RustTransportMode.VEHICLE
+        else -> RustTransportMode.UNKNOWN
+    }
+
     /** Last computed effective speed (m/s) from tracking location updates.
      *  Used by the plugin for motionchange events since the cached Location.speed
      *  may be stale or 0. */
@@ -293,6 +336,17 @@ class LocationEngine(
 
     /** Optional callback invoked to feed effective speed to SpeedMotionManager. */
     var speedMotionSpeedSink: ((Double) -> Unit)? = null
+
+    /**
+     * Optional sink for the speed of every **raw** fix, before the processor's
+     * distance/accuracy/speed filters (#299).
+     *
+     * The transport classifier consumes this rather than the speed of accepted
+     * fixes. When auto-tuning is on, the classified mode selects the distance
+     * filter — so classifying from post-filter speeds would close a loop where
+     * tightening the filter changes the very speeds that chose it.
+     */
+    var rawSpeedSink: ((Double) -> Unit)? = null
 
     // watchPosition watchers: watchId -> LocationCallback
     private val watchers = ConcurrentHashMap<Int, TraceletLocationCallback>()
@@ -933,6 +987,31 @@ class LocationEngine(
             computedSpeed
         }
 
+        // Feed the transport classifier from the raw stream — see [rawSpeedSink].
+        rawSpeedSink?.invoke(effectiveSpeed)
+
+        // --- Kalman smoothing (optional) ---
+        // Runs BEFORE the processor so the odometer accumulates over the smoothed
+        // track rather than the raw one (#299). Previously this ran afterwards and
+        // only fed `coords`, which meant enabling `useKalmanFilter` visibly
+        // smoothed the map but left distance accumulating raw GPS jitter — the
+        // reported "distance is 3x too high while walking" symptom.
+        //
+        // Feeding every fix (not only accepted ones) also keeps the filter's
+        // velocity estimate continuous across fixes the processor rejects.
+        var smoothedLat = location.latitude
+        var smoothedLng = location.longitude
+        kalmanFilter?.let { kalman ->
+            val smoothed = kalman.process(
+                latitude = location.latitude,
+                longitude = location.longitude,
+                accuracy = location.accuracy.toDouble(),
+                timestampMs = location.time,
+            )
+            smoothedLat = smoothed.latitude
+            smoothedLng = smoothed.longitude
+        }
+
         // --- Rust-powered filtering (distance, accuracy, speed, mock, sparse) ---
         val mock = isLocationMock(location)
         val processor = getProcessor()
@@ -940,15 +1019,19 @@ class LocationEngine(
         val batteryLevel = (battery["level"] as? Number)?.toDouble() ?: -1.0
         val isCharging = (battery["is_charging"] as? Boolean) ?: false
         val adaptiveCtx = AdaptiveContext(
+            // #299: use the effective activity, so a `fusedClassifierAuthoritative`
+            // classifier actually reaches the adaptive sampler as documented.
+            // Previously this passed the raw AR activity unconditionally, which
+            // made the setting a no-op for sampling.
+            activityType = mapActivityType(effectiveActivityType()),
+            activityConfidence = mapActivityConfidence(effectiveActivityConfidence()),
             batteryLevel = batteryLevel,
             isCharging = isCharging,
-            activityType = mapActivityType(currentActivityType),
-            activityConfidence = mapActivityConfidence(currentActivityConfidence),
             speed = effectiveSpeed,
         )
         val result = processor.process(
-            latitude = location.latitude,
-            longitude = location.longitude,
+            latitude = smoothedLat,
+            longitude = smoothedLng,
             accuracy = location.accuracy.toDouble(),
             speed = effectiveSpeed,
             timestampMs = location.time,
@@ -984,20 +1067,6 @@ class LocationEngine(
         // Odometer update from processor's computed delta
         if (result.odometerDelta > 0) {
             state.addOdometer(result.odometerDelta)
-        }
-
-        // --- Kalman smoothing (optional) ---
-        var smoothedLat = location.latitude
-        var smoothedLng = location.longitude
-        kalmanFilter?.let { kalman ->
-            val smoothed = kalman.process(
-                latitude = location.latitude,
-                longitude = location.longitude,
-                accuracy = location.accuracy.toDouble(),
-                timestampMs = location.time,
-            )
-            smoothedLat = smoothed.latitude
-            smoothedLng = smoothed.longitude
         }
 
         lastLocation = location

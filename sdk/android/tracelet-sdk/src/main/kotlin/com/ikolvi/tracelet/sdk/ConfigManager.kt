@@ -828,6 +828,13 @@ class ConfigManager(context: Context) {
     fun getModeSwitchDwellMs(): Long = getInt("modeSwitchDwellMs", 8000).toLong()
     fun getMinModeConfidence(): Double = getDouble("minModeConfidence", 0.6)
 
+    /**
+     * Whether a committed transport mode retunes the location filter thresholds (#299).
+     * Off by default so existing integrations keep the thresholds they configured.
+     */
+    fun getAutoTuneFromTransportMode(): Boolean =
+        getBool("autoTuneFromTransportMode", false)
+
     fun getEnableCrashDetection(): Boolean = getBool("enableCrashDetection", false)
     fun getEnableFallDetection(): Boolean = getBool("enableFallDetection", false)
     fun getCrashGThreshold(): Double = getDouble("crashGThreshold", 2.0)

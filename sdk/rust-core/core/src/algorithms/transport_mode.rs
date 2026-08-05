@@ -11,6 +11,7 @@
 
 use std::sync::Mutex;
 
+use crate::algorithms::location_processor::LocationTuning;
 use crate::algorithms::sensor_features::AccelWindow;
 
 /// Detected travel mode. Distinct from the platform `ActivityType` so adding
@@ -100,6 +101,64 @@ fn classify_instant(window: AccelWindow, speed_mps: f64) -> (TransportMode, f64)
     }
 
     (TransportMode::Unknown, 0.0)
+}
+
+/// Location-filter thresholds appropriate to a detected [`TransportMode`].
+///
+/// Returns `None` for [`TransportMode::Unknown`], meaning "leave the host's own
+/// configuration alone" — an unclassified stretch is not evidence for any
+/// particular tuning, so the caller should keep whatever it already had.
+///
+/// The values are chosen for distance fidelity, which is the opposite tension
+/// from [`crate::algorithms::location_processor::AdaptiveSamplingEngine`]: that
+/// engine widens the distance filter for slow movers to spare the radio, while
+/// this table *tightens* it, because walking is exactly where GPS noise is
+/// largest relative to real displacement and where an over-wide odometer
+/// accuracy gate inflates distance most.
+///
+/// `max_implied_speed` sits roughly 2x above each mode's realistic ceiling, so
+/// it rejects teleport spikes without clipping genuine bursts.
+#[uniffi::export]
+pub fn tuning_for_transport_mode(mode: TransportMode) -> Option<LocationTuning> {
+    let tuning = match mode {
+        // Wide distance gate so GPS jitter around a parked device cannot
+        // accumulate; the odometer gate stays tight for the same reason.
+        TransportMode::Still => LocationTuning {
+            distance_filter: 25.0,
+            tracking_accuracy_threshold: 15,
+            odometer_accuracy_threshold: 10,
+            max_implied_speed: 3,
+        },
+        // ~1.4 m/s. The noise floor of a handset under tree cover is 5-8 m, so
+        // a distance filter below that integrates noise as distance.
+        TransportMode::Walking => LocationTuning {
+            distance_filter: 8.0,
+            tracking_accuracy_threshold: 15,
+            odometer_accuracy_threshold: 10,
+            max_implied_speed: 4,
+        },
+        // Covers jogging too — the classifier's Running band is 6-20 km/h.
+        TransportMode::Running => LocationTuning {
+            distance_filter: 12.0,
+            tracking_accuracy_threshold: 25,
+            odometer_accuracy_threshold: 15,
+            max_implied_speed: 9,
+        },
+        TransportMode::Cycling => LocationTuning {
+            distance_filter: 20.0,
+            tracking_accuracy_threshold: 30,
+            odometer_accuracy_threshold: 20,
+            max_implied_speed: 20,
+        },
+        TransportMode::Vehicle => LocationTuning {
+            distance_filter: 30.0,
+            tracking_accuracy_threshold: 50,
+            odometer_accuracy_threshold: 30,
+            max_implied_speed: 60,
+        },
+        TransportMode::Unknown => return None,
+    };
+    Some(tuning)
 }
 
 #[uniffi::export]
@@ -247,6 +306,64 @@ mod tests {
         c.classify(veh, 60.0 / 3.6, 9000);
         c.classify(walk, 5.0 / 3.6, 10000);
         assert_eq!(c.current_mode(), TransportMode::Walking);
+    }
+
+    #[test]
+    fn unknown_mode_yields_no_tuning() {
+        // Callers must keep the host's own config rather than guessing.
+        assert!(tuning_for_transport_mode(TransportMode::Unknown).is_none());
+    }
+
+    #[test]
+    fn on_foot_modes_tighten_the_distance_filter_relative_to_vehicle() {
+        let walk = tuning_for_transport_mode(TransportMode::Walking).unwrap();
+        let run = tuning_for_transport_mode(TransportMode::Running).unwrap();
+        let vehicle = tuning_for_transport_mode(TransportMode::Vehicle).unwrap();
+        // The inversion this table exists to correct: on foot must be tighter
+        // than in a vehicle, not looser.
+        assert!(walk.distance_filter < run.distance_filter);
+        assert!(run.distance_filter < vehicle.distance_filter);
+    }
+
+    #[test]
+    fn odometer_gate_is_always_at_least_as_strict_as_the_tracking_gate() {
+        for mode in [
+            TransportMode::Still,
+            TransportMode::Walking,
+            TransportMode::Running,
+            TransportMode::Cycling,
+            TransportMode::Vehicle,
+        ] {
+            let t = tuning_for_transport_mode(mode).unwrap();
+            // A fix too coarse to record must never be good enough to count
+            // toward distance.
+            assert!(
+                t.odometer_accuracy_threshold <= t.tracking_accuracy_threshold,
+                "{mode:?} lets un-recordable fixes reach the odometer",
+            );
+            assert!(t.odometer_accuracy_threshold > 0, "{mode:?} disables the odometer gate");
+            assert!(t.max_implied_speed > 0, "{mode:?} disables the speed gate");
+        }
+    }
+
+    #[test]
+    fn implied_speed_ceiling_clears_each_modes_realistic_pace() {
+        // Sanity-check the ceilings against plausible upper paces (m/s), so a
+        // future edit cannot silently start clipping genuine movement.
+        let cases = [
+            (TransportMode::Walking, 2.2),  // brisk walk
+            (TransportMode::Running, 5.5),  // ~3:00/km
+            (TransportMode::Cycling, 13.0), // ~47 km/h
+            (TransportMode::Vehicle, 33.0), // ~120 km/h
+        ];
+        for (mode, realistic_max) in cases {
+            let t = tuning_for_transport_mode(mode).unwrap();
+            assert!(
+                (t.max_implied_speed as f64) > realistic_max,
+                "{mode:?} ceiling {} m/s would clip a genuine {realistic_max} m/s",
+                t.max_implied_speed,
+            );
+        }
     }
 
     #[test]

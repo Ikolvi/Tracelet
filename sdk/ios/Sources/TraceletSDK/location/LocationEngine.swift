@@ -151,6 +151,47 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         return locationProcessor!
     }
 
+    /// Applies the filter thresholds appropriate to a committed transport mode (#299).
+    ///
+    /// Called only when the classifier *commits* a mode change — already gated by
+    /// confidence and an 8 s dwell — never per accelerometer window, so the
+    /// thresholds cannot chatter. A mode with no tuning (`unknown`) restores the
+    /// host's own configuration rather than guessing.
+    ///
+    /// Returns the applied tuning, or `nil` when auto-tuning is disabled or the
+    /// mode carries no opinion. Callers surface it on the `modeChange` event so an
+    /// auto-tune shows up in logs instead of being a silent config mutation.
+    @discardableResult
+    public func applyTransportModeTuning(_ mode: String) -> LocationTuning? {
+        guard configManager.getAutoTuneFromTransportMode() else { return nil }
+        let processor = getProcessor()
+        guard let tuning = tuningForTransportMode(mode: Self.rustTransportMode(mode)) else {
+            processor.restoreBaseTuning()
+            TraceletLog.debug("[Tracelet] auto-tune: '\(mode)' has no tuning — restored configured thresholds")
+            return nil
+        }
+        processor.retune(tuning: tuning)
+        TraceletLog.debug(
+            "[Tracelet] auto-tune: '\(mode)' → distanceFilter=\(tuning.distanceFilter)m "
+                + "trackingAccuracy=\(tuning.trackingAccuracyThreshold)m "
+                + "odometerAccuracy=\(tuning.odometerAccuracyThreshold)m "
+                + "maxImpliedSpeed=\(tuning.maxImpliedSpeed)m/s"
+        )
+        return tuning
+    }
+
+    /// Maps a classifier mode name back to the Rust `TransportMode` enum.
+    private static func rustTransportMode(_ mode: String) -> TransportMode {
+        switch mode.lowercased() {
+        case "still": return .still
+        case "walking": return .walking
+        case "running": return .running
+        case "cycling": return .cycling
+        case "vehicle": return .vehicle
+        default: return .unknown
+        }
+    }
+
     /// Maximum accuracy (meters) to consider a fix as GPS-sourced.
     static let gpsAccuracyThreshold: Double = 50.0
 
@@ -168,6 +209,15 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
 
     /// Optional callback invoked to feed raw speed to SpeedMotionManager.
     public var speedSink: ((Double) -> Void)?
+
+    /// Optional sink for the speed of every **raw** fix, before the processor's
+    /// distance/accuracy/speed filters (#299).
+    ///
+    /// The transport classifier consumes this rather than the speed of accepted
+    /// fixes. When auto-tuning is on, the classified mode selects the distance
+    /// filter — so classifying from post-filter speeds would close a loop where
+    /// tightening the filter changes the very speeds that chose it.
+    public var rawSpeedSink: ((Double) -> Void)?
 
     // Dead Reckoning
     private var deadReckoningEngine: DeadReckoningEngine?
@@ -1025,6 +1075,30 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         // Resolve effective speed: platform speed if available, otherwise computed
         let effectiveSpeed = (location.speed > 0) ? location.speed : computedSpeed
 
+        // Feed the transport classifier from the raw stream — see `rawSpeedSink`.
+        rawSpeedSink?(effectiveSpeed)
+
+        // --- Kalman smoothing (optional) ---
+        // Runs BEFORE the processor so the odometer accumulates over the smoothed
+        // track rather than the raw one (#299). Previously this ran afterwards and
+        // only fed `coords`, so enabling `useKalmanFilter` smoothed the map while
+        // distance kept accumulating raw GPS jitter.
+        //
+        // Feeding every fix (not only accepted ones) also keeps the filter's
+        // velocity estimate continuous across fixes the processor rejects.
+        var smoothedLat = location.coordinate.latitude
+        var smoothedLng = location.coordinate.longitude
+        if let kalman = kalmanFilter {
+            let smoothed = kalman.process(
+                latitude: location.coordinate.latitude,
+                longitude: location.coordinate.longitude,
+                accuracy: location.horizontalAccuracy,
+                timestampMs: Int64(location.timestamp.timeIntervalSince1970 * 1000)
+            )
+            smoothedLat = smoothed.latitude
+            smoothedLng = smoothed.longitude
+        }
+
         // --- Rust-powered filtering (distance, accuracy, speed, mock, sparse) ---
         let mock = isLocationMock(location)
         let processor = getProcessor()
@@ -1035,13 +1109,15 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         let adaptiveCtx = AdaptiveContext(
             batteryLevel: batteryLevel,
             isCharging: isCharging,
-            activityType: mapActivityType(currentActivityType),
-            activityConfidence: mapActivityConfidence(-1),
+            // #299: use the effective activity, so a `fusedClassifierAuthoritative`
+            // classifier actually reaches the adaptive sampler as documented.
+            activityType: mapActivityType(effectiveActivityType()),
+            activityConfidence: mapActivityConfidence(effectiveActivityConfidence()),
             speed: effectiveSpeed
         )
         let result = processor.process(
-            latitude: location.coordinate.latitude,
-            longitude: location.coordinate.longitude,
+            latitude: smoothedLat,
+            longitude: smoothedLng,
             accuracy: location.horizontalAccuracy,
             speed: effectiveSpeed,
             timestampMs: Int64(location.timestamp.timeIntervalSince1970 * 1000),
@@ -1067,20 +1143,6 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         // Odometer update from processor's computed delta
         if result.odometerDelta > 0 {
             stateManager.addOdometer(distance: result.odometerDelta)
-        }
-
-        // --- Kalman smoothing (optional) ---
-        var smoothedLat = location.coordinate.latitude
-        var smoothedLng = location.coordinate.longitude
-        if let kalman = kalmanFilter {
-            let smoothed = kalman.process(
-                latitude: location.coordinate.latitude,
-                longitude: location.coordinate.longitude,
-                accuracy: location.horizontalAccuracy,
-                timestampMs: Int64(location.timestamp.timeIntervalSince1970 * 1000)
-            )
-            smoothedLat = smoothed.latitude
-            smoothedLng = smoothed.longitude
         }
 
         lastEffectiveSpeed = result.effectiveSpeed

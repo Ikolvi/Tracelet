@@ -1578,6 +1578,7 @@ struct TlClassifierConfig: Hashable {
   var fusedClassifierAuthoritative: Bool
   var modeSwitchDwellMs: Int64
   var minModeConfidence: Double
+  var autoTuneFromTransportMode: Bool
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -1586,12 +1587,14 @@ struct TlClassifierConfig: Hashable {
     let fusedClassifierAuthoritative = pigeonVar_list[1] as! Bool
     let modeSwitchDwellMs = pigeonVar_list[2] as! Int64
     let minModeConfidence = pigeonVar_list[3] as! Double
+    let autoTuneFromTransportMode = pigeonVar_list[4] as! Bool
 
     return TlClassifierConfig(
       enableFusedClassifier: enableFusedClassifier,
       fusedClassifierAuthoritative: fusedClassifierAuthoritative,
       modeSwitchDwellMs: modeSwitchDwellMs,
-      minModeConfidence: minModeConfidence
+      minModeConfidence: minModeConfidence,
+      autoTuneFromTransportMode: autoTuneFromTransportMode
     )
   }
   func toList() -> [Any?] {
@@ -1600,13 +1603,14 @@ struct TlClassifierConfig: Hashable {
       fusedClassifierAuthoritative,
       modeSwitchDwellMs,
       minModeConfidence,
+      autoTuneFromTransportMode,
     ]
   }
   static func == (lhs: TlClassifierConfig, rhs: TlClassifierConfig) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsTraceletApi(lhs.enableFusedClassifier, rhs.enableFusedClassifier) && deepEqualsTraceletApi(lhs.fusedClassifierAuthoritative, rhs.fusedClassifierAuthoritative) && deepEqualsTraceletApi(lhs.modeSwitchDwellMs, rhs.modeSwitchDwellMs) && deepEqualsTraceletApi(lhs.minModeConfidence, rhs.minModeConfidence)
+    return deepEqualsTraceletApi(lhs.enableFusedClassifier, rhs.enableFusedClassifier) && deepEqualsTraceletApi(lhs.fusedClassifierAuthoritative, rhs.fusedClassifierAuthoritative) && deepEqualsTraceletApi(lhs.modeSwitchDwellMs, rhs.modeSwitchDwellMs) && deepEqualsTraceletApi(lhs.minModeConfidence, rhs.minModeConfidence) && deepEqualsTraceletApi(lhs.autoTuneFromTransportMode, rhs.autoTuneFromTransportMode)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -1615,6 +1619,7 @@ struct TlClassifierConfig: Hashable {
     deepHashTraceletApi(value: fusedClassifierAuthoritative, hasher: &hasher)
     deepHashTraceletApi(value: modeSwitchDwellMs, hasher: &hasher)
     deepHashTraceletApi(value: minModeConfidence, hasher: &hasher)
+    deepHashTraceletApi(value: autoTuneFromTransportMode, hasher: &hasher)
   }
 }
 

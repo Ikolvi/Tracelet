@@ -162,6 +162,7 @@ class ClassifierConfig {
     this.fusedClassifierAuthoritative = false,
     this.modeSwitchDwellMs = 8000,
     this.minModeConfidence = 0.6,
+    this.autoTuneFromTransportMode = false,
   });
 
   /// Creates a [ClassifierConfig] from a map.
@@ -177,6 +178,10 @@ class ClassifierConfig {
       ),
       modeSwitchDwellMs: ensureInt(map['modeSwitchDwellMs'], fallback: 8000),
       minModeConfidence: ensureDouble(map['minModeConfidence'], fallback: 0.6),
+      autoTuneFromTransportMode: ensureBool(
+        map['autoTuneFromTransportMode'],
+        fallback: false,
+      ),
     );
   }
 
@@ -192,12 +197,28 @@ class ClassifierConfig {
   /// Below this confidence the mode is reported as `unknown`. Default `0.6`.
   final double minModeConfidence;
 
+  /// Whether a committed transport mode retunes the location filter thresholds.
+  ///
+  /// When `true`, committing a mode swaps `distanceFilter`,
+  /// `trackingAccuracyThreshold`, `odometerAccuracyThreshold` and
+  /// `maxImpliedSpeed` for values suited to that mode — tighter on foot, looser
+  /// in a vehicle — which is what keeps distance from inflating while walking.
+  /// Retuning happens only on a *committed* change (confidence-gated and
+  /// debounced by [modeSwitchDwellMs]), and a mode of `unknown` restores the
+  /// values you configured. The applied thresholds are reported on
+  /// `onModeChange` so an auto-tune is never silent.
+  ///
+  /// Requires [enableFusedClassifier]. Defaults to `false`, so existing
+  /// integrations keep the thresholds they set.
+  final bool autoTuneFromTransportMode;
+
   /// Serializes to a map.
   Map<String, Object?> toMap() => <String, Object?>{
     'enableFusedClassifier': enableFusedClassifier,
     'fusedClassifierAuthoritative': fusedClassifierAuthoritative,
     'modeSwitchDwellMs': modeSwitchDwellMs,
     'minModeConfidence': minModeConfidence,
+    'autoTuneFromTransportMode': autoTuneFromTransportMode,
   };
 
   /// Converts to Pigeon [TlClassifierConfig].
@@ -206,6 +227,7 @@ class ClassifierConfig {
     fusedClassifierAuthoritative: fusedClassifierAuthoritative,
     modeSwitchDwellMs: modeSwitchDwellMs,
     minModeConfidence: minModeConfidence,
+    autoTuneFromTransportMode: autoTuneFromTransportMode,
   );
 
   @override
@@ -216,7 +238,8 @@ class ClassifierConfig {
           enableFusedClassifier == other.enableFusedClassifier &&
           fusedClassifierAuthoritative == other.fusedClassifierAuthoritative &&
           modeSwitchDwellMs == other.modeSwitchDwellMs &&
-          minModeConfidence == other.minModeConfidence;
+          minModeConfidence == other.minModeConfidence &&
+          autoTuneFromTransportMode == other.autoTuneFromTransportMode;
 
   @override
   int get hashCode => Object.hash(
@@ -224,6 +247,7 @@ class ClassifierConfig {
     fusedClassifierAuthoritative,
     modeSwitchDwellMs,
     minModeConfidence,
+    autoTuneFromTransportMode,
   );
 }
 

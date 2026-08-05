@@ -3044,13 +3044,39 @@ public func FfiConverterTypeKalmanLocationFilter_lower(_ value: KalmanLocationFi
  */
 public protocol LocationProcessorProtocol: AnyObject, Sendable {
     
+    /**
+     * The thresholds currently in force.
+     */
+    func currentTuning()  -> LocationTuning
+    
     func hasLastLocation()  -> Bool
     
     func lastEffectiveSpeed()  -> Double
     
     func process(latitude: Double, longitude: Double, accuracy: Double, speed: Double, timestampMs: Int64, isMock: Bool, adaptiveContext: AdaptiveContext?)  -> LocationProcessorResult
     
+    /**
+     * Clears the positional history. Leaves the active tuning in place — a
+     * reset is about forgetting where we were, not which mode we are in.
+     */
     func reset() 
+    
+    /**
+     * Restores the thresholds the processor was constructed with, undoing any
+     * [`Self::retune`]. Used when the classifier drops back to `Unknown` and
+     * the host's own configuration should take over again.
+     */
+    func restoreBaseTuning() 
+    
+    /**
+     * Swaps the distance/accuracy/odometer/speed thresholds in place.
+     *
+     * Deliberately leaves the positional state (last lat/lng/timestamp) alone:
+     * rebuilding the processor to change thresholds would drop the anchor point
+     * and silently forfeit one inter-fix delta from the odometer every time the
+     * transport mode changed.
+     */
+    func retune(tuning: LocationTuning) 
     
 }
 /**
@@ -3129,6 +3155,17 @@ public convenience init(distanceFilter: Double, disableElasticity: Bool, elastic
     
 
     
+    /**
+     * The thresholds currently in force.
+     */
+open func currentTuning() -> LocationTuning  {
+    return try!  FfiConverterTypeLocationTuning_lift(try! rustCall() {
+    uniffi_tracelet_core_fn_method_locationprocessor_current_tuning(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+    
 open func hasLastLocation() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
     uniffi_tracelet_core_fn_method_locationprocessor_has_last_location(
@@ -3160,9 +3197,41 @@ open func process(latitude: Double, longitude: Double, accuracy: Double, speed: 
 })
 }
     
+    /**
+     * Clears the positional history. Leaves the active tuning in place — a
+     * reset is about forgetting where we were, not which mode we are in.
+     */
 open func reset()  {try! rustCall() {
     uniffi_tracelet_core_fn_method_locationprocessor_reset(
             self.uniffiCloneHandle(),$0
+    )
+}
+}
+    
+    /**
+     * Restores the thresholds the processor was constructed with, undoing any
+     * [`Self::retune`]. Used when the classifier drops back to `Unknown` and
+     * the host's own configuration should take over again.
+     */
+open func restoreBaseTuning()  {try! rustCall() {
+    uniffi_tracelet_core_fn_method_locationprocessor_restore_base_tuning(
+            self.uniffiCloneHandle(),$0
+    )
+}
+}
+    
+    /**
+     * Swaps the distance/accuracy/odometer/speed thresholds in place.
+     *
+     * Deliberately leaves the positional state (last lat/lng/timestamp) alone:
+     * rebuilding the processor to change thresholds would drop the anchor point
+     * and silently forfeit one inter-fix delta from the odometer every time the
+     * transport mode changed.
+     */
+open func retune(tuning: LocationTuning)  {try! rustCall() {
+    uniffi_tracelet_core_fn_method_locationprocessor_retune(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeLocationTuning_lower(tuning),$0
     )
 }
 }
@@ -7039,6 +7108,101 @@ public func FfiConverterTypeLocationRecord_lower(_ value: LocationRecord) -> Rus
 
 
 /**
+ * The four thresholds that govern how much distance a fix may contribute.
+ *
+ * Split out from the rest of the processor config because these — and only
+ * these — may be swapped at runtime by transport-mode auto-tuning. See
+ * [`crate::algorithms::transport_mode::tuning_for_transport_mode`].
+ */
+public struct LocationTuning: Equatable, Hashable {
+    /**
+     * Minimum movement (m) between recorded fixes.
+     */
+    public var distanceFilter: Double
+    /**
+     * Reject fixes with accuracy worse than this (m). `<= 0` disables.
+     */
+    public var trackingAccuracyThreshold: Int32
+    /**
+     * Only fixes at least this accurate (m) contribute to the odometer.
+     * `<= 0` disables, letting every accepted fix count.
+     */
+    public var odometerAccuracyThreshold: Int32
+    /**
+     * Reject fixes implying a speed above this (m/s). `<= 0` disables.
+     */
+    public var maxImpliedSpeed: Int32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Minimum movement (m) between recorded fixes.
+         */distanceFilter: Double, 
+        /**
+         * Reject fixes with accuracy worse than this (m). `<= 0` disables.
+         */trackingAccuracyThreshold: Int32, 
+        /**
+         * Only fixes at least this accurate (m) contribute to the odometer.
+         * `<= 0` disables, letting every accepted fix count.
+         */odometerAccuracyThreshold: Int32, 
+        /**
+         * Reject fixes implying a speed above this (m/s). `<= 0` disables.
+         */maxImpliedSpeed: Int32) {
+        self.distanceFilter = distanceFilter
+        self.trackingAccuracyThreshold = trackingAccuracyThreshold
+        self.odometerAccuracyThreshold = odometerAccuracyThreshold
+        self.maxImpliedSpeed = maxImpliedSpeed
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LocationTuning: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLocationTuning: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LocationTuning {
+        return
+            try LocationTuning(
+                distanceFilter: FfiConverterDouble.read(from: &buf), 
+                trackingAccuracyThreshold: FfiConverterInt32.read(from: &buf), 
+                odometerAccuracyThreshold: FfiConverterInt32.read(from: &buf), 
+                maxImpliedSpeed: FfiConverterInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LocationTuning, into buf: inout [UInt8]) {
+        FfiConverterDouble.write(value.distanceFilter, into: &buf)
+        FfiConverterInt32.write(value.trackingAccuracyThreshold, into: &buf)
+        FfiConverterInt32.write(value.odometerAccuracyThreshold, into: &buf)
+        FfiConverterInt32.write(value.maxImpliedSpeed, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocationTuning_lift(_ buf: RustBuffer) throws -> LocationTuning {
+    return try FfiConverterTypeLocationTuning.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocationTuning_lower(_ value: LocationTuning) -> RustBuffer {
+    return FfiConverterTypeLocationTuning.lower(value)
+}
+
+
+/**
  * Represents a single log entry persisted in the database.
  */
 public struct LogEntry: Equatable, Hashable {
@@ -8950,6 +9114,30 @@ fileprivate struct FfiConverterOptionTypeLocationRecord: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeLocationTuning: FfiConverterRustBuffer {
+    typealias SwiftType = LocationTuning?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeLocationTuning.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeLocationTuning.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeTelematicsConfig: FfiConverterRustBuffer {
     typealias SwiftType = TelematicsConfig?
 
@@ -9505,6 +9693,30 @@ public func computeAccelWindow(magnitudesG: [Double], durationMs: Int64) -> Acce
 })
 }
 /**
+ * Location-filter thresholds appropriate to a detected [`TransportMode`].
+ *
+ * Returns `None` for [`TransportMode::Unknown`], meaning "leave the host's own
+ * configuration alone" — an unclassified stretch is not evidence for any
+ * particular tuning, so the caller should keep whatever it already had.
+ *
+ * The values are chosen for distance fidelity, which is the opposite tension
+ * from [`crate::algorithms::location_processor::AdaptiveSamplingEngine`]: that
+ * engine widens the distance filter for slow movers to spare the radio, while
+ * this table *tightens* it, because walking is exactly where GPS noise is
+ * largest relative to real displacement and where an over-wide odometer
+ * accuracy gate inflates distance most.
+ *
+ * `max_implied_speed` sits roughly 2x above each mode's realistic ceiling, so
+ * it rejects teleport spikes without clipping genuine bursts.
+ */
+public func tuningForTransportMode(mode: TransportMode) -> LocationTuning?  {
+    return try!  FfiConverterOptionTypeLocationTuning.lift(try! rustCall() {
+    uniffi_tracelet_core_fn_func_tuning_for_transport_mode(
+        FfiConverterTypeTransportMode_lower(mode),$0
+    )
+})
+}
+/**
  * Builds a deterministic canonical string from a location record and its preceding chain hash.
  */
 public func buildCanonicalString(previousHash: String, chainIndex: Int32, loc: LocationRecord) -> String  {
@@ -9559,6 +9771,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_func_compute_accel_window() != 29960) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tracelet_core_checksum_func_tuning_for_transport_mode() != 24165) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_func_build_canonical_string() != 7071) {
@@ -9621,6 +9836,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_tracelet_core_checksum_method_adaptivesamplingengine_compute() != 3823) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_tracelet_core_checksum_method_locationprocessor_current_tuning() != 27721) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_tracelet_core_checksum_method_locationprocessor_has_last_location() != 24404) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -9630,7 +9848,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_tracelet_core_checksum_method_locationprocessor_process() != 9433) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_tracelet_core_checksum_method_locationprocessor_reset() != 105) {
+    if (uniffi_tracelet_core_checksum_method_locationprocessor_reset() != 34209) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tracelet_core_checksum_method_locationprocessor_restore_base_tuning() != 17132) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tracelet_core_checksum_method_locationprocessor_retune() != 24775) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_scheduleparser_calculate_next_alarms() != 37817) {
