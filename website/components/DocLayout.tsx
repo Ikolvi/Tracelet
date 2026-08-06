@@ -86,6 +86,21 @@ const archivedCta: Record<string, string> = {
   ru: "Перейти к последней документации"
 };
 
+/**
+ * Replaces the "Last updated" stamp on archived pages.
+ *
+ * Two reasons. Semantically, a frozen archive has no last-updated date — it is a
+ * snapshot of a release, and printing today's date on it would be a lie.
+ * Practically, Nextra derives that date from git and renders
+ * `new Date(date).toLocaleDateString()`; when the lookup returns something
+ * truthy but unparseable the page throws during export and fails the build.
+ *
+ * Nextra clones this element with an injected `date` prop, which is ignored.
+ */
+function ArchivedStamp({ label }: { label: string; date?: Date }) {
+  return <>Frozen at release {label}</>
+}
+
 export default function DocLayout({ children, pageMap, version, locale, archivedSlug }: { children: React.ReactNode, pageMap: any, version: string, locale: string, archivedSlug?: string }) {
   return (
     <>
@@ -132,6 +147,7 @@ export default function DocLayout({ children, pageMap, version, locale, archived
             </div>
           </div>
         </Footer>}
+        lastUpdated={archivedSlug ? <ArchivedStamp label={version} /> : undefined}
         docsRepositoryBase="https://github.com/Ikolvi/Tracelet/tree/main/website"
         editLink={editLinks[locale] || editLinks.en}
         darkMode={true}

@@ -21,9 +21,14 @@ type Archived = {
  * ## URL model
  *
  * The current release is served at the unprefixed paths (`/en/core/geofencing`)
- * and archives are nested one segment deeper (`/en/v3.7/core/geofencing`). That
- * keeps every existing link and every search result pointing at the current
- * docs, which is what a reader arriving from Google almost always wants.
+ * and archives live under a top-level version segment
+ * (`/v3.7/en/core/geofencing`). Current URLs are untouched, so every existing
+ * link and search result keeps pointing at the current docs — what a reader
+ * arriving from Google almost always wants.
+ *
+ * The version segment comes FIRST on purpose: nesting it under the locale
+ * (`/en/v3.7/…`) puts the archive inside the live locale's layout, and Next
+ * composes layouts, so each archived page rendered two navbars and two footers.
  *
  * Switching preserves the page you are on where possible. An archive will not
  * contain pages added after it was cut, so a missing target would 404 on a
@@ -80,14 +85,16 @@ export default function VersionSwitch({
       target && target.locales && !target.locales.includes(locale) ? 'en' : locale
 
     if (typeof window === 'undefined') {
-      return targetSlug ? `/${targetLocale}/${targetSlug}` : `/${targetLocale}`
+      return targetSlug ? `/${targetSlug}/${targetLocale}` : `/${targetLocale}`
     }
+    // Paths are either `/<locale>/…` (current) or `/<slug>/<locale>/…`
+    // (archived); strip whichever prefix is present to get the page path.
     const segments = window.location.pathname.split('/').filter(Boolean)
-    // segments[0] is the locale; drop it and any archive slug that follows.
-    let rest = segments.slice(1)
+    let rest = segments
     if (rest.length && archived.some(v => v.slug === rest[0])) rest = rest.slice(1)
+    rest = rest.slice(1) // drop the locale
 
-    const base = targetSlug ? `/${targetLocale}/${targetSlug}` : `/${targetLocale}`
+    const base = targetSlug ? `/${targetSlug}/${targetLocale}` : `/${targetLocale}`
     // Only carry the sub-path when moving TO the current docs, which is a
     // superset of every archive. Moving to an archive risks a page that did not
     // exist then, so land on its home instead of a 404.
@@ -98,10 +105,26 @@ export default function VersionSwitch({
   const isArchived = Boolean(archivedSlug)
 
   return (
-    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
+    // Nextra renders the `logo` prop inside `<a href="/" aria-label="Home page">`,
+    // so without stopping the event here every click on this control bubbles to
+    // that anchor and navigates home — the dropdown appeared to do nothing but
+    // reload the page. preventDefault kills the anchor's navigation;
+    // stopPropagation keeps it from reaching any other handler.
+    <div
+      ref={ref}
+      onClick={e => {
+        e.preventDefault()
+        e.stopPropagation()
+      }}
+      style={{ position: 'relative', display: 'inline-block' }}
+    >
       <button
         type="button"
-        onClick={() => setOpen(o => !o)}
+        onClick={e => {
+          e.preventDefault()
+          e.stopPropagation()
+          setOpen(o => !o)
+        }}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={`Documentation version: ${activeLabel}`}
@@ -183,6 +206,13 @@ function VersionItem({
       href={href}
       role="option"
       aria-selected={active}
+      // The wrapper above swallows clicks to stop the logo anchor from firing,
+      // which would otherwise also swallow these. Navigate explicitly instead.
+      onClick={e => {
+        e.preventDefault()
+        e.stopPropagation()
+        window.location.href = href
+      }}
       style={{
         display: 'flex',
         justifyContent: 'space-between',
