@@ -1,10 +1,15 @@
 {
-  "badgeTitle": "New in 3.5.0",
+  "badgeTitle": "New in 3.8.0-beta",
   "items": [
     {
-      "title": "AI crash detection is now stable",
-      "description": "The licensed on-device AI crash model is production-ready and cleared for commercial use.",
-      "href": "/core/driving-safety#3-crash--fall-detection"
+      "title": "Distance on foot is finally right",
+      "description": "Smoothing now applies to the odometer, so useKalmanFilter affects the distance you record — not just the track you draw.",
+      "href": "/core/advanced-geo"
+    },
+    {
+      "title": "The location filters tune themselves",
+      "description": "A committed transport mode picks the distance filter and accuracy gates for walking, running, cycling or driving.",
+      "href": "/core/driving-safety#auto-tuning-the-location-filters"
     }
   ]
 }

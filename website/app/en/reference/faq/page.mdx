@@ -132,7 +132,7 @@ If you only want GPS-quality data, filter on your side by `locationSource == "gp
 
 **GPS noise is being recorded as real movement.** At walking pace (~1.4 m/s) a handset's horizontal error is 5–8 m under open sky and considerably worse under tree cover or between buildings — a large fraction of how far the user actually moved between two fixes. Each jitter "spike" to the side is a genuine coordinate change, and an odometer that trusts every fix adds all of it. Fitness apps look smoother because they tune specifically for the on-foot case; the SDK defaults are deliberately neutral across vehicles, cyclists and pedestrians.
 
-**First, upgrade to `3.8.0-alpha` or later.** Two defects at or below `3.7.6` produced exactly this symptom and could not be tuned around:
+**First, upgrade to `3.8.0-beta` or later.** Two defects at or below `3.7.6` produced exactly this symptom and could not be tuned around:
 
 - `useKalmanFilter: true` smoothed only the *rendered* track. Smoothing ran **after** the location processor and fed only `coords`, so the odometer kept integrating raw jitter — the map looked clean while the distance stayed wrong. It now runs **before** the filters, so distance, the accuracy/implied-speed gates and the odometer all see the de-noised track. Expect your recorded distances to drop after upgrading; that drop is the noise you were previously counting.
 - A fix too coarse for `odometerAccuracyThreshold` was correctly kept out of the odometer, but the odometer's reference point advanced to it anyway — so the ground covered during that segment was lost permanently. Tightening the gate made distance go *missing* rather than fixing it. A coarse fix now **defers** its distance, and the next trustworthy fix books the whole span.
@@ -191,7 +191,7 @@ geo: tl.GeoConfig(
 
 - **A `distanceFilter` below the GPS noise floor admits noise as distance.** At `distanceFilter: 5`, a stationary 6 m error reads as 6 m of walking. Keep it at or above ~8 m on foot — counter-intuitively, recording *fewer* points gives a *more* accurate total.
 - **A tight `trackingAccuracyThreshold` makes the odometer gate irrelevant.** With `trackingAccuracyThreshold: 10`, every fix that survives is already ≤ 10 m, so `odometerAccuracyThreshold` (default `50` m) never rejects anything. The gate you were counting on is doing nothing; the error is coming from the fixes you kept, not the ones you dropped.
-- **`useKalmanFilter` is off by default**, and before `3.8.0-alpha` it did not affect distance at all even when on.
+- **`useKalmanFilter` is off by default**, and before `3.8.0` it did not affect distance at all even when on.
 
 **Don't expect an exact match with another app.** Strava, Google Fit and Tracelet consume different fix streams (sampling cadence, provider settings, whether the app was foregrounded) and apply different smoothing. Agreement within a few percent on a known-length route is the realistic target — measure against a route you can verify, not against another app's number.
 
@@ -299,13 +299,16 @@ A geofence placed on your **current** location still fires because `geofenceInit
 **For mock testing in high-accuracy mode**, relax the filters:
 
 ```dart
-filter: tl.LocationFilter(
-  rejectMockLocations: false,
-  useKalmanFilter: false,        // disable smoothing
-  maxImpliedSpeed: 0,            // 0 disables the implied-speed reject
-  trackingAccuracyThreshold: 0,  // accept regardless of reported accuracy
+geo: tl.GeoConfig(
+  distanceFilter: 0,
+  disableElasticity: true,
+  filter: tl.LocationFilter(
+    rejectMockLocations: false,
+    useKalmanFilter: false,        // disable smoothing
+    maxImpliedSpeed: 0,            // 0 disables the implied-speed reject
+    trackingAccuracyThreshold: 0,  // accept regardless of reported accuracy
+  ),
 ),
-geo: tl.GeoConfig(distanceFilter: 0, disableElasticity: true),
 ```
 
 Also select your mock app under **Developer Options → Select mock location app**, and advance the simulated route in small, realistic steps.
