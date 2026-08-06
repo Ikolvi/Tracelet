@@ -288,8 +288,8 @@ Before                        → Tracelet
 persistMode                   → persistence.persistMode (.all / .location / .geofence / .none)
 maxDaysToPersist              → persistence.maxDaysToPersist (-1 = forever)
 maxRecordsToPersist           → persistence.maxRecordsToPersist (-1 = unlimited)
-locationTemplate              → persistence.locationTemplate (Mustache-style)
-geofenceTemplate              → persistence.geofenceTemplate (Mustache-style)
+locationTemplate              → ⚠️ accepted but NOT wired — see "Not supported" below
+geofenceTemplate              → ⚠️ accepted but NOT wired — see "Not supported" below
 disableProviderChangeRecord   → persistence.disableProviderChangeRecord
 extras                        → persistence.extras
 ```
@@ -308,7 +308,8 @@ debug                  → logger.debug (alert sounds — fun at demos, terrifyi
 
 - **`audit.enabled`** — `false` by default. SHA-256 hash chain on every location — tamper = busted
 - **`audit.hashAlgorithm`** — `HashAlgorithm.sha256`
-- **`audit.includeExtrasInHash`** — `false` by default
+- **`audit.includeExtrasInHash`** — ⚠️ deprecated, not implemented: the chain always hashes
+  the core location fields only
 
 ### 🛡️ Privacy Zones → `PrivacyZoneConfig` (Tracelet-exclusive)
 

@@ -63,29 +63,62 @@ class _Issue255CardState extends State<Issue255Card> {
         ),
       );
 
-      // 1. Before tracking: the API must answer, and must not claim the service
-      //    is up. This is the state where `enabled` alone told you nothing.
+      // The auto-stop paths (stopOnStationary, stopAfterElapsedMinutes) are
+      // off by default and deliberately left alone — but they are not the only
+      // thing that can flip tracking state mid-run, which is why the intent
+      // assertion below reads immediately rather than after a delay.
+      //
+      // Establish a deterministic baseline. The example app is a single
+      // process and every card shares one tracking session, so without this
+      // the "before tracking" reading is whatever the last card left behind —
+      // which is exactly how this card first reported serviceRunning=true
+      // under the label "before tracking starts".
+      await Tracelet.stop();
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+
+      // 1. Idle: the API must answer, and must not claim the service is up.
+      //    This is the state where `enabled` alone told you nothing.
       final idle = await Tracelet.getForegroundServiceHealth();
       check(
-        'Health is readable before tracking starts',
-        idle.isNotEmpty && idle['platform'] != null,
+        'Health reports a stopped service as stopped',
+        idle['platform'] != null &&
+            idle['desiredEnabled'] != true &&
+            idle['serviceRunning'] != true,
         'platform=${idle['platform']}, '
             'serviceRunning=${idle['serviceRunning']}, '
             'desiredEnabled=${idle['desiredEnabled']}',
       );
 
       // 2. The contract that motivated the issue: desiredEnabled reflects the
-      //    persisted intent, and is reported separately from whether the
-      //    service actually came up.
+      //    requested state, reported separately from whether the service
+      //    actually came up.
+      //
+      //    Read immediately — `desiredEnabled` is intent, which is set
+      //    synchronously by start(). Waiting first would let an unrelated stop
+      //    (another card, a schedule, a motion trigger) race the assertion.
       await Tracelet.start();
+      final intent = await Tracelet.getForegroundServiceHealth();
+      check(
+        'desiredEnabled tracks the requested state',
+        intent['desiredEnabled'] == true,
+        'desiredEnabled=${intent['desiredEnabled']} immediately after start()',
+      );
+
+      // Promotion is asynchronous, so the service fields need a settle window
+      // — unlike the intent flag above.
       await Future<void>.delayed(const Duration(seconds: 3));
       final live = await Tracelet.getForegroundServiceHealth();
 
-      check(
-        'desiredEnabled tracks the requested state',
-        live['desiredEnabled'] == true,
-        'desiredEnabled=${live['desiredEnabled']} after start()',
-      );
+      // If tracking stopped during the settle window, that is informational,
+      // not a failure of #255 — the API is still reporting correctly.
+      if (live['desiredEnabled'] != true) {
+        results.add(
+          'ℹ️ Tracking stopped during the 3s settle window '
+          '(desiredEnabled=${live['desiredEnabled']}). The health API is still '
+          'reporting truthfully; the service rows below describe that stopped '
+          'state.',
+        );
+      }
 
       if (isAndroid) {
         // 3. Android only: with a foreground service configured and tracking
