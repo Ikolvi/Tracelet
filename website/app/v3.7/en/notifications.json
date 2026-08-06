@@ -1,0 +1,10 @@
+{
+  "badgeTitle": "New in 3.5.0",
+  "items": [
+    {
+      "title": "AI crash detection is now stable",
+      "description": "The licensed on-device AI crash model is production-ready and cleared for commercial use.",
+      "href": "/core/driving-safety#3-crash--fall-detection"
+    }
+  ]
+}

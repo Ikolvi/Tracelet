@@ -236,7 +236,11 @@ Controls the network synchronization engine. [See Sync Story 📖](/en/core/trac
 - **`enabled`**: `bool` *(Default: `false`)*
   Creates a cryptographic, tamper-proof blockchain of location hashes.
 - **`hashAlgorithm`**: `HashAlgorithm` *(Default: `HashAlgorithm.sha256`)*
-- **`includeExtrasInHash`**: `bool` *(Default: `false`)*
+  The chain currently always uses SHA-256; selecting another algorithm is not yet applied.
+- **`includeExtrasInHash`**: `bool` *(Default: `false`)* — ⚠️ **Deprecated: not implemented.**
+  The chain always hashes the core location fields only, so this flag changes nothing.
+  Wiring it up would invalidate every previously computed chain, so it needs a versioned
+  chain migration rather than a silent behaviour change.
 
 ### `SecurityConfig` (`config.security`)
 - **`encryptionKey`**: `String?` *(Default: `null`)*
@@ -250,4 +254,6 @@ Controls the network synchronization engine. [See Sync Story 📖](/en/core/trac
 - **`enabled`**: `bool` *(Default: `false`)*
   Uses Play Integrity (Android) and App Attest (iOS) to cryptographically prove the device is real and not an emulator.
 - **`refreshInterval`**: `int` *(Default: `86400`)*
-- **`verificationUrl`**: `String?` *(Default: `null`)*
+- **`verificationUrl`**: `String?` *(Default: `null`)* — ⚠️ **Deprecated: not implemented.**
+  Nothing sends the attestation token anywhere for server-side verification. The token is
+  already included in sync payloads — verify it on your own backend instead.

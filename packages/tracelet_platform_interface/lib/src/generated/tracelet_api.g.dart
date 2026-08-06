@@ -5129,6 +5129,31 @@ class TraceletHostApi {
         .cast<String?, Object?>();
   }
 
+  /// The location-filter thresholds actually in force right now (#303).
+  ///
+  /// Read back from the Rust `LocationProcessor`, not from the config cache, so
+  /// it reports what the filter is really using — including a transport-mode
+  /// auto-tune the host did not set. Returns `null` before a processor exists
+  /// (no tracking session has configured one yet).
+  Future<TlLocationTuning?> getCurrentLocationTuning() async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.getCurrentLocationTuning$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+    return pigeonVar_replyValue as TlLocationTuning?;
+  }
+
   Future<bool> openOemSettings(String label) async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.openOemSettings$pigeonVar_messageChannelSuffix';

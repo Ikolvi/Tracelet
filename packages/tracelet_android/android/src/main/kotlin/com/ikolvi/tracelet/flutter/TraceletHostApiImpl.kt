@@ -869,6 +869,33 @@ class TraceletHostApiImpl(
         } catch (e: Exception) { callback(Result.failure(e)) }
     }
 
+    /**
+     * Reports the thresholds actually in force in the Rust processor (#303).
+     *
+     * Read back from the processor rather than from ConfigManager: those two
+     * could silently disagree, which is the whole bug #303 fixed, so a getter
+     * that answered from config would be unable to detect a regression. Null
+     * before a processor exists, and while a transport-mode auto-tune is in
+     * force these are the tuned values, not the configured ones.
+     */
+    override fun getCurrentLocationTuning(callback: (Result<TlLocationTuning?>) -> Unit) {
+        try {
+            val t = sdk.getCurrentLocationTuning()
+            callback(
+                Result.success(
+                    t?.let {
+                        TlLocationTuning(
+                            distanceFilter = it.distanceFilter,
+                            trackingAccuracyThreshold = it.trackingAccuracyThreshold.toLong(),
+                            odometerAccuracyThreshold = it.odometerAccuracyThreshold.toLong(),
+                            maxImpliedSpeed = it.maxImpliedSpeed.toLong(),
+                        )
+                    }
+                )
+            )
+        } catch (e: Exception) { callback(Result.failure(e)) }
+    }
+
     override fun openOemSettings(label: String, callback: (Result<Boolean>) -> Unit) {
         try {
             callback(Result.success(sdk.openOemSettings(label)))

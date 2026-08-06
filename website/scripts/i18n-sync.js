@@ -3,6 +3,13 @@ const path = require('path');
 
 const locales = ['hi', 'zh', 'ja', 'es', 'ml', 'ta', 'ru'];
 const baseLang = 'en';
+
+// Frozen documentation archives (see versions.json). They are snapshots of what
+// a release actually shipped, already translated at cut time, so syncing English
+// over them would overwrite historical content with today's docs.
+const archivedSlugs = new Set(
+  require('../versions.json').archived.map(v => v.slug)
+);
 const appDir = path.join(__dirname, '../app');
 const baseDir = path.join(appDir, baseLang);
 
@@ -23,6 +30,9 @@ function copyDir(src, dest) {
     // Nextra recommends layout to be in [lang], so let's copy everything.
 
     if (entry.isDirectory()) {
+      if (archivedSlugs.has(entry.name)) {
+        continue; // frozen archive — never re-synced
+      }
       copyDir(srcPath, destPath);
     } else {
       // Only copy .mdx, _meta.js, _meta.json, and layout.tsx files

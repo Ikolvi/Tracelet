@@ -1,0 +1,32 @@
+{
+  "$comment": [
+    "Documentation version manifest. Committed on purpose: the navbar badge used",
+    "to come from a build-time fetch to pub.dev, which cannot work under",
+    "`output: 'export'` (revalidate is meaningless in a static export) and fell",
+    "back to 'v1.0.0' on any network hiccup, silently shipping a wrong badge.",
+    "",
+    "`current` is the version served at the unprefixed URLs (/en/..., /ja/..., ...).",
+    "`archived` are frozen snapshots served at /<locale>/<slug>/... . Archives are",
+    "never re-translated or edited -- they are a record of what that release",
+    "actually shipped. `scripts/i18n-sync.js` and `scripts/translate.js` skip any",
+    "directory named in `archived[].slug`.",
+    "",
+    "To freeze a release: run `node scripts/version-cut.js <tag> <slug> <label>`",
+    "AFTER translations are up to date, so the snapshot captures translated pages",
+    "and never needs translating again."
+  ],
+  "current": {
+    "label": "3.8.0-beta.2",
+    "slug": null
+  },
+  "archived": [
+    {
+      "label": "3.7.6",
+      "slug": "v3.7",
+      "tag": "v3.7.6",
+      "locales": [
+        "en"
+      ]
+    }
+  ]
+}

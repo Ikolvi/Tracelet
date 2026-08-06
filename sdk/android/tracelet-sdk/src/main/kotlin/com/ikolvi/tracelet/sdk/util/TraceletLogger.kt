@@ -114,7 +114,20 @@ class TraceletLogger(
         return getLog(mapOf("limit" to 2000))
     }
 
-    /** Prune old logs based on config. */
+    /**
+     * Prune old logs based on config.
+     *
+     * Two independent caps, both of which must hold:
+     * - a row count derived from [LEVEL] (a chatty VERBOSE session keeps more
+     *   lines than an ERROR-only one), and
+     * - `logMaxDays`, the retention window (#304). This was documented and
+     *   configurable but never implemented — only the row cap existed, so the
+     *   configured number of days was accepted and discarded. A row cap alone
+     *   cannot express "keep two weeks", because how many rows that is depends
+     *   entirely on how chatty the session was.
+     *
+     * `logMaxDays <= 0` disables the age cap and leaves the row cap in force.
+     */
     fun pruneOldLogs() {
         try {
             val limit = when (config.getLogLevel()) {
@@ -124,6 +137,7 @@ class TraceletLogger(
                 else -> 1000
             }
             rustDatabase?.pruneLogs(limit)
+            rustDatabase?.pruneLogsOlderThan(config.getLogMaxDays())
         } catch (e: Exception) {
             Log.e(TAG, "Failed to prune logs: ${e.message}")
         }

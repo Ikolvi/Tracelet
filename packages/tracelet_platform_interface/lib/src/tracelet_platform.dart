@@ -549,6 +549,18 @@ abstract class TraceletPlatform extends PlatformInterface {
     throw UnimplementedError('openOemSettings() has not been implemented.');
   }
 
+  /// The location-filter thresholds actually in force (#303).
+  ///
+  /// Read back from the native location processor rather than the config
+  /// cache, so it reports what the filter is really using — including a
+  /// transport-mode auto-tune the host did not set. `null` before a processor
+  /// exists.
+  Future<TlLocationTuning?> getCurrentLocationTuning() {
+    throw UnimplementedError(
+      'getCurrentLocationTuning() has not been implemented.',
+    );
+  }
+
   /// Launch the OEM-specific power manager / battery optimization screen.
   ///
   /// Iterates through known manufacturer-specific settings intents and

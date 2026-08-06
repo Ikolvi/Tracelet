@@ -107,6 +107,16 @@ impl GeofenceEvaluator {
             lookup.insert(id, gf);
         }
 
+        // #306: drop pending exit confirmations for fences the new index no
+        // longer covers. `clear` and `remove_geofence` both prune this map;
+        // re-indexing did not, so a half-accumulated count for a since-removed
+        // fence survived for the evaluator's lifetime and would have counted
+        // toward a later EXIT if that identifier was ever re-indexed.
+        self.pending_exit_counts
+            .write()
+            .unwrap()
+            .retain(|id, _| lookup.contains_key(id));
+
         *self.rtree.write().unwrap() = Some(tree);
         *self.indexed_geofences.write().unwrap() = Some(lookup);
     }
@@ -298,6 +308,39 @@ mod tests {
         let enters = transitions.iter().filter(|t| t.action == "ENTER").count();
         let exits = transitions.iter().filter(|t| t.action == "EXIT").count();
         (enters, exits)
+    }
+
+    /// #306: re-indexing must drop pending exit confirmations for fences the
+    /// new index no longer covers, so a stale half-count cannot contribute to a
+    /// later EXIT if that identifier comes back.
+    #[test]
+    fn reindexing_drops_pending_counts_for_absent_fences() {
+        let (lat, lng) = (37.4219983, -122.084);
+        let gf = circular("gone", lat, lng, 100.0);
+
+        let eval = GeofenceEvaluator::new();
+        eval.index_geofences(vec![gf.clone()]);
+
+        // Get inside, then accumulate ONE out-of-fence observation (of the two
+        // needed to confirm an EXIT).
+        let (ilat, ilng) = point_north(lat, lng, 10.0);
+        eval.evaluate_proximity(ilat, ilng, 0.0, vec![gf.clone()]);
+        let (olat, olng) = point_north(lat, lng, 400.0);
+        let t = eval.evaluate_proximity(olat, olng, 0.0, vec![gf.clone()]);
+        assert_eq!(count(&t), (0, 0), "first outside fix must not exit yet");
+
+        // Re-index WITHOUT that fence: its pending count must not survive.
+        eval.index_geofences(vec![circular("other", lat, lng, 100.0)]);
+
+        // Re-index the original fence again and take one outside fix. If the
+        // stale count had survived, this lone fix would confirm an EXIT.
+        eval.index_geofences(vec![gf.clone()]);
+        let t = eval.evaluate_proximity(olat, olng, 0.0, vec![gf.clone()]);
+        assert_eq!(
+            count(&t),
+            (0, 0),
+            "a stale pending count must not let one fix confirm an EXIT"
+        );
     }
 
     /// Regression for #268: a stationary device near the edge whose fixes

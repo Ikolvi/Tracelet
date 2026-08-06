@@ -1,0 +1,129 @@
+import { Callout } from 'nextra/components'
+
+# Utility API
+
+Tracelet exposes a collection of powerful utility functions to help you debug, manage battery permissions, and inspect the underlying hardware sensors. These are static methods available directly on `Tracelet`.
+
+---
+
+## 1. Hardware & OS Inspection
+
+Sometimes you need to know exactly what kind of device the app is running on, or if the hardware supports certain features (like a step counter).
+
+### Getting Sensor Availability
+Check if the device has a physical step counter (pedometer), accelerometer, or gyroscope.
+
+```dart
+final sensors = await tl.Tracelet.getSensors();
+
+print('Has Accelerometer: \${sensors.accelerometer}');
+print('Has Gyroscope: \${sensors.gyroscope}');
+print('Has Step Counter: \${sensors.stepCounter}');
+```
+
+### Getting Device Information
+Get detailed OEM strings. This is extremely useful for identifying Chinese OEMs (like Huawei, Xiaomi) that have aggressive background restrictions.
+
+```dart
+final device = await tl.Tracelet.getDeviceInfo();
+
+print('Manufacturer: \${device.manufacturer}');
+print('Model: \${device.model}');
+print('OS Version: \${device.version}');
+```
+
+---
+
+## 2. Power & Battery Management
+
+The biggest enemy of background location is the OS itself. Tracelet provides methods to detect if the OS is currently throttling your app, and methods to ask the user to lift those restrictions.
+
+### Power Save Mode
+Detect if the user has enabled "Low Power Mode" (iOS) or "Battery Saver" (Android). In this mode, the OS will actively kill Tracelet.
+```dart
+final isPowerSaving = await tl.Tracelet.isPowerSaveMode;
+if (isPowerSaving) {
+  print('Warning: Battery Saver is ON. Tracking will be degraded.');
+}
+```
+
+### Battery Optimization Exemptions (Android)
+On Android, you must ask the user to exempt your app from Doze mode if you want reliable background tracking. Tracelet provides a unified API for this.
+
+```dart
+final isExempt = await tl.Tracelet.isIgnoringBatteryOptimizations();
+
+if (!isExempt) {
+  // Opens the exact Android settings page to whitelist your app
+  await tl.Tracelet.openBatterySettings();
+}
+```
+
+---
+
+## 3. Health Dashboard API
+
+If a user complains that tracking isn't working, it could be a dozen different things: they denied GPS, they turned off Wi-Fi scanning, they are in Power Save mode, etc.
+
+Tracelet compiles a massive JSON payload of every single OS setting that could possibly impact tracking. You can upload this payload to your server for debugging.
+
+```dart
+final health = await tl.Tracelet.getSettingsHealth();
+
+// Upload to your server or print to console
+print('Health Check: \$health');
+```
+
+---
+
+## 4. Logging & Diagnostics
+
+Tracelet writes comprehensive diagnostic logs directly to an internal SQLite database (separate from the location database). This is invaluable for debugging issues in production.
+
+### Get the Logs
+
+There are two ways to retrieve logs, and it is important to understand the difference between them to avoid confusion:
+
+**1. `getLogs(int limit)` (Structured)**  
+Returns a structured `List<LogEntry>` from the database. This is best when you need to display logs in a structured UI (like Tracelet Doctor) or process them programmatically.
+
+```dart
+// Get the 50 most recent structured log entries
+final entries = await tl.Tracelet.getLogs(50);
+for (final entry in entries) {
+  print('[\${entry?.level}] \${entry?.message}');
+}
+```
+
+**2. `getLog([SQLQuery query])` (Raw String)**  
+Retrieves the logs concatenated as a single massive string. This is ideal when you just want to quickly print everything to the console or write it to a text file.
+
+```dart
+final logsString = await tl.Tracelet.getLog();
+print(logsString);
+
+// Or query specific logs as a string
+final errorLogsString = await tl.Tracelet.getLog(
+  tl.SQLQuery(where: "level = 'ERROR'")
+);
+```
+
+### Clearing the Logs
+You can clear all stored system logs to reset the database queues:
+```dart
+await tl.Tracelet.clearLogs();
+```
+
+### Writing Custom Logs
+You can inject your own application logs into the Tracelet log database so that everything is perfectly interleaved with the location events in chronological order.
+```dart
+await tl.Tracelet.log('INFO', 'User tapped the checkout button');
+await tl.Tracelet.log('ERROR', 'Failed to fetch user profile');
+```
+
+### Emailing Logs
+Easily dump the entire log database into an email attachment so a user can send it to your support team.
+```dart
+// Opens the native email client with the logs attached
+await tl.Tracelet.emailLog('support@yourcompany.com');
+```

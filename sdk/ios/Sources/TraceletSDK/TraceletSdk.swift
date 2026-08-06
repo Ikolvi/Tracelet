@@ -760,8 +760,28 @@ public final class TraceletSdk {
             "speedMovingThreshold", "speedStationaryDelay", "speedWakeConfirmCount",
             "stationaryTrackingMode", "stationaryPeriodicInterval", "stationaryPeriodicAccuracy",
         ]
+        // #303: the four thresholds transport-mode auto-tuning swaps. They reach
+        // the processor through setBaseTuning, which preserves the positional
+        // anchor — a rebuild would drop it and forfeit an odometer delta (#299).
+        let tuningKeys = [
+            "distanceFilter", "trackingAccuracyThreshold",
+            "odometerAccuracyThreshold", "maxImpliedSpeed",
+        ]
+        // #303: the remaining LocationProcessor constructor parameters. These are
+        // immutable in Rust, so changing one genuinely needs a rebuild — but not
+        // a full pipeline restart, which is why they are kept out of
+        // `needsRestart`. Every one of them used to be silently ignored until the
+        // next cold start.
+        let processorKeys = [
+            "filterPolicy", "enableAdaptiveMode", "rejectMockLocations",
+            "mockDetectionLevel", "enableSparseUpdates", "sparseDistanceThreshold",
+            "sparseMaxIdleSeconds",
+        ]
         let needsRestart = (locationKeys + motionKeys).contains { key in
             !valuesEqual(oldConfig[key], merged[key])
+        }
+        let changed = { [self] (keys: [String]) -> Bool in
+            keys.contains { key in !self.valuesEqual(oldConfig[key], merged[key]) }
         }
 
         if stateManager.enabled {
@@ -853,6 +873,26 @@ public final class TraceletSdk {
             // start() picks up the new location config without a stale cache.
             locationEngine.rebuildProcessor()
         }
+
+        // #303: carry the rest of the location-filter config into the processor.
+        // Only the handful of keys in `locationKeys` ever reached it; everything
+        // else was accepted, cached, and ignored until the next cold start.
+        //
+        // Ordered cheapest-effect-first, and skipped entirely when a restart
+        // already rebuilt the processor from current config above.
+        if !needsRestart {
+            if changed(processorKeys) {
+                // Constructor-only parameters: nothing short of a rebuild moves
+                // them. No anchor to protect that a restart wouldn't drop anyway.
+                locationEngine.rebuildProcessor()
+            } else if changed(tuningKeys) {
+                // Thresholds: swap in place so the odometer anchor survives.
+                locationEngine.applyConfiguredBaseTuning()
+            }
+        }
+        // Independent of the processor — the filter is its own object, so a
+        // toggle must never cost the anchor.
+        locationEngine.syncKalmanFilter()
 
         let newBehavior: [AnyHashable] = [
             configManager.getEnableDrivingEvents(), configManager.getEnableFusedClassifier(),
@@ -1681,6 +1721,20 @@ public final class TraceletSdk {
     /// Get information about available device sensors.
     ///
     /// - Returns: Sensors dictionary.
+    /// The location-filter thresholds actually in force in the Rust processor,
+    /// or `nil` before one exists (#303).
+    ///
+    /// Deliberately reads the processor rather than `ConfigManager`: the two
+    /// silently disagreeing is exactly the bug #303 fixed, so a getter answering
+    /// from config could never surface a regression. While a transport-mode
+    /// auto-tune is committed these are the tuned values, not the configured
+    /// ones — which is what makes an auto-tune observable rather than a silent
+    /// mutation.
+    public func getCurrentLocationTuning() -> LocationTuning? {
+        guard let engine = locationEngine else { return nil }
+        return engine.currentTuning()
+    }
+
     public func getSensors() -> [String: Any] {
         return [
             "accelerometer": true,
@@ -2058,6 +2112,10 @@ public final class TraceletSdk {
         // Auto-encryption is triggered in ready() if encryptDatabase=true.
         configManager = ConfigManager()
         stateManager = StateManager()
+        // #304: the permission manager is constructed at field-init time, before
+        // this config exists, so hand it the same instance setConfig writes to —
+        // otherwise `disableLocationAuthorizationAlert` can never be observed.
+        permissionManager.configManager = configManager
 
         // ── Rust Core bootstrap ──
         let paths = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)
@@ -2552,15 +2610,29 @@ public final class TraceletSdk {
     /// Calling this after any reconfiguration closes all three: with auto-tuning
     /// off it restores the host's own values, and with it on it re-applies the
     /// mode currently committed (`unknown` also restores).
+    /// #303: this path changes the four thresholds without any `modeChange` event
+    /// — the mode did not change, so synthesising one would corrupt the event
+    /// stream for consumers that count commits. It is logged instead, at INFO for
+    /// the same reason the geofence decision trace is: the symptom (filters not
+    /// behaving as configured) is reported days later from a bug report, and
+    /// DEBUG is not on in production.
     private func syncTransportModeTuning() {
         guard let engine = locationEngine else { return }
         guard configManager.getAutoTuneFromTransportMode() else {
             engine.restoreBaseTuning()
+            TraceletLog.info(
+                "auto-tune: off — reconfiguration restored the configured thresholds "
+                    + "(\(engine.currentTuningDescription()))"
+            )
             return
         }
         let mode = transportClassifier.map { String(describing: $0.currentMode()).lowercased() }
             ?? "unknown"
         engine.applyTransportModeTuning(mode)
+        TraceletLog.info(
+            "auto-tune: reconfiguration re-aligned thresholds with committed mode "
+                + "'\(mode)' (\(engine.currentTuningDescription()))"
+        )
     }
 
     private func startBehaviorSampling() {

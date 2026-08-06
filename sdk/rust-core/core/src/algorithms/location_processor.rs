@@ -337,6 +337,34 @@ impl LocationProcessor {
         state.tuning = state.base_tuning;
     }
 
+    /// Replaces the *base* thresholds — the ones [`Self::restore_base_tuning`]
+    /// reverts to — so a host reconfiguration reaches the processor (#303).
+    ///
+    /// Until this existed, `base_tuning` was frozen at construction, so the only
+    /// way to change a threshold was to rebuild the processor. That is exactly
+    /// what [`Self::retune`] documents as unacceptable: a rebuild drops the
+    /// positional anchor and forfeits one inter-fix delta from the odometer.
+    /// `setConfig` therefore left `trackingAccuracyThreshold`,
+    /// `odometerAccuracyThreshold` and `maxImpliedSpeed` stranded in the host's
+    /// config cache, and `restore_base_tuning` reverted to stale values the host
+    /// had already replaced.
+    ///
+    /// When no auto-tune is in force the live thresholds move too, so the change
+    /// takes effect on the very next fix. When one *is* in force the committed
+    /// mode keeps priority and only the restore target is updated — the new
+    /// configuration takes over when the mode goes back to `Unknown` or
+    /// auto-tuning is switched off. An active auto-tune is detected by comparing
+    /// the live tuning against the base rather than tracking a separate flag, so
+    /// this cannot disagree with [`Self::retune`] about what is in force.
+    pub fn set_base_tuning(&self, tuning: LocationTuning) {
+        let mut state = self.state.lock().unwrap();
+        let auto_tune_in_force = state.tuning != state.base_tuning;
+        state.base_tuning = tuning;
+        if !auto_tune_in_force {
+            state.tuning = tuning;
+        }
+    }
+
     /// The thresholds currently in force.
     pub fn current_tuning(&self) -> LocationTuning {
         self.state.lock().unwrap().tuning
@@ -622,6 +650,67 @@ mod tests {
         // realistic 1 m/s so they clear walking's own implied-speed ceiling.
         assert!(fix_at(&p, 0.0, 5.0, 1_000).accepted);
         assert!(fix_at(&p, 10.0, 5.0, 11_000).accepted, "10 m clears walking's 8 m filter");
+    }
+
+    /// #303: a host reconfiguration must reach the live thresholds when nothing
+    /// is auto-tuned — previously the only route was a rebuild, which forfeits
+    /// the anchor.
+    fn cycling() -> LocationTuning {
+        LocationTuning {
+            distance_filter: 20.0,
+            tracking_accuracy_threshold: 30,
+            odometer_accuracy_threshold: 20,
+            max_implied_speed: 20,
+        }
+    }
+
+    #[test]
+    fn set_base_tuning_applies_immediately_when_no_auto_tune_is_in_force() {
+        let p = processor(walking());
+        assert!(fix_at(&p, 0.0, 5.0, 1_000).accepted);
+
+        p.set_base_tuning(cycling());
+        assert_eq!(p.current_tuning(), cycling(), "live thresholds must move");
+
+        // 12 m cleared walking's 8 m filter but is short of cycling's 20 m, so
+        // the reconfiguration is genuinely in force...
+        assert!(!fix_at(&p, 12.0, 5.0, 13_000).accepted);
+        // ...and the anchor survived, unlike a rebuild.
+        let r = fix_at(&p, 25.0, 5.0, 26_000);
+        assert!(r.accepted);
+        assert!((r.distance - 25.0).abs() < 0.5, "distance was {}", r.distance);
+    }
+
+    #[test]
+    fn set_base_tuning_defers_to_an_active_auto_tune_but_updates_the_restore_target() {
+        let p = processor(walking());
+        p.retune(vehicle());
+        assert_eq!(p.current_tuning(), vehicle());
+
+        // Host reconfigures mid-drive. The committed mode keeps priority...
+        p.set_base_tuning(cycling());
+        assert_eq!(p.current_tuning(), vehicle(), "auto-tune must keep priority");
+
+        // ...but the restore target is the NEW configuration, not the stale one
+        // captured at construction. This is the #301 promise that was broken.
+        p.restore_base_tuning();
+        assert_eq!(p.current_tuning(), cycling());
+    }
+
+    #[test]
+    fn set_base_tuning_survives_a_later_retune_restore_cycle() {
+        let p = processor(walking());
+        p.set_base_tuning(cycling());
+
+        // A mode commits and then drops back to Unknown.
+        p.retune(vehicle());
+        p.restore_base_tuning();
+
+        assert_eq!(
+            p.current_tuning(),
+            cycling(),
+            "restore must land on the reconfigured base, never the constructor's"
+        );
     }
 
     #[test]

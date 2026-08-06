@@ -1,0 +1,87 @@
+---
+title: "Get a Crash-Model License — Tracelet"
+sidebarTitle: "Get a License"
+description: "Generate a license key to unlock Tracelet's on-device AI crash-detection model. Sign in, pick your app id, and paste the key into ImpactConfig."
+---
+
+import { Callout } from 'nextra/components'
+
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '3.5rem 1rem 1.5rem' }}>
+  <span style={{ fontSize: '0.8rem', fontWeight: '700', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#0F9D58' }}>
+    AI Crash Detection
+  </span>
+  <h1 style={{ fontSize: 'clamp(2.1rem, 5vw, 3.1rem)', fontWeight: '800', letterSpacing: '-0.02em', lineHeight: '1.12', margin: '1rem 0 0', maxWidth: '16ch' }}>
+    Unlock the on-device crash model
+  </h1>
+  <div style={{ marginTop: '1.25rem', fontSize: '1.15rem', lineHeight: '1.6', color: '#6b7280', maxWidth: '40rem' }} className="dark:text-gray-400">
+    Generate a license key in seconds. It’s tied to your app id, downloaded on demand, and runs entirely <strong>on-device</strong> — no runtime calls home.
+  </div>
+
+  <div style={{ marginTop: '2rem', display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+    <a href="https://licenses.ikolvi.com" target="_blank" rel="noopener noreferrer" style={{ padding: '0.85rem 1.75rem', color: 'white', fontWeight: '700', borderRadius: '0.6rem', background: 'linear-gradient(135deg, #0F9D58, #0b7d46)', textDecoration: 'none', boxShadow: '0 12px 30px -12px rgba(15,157,88,0.7)', transition: 'opacity 0.2s' }} className="hover:opacity-90">
+      Open the License Portal →
+    </a>
+    <a href="/en/core/driving-safety" style={{ padding: '0.85rem 1.75rem', color: '#1f2937', fontWeight: '600', borderRadius: '0.6rem', backgroundColor: '#f3f4f6', textDecoration: 'none' }} className="dark-secondary-btn hover:bg-gray-200">
+      How crash detection works
+    </a>
+  </div>
+  <div style={{ marginTop: '0.9rem', fontSize: '0.85rem', color: '#9ca3af' }}>
+    Sign in with Google · free for development · no credit card
+  </div>
+</div>
+
+## How it works
+
+<div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginTop: '1.5rem' }}>
+  <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid #e5e7eb', borderRadius: '0.75rem', padding: '1.25rem' }} className="glare-card nextra-card">
+    <span style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0F9D58' }}>1</span>
+    <span style={{ fontWeight: '600', margin: '0.4rem 0' }}>Sign in &amp; enter your app id</span>
+    <span style={{ fontSize: '0.9rem', color: '#6b7280' }}>Log in with Google, then provide your Android package or iOS bundle id (e.g. <code>com.acme.driver</code>).</span>
+  </div>
+  <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid #e5e7eb', borderRadius: '0.75rem', padding: '1.25rem' }} className="glare-card nextra-card">
+    <span style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0F9D58' }}>2</span>
+    <span style={{ fontWeight: '600', margin: '0.4rem 0' }}>Generate a key</span>
+    <span style={{ fontSize: '0.9rem', color: '#6b7280' }}>Pick <strong>dev</strong> or <strong>prod</strong> and click generate. Copy the key — or the ready-made <code>ImpactConfig</code> snippet.</span>
+  </div>
+  <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid #e5e7eb', borderRadius: '0.75rem', padding: '1.25rem' }} className="glare-card nextra-card">
+    <span style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0F9D58' }}>3</span>
+    <span style={{ fontWeight: '600', margin: '0.4rem 0' }}>Paste &amp; ship</span>
+    <span style={{ fontSize: '0.9rem', color: '#6b7280' }}>Drop the key into your config. Tracelet downloads the model once, then runs inference entirely on-device.</span>
+  </div>
+</div>
+
+## dev vs prod licenses
+
+| | **dev** | **prod** |
+|---|---|---|
+| **Use for** | Debug builds, emulators, CI | Released app on the stores |
+| **Binding** | App id only | Bound to your published app |
+| **Needs** | Just your app id | App id **+** signing-cert SHA-256 |
+| **Max validity** | 90 days | 730 days |
+
+<Callout type="info" emoji="🔒">
+  Each key is cryptographically signed and validated on-device. A license only unlocks the crash model — nothing else — and you can revoke any key you’ve issued right from the portal.
+</Callout>
+
+## Drop it into your app
+
+Once you've copied your key from the portal, wire it into `ImpactConfig`:
+
+```dart
+import 'package:tracelet/tracelet.dart' as tl;
+
+final config = tl.ImpactConfig(
+  enableCrashDetection: true,
+  crashModelUnlockUrl: 'https://unlock.ikolvi.com/unlock',
+  crashModelLicenseKey: 'PASTE_YOUR_KEY_HERE',
+  crashModelThreshold: 0.5074575792,
+);
+```
+
+The portal generates this exact snippet (with your key already filled in) so you can copy-paste it directly.
+
+<div style={{ display: 'flex', justifyContent: 'center', margin: '3rem 0 1rem' }}>
+  <a href="https://licenses.ikolvi.com" target="_blank" rel="noopener noreferrer" style={{ padding: '0.85rem 2rem', color: 'white', fontWeight: '700', borderRadius: '0.6rem', background: 'linear-gradient(135deg, #0F9D58, #0b7d46)', textDecoration: 'none', boxShadow: '0 12px 30px -12px rgba(15,157,88,0.7)' }} className="hover:opacity-90">
+    Get your license key →
+  </a>
+</div>

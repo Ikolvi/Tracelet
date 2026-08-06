@@ -1442,6 +1442,24 @@ public protocol DatabaseManagerProtocol: AnyObject, Sendable {
     func pruneLogs(limit: Int32) throws 
     
     /**
+     * Deletes log rows older than `max_days` (#304).
+     *
+     * `logMaxDays` was a documented retention window that nothing implemented:
+     * both platforms pruned only by a row count derived from `logLevel`, so the
+     * configured number of days was accepted and discarded. Row-count pruning
+     * alone cannot express "keep two weeks", because how many rows that is
+     * depends entirely on how chatty the session was.
+     *
+     * `max_days <= 0` is a no-op rather than an error, so callers can pass the
+     * config value straight through to mean "no age-based retention" and keep
+     * relying on the count cap alone.
+     *
+     * `timestamp` is stored as `datetime('now')` (UTC, `YYYY-MM-DD HH:MM:SS`),
+     * so it compares correctly as text against SQLite's own modifier output.
+     */
+    func pruneLogsOlderThan(maxDays: Int32) throws 
+    
+    /**
      * Sets the encryption key (32 bytes max). If the string is empty or invalid, encryption is disabled.
      */
     func setEncryptionKey(key: String) 
@@ -1861,6 +1879,30 @@ open func pruneLogs(limit: Int32)throws   {try rustCallWithError(FfiConverterTyp
     uniffi_tracelet_core_fn_method_databasemanager_prune_logs(
             self.uniffiCloneHandle(),
         FfiConverterInt32.lower(limit),$0
+    )
+}
+}
+    
+    /**
+     * Deletes log rows older than `max_days` (#304).
+     *
+     * `logMaxDays` was a documented retention window that nothing implemented:
+     * both platforms pruned only by a row count derived from `logLevel`, so the
+     * configured number of days was accepted and discarded. Row-count pruning
+     * alone cannot express "keep two weeks", because how many rows that is
+     * depends entirely on how chatty the session was.
+     *
+     * `max_days <= 0` is a no-op rather than an error, so callers can pass the
+     * config value straight through to mean "no age-based retention" and keep
+     * relying on the count cap alone.
+     *
+     * `timestamp` is stored as `datetime('now')` (UTC, `YYYY-MM-DD HH:MM:SS`),
+     * so it compares correctly as text against SQLite's own modifier output.
+     */
+open func pruneLogsOlderThan(maxDays: Int32)throws   {try rustCallWithError(FfiConverterTypeTraceletError_lift) {
+    uniffi_tracelet_core_fn_method_databasemanager_prune_logs_older_than(
+            self.uniffiCloneHandle(),
+        FfiConverterInt32.lower(maxDays),$0
     )
 }
 }
@@ -3078,6 +3120,29 @@ public protocol LocationProcessorProtocol: AnyObject, Sendable {
      */
     func retune(tuning: LocationTuning) 
     
+    /**
+     * Replaces the *base* thresholds — the ones [`Self::restore_base_tuning`]
+     * reverts to — so a host reconfiguration reaches the processor (#303).
+     *
+     * Until this existed, `base_tuning` was frozen at construction, so the only
+     * way to change a threshold was to rebuild the processor. That is exactly
+     * what [`Self::retune`] documents as unacceptable: a rebuild drops the
+     * positional anchor and forfeits one inter-fix delta from the odometer.
+     * `setConfig` therefore left `trackingAccuracyThreshold`,
+     * `odometerAccuracyThreshold` and `maxImpliedSpeed` stranded in the host's
+     * config cache, and `restore_base_tuning` reverted to stale values the host
+     * had already replaced.
+     *
+     * When no auto-tune is in force the live thresholds move too, so the change
+     * takes effect on the very next fix. When one *is* in force the committed
+     * mode keeps priority and only the restore target is updated — the new
+     * configuration takes over when the mode goes back to `Unknown` or
+     * auto-tuning is switched off. An active auto-tune is detected by comparing
+     * the live tuning against the base rather than tracking a separate flag, so
+     * this cannot disagree with [`Self::retune`] about what is in force.
+     */
+    func setBaseTuning(tuning: LocationTuning) 
+    
 }
 /**
  * Core location processing engine that handles filtering out inaccurate or redundant points.
@@ -3230,6 +3295,35 @@ open func restoreBaseTuning()  {try! rustCall() {
      */
 open func retune(tuning: LocationTuning)  {try! rustCall() {
     uniffi_tracelet_core_fn_method_locationprocessor_retune(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeLocationTuning_lower(tuning),$0
+    )
+}
+}
+    
+    /**
+     * Replaces the *base* thresholds — the ones [`Self::restore_base_tuning`]
+     * reverts to — so a host reconfiguration reaches the processor (#303).
+     *
+     * Until this existed, `base_tuning` was frozen at construction, so the only
+     * way to change a threshold was to rebuild the processor. That is exactly
+     * what [`Self::retune`] documents as unacceptable: a rebuild drops the
+     * positional anchor and forfeits one inter-fix delta from the odometer.
+     * `setConfig` therefore left `trackingAccuracyThreshold`,
+     * `odometerAccuracyThreshold` and `maxImpliedSpeed` stranded in the host's
+     * config cache, and `restore_base_tuning` reverted to stale values the host
+     * had already replaced.
+     *
+     * When no auto-tune is in force the live thresholds move too, so the change
+     * takes effect on the very next fix. When one *is* in force the committed
+     * mode keeps priority and only the restore target is updated — the new
+     * configuration takes over when the mode goes back to `Unknown` or
+     * auto-tuning is switched off. An active auto-tune is detected by comparing
+     * the live tuning against the base rather than tracking a separate flag, so
+     * this cannot disagree with [`Self::retune`] about what is in force.
+     */
+open func setBaseTuning(tuning: LocationTuning)  {try! rustCall() {
+    uniffi_tracelet_core_fn_method_locationprocessor_set_base_tuning(
             self.uniffiCloneHandle(),
         FfiConverterTypeLocationTuning_lower(tuning),$0
     )
@@ -9857,6 +9951,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_tracelet_core_checksum_method_locationprocessor_retune() != 24775) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_tracelet_core_checksum_method_locationprocessor_set_base_tuning() != 15053) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_tracelet_core_checksum_method_scheduleparser_calculate_next_alarms() != 37817) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -9987,6 +10084,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_databasemanager_prune_logs() != 51361) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tracelet_core_checksum_method_databasemanager_prune_logs_older_than() != 10098) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_databasemanager_set_encryption_key() != 2884) {

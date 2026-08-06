@@ -287,6 +287,88 @@ class LocationEngine(
         locationProcessor?.restoreBaseTuning()
     }
 
+    /**
+     * Pushes the four configured filter thresholds into the processor as its new
+     * *base* tuning (#303).
+     *
+     * `setConfig` only rebuilt the processor for a short list of location keys,
+     * so `trackingAccuracyThreshold`, `odometerAccuracyThreshold` and
+     * `maxImpliedSpeed` never reached it — they sat in [ConfigManager] until the
+     * next cold start, and [restoreBaseTuning] reverted to the values captured
+     * when the processor was constructed rather than the ones the host had since
+     * configured.
+     *
+     * Deliberately not a [rebuildProcessor] call: a rebuild drops the positional
+     * anchor and forfeits one inter-fix delta from the odometer, which is exactly
+     * what `retune` was introduced to avoid (#299). `setBaseTuning` preserves it,
+     * and defers to an auto-tune that is currently in force while still updating
+     * what a later restore lands on.
+     *
+     * No-op before a processor exists; the next [rebuildProcessor] reads the same
+     * values straight from config.
+     */
+    fun applyConfiguredBaseTuning() {
+        val processor = locationProcessor ?: return
+        processor.setBaseTuning(
+            LocationTuning(
+                distanceFilter = config.getDistanceFilter(),
+                trackingAccuracyThreshold = config.getTrackingAccuracyThreshold(),
+                odometerAccuracyThreshold = config.getOdometerAccuracyThreshold(),
+                maxImpliedSpeed = config.getMaxImpliedSpeed(),
+            ),
+        )
+    }
+
+    /**
+     * The thresholds actually in force right now, or `null` before a processor
+     * exists (#303).
+     *
+     * Reads back from the processor, never from config: the two disagreeing is
+     * precisely the bug #303 fixed, so answering from config would make a
+     * regression undetectable.
+     */
+    fun currentTuning(): LocationTuning? = locationProcessor?.currentTuning()
+
+    /**
+     * The thresholds actually in force right now, formatted for a log line
+     * (#303).
+     *
+     * Reads back from the processor rather than from config, so the line reports
+     * what the filter is really using — including an auto-tune the host did not
+     * set. Returns `"no processor"` before one exists, which is itself the useful
+     * answer on a pre-`start()` reconfiguration.
+     */
+    fun currentTuningDescription(): String {
+        val t = locationProcessor?.currentTuning() ?: return "no processor"
+        return "distanceFilter=${t.distanceFilter}m " +
+            "trackingAccuracy=${t.trackingAccuracyThreshold}m " +
+            "odometerAccuracy=${t.odometerAccuracyThreshold}m " +
+            "maxImpliedSpeed=${t.maxImpliedSpeed}m/s"
+    }
+
+    /**
+     * Brings the Kalman filter in line with `useKalmanFilter` (#303).
+     *
+     * The filter is otherwise only constructed inside [rebuildProcessor], and the
+     * key is not one that triggers a rebuild — so toggling smoothing at runtime
+     * did nothing until the app was restarted. That matters more since #299 made
+     * Kalman smoothing feed the odometer: enabling it mid-session silently failed
+     * to change recorded distance.
+     *
+     * Toggling rebuilds only the filter, never the processor, so the odometer
+     * anchor survives. An already-correct state is left alone so the filter's own
+     * velocity estimate is not reset on unrelated `setConfig` calls.
+     */
+    fun syncKalmanFilter() {
+        val wanted = config.getEnableKalmanFilter()
+        if (wanted && kalmanFilter == null) {
+            kalmanFilter = RustKalmanFilter()
+        } else if (!wanted && kalmanFilter != null) {
+            kalmanFilter?.destroy()
+            kalmanFilter = null
+        }
+    }
+
     /** Maps a classifier mode name back to the Rust [RustTransportMode] enum. */
     private fun rustTransportMode(mode: String): RustTransportMode = when (mode.lowercase()) {
         "still" -> RustTransportMode.STILL

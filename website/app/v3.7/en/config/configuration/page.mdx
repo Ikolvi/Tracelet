@@ -1,0 +1,126 @@
+import LottiePlayer from '../../../../../components/LottiePlayer'
+
+# Configuration API Reference
+
+Tracelet is entirely configured using a single `Config` object passed to `Tracelet.ready(Config)`. This object contains all nested sub-configurations. 
+
+To help you build the perfect setup for your use case, we don't just list parameters here. We explain *why* they exist and *when* you should use them in the real world.
+
+import { Callout, Tabs, Steps } from 'nextra/components'
+
+<LottiePlayer src="/animations/phone.json" />
+
+---
+
+## The GeoConfig Object (`config.geo`)
+Handles all physical location, accuracy, and sampling logic.
+
+### `desiredAccuracy`
+- **Default:** `DesiredAccuracy.high` (GPS)
+- **What:** The target accuracy for location hardware.
+- **When to override:** If you are building a weather app that only needs to know what city the user is in, override this to `DesiredAccuracy.low` (Cellular/Wi-Fi). Using `high` requires the physical GPS chip, draining the battery 10x faster.
+
+### `distanceFilter`
+- **Default:** `10.0` (meters)
+- **What:** The minimum horizontal distance the device must move before a new point is recorded.
+- **When to override:** If you are tracking a maritime cargo ship across the Atlantic, set this to `1000.0` (1 km). A ship doesn't make sudden 10-meter turns, and saving points every 10 meters will create billions of useless rows in your database.
+
+### `stationaryRadius`
+- **Default:** `25.0` (meters)
+- **What:** The radius around the user's last known point where they are considered "stationary".
+- **When to override:** In dense urban environments, GPS "bounces" off skyscrapers. If a user is sitting at a cafe, their GPS might bounce 40 meters down the street. If `stationaryRadius` is too small, Tracelet will think the user is walking and turn the GPS on, draining the battery. Set this to `50.0` in cities like New York or Tokyo.
+
+### `resolveAddress`
+- **Default:** `false`
+- **What:** Automatically calls the native OS Geocoder (Apple Maps / Google Play Services) to reverse-geocode coordinates into a human-readable street address.
+- **When to override:** If your app is a mileage tracker that needs to show users exactly what street they started and ended a trip on, set this to `true`. Be careful though: reverse geocoding requires a live internet connection and adds HTTP latency to the location pipeline. Do not use this if you record points every 5 seconds, as you will get rate-limited by the OS.
+
+### `disableElasticity` & `elasticityMultiplier`
+- **Defaults:** `false`, `1.0`
+- **What:** Dynamically stretches the `distanceFilter` based on the user's speed.
+- **When to override:** If you are tracking a high-speed train going 300 km/h, the device covers 10 meters in a fraction of a second. Tracelet will naturally multiply the distance filter by the speed. If you want even fewer points at high speeds, increase `elasticityMultiplier` to `2.0`. If you *must* have an exact 10-meter dot trail regardless of speed (e.g., drawing street-view imagery), set `disableElasticity: true`.
+
+### `batteryBudgetPerHour`
+- **Default:** `0.0` (Disabled)
+- **What:** The target maximum battery drain percentage per hour.
+- **When to override:** If your enterprise clients are complaining that your app kills their drivers' phones by lunchtime, set this to `1.5` (1.5% drain per hour). Tracelet will automatically monitor the battery API. If the drain exceeds 1.5%, it downgrades `desiredAccuracy` and increases `distanceFilter` dynamically to save power.
+
+---
+
+## The AndroidConfig Object (`config.android`)
+Android specific OS constraints and optimizations.
+
+### `releaseWakelockWhenStationary`
+- **Default:** `false`
+- **What:** Drops the OEM Wakelock when the device enters a fully stationary state (only applies when using `MotionDetectionMode.smart`).
+- **When to override:** If your app is used by delivery drivers who spend 30 minutes inside a restaurant waiting for food. Releasing the wakelock allows the phone's CPU to enter deep sleep, saving massive amounts of battery, while still relying on the hardware accelerometer to wake the CPU up instantly the moment the driver starts walking back to their car.
+
+---
+
+## The LocationFilter Object (`config.geo.filter`)
+Cleans up bad GPS data before it hits your database.
+
+### `maxImpliedSpeed`
+- **Default:** `80` (m/s)
+- **What:** Rejects location jumps that imply the user is traveling faster than this speed.
+- **When to override:** 80 m/s is roughly 288 km/h (faster than most cars). If you are tracking a commercial airline flight, a jet goes 900 km/h. You MUST increase this to `300` m/s, or Tracelet will think every location point is a glitch and throw it away!
+
+### `odometerAccuracyThreshold`
+- **Default:** `50` (meters)
+- **What:** Points with accuracy worse than this value are not added to the total trip distance odometer.
+- **When to override:** If you are paying gig-economy drivers by the mile, a bad GPS bounce of 500 meters across a river will unfairly inflate their paycheck. Keeping this threshold tight (e.g., `30`) ensures you only pay for provable, highly-accurate distance.
+
+### `rejectMockLocations`
+- **Default:** `false`
+- **What:** Detects if the user is using a fake GPS spoofer app.
+- **When to override:** If you are building a Pokemon GO clone or a rideshare app, users will try to spoof their location to cheat the system. Set this to `true` to instantly discard faked coordinates.
+
+---
+
+## The AppConfig Object (`config.app`)
+Controls app lifecycle behavior.
+
+### `stopOnTerminate`
+- **Default:** `true`
+- **What:** Should tracking stop when the user swipes the app away from the recent apps list?
+- **When to override:** For social apps (Find My Friends), users expect tracking to stop when they force-kill the app. For enterprise fleet tracking, the driver MUST be tracked regardless. Set `stopOnTerminate: false` for fleet tracking, and Tracelet will instantly reboot itself in the background when the user force-kills the app.
+
+---
+
+## Enterprise Configurations
+
+### `security.encryptionKey`
+- **What:** Encrypts the local SQLite database at rest using SQLCipher.
+- **When to use:** If you are handling HIPAA-compliant patient tracking, or tracking military personnel, local physical access to the device could compromise their historical routes. Providing an encryption key ensures the database is useless if the device is stolen.
+- **How to request/use it:** Tracelet provides a cryptographic helper. Call `await tl.Tracelet.generateEncryptionKey()` to generate a secure random 256-bit key on the first app launch, store it securely (e.g., using `flutter_secure_storage`), and pass it into the `Config` on subsequent boots:
+  ```dart
+  // 1. Generate & store on first run
+  final secureKey = await tl.Tracelet.generateEncryptionKey();
+  await secureStorage.write(key: 'db_key', value: secureKey);
+
+  // 2. Pass to config
+  final config = tl.Config(
+    security: tl.SecurityConfig(encryptionKey: secureKey),
+  );
+  ```
+
+### `privacyZone.zones`
+- **What:** Define geographic polygons where tracking is automatically disabled.
+- **When to use:** Union regulations in many European countries prohibit employers from tracking delivery drivers when they take their lunch break at home or at the union hall. Define the union hall as a `PolygonZone`, and Tracelet will black-out the tracking while they are inside, resuming only when they leave.
+- **How to create one:** Pass a list of `tl.PolygonZone` objects to the `PrivacyConfig`.
+  ```dart
+  final config = tl.Config(
+    privacy: tl.PrivacyConfig(
+      zones: [
+        tl.PolygonZone(
+          id: 'union_hall',
+          points: [
+            tl.LatLng(48.8566, 2.3522),
+            tl.LatLng(48.8568, 2.3525),
+            tl.LatLng(48.8563, 2.3530),
+          ]
+        )
+      ]
+    )
+  );
+  ```

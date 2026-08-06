@@ -113,6 +113,18 @@ public final class TraceletLogger {
         }
     }
 
+    /// Prune old logs based on config.
+    ///
+    /// Two independent caps, both of which must hold:
+    /// - a row count derived from the log level (a chatty verbose session keeps
+    ///   more lines than an error-only one), and
+    /// - `logMaxDays`, the retention window (#304). This was documented and
+    ///   configurable but never implemented — only the row cap existed, so the
+    ///   configured number of days was accepted and discarded. A row cap alone
+    ///   cannot express "keep two weeks", because how many rows that is depends
+    ///   entirely on how chatty the session was.
+    ///
+    /// `logMaxDays <= 0` disables the age cap and leaves the row cap in force.
     public func pruneOldLogs() {
         do {
             let limit: Int32
@@ -127,6 +139,7 @@ public final class TraceletLogger {
                 limit = 1000
             }
             try rustDatabase?.pruneLogs(limit: limit)
+            try rustDatabase?.pruneLogsOlderThan(maxDays: Int32(configManager.getLogMaxDays()))
         } catch {
             NSLog("[Tracelet] Failed to prune logs: \(error.localizedDescription)")
         }

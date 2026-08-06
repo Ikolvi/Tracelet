@@ -1,20 +1,13 @@
 import DocLayout from '../../components/DocLayout'
 import { getPageMap } from 'nextra/page-map'
+import versions from '../../versions.json'
 
-async function getTraceletVersion() {
-  try {
-    // Revalidate every hour
-    const res = await fetch('https://pub.dev/api/packages/tracelet', { next: { revalidate: 3600 } });
-    if (!res.ok) return 'v1.0.0';
-    const data = await res.json();
-    return `v${data.latest.version}`;
-  } catch (e) {
-    return 'v1.0.0';
-  }
-}
-
-export default async function EnLayout({ children }: { children: React.ReactNode }) {
+// The version shown in the navbar comes from the committed manifest, not from a
+// live pub.dev fetch. Under `output: 'export'` the old fetch ran once at build
+// time (its `revalidate` was a no-op in a static export) and fell back to
+// 'v1.0.0' on any network hiccup — silently shipping a wrong badge. It also has
+// to agree with the version switcher, which reads the same manifest.
+export default async function Layout({ children }: { children: React.ReactNode }) {
   const pageMap = await getPageMap('/en')
-  const version = await getTraceletVersion()
-  return <DocLayout pageMap={pageMap} version={version} locale="en">{children}</DocLayout>
+  return <DocLayout pageMap={pageMap} version={versions.current.label} locale="en">{children}</DocLayout>
 }

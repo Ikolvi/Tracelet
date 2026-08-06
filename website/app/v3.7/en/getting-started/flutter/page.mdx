@@ -1,0 +1,115 @@
+# Flutter SDK: Bridging Dart and Native
+
+Tracelet is unique because it pushes **almost all** of the logic down to the native iOS and Android SDKs. Why? Because Dart isolates are heavy, and waking up a Flutter engine in the background every time the user takes a step destroys battery life.
+
+This page explains how the Flutter layer interacts with the native engine in real-world scenarios.
+
+import { Steps, Callout, Tabs } from 'nextra/components'
+import LottiePlayer from '../../../../../components/LottiePlayer'
+
+---
+
+## Scenario 1: The UI Subscription
+**Concepts Explored:** Event Streams, Headless Execution
+
+<LottiePlayer src="/animations/olympics.json" />
+
+### The Problem
+You are building a fitness app. When the user is looking at the screen, you want a little blue dot to move on a Google Map in real-time. When the user locks the screen, you still want to record the run to the database, but you don't need to update a UI that nobody is looking at.
+
+### How Tracelet Solves It
+Tracelet separates the **Native Tracking Engine** from the **Dart UI Streams**. 
+
+When you call `Tracelet.start()`, the native iOS/Android engine powers up. It handles motion detection, GPS filtering, SQLite saving, and HTTP syncing entirely in Swift/Kotlin. 
+
+In your Flutter UI, you simply subscribe to the stream:
+
+```dart
+import 'package:tracelet/tracelet.dart' as tl;
+
+void initializeTracking() async {
+  // 1. Listen to events in the UI
+  tl.Tracelet.onLocation((tl.Location location) {
+    print('Update UI map marker: ${location.coords.latitude}, ${location.coords.longitude}');
+  });
+
+  tl.Tracelet.onMotionChange((tl.Location location) {
+    print('User started/stopped moving: ${location.isMoving}');
+  });
+
+  // 2. Start the native engine
+  await tl.Tracelet.ready(tl.Config.balanced());
+  await tl.Tracelet.start();
+}
+```
+
+<Callout type="info">
+  **The Magic:** If the user force-kills your app, the `onLocation` Dart stream dies. **But the native tracking engine keeps running.** It continues saving locations to SQLite. When the user re-opens the app later, you can query the SQLite database using your Database Adapter to render their route.
+</Callout>
+
+---
+
+## Scenario 2: The Onboarding Flow
+**Concepts Explored:** Permission Handling, Rejections
+
+### The Problem
+You are building an app for elderly patients to track wandering. You need "Always" background location permission. If you just throw the system permission dialog at them, they will get confused, tap "Deny", and the app becomes useless. 
+
+### How Tracelet Solves It
+Tracelet **never** requests permissions automatically. It leaves the UI flow entirely up to your Flutter code, allowing you to show educational custom dialogs before triggering the scary OS prompts.
+
+```dart
+import 'package:tracelet/tracelet.dart' as tl;
+
+// 1. Check current status
+final status = await tl.Tracelet.requestLocationAuthorization();
+
+// 2. The user permanently denied permission in the past
+if (status == tl.AuthorizationStatus.deniedForever) {
+  // Show a beautifully designed Flutter dialog explaining WHY you need it.
+  // Add a button that calls:
+  await tl.Tracelet.openAppSettings();
+  return;
+}
+
+// 3. We haven't asked yet, or they selected "Ask Next Time"
+if (status == tl.AuthorizationStatus.notDetermined || status == tl.AuthorizationStatus.denied) {
+  // Ask for foreground permission first
+  final result = await tl.Tracelet.requestLocationAuthorization(); 
+  
+  if (result == tl.AuthorizationStatus.whenInUse) { // They granted "When In Use"
+    // Show a second Flutter dialog explaining why "Always" is needed.
+    // Then upgrade the permission:
+    await tl.Tracelet.requestLocationAuthorization(); 
+  }
+} 
+```
+
+<Tabs items={['Location Status', 'Notification & Motion', 'Opening Settings']}>
+  <Tabs.Tab>
+    `Tracelet.requestLocationAuthorization()` returns an `AuthorizationStatus` enum:
+    
+    - `notDetermined`: You haven't asked yet.
+    - `denied`: User denied (can ask again on Android).
+    - `whenInUse`: Granted foreground only.
+    - `always`: Granted background access.
+    - `deniedForever`: User checked "Don't ask again" or iOS permanently denied. You MUST send them to settings.
+  </Tabs.Tab>
+  <Tabs.Tab>
+    - `Tracelet.requestNotificationAuthorization()` returns `NotificationAuthorizationStatus`:
+      - `notDetermined`, `denied`, `granted`, `deniedForever`.
+    - `Tracelet.requestMotionAuthorization()` returns `MotionAuthorizationStatus`:
+      - `notDetermined`, `granted`, `deniedForever`.
+      
+    If either returns `deniedForever`, you must gracefully fall back or prompt the user to open settings.
+  </Tabs.Tab>
+  <Tabs.Tab>
+    When a permission is `deniedForever`, you cannot trigger the OS prompt anymore. You must use Tracelet's native settings APIs to redirect the user:
+    
+    - `Tracelet.openAppSettings()`: Opens your app's main settings page (iOS & Android).
+    - `Tracelet.openLocationSettings()`: Opens the global device location toggle (Android).
+    - `Tracelet.openBatterySettings()`: Opens the battery optimization page (Android).
+    
+    *Returns `true` if the screen was successfully opened, `false` if the device doesn't support it.*
+  </Tabs.Tab>
+</Tabs>

@@ -208,11 +208,33 @@ The same values appear in the log with `debug: true` and `logLevel: verbose`:
 auto-tune: 'walking' → distanceFilter=8.0m trackingAccuracy=15m odometerAccuracy=10m maxImpliedSpeed=4m/s
 ```
 
+### Reading what is in force right now
+
+`onModeChange` tells you about the *moment* a mode commits. To ask what the
+filters are using at any point — including when no mode change has happened for
+hours — use `Tracelet.getCurrentLocationTuning()`:
+
+```dart
+final tuning = await Tracelet.getCurrentLocationTuning();
+print('in force: distanceFilter ${tuning?.distanceFilter} m, '
+    'trackingAccuracyThreshold ${tuning?.trackingAccuracyThreshold} m');
+```
+
+This reads back from the native location processor, **not** from the config you
+set. That distinction matters: `Tracelet.activeConfig` is a Dart-side mirror of
+the last `Config` you passed in, so it reports what you asked for, not what the
+filter is actually using — and it cannot show you an auto-tune at all, because
+an auto-tune changes the thresholds without any config call.
+
+Returns `null` before a tracking session has built a processor, and always
+`null` on Web, which has no equivalent filter state.
+
 <Callout type="warning">
 This **overrides** the `geo.distanceFilter` and `geo.filter.*` values you set,
 for as long as a mode is committed. That is the point of the feature, but it does
-mean your configured thresholds are not what is in force at runtime. Leave it
-`false` (the default) if you need your exact values honoured.
+mean your configured thresholds are not what is in force at runtime — call
+`getCurrentLocationTuning()` to see what actually is. Leave it `false` (the
+default) if you need your exact values honoured.
 </Callout>
 
 ---

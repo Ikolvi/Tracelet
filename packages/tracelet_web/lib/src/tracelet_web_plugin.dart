@@ -293,6 +293,12 @@ class TraceletWebPlugin extends TraceletPlatform {
     };
   }
 
+  /// Web has no native location processor, so there is no live tuning to
+  /// report — the browser Geolocation API exposes no equivalent filter state
+  /// (#303).
+  @override
+  Future<TlLocationTuning?> getCurrentLocationTuning() async => null;
+
   @override
   Future<Map<String, Object?>> setConfig(TlConfig config) async {
     final map = _tlConfigToMap(config);
@@ -952,10 +958,18 @@ class TraceletWebPlugin extends TraceletPlatform {
         'useSignificantChangesOnly': c.motion.useSignificantChangesOnly,
       },
       'geofence': {
-        'geofenceModeHighAccuracy': c.android.geofenceModeHighAccuracy,
+        // #305: read the cross-platform GeofenceConfig flag, OR'd with the
+        // deprecated Android-only one for backward compatibility — matching
+        // both Pigeon host implementations. Web previously read ONLY the
+        // deprecated flag, so setting the documented cross-platform one had no
+        // effect here.
+        'geofenceModeHighAccuracy':
+            c.geofence.geofenceModeHighAccuracy ||
+            c.android.geofenceModeHighAccuracy,
         'geofenceInitialTriggerEntry': c.geofence.geofenceInitialTriggerEntry,
         'geofenceProximityRadius': c.geofence.geofenceProximityRadius,
         'geofenceInitialTrigger': c.geofence.geofenceInitialTrigger,
+        'geofenceExitAccuracyMax': c.geofence.geofenceExitAccuracyMax,
       },
       'persistence': {
         'persistMode': c.persistence.persistMode.index,

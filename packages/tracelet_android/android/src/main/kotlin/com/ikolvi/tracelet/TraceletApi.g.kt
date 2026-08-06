@@ -3645,6 +3645,15 @@ interface TraceletHostApi {
   fun getSensors(callback: (Result<Map<String?, Any?>>) -> Unit)
   fun getSettingsHealth(callback: (Result<Map<String?, Any?>>) -> Unit)
   fun getForegroundServiceHealth(callback: (Result<Map<String?, Any?>>) -> Unit)
+  /**
+   * The location-filter thresholds actually in force right now (#303).
+   *
+   * Read back from the Rust `LocationProcessor`, not from the config cache, so
+   * it reports what the filter is really using — including a transport-mode
+   * auto-tune the host did not set. Returns `null` before a processor exists
+   * (no tracking session has configured one yet).
+   */
+  fun getCurrentLocationTuning(callback: (Result<TlLocationTuning?>) -> Unit)
   fun openOemSettings(label: String, callback: (Result<Boolean>) -> Unit)
   fun showPowerManager(callback: (Result<Boolean>) -> Unit)
   fun getLog(query: Map<String?, Any?>?, callback: (Result<String>) -> Unit)
@@ -4883,6 +4892,24 @@ interface TraceletHostApi {
         if (api != null) {
           channel.setMessageHandler { _, reply ->
             api.getForegroundServiceHealth{ result: Result<Map<String?, Any?>> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(TraceletApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(TraceletApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.getCurrentLocationTuning$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            api.getCurrentLocationTuning{ result: Result<TlLocationTuning?> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(TraceletApiPigeonUtils.wrapError(error))

@@ -60,6 +60,11 @@ class AuditConfig {
   const AuditConfig({
     this.enabled = false,
     this.hashAlgorithm = HashAlgorithm.sha256,
+    @Deprecated(
+      'Never implemented — the audit chain always hashes core location fields '
+      'only, so this flag changes nothing. Enabling it needs a versioned chain '
+      'migration. Will be removed in a future major version (#304).',
+    )
     this.includeExtrasInHash = false,
   });
 
@@ -94,9 +99,19 @@ class AuditConfig {
 
   /// Whether to include the `extras` map in the hash computation.
   ///
-  /// When `true`, any change to the `extras` attached to a location record
-  /// will also break the audit chain. When `false` (default), only core
-  /// location fields are hashed for performance and simplicity.
+  /// **Not implemented.** The flag is serialized and stored but no platform
+  /// reads it (#304): the audit chain always hashes the core location fields
+  /// only, so `true` and `false` produce identical chains. Setting it has never
+  /// had any effect.
+  ///
+  /// Wiring it up is not a pure bug fix — changing what goes into the hash
+  /// invalidates every previously computed chain, so it needs a chain version
+  /// and a migration path rather than a silent behavior change.
+  @Deprecated(
+    'Never implemented — the audit chain always hashes core location fields '
+    'only, so this flag changes nothing. Enabling it needs a versioned chain '
+    'migration. Will be removed in a future major version (#304).',
+  )
   final bool includeExtrasInHash;
 
   /// Serializes to a map.

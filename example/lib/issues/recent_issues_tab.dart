@@ -28,10 +28,12 @@ import 'package:tracelet_example/issues/issue_251_card.dart';
 import 'package:tracelet_example/issues/issue_252_card.dart';
 import 'package:tracelet_example/issues/issue_253_card.dart';
 import 'package:tracelet_example/issues/issue_254_card.dart';
+import 'package:tracelet_example/issues/issue_255_card.dart';
 import 'package:tracelet_example/issues/issue_256_card.dart';
 import 'package:tracelet_example/issues/issue_257_card.dart';
 import 'package:tracelet_example/issues/issue_261_card.dart';
 import 'package:tracelet_example/issues/issue_262_card.dart';
+import 'package:tracelet_example/issues/issue_263_card.dart';
 import 'package:tracelet_example/issues/issue_264_card.dart';
 import 'package:tracelet_example/issues/issue_265_card.dart';
 import 'package:tracelet_example/issues/issue_267_card.dart';
@@ -48,6 +50,10 @@ import 'package:tracelet_example/issues/issue_294_card.dart';
 import 'package:tracelet_example/issues/issue_297_card.dart';
 import 'package:tracelet_example/issues/issue_299_card.dart';
 import 'package:tracelet_example/issues/issue_301_card.dart';
+import 'package:tracelet_example/issues/issue_303_card.dart';
+import 'package:tracelet_example/issues/issue_304_card.dart';
+import 'package:tracelet_example/issues/issue_305_card.dart';
+import 'package:tracelet_example/issues/issue_306_card.dart';
 import 'package:tracelet_example/issues/battery_budget_remote_config_card.dart';
 import 'package:tracelet_example/issues/mock_rejection_card.dart';
 import 'package:tracelet_example/issues/remote_config_card.dart';
@@ -1720,6 +1726,10 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
                   // own title/description/keywords via IssueSearchScope, so they
                   // are rendered directly. Cards with a bespoke layout (no shell)
                   // stay wrapped in _searchableCard with explicit keywords.
+                  const Issue306Card(),
+                  const Issue305Card(),
+                  const Issue304Card(),
+                  const Issue303Card(),
                   const Issue301Card(),
                   const Issue299Card(),
                   const Issue297Card(),
@@ -1736,10 +1746,12 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
                   const Issue267Card(),
                   const Issue265Card(),
                   const Issue264Card(),
+                  const Issue263Card(),
                   const Issue262Card(),
                   const Issue261Card(),
                   const Issue257Card(),
                   const Issue256Card(),
+                  const Issue255Card(),
                   const Issue254Card(),
                   const Issue253Card(),
                   const Issue252Card(),

@@ -23,6 +23,14 @@ public final class TraceletPermissionManager: NSObject, CLLocationManagerDelegat
     /// when upgrading from whenInUse → always.
     private var statusBeforeRequest: Int?
 
+    /// Config source for `disableLocationAuthorizationAlert` (#304).
+    ///
+    /// Injected by `TraceletSdk` rather than constructed here: `ConfigManager`
+    /// is not a singleton, and this manager must read the *same* instance the
+    /// SDK applies `setConfig` to. Left `nil` the flag simply does not apply, so
+    /// a standalone permission manager keeps prompting as before.
+    public weak var configManager: ConfigManager?
+
     public override init() {
         super.init()
         locationManager.delegate = self
@@ -59,6 +67,22 @@ public final class TraceletPermissionManager: NSObject, CLLocationManagerDelegat
     /// - denied/always → returns immediately (no dialog)
     public func requestPermission(requestAlways: Bool = false, result: @escaping PermissionCallback) {
         let current = getAuthorizationStatus()
+
+        // #304: honour `disableLocationAuthorizationAlert`. The flag was
+        // documented, plumbed all the way to ConfigManager, and then never read
+        // — every request path below presented the system prompt regardless, so
+        // apps that wanted to own their own pre-permission UX could not suppress
+        // it. Report the current status instead of prompting, which is what a
+        // caller that has opted out of the alert needs in order to decide
+        // whether to route the user to Settings itself.
+        if configManager?.getDisableLocationAuthorizationAlert() == true {
+            TraceletLog.debug(
+                "permission: request suppressed — disableLocationAuthorizationAlert is on "
+                    + "(status=\(current))"
+            )
+            result(current)
+            return
+        }
 
         switch current {
         case 0: // notDetermined
