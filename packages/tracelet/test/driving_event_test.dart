@@ -62,4 +62,42 @@ void main() {
     expect(e.mode, 'vehicle');
     expect(e.confidence, 0.95);
   });
+
+  test('ModeChangeEvent.appliedTuning is null when auto-tuning is off (#301)', () {
+    // The common case: no auto-tune, so nothing was applied and the host's own
+    // thresholds are still in force.
+    final e = ModeChangeEvent.fromTl(
+      TlModeChangeEvent(mode: 'walking', confidence: 0.8),
+    );
+    expect(e.appliedTuning, isNull);
+    expect(e.toString(), isNot(contains('tuned')));
+  });
+
+  test('ModeChangeEvent.fromTl surfaces the applied tuning (#301)', () {
+    // The walking row of the auto-tune table, as the native SDK reports it.
+    final e = ModeChangeEvent.fromTl(
+      TlModeChangeEvent(
+        mode: 'walking',
+        confidence: 0.8,
+        appliedTuning: TlLocationTuning(
+          distanceFilter: 8,
+          trackingAccuracyThreshold: 15,
+          odometerAccuracyThreshold: 10,
+          maxImpliedSpeed: 4,
+        ),
+      ),
+    );
+    expect(e.mode, 'walking');
+    expect(
+      e.appliedTuning,
+      const LocationTuning(
+        distanceFilter: 8,
+        trackingAccuracyThreshold: 15,
+        odometerAccuracyThreshold: 10,
+        maxImpliedSpeed: 4,
+      ),
+    );
+    // An auto-tune must be visible in a logged event, not just in the fields.
+    expect(e.toString(), contains('tuned'));
+  });
 }

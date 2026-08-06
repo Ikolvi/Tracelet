@@ -126,6 +126,68 @@ class ImpactEvent {
       'confidence: ${confidence.toStringAsFixed(2)})';
 }
 
+/// The four location-filter thresholds transport-mode auto-tuning swaps in
+/// when a mode commits (#301).
+///
+/// These mirror the identically-named fields of `LocationFilter` /
+/// `GeoConfig.distanceFilter`, and while a mode is committed they are what is
+/// actually in force — not the values you configured.
+@immutable
+class LocationTuning {
+  /// Creates a new [LocationTuning].
+  const LocationTuning({
+    required this.distanceFilter,
+    required this.trackingAccuracyThreshold,
+    required this.odometerAccuracyThreshold,
+    required this.maxImpliedSpeed,
+  });
+
+  /// Creates a [LocationTuning] from the Pigeon [TlLocationTuning].
+  factory LocationTuning.fromTl(TlLocationTuning t) => LocationTuning(
+    distanceFilter: t.distanceFilter,
+    trackingAccuracyThreshold: t.trackingAccuracyThreshold,
+    odometerAccuracyThreshold: t.odometerAccuracyThreshold,
+    maxImpliedSpeed: t.maxImpliedSpeed,
+  );
+
+  /// Minimum movement (m) between recorded fixes.
+  final double distanceFilter;
+
+  /// Fixes worse than this accuracy (m) are rejected.
+  final int trackingAccuracyThreshold;
+
+  /// Only fixes at least this accurate (m) contribute to the odometer.
+  final int odometerAccuracyThreshold;
+
+  /// Fixes implying a speed above this (m/s) are rejected.
+  final int maxImpliedSpeed;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LocationTuning &&
+          runtimeType == other.runtimeType &&
+          distanceFilter == other.distanceFilter &&
+          trackingAccuracyThreshold == other.trackingAccuracyThreshold &&
+          odometerAccuracyThreshold == other.odometerAccuracyThreshold &&
+          maxImpliedSpeed == other.maxImpliedSpeed;
+
+  @override
+  int get hashCode => Object.hash(
+    distanceFilter,
+    trackingAccuracyThreshold,
+    odometerAccuracyThreshold,
+    maxImpliedSpeed,
+  );
+
+  @override
+  String toString() =>
+      'LocationTuning(distanceFilter: ${distanceFilter}m, '
+      'trackingAccuracyThreshold: ${trackingAccuracyThreshold}m, '
+      'odometerAccuracyThreshold: ${odometerAccuracyThreshold}m, '
+      'maxImpliedSpeed: ${maxImpliedSpeed}m/s)';
+}
+
 /// A fused transport-mode change emitted by the on-device classifier.
 ///
 /// Delivered via `Tracelet.onModeChange`. [mode] is one of `still`, `walking`,
@@ -133,11 +195,20 @@ class ImpactEvent {
 @immutable
 class ModeChangeEvent {
   /// Creates a new [ModeChangeEvent].
-  const ModeChangeEvent({required this.mode, required this.confidence});
+  const ModeChangeEvent({
+    required this.mode,
+    required this.confidence,
+    this.appliedTuning,
+  });
 
   /// Creates a [ModeChangeEvent] from the Pigeon [TlModeChangeEvent].
-  factory ModeChangeEvent.fromTl(TlModeChangeEvent e) =>
-      ModeChangeEvent(mode: e.mode, confidence: e.confidence);
+  factory ModeChangeEvent.fromTl(TlModeChangeEvent e) => ModeChangeEvent(
+    mode: e.mode,
+    confidence: e.confidence,
+    appliedTuning: e.appliedTuning == null
+        ? null
+        : LocationTuning.fromTl(e.appliedTuning!),
+  );
 
   /// `still` | `walking` | `running` | `cycling` | `vehicle` | `unknown`.
   final String mode;
@@ -145,9 +216,18 @@ class ModeChangeEvent {
   /// 0–1 confidence of the classification.
   final double confidence;
 
+  /// The thresholds `ClassifierConfig.autoTuneFromTransportMode` applied for
+  /// this mode, or `null` when auto-tuning is off or the mode carries no
+  /// tuning (`unknown`, which restores your configured values).
+  ///
+  /// Present so an auto-tune is observable rather than a silent config
+  /// mutation — log it if your app depends on the thresholds you set.
+  final LocationTuning? appliedTuning;
+
   @override
   String toString() =>
-      'ModeChangeEvent($mode, confidence: ${confidence.toStringAsFixed(2)})';
+      'ModeChangeEvent($mode, confidence: ${confidence.toStringAsFixed(2)}'
+      '${appliedTuning == null ? '' : ', tuned: $appliedTuning'})';
 }
 
 /// Lifecycle stage of the opt-in ML crash model (#183).

@@ -2714,20 +2714,27 @@ data class TlImpactEvent (
  */
 data class TlModeChangeEvent (
   val mode: String,
-  val confidence: Double
+  val confidence: Double,
+  /**
+   * Thresholds `autoTuneFromTransportMode` applied for this mode, or `null`
+   * when auto-tuning is off or the mode carries no tuning (#301).
+   */
+  val appliedTuning: TlLocationTuning? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): TlModeChangeEvent {
       val mode = pigeonVar_list[0] as String
       val confidence = pigeonVar_list[1] as Double
-      return TlModeChangeEvent(mode, confidence)
+      val appliedTuning = pigeonVar_list[2] as TlLocationTuning?
+      return TlModeChangeEvent(mode, confidence, appliedTuning)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
       mode,
       confidence,
+      appliedTuning,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -2738,13 +2745,14 @@ data class TlModeChangeEvent (
       return true
     }
     val other = other as TlModeChangeEvent
-    return TraceletApiPigeonUtils.deepEquals(this.mode, other.mode) && TraceletApiPigeonUtils.deepEquals(this.confidence, other.confidence)
+    return TraceletApiPigeonUtils.deepEquals(this.mode, other.mode) && TraceletApiPigeonUtils.deepEquals(this.confidence, other.confidence) && TraceletApiPigeonUtils.deepEquals(this.appliedTuning, other.appliedTuning)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.mode)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.confidence)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.appliedTuning)
     return result
   }
 }
@@ -2907,6 +2915,65 @@ data class TlLogEntry (
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.level)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.message)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.timestamp)
+    return result
+  }
+}
+
+/**
+ * Location-filter thresholds applied by transport-mode auto-tuning (#301).
+ *
+ * Declared last on purpose: pigeon assigns codec type IDs by declaration
+ * order, so inserting a class higher up would renumber every type after it
+ * and break any app that resolves a plugin and the platform interface at
+ * different versions.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class TlLocationTuning (
+  /** Minimum movement (m) between recorded fixes. */
+  val distanceFilter: Double,
+  /** Fixes worse than this accuracy (m) are rejected. */
+  val trackingAccuracyThreshold: Long,
+  /** Only fixes at least this accurate (m) contribute to the odometer. */
+  val odometerAccuracyThreshold: Long,
+  /** Fixes implying a speed above this (m/s) are rejected. */
+  val maxImpliedSpeed: Long
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): TlLocationTuning {
+      val distanceFilter = pigeonVar_list[0] as Double
+      val trackingAccuracyThreshold = pigeonVar_list[1] as Long
+      val odometerAccuracyThreshold = pigeonVar_list[2] as Long
+      val maxImpliedSpeed = pigeonVar_list[3] as Long
+      return TlLocationTuning(distanceFilter, trackingAccuracyThreshold, odometerAccuracyThreshold, maxImpliedSpeed)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      distanceFilter,
+      trackingAccuracyThreshold,
+      odometerAccuracyThreshold,
+      maxImpliedSpeed,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as TlLocationTuning
+    return TraceletApiPigeonUtils.deepEquals(this.distanceFilter, other.distanceFilter) && TraceletApiPigeonUtils.deepEquals(this.trackingAccuracyThreshold, other.trackingAccuracyThreshold) && TraceletApiPigeonUtils.deepEquals(this.odometerAccuracyThreshold, other.odometerAccuracyThreshold) && TraceletApiPigeonUtils.deepEquals(this.maxImpliedSpeed, other.maxImpliedSpeed)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.distanceFilter)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.trackingAccuracyThreshold)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.odometerAccuracyThreshold)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.maxImpliedSpeed)
     return result
   }
 }
@@ -3223,6 +3290,11 @@ private open class TraceletApiPigeonCodec : StandardMessageCodec() {
           TlLogEntry.fromList(it)
         }
       }
+      191.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          TlLocationTuning.fromList(it)
+        }
+      }
       else -> super.readValueOfType(type, buffer)
     }
   }
@@ -3474,6 +3546,10 @@ private open class TraceletApiPigeonCodec : StandardMessageCodec() {
       }
       is TlLogEntry -> {
         stream.write(190)
+        writeValue(stream, value.toList())
+      }
+      is TlLocationTuning -> {
+        stream.write(191)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)

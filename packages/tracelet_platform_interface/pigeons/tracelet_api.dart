@@ -834,9 +834,17 @@ class TlImpactEvent {
 
 /// A fused transport-mode change.
 class TlModeChangeEvent {
-  TlModeChangeEvent({required this.mode, required this.confidence});
+  TlModeChangeEvent({
+    required this.mode,
+    required this.confidence,
+    this.appliedTuning,
+  });
   final String mode;
   final double confidence;
+
+  /// Thresholds `autoTuneFromTransportMode` applied for this mode, or `null`
+  /// when auto-tuning is off or the mode carries no tuning (#301).
+  final TlLocationTuning? appliedTuning;
 }
 
 /// Lifecycle status of the opt-in ML crash model (#183), so apps can show the
@@ -1203,6 +1211,33 @@ class TlLogEntry {
 
   /// The ISO8601 timestamp string.
   final String timestamp;
+}
+
+/// Location-filter thresholds applied by transport-mode auto-tuning (#301).
+///
+/// Declared last on purpose: pigeon assigns codec type IDs by declaration
+/// order, so inserting a class higher up would renumber every type after it
+/// and break any app that resolves a plugin and the platform interface at
+/// different versions.
+class TlLocationTuning {
+  TlLocationTuning({
+    required this.distanceFilter,
+    required this.trackingAccuracyThreshold,
+    required this.odometerAccuracyThreshold,
+    required this.maxImpliedSpeed,
+  });
+
+  /// Minimum movement (m) between recorded fixes.
+  final double distanceFilter;
+
+  /// Fixes worse than this accuracy (m) are rejected.
+  final int trackingAccuracyThreshold;
+
+  /// Only fixes at least this accurate (m) contribute to the odometer.
+  final int odometerAccuracyThreshold;
+
+  /// Fixes implying a speed above this (m/s) are rejected.
+  final int maxImpliedSpeed;
 }
 
 // =============================================================================

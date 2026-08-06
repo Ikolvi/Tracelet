@@ -176,10 +176,37 @@ which is exactly why a user-facing "jogging preset" would have been fiction.
   cannot chatter.
 - Thresholds are swapped **in place**. Your odometer stays continuous across a
   mode change rather than losing a segment.
-- The applied values are reported on the `modechange` payload and in the debug
-  log, so an auto-tune is never silent.
+- The applied values arrive on the `onModeChange` event and in the debug log, so
+  an auto-tune is never silent.
 - `unknown` restores whatever you configured. Tracelet does not guess when it
   does not know.
+- Turning `autoTuneFromTransportMode` (or `enableFusedClassifier`) **off** at
+  runtime restores your configured thresholds immediately — the feature never
+  leaves its effects behind once you switch it off.
+
+### Seeing what was applied
+
+`ModeChangeEvent.appliedTuning` carries the four thresholds that were put in
+force. It is `null` when auto-tuning is off, and when the mode is `unknown`
+(which restores your own values):
+
+```dart
+Tracelet.onModeChange((event) {
+  final tuning = event.appliedTuning;
+  if (tuning == null) {
+    print('${event.mode} — your configured thresholds are in force');
+  } else {
+    print('${event.mode} → distanceFilter ${tuning.distanceFilter} m, '
+        'odometerAccuracyThreshold ${tuning.odometerAccuracyThreshold} m');
+  }
+});
+```
+
+The same values appear in the log with `debug: true` and `logLevel: verbose`:
+
+```
+auto-tune: 'walking' → distanceFilter=8.0m trackingAccuracy=15m odometerAccuracy=10m maxImpliedSpeed=4m/s
+```
 
 <Callout type="warning">
 This **overrides** the `geo.distanceFilter` and `geo.filter.*` values you set,

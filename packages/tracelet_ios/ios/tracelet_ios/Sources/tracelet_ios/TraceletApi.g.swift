@@ -2679,35 +2679,42 @@ struct TlImpactEvent: Hashable {
 struct TlModeChangeEvent: Hashable {
   var mode: String
   var confidence: Double
+  /// Thresholds `autoTuneFromTransportMode` applied for this mode, or `null`
+  /// when auto-tuning is off or the mode carries no tuning (#301).
+  var appliedTuning: TlLocationTuning? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> TlModeChangeEvent? {
     let mode = pigeonVar_list[0] as! String
     let confidence = pigeonVar_list[1] as! Double
+    let appliedTuning: TlLocationTuning? = nilOrValue(pigeonVar_list[2])
 
     return TlModeChangeEvent(
       mode: mode,
-      confidence: confidence
+      confidence: confidence,
+      appliedTuning: appliedTuning
     )
   }
   func toList() -> [Any?] {
     return [
       mode,
       confidence,
+      appliedTuning,
     ]
   }
   static func == (lhs: TlModeChangeEvent, rhs: TlModeChangeEvent) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsTraceletApi(lhs.mode, rhs.mode) && deepEqualsTraceletApi(lhs.confidence, rhs.confidence)
+    return deepEqualsTraceletApi(lhs.mode, rhs.mode) && deepEqualsTraceletApi(lhs.confidence, rhs.confidence) && deepEqualsTraceletApi(lhs.appliedTuning, rhs.appliedTuning)
   }
 
   func hash(into hasher: inout Hasher) {
     hasher.combine("TlModeChangeEvent")
     deepHashTraceletApi(value: mode, hasher: &hasher)
     deepHashTraceletApi(value: confidence, hasher: &hasher)
+    deepHashTraceletApi(value: appliedTuning, hasher: &hasher)
   }
 }
 
@@ -2869,6 +2876,63 @@ struct TlLogEntry: Hashable {
     deepHashTraceletApi(value: level, hasher: &hasher)
     deepHashTraceletApi(value: message, hasher: &hasher)
     deepHashTraceletApi(value: timestamp, hasher: &hasher)
+  }
+}
+
+/// Location-filter thresholds applied by transport-mode auto-tuning (#301).
+///
+/// Declared last on purpose: pigeon assigns codec type IDs by declaration
+/// order, so inserting a class higher up would renumber every type after it
+/// and break any app that resolves a plugin and the platform interface at
+/// different versions.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct TlLocationTuning: Hashable {
+  /// Minimum movement (m) between recorded fixes.
+  var distanceFilter: Double
+  /// Fixes worse than this accuracy (m) are rejected.
+  var trackingAccuracyThreshold: Int64
+  /// Only fixes at least this accurate (m) contribute to the odometer.
+  var odometerAccuracyThreshold: Int64
+  /// Fixes implying a speed above this (m/s) are rejected.
+  var maxImpliedSpeed: Int64
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> TlLocationTuning? {
+    let distanceFilter = pigeonVar_list[0] as! Double
+    let trackingAccuracyThreshold = pigeonVar_list[1] as! Int64
+    let odometerAccuracyThreshold = pigeonVar_list[2] as! Int64
+    let maxImpliedSpeed = pigeonVar_list[3] as! Int64
+
+    return TlLocationTuning(
+      distanceFilter: distanceFilter,
+      trackingAccuracyThreshold: trackingAccuracyThreshold,
+      odometerAccuracyThreshold: odometerAccuracyThreshold,
+      maxImpliedSpeed: maxImpliedSpeed
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      distanceFilter,
+      trackingAccuracyThreshold,
+      odometerAccuracyThreshold,
+      maxImpliedSpeed,
+    ]
+  }
+  static func == (lhs: TlLocationTuning, rhs: TlLocationTuning) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsTraceletApi(lhs.distanceFilter, rhs.distanceFilter) && deepEqualsTraceletApi(lhs.trackingAccuracyThreshold, rhs.trackingAccuracyThreshold) && deepEqualsTraceletApi(lhs.odometerAccuracyThreshold, rhs.odometerAccuracyThreshold) && deepEqualsTraceletApi(lhs.maxImpliedSpeed, rhs.maxImpliedSpeed)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("TlLocationTuning")
+    deepHashTraceletApi(value: distanceFilter, hasher: &hasher)
+    deepHashTraceletApi(value: trackingAccuracyThreshold, hasher: &hasher)
+    deepHashTraceletApi(value: odometerAccuracyThreshold, hasher: &hasher)
+    deepHashTraceletApi(value: maxImpliedSpeed, hasher: &hasher)
   }
 }
 
@@ -3075,6 +3139,8 @@ private class TraceletApiPigeonCodecReader: FlutterStandardReader {
       return TlTelematicsRecord.fromList(self.readValue() as! [Any?])
     case 190:
       return TlLogEntry.fromList(self.readValue() as! [Any?])
+    case 191:
+      return TlLocationTuning.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
     }
@@ -3268,6 +3334,9 @@ private class TraceletApiPigeonCodecWriter: FlutterStandardWriter {
       super.writeValue(value.toList())
     } else if let value = value as? TlLogEntry {
       super.writeByte(190)
+      super.writeValue(value.toList())
+    } else if let value = value as? TlLocationTuning {
+      super.writeByte(191)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)

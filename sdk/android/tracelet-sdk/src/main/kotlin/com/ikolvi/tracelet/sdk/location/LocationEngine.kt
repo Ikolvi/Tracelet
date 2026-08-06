@@ -251,7 +251,13 @@ class LocationEngine(
      * auto-tune shows up in logs instead of being a silent config mutation.
      */
     fun applyTransportModeTuning(mode: String): LocationTuning? {
-        if (!config.getAutoTuneFromTransportMode()) return null
+        if (!config.getAutoTuneFromTransportMode()) {
+            // #301: auto-tuning may have been switched off *after* a mode
+            // committed. Undo any tuning still in force rather than leaving the
+            // host running on thresholds it no longer asked for.
+            restoreBaseTuning()
+            return null
+        }
         val processor = getProcessor()
         val tuning = uniffi.tracelet_core.tuningForTransportMode(rustTransportMode(mode))
         if (tuning == null) {
@@ -267,6 +273,18 @@ class LocationEngine(
                 "maxImpliedSpeed=${tuning.maxImpliedSpeed}m/s",
         )
         return tuning
+    }
+
+    /**
+     * Restores the thresholds this engine was configured with, undoing any
+     * auto-tune (#301).
+     *
+     * No-op when no processor exists yet — unlike [getProcessor] this must not
+     * build one as a side effect, since it is called from reconfiguration paths
+     * that run before tracking has ever started.
+     */
+    fun restoreBaseTuning() {
+        locationProcessor?.restoreBaseTuning()
     }
 
     /** Maps a classifier mode name back to the Rust [RustTransportMode] enum. */
