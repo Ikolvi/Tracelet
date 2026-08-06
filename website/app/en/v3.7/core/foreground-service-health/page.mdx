@@ -1,0 +1,205 @@
+import { Callout } from 'nextra/components'
+
+# Foreground Service Health
+
+On Android, a persistent foreground service is what keeps background location
+tracking alive. But **asking** to track (`Tracelet.start()`) is not the same as
+the OS **granting** a running foreground service. On Android 12+ a
+foreground-service start can be *deferred* or *rejected* — even while your app
+believes tracking is enabled.
+
+`Tracelet.getForegroundServiceHealth()` closes that gap. It reports the
+**authoritative native state** of the foreground service so you can tell the
+difference between *"tracking was requested"* and *"tracking is actually
+running"* — and react when they diverge.
+
+<Callout type="info">
+**New in 3.6.6.** This complements the foreground-service reliability fixes in
+3.6.5 ([#253](https://github.com/Ikolvi/Tracelet/issues/253)) and 3.6.6
+([#254](https://github.com/Ikolvi/Tracelet/issues/254)) by making the service's
+actual state observable from Dart.
+</Callout>
+
+---
+
+## Why `enabled` isn't enough
+
+`Tracelet.getState().enabled` is the **desired** state — the persisted intent to
+track. It answers *"has the app asked to track?"*, not *"is the OS actually
+running the foreground service right now?"*.
+
+Those can differ, especially on Android 12+ (API 31+), where starting a
+`location` foreground service from the background is restricted:
+
+- The start can be **deferred** — Android refuses it while the app is
+  backgrounded, and Tracelet retries automatically when the app next returns to
+  the foreground.
+- The start can **fail** outright — e.g. a missing permission, or a
+  `ForegroundServiceStartNotAllowedException`.
+- The service can be **promoted, then stopped** by the system.
+
+In all of these cases `enabled` stays `true`, but background tracking is **not**
+operational. A location-timestamp watchdog can eventually notice staleness, but
+it can't tell you *why* — whether promotion failed, the service was stopped, or
+the provider is simply waiting for a fresh fix. `getForegroundServiceHealth()`
+gives you the actual, authoritative reason.
+
+---
+
+## The API
+
+```dart
+final health = await Tracelet.getForegroundServiceHealth();
+```
+
+Returns a `Map<String, Object?>` with the following keys:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `desiredEnabled` | `bool` | The persisted **desired** tracking state (same as `getState().enabled`). |
+| `foregroundServiceEnabled` | `bool` | Whether the active config runs a foreground service at all. |
+| `serviceRunning` | `bool` | Whether the native location service process is alive. |
+| `serviceForeground` | `bool` | Whether the service is **currently promoted** to the foreground (last `startForeground()` succeeded and it hasn't been demoted/stopped since). |
+| `foregroundNotificationId` | `int?` | The notification id while promoted; `null` otherwise. |
+| `lastForegroundPromotionResult` | `String?` | `success`, `deferred`, or `failed` — the outcome of the most recent promotion attempt (`null` before any attempt). |
+| `lastForegroundPromotionFailureClass` | `String?` | Exception class of the last failed/deferred promotion (e.g. `ForegroundServiceStartNotAllowedException`). |
+| `lastForegroundPromotionFailureMessage` | `String?` | The exception message. |
+| `lastForegroundTransitionAt` | `int?` | Epoch-milliseconds of the last promotion transition. |
+| `platform` | `String` | `android`, `ios`, or `web`. |
+
+<Callout type="info">
+The map shape is intentionally the same on every platform so cross-platform code
+can read it uniformly. Only the *values* differ per platform (see below).
+</Callout>
+
+---
+
+## Reading the promotion result
+
+`serviceForeground` combined with `lastForegroundPromotionResult` tells you the
+whole story:
+
+| `desiredEnabled` | `serviceForeground` | `lastForegroundPromotionResult` | Interpretation |
+|---|---|---|---|
+| `false` | `false` | any | Tracking is off — nothing to worry about. |
+| `true` | `true` | `success` | ✅ **Healthy** — the foreground service is running and promoted. |
+| `true` | `false` | `deferred` | ⏳ **Deferred** — Android refused the start while backgrounded; Tracelet will retry when the app returns to the foreground. |
+| `true` | `false` | `failed` | ❌ **Failed** — promotion failed; background tracking is **not** operational. Inspect the failure class/message. |
+| `true` | `false` | `null` | ⌛ Requested but not confirmed yet (transient — poll again shortly). |
+
+---
+
+## A tracking-health indicator
+
+The most common use: surface an honest status to the user (or your telemetry)
+instead of blindly trusting `enabled`.
+
+```dart
+Future<String> describeTrackingHealth() async {
+  final h = await Tracelet.getForegroundServiceHealth();
+
+  if (h['desiredEnabled'] != true) return 'Tracking off';
+
+  // iOS/web have no foreground service — enabled tracking is as good as it gets.
+  if (h['platform'] != 'android') return 'Tracking active';
+
+  if (h['serviceForeground'] == true) return 'Tracking active';
+
+  switch (h['lastForegroundPromotionResult']) {
+    case 'deferred':
+      return 'Waiting to start — reopen the app to resume background tracking';
+    case 'failed':
+      final reason = h['lastForegroundPromotionFailureMessage'] ?? 'unknown';
+      return 'Background tracking failed to start: $reason';
+    default:
+      return 'Starting…';
+  }
+}
+```
+
+## A recovery watchdog
+
+Pair the health check with a periodic timer to detect and recover from a failed
+promotion — for example, prompt the user to reopen the app, or re-request the
+missing permission.
+
+```dart
+Timer.periodic(const Duration(minutes: 1), (_) async {
+  final h = await Tracelet.getForegroundServiceHealth();
+
+  final desired = h['desiredEnabled'] == true;
+  final foreground = h['serviceForeground'] == true;
+  final result = h['lastForegroundPromotionResult'];
+
+  if (desired && !foreground && result == 'failed') {
+    // Background tracking is not operational. Log it, alert your backend,
+    // or guide the user to fix permissions / battery settings.
+    await reportTrackingDegraded(
+      failureClass: h['lastForegroundPromotionFailureClass'],
+      failureMessage: h['lastForegroundPromotionFailureMessage'],
+    );
+  }
+});
+```
+
+<Callout type="warning">
+`serviceForeground` reflects the last **promotion** outcome, not a live poll of
+the OS every millisecond. Immediately after `start()`, the promotion lands a beat
+later — poll again after a short delay (1–2 s) if you need the freshest value.
+</Callout>
+
+---
+
+## Platform behavior
+
+| Platform | Behavior |
+|---|---|
+| **Android** | Fully populated with live foreground-service state and promotion history. |
+| **iOS** | There is no foreground service that can fail after the fact, so `serviceForeground` is `false`, `foregroundServiceEnabled` is `false`, and the promotion fields are `null`. `desiredEnabled` and `serviceRunning` reflect whether tracking is active. `platform` is `ios`. |
+| **Web** | No foreground service. Returns a minimal map mirroring the desired state; `platform` is `web`. |
+
+<Callout type="info">
+This is why iOS is unaffected by the foreground-service promotion race that was
+fixed for Android in [#253](https://github.com/Ikolvi/Tracelet/issues/253) and
+[#254](https://github.com/Ikolvi/Tracelet/issues/254): iOS has no separate
+foreground-service process that can be promoted and then torn down.
+</Callout>
+
+---
+
+## In Tracelet Doctor
+
+You don't have to build any of this yourself to *see* it. The
+[`tracelet_doctor`](/en/core/diagnostics) overlay now includes a **Foreground
+Service** card that renders exactly this information — desired vs. actual,
+promotion result, and any failure class/message — with a color-coded status
+(Healthy / Deferred / Failed / Inactive).
+
+`tracelet_doctor` is a **dev dependency** (`flutter pub add dev:tracelet_doctor`), so
+guard it with `kDebugMode`:
+
+```dart
+import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:tracelet_doctor/tracelet_doctor.dart';
+
+if (kDebugMode) {
+  TraceletDoctor.show(context); // includes the Foreground Service card
+}
+```
+
+The same fields are also captured in the **bug report** (`TraceletBugReport.build()`),
+so a pasted report shows whether the foreground service was actually running at
+the time of the issue — often the missing clue in "tracking stops in the
+background" reports.
+
+---
+
+## Good to know
+
+- **Read-only & cheap.** The call just reads in-memory native state; it never
+  starts, stops, or mutates tracking.
+- **Safe before `ready()`.** It returns a sensible default snapshot rather than
+  throwing if the SDK hasn't been initialized.
+- **Desired vs. actual is the whole point.** Keep using `getState().enabled` for
+  your app's intent; use `getForegroundServiceHealth()` to verify the OS is
+  honoring that intent.

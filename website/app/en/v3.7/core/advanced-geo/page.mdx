@@ -1,0 +1,153 @@
+import { Callout } from 'nextra/components'
+import LottiePlayer from '../../../../../components/LottiePlayer'
+
+# Advanced Geolocation 
+
+Tracelet is more than just a background location wrapper. It contains a suite of advanced algorithms specifically designed to tackle the hardest problems in mobile geolocation: GPS jitter, tunnel blackouts, and battery drain at high speeds.
+
+<LottiePlayer src="/animations/global-delivery.json" maxWidth="300px" />
+
+---
+
+## 1. Kalman Filter (Trajectory Smoothing)
+
+Raw GPS data is inherently noisy. If a user is walking down a straight road, the raw coordinates will jump left and right randomly, creating a "jagged" line. If you calculate the distance of this jagged line, it will artificially inflate the user's total distance by up to 20%.
+
+### How it works
+By setting `useKalmanFilter: true`, Tracelet applies an advanced mathematical algorithm originally developed for spacecraft navigation. It fuses the current GPS position with the device's velocity (speed and heading) to *predict* where the user actually is, effectively smoothing out the noise and generating a perfect, curved line.
+
+```dart
+final config = Config.highAccuracy(
+  geo: tl.GeoConfig(
+    filter: tl.LocationFilter(
+      useKalmanFilter: true, // Enable trajectory smoothing
+      trackingAccuracyThreshold: 50,
+    ),
+  ),
+);
+```
+
+---
+
+## 2. Dead Reckoning (Tunnels & GPS Denied)
+
+When a user drives into a long tunnel or an underground parking garage, they lose connection to GPS satellites. Traditional trackers will simply draw a straight line from the entrance of the tunnel to the exit, skipping the actual underground route.
+
+### How it works
+By setting `enableDeadReckoning: true`, Tracelet detects when GPS is lost and instantly seamlessly switches to the device's internal IMU (Inertial Measurement Unit). It uses the Accelerometer and Gyroscope to continue calculating the user's trajectory based on their last known velocity, simulating GPS updates even while completely underground.
+
+```dart
+final config = Config.balanced(
+  geo: tl.GeoConfig(
+    enableDeadReckoning: true,
+    deadReckoningActivationDelay: 10, // Wait 10 seconds of no GPS before activating
+    deadReckoningMaxDuration: 300, // Stop dead reckoning after 5 minutes to prevent drift
+  ),
+);
+```
+
+---
+
+## 3. Elasticity (High-Speed Optimization)
+
+If your `distanceFilter` is set to 20 meters, Tracelet wakes up every 20 meters. If the user is driving 120 km/h on a straight highway, they cover 20 meters in less than a second. This causes the database to be flooded with hundreds of useless points in a perfectly straight line, draining the battery.
+
+### How it works
+Tracelet's **Elasticity Engine** detects high speeds and dynamically *stretches* your distance filter. A 20m filter might automatically stretch to 200m on the highway, and shrink back to 20m when the user takes an off-ramp into a city.
+
+```dart
+final config = Config.balanced(
+  geo: tl.GeoConfig(
+    disableElasticity: false, // Ensure elasticity is on
+    elasticityMultiplier: 2.0, // Make the dynamic stretching 2x more aggressive
+  ),
+);
+```
+
+---
+
+## 4. Adaptive Mode (Battery Preservation)
+
+If an employee's phone battery is dying, your priority shouldn't be high-frequency 5-meter tracking. It should be ensuring the phone survives until the end of the shift.
+
+### How it works
+By setting `enableAdaptiveMode: true`, Tracelet constantly monitors the operating system's battery APIs. As the battery drops below critical thresholds (e.g., 20%, 10%), Tracelet automatically downgrades `desiredAccuracy` from GPS to Wi-Fi/Cellular, and expands the `distanceFilter`, preserving enough power to keep the phone alive.
+
+```dart
+final config = Config.balanced(
+  geo: tl.GeoConfig(
+    enableAdaptiveMode: true,
+  ),
+);
+```
+
+---
+
+## 5. Sparse Updates (Cell-Tower Only)
+
+Sometimes you don't need turn-by-turn navigation accuracy; you just need to know roughly what city or neighborhood the user is in (e.g., a social networking app or weather app). 
+
+### How it works
+By enabling `enableSparseUpdates`, Tracelet completely bypasses the power-hungry GPS chip. It exclusively uses cell-tower handoffs and Wi-Fi triangulation to update the location. The battery drain drops to near zero.
+
+```dart
+final config = Config.lowPower(
+  geo: tl.GeoConfig(
+    enableSparseUpdates: true,
+    sparseDistanceThreshold: 500.0, // Only trigger if they move 500m
+    sparseMaxIdleSeconds: 3600, // Or trigger once an hour even if they haven't moved
+  ),
+);
+```
+
+---
+
+## 6. Live Provider Options (Runtime Overrides)
+
+Sometimes your app knows something the SDK can't: a delivery driver just clocked a 30-minute break, a rider is waiting inside a venue, or your own stationary heuristics fired. You want to ease off the GPS *right now* — and snap back to full accuracy the moment things change.
+
+Until now the only knob was `setConfig()`. But `desiredAccuracy` and `distanceFilter` are tracking-relevant keys, so changing them through config **persists the new values and performs a clean full-pipeline restart** — correct for permanent configuration, but it creates an avoidable tracking gap and rebuilds processor state just to apply a temporary power policy. Worse, because the change is persisted, an app killed and relaunched during the "low power" phase would wake up permanently tracking at degraded accuracy.
+
+### How it works
+
+`Tracelet.updateLocationProviderOptions()` updates the **running** OS location provider in place — no `stop()`, no `start()`, no gap in the fix stream:
+
+- **iOS** assigns the new values directly to the live `CLLocationManager` (`desiredAccuracy` / `distanceFilter` are mutable on an active manager).
+- **Android** re-subscribes the existing fused-provider callback with a new `LocationRequest`. Re-registering the same callback *replaces* the request in place, so the subscription never drops.
+- **Web** has no live provider controls and always returns `false`.
+
+The override is deliberately **ephemeral and provider-only**:
+
+- The persisted `Config` and `Tracelet.activeConfig` are never touched — nothing is written to storage, so a process restart always comes back on your real configuration.
+- The Rust accepted-point filter and processor state are unchanged: track continuity, odometer, and which delivered points get accepted all keep working exactly as configured.
+- Calling `stop()` clears the override automatically.
+
+```dart
+// Device confirmed stationary — drop Core Location to ~100m accuracy
+// and only deliver a fix every 25 meters:
+await Tracelet.updateLocationProviderOptions(
+  desiredAccuracy: DesiredAccuracy.medium,
+  distanceFilter: 25,
+);
+
+// Movement detected — restore the configured provider options.
+// No arguments = clear the override:
+await Tracelet.updateLocationProviderOptions();
+```
+
+### Return value & validation
+
+The call returns `true` when the live update was applied, and `false` when it could not be — it never restarts the pipeline as a fallback:
+
+| Situation | Result |
+| --- | --- |
+| Continuous tracking active (iOS / Android) | `true` — options applied live |
+| Tracking not started, or `stop()` was called | `false` |
+| Periodic tracking mode active | `false` — periodic fixes manage their own acquisition |
+| Web | `false` — no live provider updates |
+
+`distanceFilter` must be finite and non-negative (a `RangeError` is thrown otherwise). A value of `0` requests every fix the provider produces (`kCLDistanceFilterNone` on iOS).
+
+<Callout type="info">
+**Runtime override vs. Adaptive Mode** — `enableAdaptiveMode` (section 4) is the *automatic* version of this: the SDK watches the battery and downgrades for you. Use `updateLocationProviderOptions()` when the policy is **yours** — stationary detection, shift breaks, geofence dwell, custom battery thresholds — and you need it applied instantly without persisting anything or interrupting the track.
+</Callout>

@@ -1,0 +1,108 @@
+---
+title: "Basic Example"
+description: "A minimal, copy-pasteable example of using Tracelet in a Flutter app."
+---
+
+# Basic Example
+
+This is a minimal example showing how to initialize Tracelet, request permissions, and listen to real-time location updates.
+
+You can paste this directly into your `main.dart` file.
+
+```dart
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:tracelet/tracelet.dart';
+
+// 1. The Headless Task must be a top-level function.
+// It will run when the app is completely terminated and a location event occurs.
+@pragma('vm:entry-point')
+void headlessTask(HeadlessEvent event) {
+  print('[Headless] Received event: ${event.name}');
+  
+  if (event is LocationEvent) {
+    print('[Headless] Location: ${event.location.coords.latitude}, ${event.location.coords.longitude}');
+  }
+}
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // 2. Register the Headless Task early
+  Tracelet.registerHeadlessTask(headlessTask);
+
+  runApp(const MyApp());
+}
+
+class MyApp extends StatefulWidget {
+  const MyApp({Key? key}) : super(key: key);
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  String _locationStatus = "Unknown";
+  
+  @override
+  void initState() {
+    super.initState();
+    _initTracelet();
+  }
+
+  Future<void> _initTracelet() async {
+    // 3. Request permissions required natively via Tracelet
+    if (Platform.isAndroid) {
+      await Tracelet.requestNotificationAuthorization();
+      await Tracelet.requestMotionAuthorization();
+    }
+    
+    final authStatus = await Tracelet.requestLocationAuthorization();
+    if (authStatus == AuthorizationStatus.deniedForever) {
+      setState(() => _locationStatus = "Permissions Denied");
+      return;
+    }
+
+    // 4. Subscribe to Location Events in the UI
+    Tracelet.onLocation((location) {
+      setState(() {
+        _locationStatus = "${location.coords.latitude}, ${location.coords.longitude}";
+      });
+    });
+
+    // 5. Configure and Start Tracelet
+    await Tracelet.ready(Config.balanced(
+      stopOnTerminate: false,
+      startOnBoot: true,
+      android: AndroidConfig(
+        foregroundService: ForegroundServiceConfig(
+          contentTitle: "Tracelet Active",
+          contentText: "Tracking location in the background",
+          notificationIcon: "mipmap/ic_launcher",
+        ),
+      ),
+    ));
+
+    await Tracelet.start();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        appBar: AppBar(title: const Text('Tracelet Basic Example')),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text("Latest Location:", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              Text(_locationStatus, style: const TextStyle(fontSize: 16)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+```

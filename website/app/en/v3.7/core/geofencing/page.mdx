@@ -1,0 +1,268 @@
+import { Callout } from 'nextra/components'
+import LottiePlayer from '../../../../../components/LottiePlayer'
+
+# Geofencing API
+
+Tracelet provides a robust, offline-first geofencing engine. Unlike standard OS geofencing which is limited to 20-100 geofences and requires the OS to wake your app, Tracelet evaluates geofences internally within the Rust engine. This enables **unlimited** geofences with zero additional battery drain.
+
+<LottiePlayer src="/animations/search.json" maxWidth="300px" />
+
+---
+
+## 1. Circular vs Polygon Geofences
+
+Tracelet supports both standard circular geofences and complex polygon geofences.
+
+### Circular Geofences
+A circular geofence is defined by a center coordinate and a radius (in meters).
+
+```dart
+final circular = tl.Geofence(
+  identifier: 'headquarters',
+  latitude: 37.7749,
+  longitude: -122.4194,
+  radius: 200, // 200 meters
+  notifyOnEntry: true,
+  notifyOnExit: true,
+  notifyOnDwell: true, // Triggers if they stay inside
+  loiteringDelay: 300, // Trigger dwell after 5 minutes
+);
+```
+
+### Polygon Geofences
+A polygon geofence is defined by an array of coordinates outlining a complex shape (like a park or a building).
+
+```dart
+final polygon = tl.Geofence.polygon(
+  identifier: 'golden_gate_park',
+  vertices: [
+    tl.Coordinate(latitude: 37.773972, longitude: -122.431297),
+    tl.Coordinate(latitude: 37.769996, longitude: -122.511055),
+    tl.Coordinate(latitude: 37.764516, longitude: -122.508566),
+  ],
+  notifyOnEntry: true,
+  notifyOnExit: true,
+);
+```
+
+---
+
+## 2. Adding and Removing Geofences
+
+Tracelet stores all geofences in the local SQLite database. This means they are persistent across app restarts. You do not need to re-add them every time the app launches.
+
+### Adding Geofences
+You can add a single geofence or an array of geofences.
+
+```dart
+// Add a single geofence
+await tl.Tracelet.addGeofence(circular);
+
+// Add multiple geofences efficiently
+await tl.Tracelet.addGeofences([circular, polygon]);
+```
+
+### Removing Geofences
+Remove them by their unique identifier, or clear the entire database.
+
+```dart
+// Remove a specific geofence
+await tl.Tracelet.removeGeofence('headquarters');
+
+// Remove all geofences entirely
+await tl.Tracelet.removeGeofences();
+```
+
+---
+
+## 3. Listing Active Geofences
+
+You can query the SQLite database at any time to see which geofences are currently being monitored.
+
+```dart
+final geofences = await tl.Tracelet.getGeofences();
+for (final fence in geofences) {
+  print('Monitoring: \${fence.identifier}');
+}
+```
+
+---
+
+## 4. Listening for Geofence Events
+
+When the user crosses a geofence boundary, Tracelet fires the `onGeofence` event. Because the evaluation happens in the Rust core during location updates, these events will fire even if the app is killed (triggering your headless callback).
+
+```dart
+tl.Tracelet.onGeofence((evt) {
+  if (evt.action == tl.GeofenceEventAction.ENTER) {
+    print('User entered: \${evt.identifier}');
+  } else if (evt.action == tl.GeofenceEventAction.EXIT) {
+    print('User exited: \${evt.identifier}');
+  } else if (evt.action == tl.GeofenceEventAction.DWELL) {
+    print('User is dwelling inside: \${evt.identifier}');
+  }
+});
+```
+
+---
+
+## 5. Android: foreground service & Google Play policy
+
+<Callout type="warning">
+**Google Play policy change — effective October 28, 2026.** Geofencing is no
+longer a permitted use case for foreground service location. Apps that use a
+foreground service **solely** for geofencing must remove the
+`FOREGROUND_SERVICE_LOCATION` (and `FOREGROUND_SERVICE`, if unused otherwise)
+permissions from their merged manifest.
+</Callout>
+
+Tracelet's **standard** geofence mode uses the native Android Geofence API
+(`GeofencingClient`), which fires ENTER/EXIT — and relaunches your app into your
+headless task — while the app is suspended or terminated, **without** a
+foreground service. Calling `startGeofences()` in standard mode does **not** start
+a foreground service (as of `3.5.x`), so it is compliant by default.
+
+<Callout type="info">
+**Aggressive OEMs (Samsung/Xiaomi/Huawei/OnePlus/Oppo/Vivo):** as of `3.6.1`,
+an explicit `geofenceModeHighAccuracy: false` is honored on every device. Before
+`3.6.1` these OEMs silently forced high-accuracy mode — and with it the
+foreground service and its persistent notification — even when you set `false`,
+which broke the compliant standard-mode path above. If you target these devices,
+use `3.6.1` or later. On an aggressive OEM the SDK now logs a reliability warning
+(native geofence delivery can be delayed there) instead of overriding your config.
+</Callout>
+
+### If you use Tracelet only for geofencing
+
+1. Do **not** enable the foreground service:
+
+   ```dart
+   await tl.Tracelet.ready(const tl.Config(
+     android: tl.AndroidConfig(
+       foregroundService: tl.ForegroundServiceConfig(enabled: false),
+     ),
+     geofence: tl.GeofenceConfig(geofenceModeHighAccuracy: false),
+   ));
+   await tl.Tracelet.startGeofences();
+   ```
+
+2. The Tracelet SDK declares `FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_LOCATION`
+   for its continuous-tracking use case. If your app never does continuous
+   tracking, strip them from the merged manifest with the manifest-merger
+   `remove` rule in your app's `android/app/src/main/AndroidManifest.xml`:
+
+   ```xml
+   <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+             xmlns:tools="http://schemas.android.com/tools">
+       <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"
+           tools:node="remove" />
+       <uses-permission android:name="android.permission.FOREGROUND_SERVICE"
+           tools:node="remove" />
+   </manifest>
+   ```
+
+### If you use continuous tracking *and* geofencing
+
+You may keep `FOREGROUND_SERVICE_LOCATION` for the tracking use case (e.g.
+navigation/fleet tracking), but the foreground service must not be used for
+geofencing. Tracelet already handles this: the FGS runs for continuous tracking
+(`start()`), and switching to geofence-only mode (`startGeofences()` in standard
+mode) tears the FGS down.
+
+<Callout type="info">
+**High-accuracy geofence mode** (`geofenceModeHighAccuracy: true`) uses
+continuous GPS for tight, in-app boundary detection, which *does* run a
+foreground service. That is continuous location — not "geofencing" in the policy
+sense — so only enable it when your app has a separate permitted location use
+case. For most apps, standard mode is the compliant and battery-efficient choice.
+</Callout>
+
+## 6. GPS drift and false EXIT events (high-accuracy mode)
+
+In high-accuracy mode, transitions are evaluated in-app from every GPS fix. A
+device standing still just inside a small geofence can occasionally receive a
+single fix that drifts well outside the radius — even though it never moved. To
+prevent that from firing a false EXIT, Tracelet's exit decision is
+**accuracy-aware**: a circular geofence only EXITs once the *entire* GPS error
+circle clears the fence:
+
+```text
+EXIT fires when:  distance - horizontalAccuracy > radius + buffer
+```
+
+A fix reported 160 m out but with ±150 m accuracy is only "10 m out" at its most
+optimistic, so it is treated as still inside and no EXIT fires. A confident,
+accurate fix at the same distance exits normally. ENTER is intentionally left
+accuracy-agnostic, so arrivals still trigger promptly.
+
+### The tradeoff
+
+Because the exit threshold grows with the fix's reported accuracy, a **genuine**
+departure is delayed by roughly the current GPS uncertainty. For a 50 m geofence
+(70 m exit threshold):
+
+| Horizontal accuracy | EXIT fires at ~ |
+| ------------------- | --------------- |
+| ±8 m (good, outdoors) | 78 m |
+| ±20 m (typical) | 90 m |
+| ±50 m (poor) | 120 m |
+| ±150 m (very poor) | 220 m |
+
+Outdoors with a good signal this is negligible. In chronically poor-GPS
+conditions (deep indoors, urban canyons) a real exit can lag noticeably.
+
+### Tuning it: `geofenceExitAccuracyMax`
+
+If your use case prefers a faster, more eager EXIT — or you want to bound the
+worst-case delay — set `GeofenceConfig.geofenceExitAccuracyMax` (in meters):
+
+| Value | Behavior |
+| ----- | -------- |
+| `-1` *(default)* | Full accuracy gating. Most resistant to drift-induced false exits; genuine exits may lag by the current GPS uncertainty. |
+| `0` | Gating disabled. EXIT fires as soon as the reported point clears `radius + buffer` — fastest exit, but a single drift spike can produce a false EXIT. |
+| `N > 0` | Clamp. Absorb drift up to `N` meters, but never delay a genuine EXIT by more than ~`N` meters. A good middle ground for small fences in mixed conditions (e.g. `20`). |
+
+```dart
+await tl.Tracelet.ready(const tl.Config(
+  geofence: tl.GeofenceConfig(
+    geofenceModeHighAccuracy: true,
+    // Absorb drift up to 20 m, but keep genuine exits reasonably prompt.
+    geofenceExitAccuracyMax: 20,
+  ),
+));
+```
+
+<Callout type="info">
+This gating applies only to the **high-accuracy** in-app path. In standard
+(OS region-monitoring) mode the operating system decides EXIT, and
+`geofenceExitAccuracyMax` has no effect.
+</Callout>
+
+### Confirmed exit: a single bad fix never triggers an EXIT
+
+Accuracy gating only helps when a drifting fix is *honest* about its uncertainty
+(large reported accuracy). Some devices do the opposite: they emit an
+**over-confident** fix that lands hundreds of metres outside the fence while
+reporting a *tight* accuracy. Because the reported accuracy is small, gating
+cannot see through it — `200 m − 1.7 m = 198 m` still clears the threshold.
+
+Tracelet catches these with a second, complementary defense: an EXIT must be
+**confirmed across two consecutive out-of-fence fixes**. The reasoning is
+physical — leaving a geofence is a *sustained* change, whereas an over-confident
+glitch is always a single fix that jumps out and is back inside on the very next
+one:
+
+```text
+fix 1: 200 m out  → held (pending confirmation), no EXIT
+fix 2: back inside → pending cleared, glitch absorbed
+```
+
+A **genuine** departure stays outside, so the second fix confirms it and exactly
+one EXIT fires — delayed only by one location update (≈1 s in high-accuracy
+mode). Hysteresis is the *spatial* half of the exit decision and this is the
+*temporal* half; the two work together.
+
+This is on by default and needs no configuration. The decision lives in the Rust
+core, so Android and iOS behave identically. (Like accuracy gating, it applies
+only to the high-accuracy in-app path — in standard OS region-monitoring mode the
+operating system owns the EXIT decision.)

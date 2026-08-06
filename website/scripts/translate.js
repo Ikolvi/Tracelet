@@ -37,6 +37,15 @@ const { translate: bingTranslate } = require('bing-translate-api');
 const locales = ['hi', 'zh', 'ja', 'es', 'ml', 'ta', 'ru'];
 const baseLang = 'en';
 
+// Frozen documentation archives (see versions.json). These were snapshotted
+// AFTER translation, so every locale copy is already translated and must never
+// be translated again: re-running machine translation over them would rewrite
+// historical content, and would multiply the cost of every --all run by the
+// number of archived versions against rate-limited free endpoints.
+const archivedSlugs = new Set(
+  require('../versions.json').archived.map(v => v.slug)
+);
+
 const delay = (ms) => new Promise(res => setTimeout(res, ms));
 
 async function translateLineGoogle(text, targetLang, retries = 5) {
@@ -324,12 +333,24 @@ function getAllFiles(dirPath, arrayOfFiles) {
   arrayOfFiles = arrayOfFiles || []
   files.forEach(function (file) {
     if (fs.statSync(dirPath + "/" + file).isDirectory()) {
+      if (archivedSlugs.has(file)) return; // frozen archive — never re-translated
       arrayOfFiles = getAllFiles(dirPath + "/" + file, arrayOfFiles)
     } else {
       arrayOfFiles.push(path.join(dirPath, "/", file))
     }
   })
   return arrayOfFiles
+}
+
+/**
+ * True when `file` lives inside a frozen archive. Guards the explicit-file and
+ * git-diff paths, which do not go through getAllFiles.
+ */
+function isArchivedPath(file) {
+  // scripts/translate-archive.js performs the deliberate one-time fill of an
+  // archive that predates the locale trees, and sets this to opt in.
+  if (process.env.TRACELET_ALLOW_ARCHIVED === '1') return false;
+  return path.resolve(file).split(path.sep).some(seg => archivedSlugs.has(seg));
 }
 
 async function run() {
@@ -346,7 +367,7 @@ async function run() {
       !f.includes('/license/')
     );
   } else if (args.length > 0) {
-    filesToTranslate = args.filter(f => !f.includes('/privacy/') && !f.includes('/terms/') && !f.includes('/license/'));
+    filesToTranslate = args.filter(f => !f.includes('/privacy/') && !f.includes('/terms/') && !f.includes('/license/') && !isArchivedPath(f));
   } else {
     try {
       const { execSync } = require('child_process');
@@ -356,7 +377,8 @@ async function run() {
         (file.endsWith('.mdx') || file.endsWith('notifications.json')) &&
         !file.includes('/privacy/') &&
         !file.includes('/terms/') &&
-        !file.includes('/license/')
+        !file.includes('/license/') &&
+        !isArchivedPath(file)
       );
     } catch (e) {
       console.warn("Could not detect git changes. Please provide specific files or use --all.");

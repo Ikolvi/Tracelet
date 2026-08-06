@@ -1,0 +1,252 @@
+# Tracelet Sync: The Network Story
+
+Location tracking means nothing if the data never reaches your servers. Mobile devices drop connection constantly—when entering elevators, driving through valleys, or switching from Wi-Fi to Cellular. Tracelet Sync is an offline-first, battery-aware networking engine designed to ensure data delivery without waking the UI.
+
+import { Callout, Steps, Tabs } from 'nextra/components'
+import LottiePlayer from '../../../../../components/LottiePlayer'
+
+<LottiePlayer src="/animations/ship.json" />
+
+<Callout type="warning">
+  **Tracelet 3.2.0 Update:** HTTP sync logic has been moved to the `tracelet_sync` module. You must include this module if you require network synchronization.
+</Callout>
+
+---
+
+## How to Sync to the Network
+
+While Tracelet Core captures locations, **`tracelet_sync`** is the background HTTP engine that delivers them to your server. To enable it, initialize `TraceletSync.ready()` before you start tracking:
+
+```dart
+import 'package:tracelet_sync/tracelet_sync.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // 1. Configure the Sync Engine
+  await TraceletSync.ready(SyncConfig(
+    url: 'https://your-api.com/locations',
+    method: 'POST',
+    autoSyncThreshold: 10,       // Sync every 10 locations
+    autoSyncDelay: 10000,        // Wait 10s before pushing
+    syncInterval: 0,             // (Optional) Seconds between repeating queue flushes; 0 = off
+    batchSync: true,             // Send as a JSON array
+    maxBatchSize: 250,           // Up to 250 locations per request
+    headers: {
+      'Authorization': 'Bearer YOUR_TOKEN'
+    },
+  ));
+
+  // 2. Configure and start Tracelet Core as usual
+  await Tracelet.ready(Config.balanced());
+  await Tracelet.start();
+}
+```
+
+Once configured, the engine will handle all the scenarios below automatically!
+
+---
+
+## Scenario 1: The Mountain Hike
+**Concepts Explored:** Offline Queuing, Batch Sync, Debouncing
+
+### The Problem
+Mark is using your fitness app to track a 3-hour hike through the mountains. He has zero cellular service. If your app attempts an HTTP POST every time he takes a step, it will fail, waste battery searching for a signal, and lose the location points forever. When he finally gets back to his car, his route will look like a blank map.
+
+### How Tracelet Sync Solves It
+
+1. **Offline SQLite Persistence (`autoSyncThreshold`)**
+   Because Mark has no signal, Tracelet immediately stops trying to send HTTP requests. Instead, every location is securely stored in the local SQLite database. We set `autoSyncThreshold: 100`, meaning Tracelet won't even *attempt* to wake the network radio until at least 100 points are queued up in the database.
+
+2. **Debounced Syncing (`autoSyncDelay`)**
+   When Mark finally drives down the mountain and regains 4G, he suddenly has 500 queued locations. Instead of firing off 500 immediate HTTP requests (which would freeze his phone), `autoSyncDelay: 10000` tells Tracelet to wait 10 seconds. It debounces the rapid influx of data, letting the connection stabilize.
+
+3. **Batch Syncing (`batchSync` & `maxBatchSize`)**
+   Instead of 500 individual `POST` requests, `batchSync: true` and `maxBatchSize: 250` bundles the locations into two massive JSON arrays. It sends the first 250 points, waits for your server to return an `HTTP 200 OK`, deletes those points from SQLite, and then sends the next batch.
+
+4. **Interval-Based Sync (`syncInterval`)**
+   `autoSyncDelay` reacts to *new* locations. If you also want a time-driven flush — uploading whatever is queued on a fixed cadence, regardless of how many points have accumulated — set `syncInterval` to the number of seconds between flushes (e.g. `syncInterval: 60` flushes the offline queue once a minute). It runs alongside the debounce and is disabled by default (`0`).
+
+---
+
+## Scenario 2: Connecting to the Cafe Wi-Fi
+**Concepts Explored:** Cellular Restrictions, Delta Compression
+
+### The Problem
+Mark finishes his hike and goes to a cafe. He’s traveling internationally, so his cellular data plan is extremely expensive. Your app has queued up megabytes of location JSON data, and sending it over his roaming 4G connection will cost him money.
+
+### How Tracelet Sync Solves It
+
+1. **Cellular Restriction (`disableAutoSyncOnCellular`)**
+   By setting `disableAutoSyncOnCellular: true`, Tracelet completely blocks the sync engine while Mark is on 4G. The locations stay safe in SQLite. The moment he connects to the cafe's Wi-Fi, the OS wakes Tracelet up, and the sync engine automatically flushes the queue.
+
+2. **Delta Encoding Compression (`enableDeltaCompression`)**
+   Even on Wi-Fi, sending massive JSON arrays is slow. Tracelet applies **Delta Compression** before sending the batch. If Mark walked in a straight line, his latitude didn't change much. Instead of sending full coordinates for every point, Tracelet sends the first point fully, and then only the *difference* (the delta) for the subsequent points. With `deltaCoordinatePrecision: 5` (accurate to ~1.1 meters), this reduces the HTTP payload size by **60% to 80%**.
+
+   **Standard Payload (No Compression):**
+   ```json
+   [
+     {"lat": 37.774900, "lng": -122.419400},
+     {"lat": 37.774910, "lng": -122.419410},
+     {"lat": 37.774920, "lng": -122.419420}
+   ]
+   ```
+
+   **Delta Encoded Payload (What your server receives):**
+   ```json
+   [
+     {"lat": 37.774900, "lng": -122.419400},
+     {"dLat": 10, "dLng": 10},
+     {"dLat": 10, "dLng": 10}
+   ]
+   ```
+
+---
+
+## Scenario 3: The Expired Session
+**Concepts Explored:** 401 Retries, Headless Callbacks, Exponential Backoff
+
+### The Problem
+Mark's auth token (JWT) expired while he was hiking. When Tracelet finally tries to sync the batch to your server, your API returns an `HTTP 401 Unauthorized`. A naive sync engine would either delete the data thinking it failed, or get stuck in an infinite loop of 401s, draining the battery. Mark's phone is in his pocket with the screen off—he can't log in right now.
+
+### How Tracelet Sync Solves It
+
+1. **Dynamic Header Callbacks**
+   When Tracelet receives the 401, it must fetch a new token before retrying. You register callbacks to handle this in both foreground and background (headless) states.
+
+   **Foreground Callback:**
+   ```dart
+   tl.Tracelet.setHeadersCallback(() async {
+     final newJwt = await AuthAPI.refreshToken();
+     return {'Authorization': 'Bearer $newJwt'};
+   });
+   ```
+
+   **Background (Headless) Callback:**
+   This runs in an isolated Dart engine without waking your UI, ensuring syncing works even if the user force-quit the app.
+   ```dart
+   @pragma('vm:entry-point')
+   void headlessHeadersCallback(tl.HeadlessEvent event) async {
+     final newJwt = await AuthAPI.refreshToken();
+     tl.Tracelet.setDynamicHeaders({'Authorization': 'Bearer $newJwt'});
+   }
+
+   // Register it before runApp()
+   tl.Tracelet.registerHeadlessHeadersCallback(headlessHeadersCallback);
+   ```
+
+2. **Exponential Backoff (`maxRetries` & `retryBackoffCap`)**
+   What if your auth server is down and returns a 503? Tracelet handles this gracefully. It attempts a retry. It fails. It waits 1 second (`retryBackoffBase`), then 2 seconds, then 4 seconds. The exponential backoff is capped at 60 seconds (`retryBackoffCap`). After 3 attempts (`maxRetries`), it gives up entirely, leaving the data safely in SQLite to try again tomorrow.
+
+---
+
+## Scenario 4: The Custom Server Schema
+**Concepts Explored:** Custom Sync Body Builders, Schema Mapping
+
+### The Problem
+Mark's company has a legacy backend that expects location data in a very specific, non-standard format. Tracelet's default JSON payload doesn't match their server's required schema, and they can't change the backend API just for this app.
+
+### How Tracelet Sync Solves It
+
+1. **Custom Sync Body Builder (`setSyncBodyBuilder`)**
+   Instead of using the default JSON wrapper, Tracelet lets you intercept the batch of locations right before they are sent over the network, allowing you to map them into any shape your server desires.
+   
+   Starting from **Tracelet 3.2.8**, the locations passed to this builder use a robust **nested schema** (where coordinates are safely grouped under `coords` and activity data under `activity`).
+
+   ```dart
+   Tracelet.setSyncBodyBuilder((context) async {
+     // Map Tracelet's nested schema to your legacy server's flat schema
+     final mappedPoints = context.locations.map((loc) {
+       final coords = loc['coords'] as Map;
+       final activity = loc['activity'] as Map;
+       
+       return {
+         'lat': coords['latitude'],
+         'lng': coords['longitude'],
+         'time': loc['timestamp'],
+         'moving': loc['is_moving'],
+         'action': activity['type'],
+       };
+     }).toList();
+
+     // Return the exact JSON structure your server expects
+     return {
+       'device_id': myDeviceId,
+       'payload': mappedPoints,
+     };
+   });
+   ```
+
+2. **Headless Execution**
+   Just like token refreshes, this custom body building can also be executed completely headlessly in the background via `registerHeadlessSyncBodyBuilder()`, ensuring your custom schema is built and sent even when the app is completely terminated.
+
+---
+
+## Scenario 5: The Delivery Driver
+**Concepts Explored:** Route Context & Business Logic Injection
+
+### The Problem
+Your backend receives thousands of raw coordinates. But a coordinate alone doesn't tell you *why* the user was there. Was the driver on a delivery task? Which order were they delivering? You need a way to attach business logic directly to the background location payload so you can easily query it in your database.
+
+### How Tracelet Sync Solves It
+
+1. **Setting the Route Context**
+   You can inject custom metadata into Tracelet. Every location recorded after you call `setRouteContext()` will automatically be permanently tagged with this data in the internal SQLite database.
+
+   ```dart
+   await tl.Tracelet.setRouteContext(
+     const tl.RouteContext(
+       taskId: 'delivery-1234',
+       driverId: 'john_doe',
+       custom: {'shift_id': 'morning-shift-001'},
+     ),
+   );
+   ```
+
+2. **The Resulting JSON Payload**
+   When Tracelet syncs to your backend, every location in the array will include the `context` object, guaranteeing your backend knows exactly which task this location belongs to.
+
+    ```json
+    {
+      "locations": [
+        {
+          "coords": { "latitude": 37.7749, "longitude": -122.4194 },
+          "battery": { "level": 0.85, "isCharging": true },
+          "extras": { "your_custom_key": "your_value" },
+          "context": {
+            "taskId": "delivery-1234",
+            "driverId": "john_doe",
+            "custom": {
+              "shift_id": "morning-shift-001"
+            }
+          }
+        }
+      ]
+    }
+    ```
+
+### Battery State Tracking
+
+Tracelet is designed for harsh, offline environments where devices might sync hours after a location was recorded. To help you understand device health in the field, Tracelet automatically captures the exact battery state at the moment every location is recorded.
+
+This requires **zero configuration**:
+- The engine captures the `level` (e.g. 0.85 for 85%) and `isCharging` state.
+- This state is securely saved in the offline SQLite database alongside the GPS coordinates.
+- When the device comes back online, the sync engine transmits the exact historical battery state, not the current battery state.
+
+This allows your backend to accurately visualize battery drain over a route, or identify if drivers are consistently unplugging their devices during shifts.
+
+3. **Clearing Context**
+   When the driver finishes their delivery, clear the context. Subsequent locations will no longer be tagged.
+   
+   ```dart
+   await tl.Tracelet.clearRouteContext();
+   ```
+
+   You can even query the internal SQLite database based on this context before syncing:
+   ```dart
+   // Get all locations belonging to a specific delivery task
+   final locations = await tl.Tracelet.getLocations(
+     tl.SQLQuery(where: "context_task_id = 'delivery-1234'")
+   );
+   ```

@@ -1,0 +1,44 @@
+# Web Support
+
+Tracelet ships a **web implementation** (`tracelet_web`), so the same Dart API compiles and runs in the browser. The web platform is **foreground-only and supports a subset of the features** available on Android and iOS. Browsers fundamentally cannot run background geolocation, so web is best for live, in-tab tracking (dashboards, active driver/dispatch screens) rather than the always-on background tracking you get on mobile.
+
+> **The one limitation to remember:** there is **no background tracking** on web. The browser Geolocation API does not run in a backgrounded tab, a closed tab, or a Service Worker. Tracking happens only while your page is open and focused.
+
+## What works on web
+
+| Feature | Notes |
+|---|---|
+| Foreground location tracking | Browser Geolocation API (`watchPosition`); `start` / `stop` / `getCurrentPosition`. |
+| HTTP sync | `fetch`-based upload with batching and retries — the same `HttpConfig`. |
+| Geofencing | Proximity-evaluated while the page is open. |
+| Privacy zones | Exclude / degrade fixes inside sensitive areas. |
+| Audit trail | SHA-256 hash chain over records. |
+| Odometer & carbon estimate | Computed from the foreground track. |
+| Permissions & connectivity | `navigator.permissions` for location; `navigator.onLine` for connectivity. |
+| Local persistence | In-memory, with a `localStorage` backup when available (may be cleared in some incognito modes). |
+| Logging API | `getLogs()`, `clearLogs()`, and `log()` work as an in-memory log buffer. |
+| Foreground scheduling | Simple interval-based start/stop timers. |
+
+## What is **not** available on web
+
+| Feature | Why |
+|---|---|
+| **Background tracking** | Browsers suspend JS and geolocation in background tabs; Service Workers have no geolocation. |
+| **Boot / reboot resume (`startOnBoot`)** | There is no OS process to relaunch a web page. |
+| **Headless tasks & headless sync callbacks** | No background Dart isolate exists on web. |
+| **Background tasks (`startBackgroundTask`)** | No background execution. |
+| **Motion detection / Activity Recognition** | No reliable browser equivalent (motion permission is a stub). |
+| **Foreground-service notification** | An Android-only concept. |
+| **Encrypted database (`encryptDatabase`)** | Web storage is in-memory / `localStorage` (not encrypted) — the flag is a no-op. |
+| **Device attestation** | No browser equivalent. |
+| **Dead reckoning** | Not implemented on web. |
+| **Telematics & Custom Sync** | No hardware telematics (`getTelematicsEvents()`, `simulateTelematicsEvent()`) or custom background sync (`connectCustomSync()`). |
+| **`emailLog`, `playSound`, exact alarms** | No web equivalent (no-ops / unsupported). |
+
+Calls to unsupported APIs **do not crash** — they log a clear `[Tracelet Web] … not supported on web` message and return a safe default, so shared cross-platform code keeps running.
+
+## When to use web
+
+- ✅ Live tracking dashboards, dispatch/driver screens, or any flow where the tab stays open and focused.
+- ✅ Sharing one Dart codebase across mobile and web, with graceful degradation in the browser.
+- ❌ "Always-on" background tracking, geofence alerts while the tab is closed, or anything that needs the device to keep tracking without the page open — use the Android/iOS apps for that.

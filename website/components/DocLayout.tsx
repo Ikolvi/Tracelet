@@ -6,6 +6,7 @@ import LanguagePrompt from './LanguagePrompt'
 import TrackedLink from './TrackedLink'
 import NotificationBell from './NotificationBell'
 import { LocaleSwitch } from 'nextra-theme-docs'
+import VersionSwitch from './VersionSwitch'
 import 'nextra-theme-docs/style.css'
 
 const supportTitles: Record<string, string> = {
@@ -63,7 +64,29 @@ const reportIssueTitles: Record<string, string> = {
   ru: "Сообщить о проблеме"
 };
 
-export default function DocLayout({ children, pageMap, version, locale }: { children: React.ReactNode, pageMap: any, version: string, locale: string }) {
+const archivedNotice: Record<string, string> = {
+  en: "You are reading archived documentation for",
+  ja: "アーカイブされたドキュメントを読んでいます:",
+  zh: "您正在阅读已归档的文档:",
+  es: "Estás leyendo documentación archivada de",
+  hi: "आप संग्रहीत दस्तावेज़ पढ़ रहे हैं:",
+  ml: "നിങ്ങൾ ആർക്കൈവ് ചെയ്ത ഡോക്യുമെന്റേഷൻ വായിക്കുന്നു:",
+  ta: "நீங்கள் காப்பகப்படுத்தப்பட்ட ஆவணங்களைப் படிக்கிறீர்கள்:",
+  ru: "Вы читаете архивную документацию для"
+};
+
+const archivedCta: Record<string, string> = {
+  en: "Go to the latest docs",
+  ja: "最新のドキュメントへ",
+  zh: "前往最新文档",
+  es: "Ir a la documentación más reciente",
+  hi: "नवीनतम दस्तावेज़ पर जाएँ",
+  ml: "ഏറ്റവും പുതിയ ഡോക്യുമെന്റേഷനിലേക്ക്",
+  ta: "சமீபத்திய ஆவணங்களுக்குச் செல்லவும்",
+  ru: "Перейти к последней документации"
+};
+
+export default function DocLayout({ children, pageMap, version, locale, archivedSlug }: { children: React.ReactNode, pageMap: any, version: string, locale: string, archivedSlug?: string }) {
   return (
     <>
       <Layout
@@ -81,9 +104,7 @@ export default function DocLayout({ children, pageMap, version, locale }: { chil
         navbar={<Navbar logo={
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <b style={{ color: '#0F9D58' }}>Tracelet</b>
-            <span style={{ fontSize: '12px', background: 'rgba(15, 157, 88, 0.2)', padding: '2px 6px', borderRadius: '4px', color: '#0F9D58' }}>
-              {version}
-            </span>
+            <VersionSwitch locale={locale} archivedSlug={archivedSlug} />
           </div>
         }>
           <div className="hidden md:flex ml-4">
@@ -147,6 +168,30 @@ export default function DocLayout({ children, pageMap, version, locale }: { chil
           )
         }}
       >
+        {archivedSlug ? (
+          <div
+            role="note"
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              gap: '0.5rem',
+              margin: '0 0 1.5rem',
+              padding: '0.75rem 1rem',
+              borderRadius: '8px',
+              border: '1px solid rgba(217, 119, 6, 0.35)',
+              background: 'rgba(217, 119, 6, 0.10)',
+              fontSize: '0.9rem'
+            }}
+          >
+            <span>
+              {archivedNotice[locale] || archivedNotice.en} <b>{version}</b>.
+            </span>
+            <a href={`/${locale}`} style={{ color: '#0F9D58', fontWeight: 600 }}>
+              {archivedCta[locale] || archivedCta.en} →
+            </a>
+          </div>
+        ) : null}
         {children}
       </Layout>
       <RainBackground />

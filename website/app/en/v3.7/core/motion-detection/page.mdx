@@ -1,0 +1,89 @@
+import { Callout } from 'nextra/components'
+import LottiePlayer from '../../../../../components/LottiePlayer'
+
+# Motion Detection & Tracking Modes
+
+Tracelet transitions between active (continuous) tracking and inactive (stationary) tracking to save battery. The logic driving this transition is called **Motion Detection**.
+
+<LottiePlayer src="/animations/track.json" />
+
+You can configure exactly how Tracelet decides to switch from moving to stationary by setting the `motionDetectionMode` in your `MotionConfig`. Tracelet offers three distinct modes: `accelerometer` (default), `speed`, and `smart`.
+
+---
+
+## 1. Accelerometer Mode (Default)
+`MotionDetectionMode.accelerometer`
+
+This mode relies entirely on the device's hardware sensors (accelerometer, gyroscope, and OS Activity Recognition). It is the most battery-efficient and generally the most reliable for pedestrians.
+
+### How it works:
+- **Stationary Transition:** When the device's accelerometer detects stillness (no physical shaking or walking), Tracelet starts a countdown timer defined by `stopTimeout`. 
+- **`stopTimeout`:** The number of **minutes** the device must remain physically still before Tracelet switches off continuous GPS tracking and enters the low-power `STATIONARY` state. If the device moves during this countdown, the timer is canceled.
+  - *Default: 5 minutes*
+
+<Callout type="info">
+  **Best for:** Pedestrians, delivery drivers jumping in and out of vehicles, and scenarios where battery life is the absolute highest priority.
+</Callout>
+
+---
+
+## 2. Speed Mode
+`MotionDetectionMode.speed`
+
+In certain scenarios, a device might be moving at high speeds but registering zero acceleration on the hardware sensors (e.g., a phone resting on the dashboard of a smooth-riding bus or train). In `speed` mode, Tracelet ignores the accelerometer entirely and looks solely at the GPS speed from location fixes.
+
+### How it works:
+- **Stationary Transition:** When the GPS speed drops below `speedMovingThreshold` (default: 1.5 m/s), Tracelet considers the device to be slowing down and starts a countdown timer defined by `speedStationaryDelay`.
+- **`speedStationaryDelay`:** The number of **seconds** the GPS speed must stay consistently below the threshold before Tracelet switches off continuous tracking and enters the `STATIONARY` state.
+  - *Default: 180 seconds (3 minutes)*
+
+<Callout type="warning">
+  **Best for:** Vehicle tracking (trains, boats, long-haul trucks) where the device might be physically still relative to the vehicle, but the vehicle itself is moving at high speeds.
+</Callout>
+
+---
+
+## 3. Smart Mode
+`MotionDetectionMode.smart`
+
+Smart Mode runs *both* the Accelerometer engine and the Speed engine simultaneously and uses a logical **OR** coordinator. This provides the best of both worlds, preventing false "stationary" transitions when a vehicle is moving smoothly, while still benefiting from the immediate wake-up capabilities of the accelerometer.
+
+### How it works:
+- **Moving:** If **either** the accelerometer detects physical movement **OR** the GPS speed is above the threshold, the device stays in continuous tracking mode.
+- **Stationary Transition:** To transition to `STATIONARY` mode, **BOTH** the accelerometer AND the GPS speed engines must declare that the device is stationary.
+
+### The "Delayed Transition" Gotcha
+
+Because Smart Mode waits for *both* engines to declare stationary, the overall time it takes to enter the `STATIONARY` state is the **maximum** of the two configured timeouts.
+
+For example, if you configure:
+- `stopTimeout: 1` (1 minute / 60 seconds for the Accelerometer)
+- You leave `speedStationaryDelay` at its default (180 seconds for GPS Speed)
+
+When you stop moving:
+1. The accelerometer will declare stationary after **60 seconds**.
+2. However, the GPS speed engine is still running its **180-second** countdown.
+3. Tracelet will **not** enter the `STATIONARY` state until the full 180 seconds have passed.
+
+<Callout type="error">
+  **Configuration Tip:** If you want your app to transition to stationary after exactly 1 minute in `smart` mode, you **must** configure both timeouts to match!
+
+  ```dart
+  motion: MotionConfig(
+    motionDetectionMode: MotionDetectionMode.smart,
+    stopTimeout: 1, // 1 minute
+    speedStationaryDelay: 60, // 60 seconds
+  )
+  ```
+</Callout>
+
+---
+
+## Configuration Summary
+
+| Mode | Trigger | Timeout Parameter | Default |
+|---|---|---|---|
+| **Accelerometer** | Device physical movement | `stopTimeout` | 5 minutes |
+| **Speed** | GPS Speed `> 1.5 m/s` | `speedStationaryDelay` | 180 seconds |
+| **Smart** | Physical movement OR GPS speed | *Waits for both timeouts* | `max(5 min, 180s)` |
+

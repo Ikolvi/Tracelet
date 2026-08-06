@@ -1,0 +1,336 @@
+import { Callout } from 'nextra/components'
+
+# Driving & Safety
+
+Tracelet can turn the raw location + accelerometer stream into **meaningful
+events** about *how* a device is moving — entirely on the device, with no cloud
+calls. Added in **3.3.0**, there are three independent features:
+
+| Feature | What it tells you | You enable it with | You listen with |
+|---|---|---|---|
+| **Driving events** | "The driver braked hard / accelerated hard / took a sharp turn / is speeding" | `TelematicsConfig` | `Tracelet.onDrivingEvent` |
+| **Transport mode** | "The user is now walking / running / cycling / in a vehicle" | `ClassifierConfig` | `Tracelet.onModeChange` |
+| **Crash & fall** | "A crash (or fall) may have just happened" | `ImpactConfig` | `Tracelet.onImpact` |
+
+<Callout type="info">
+**Everything here is opt-in and off by default.** If you don't enable a feature,
+its engine is never even created — your existing tracking behaves exactly as
+before. Turn on only what you need.
+</Callout>
+
+---
+
+## Who is this for? (real-world examples)
+
+- **Usage-based insurance / fleet safety** → *driving events* give you a per-trip
+  picture of risky driving (harsh braking, speeding) without any server-side
+  processing.
+- **Delivery / field-service apps** → *transport mode* lets you tag each trip as
+  *driving* vs *walking* (e.g. "left the van, walking to the door").
+- **Lone-worker / rideshare / personal-safety apps** → *crash & fall detection*
+  gives you a trustworthy trigger (with a user "I'm fine" cancel window) to
+  start an SOS flow.
+
+You can enable any combination — they're independent.
+
+---
+
+## 1. Driving events (telematics)
+
+### The 30-second version
+
+```dart
+// 1. Turn it on (e.g. with a 50 km/h limit for speeding)
+await Tracelet.ready(Config(
+  telematics: TelematicsConfig(
+    enableDrivingEvents: true,
+    speedLimitKmh: 50,
+  ),
+));
+
+// 2. Listen
+Tracelet.onDrivingEvent((event) {
+  print('${event.kind} — severity ${event.severity}');
+});
+
+// 3. Start tracking as usual
+await Tracelet.start();
+```
+
+That's it. As the device moves, you'll get events like:
+
+```
+harsh_braking — severity 0.82
+speeding — severity 0.40
+```
+
+### What each field means
+
+Every `DrivingEvent` has:
+
+| Field | Meaning |
+|---|---|
+| `kind` | `harsh_braking`, `harsh_acceleration`, `harsh_cornering`, or `speeding` |
+| `severity` | `0.0`–`1.0` — how far past the threshold it was (handy for scoring) |
+| `value` | The measured number: **g-force** for harsh events, **km/h over the limit** for speeding |
+| `speed` | Speed at the moment, in m/s |
+| `latitude` / `longitude` / `timestamp` | Where & when |
+
+### Tuning the thresholds
+
+All thresholds are in **g** (1 g ≈ 9.81 m/s², the pull of gravity). The defaults
+follow common insurance/fleet practice — you rarely need to change them:
+
+| Option | Default | What it does |
+|---|---|---|
+| `harshBrakingG` | `0.40` | Brake harder than this → `harsh_braking` |
+| `harshAccelerationG` | `0.35` | Accelerate harder than this → `harsh_acceleration` |
+| `harshCorneringG` | `0.40` | Corner harder than this → `harsh_cornering` |
+| `speedLimitKmh` | `0` (off) | Speed limit; `0` disables speeding detection |
+| `speedingToleranceKmh` | `5` | Grace over the limit before it counts |
+| `speedingMinDurationMs` | `3000` | Must be over the limit this long (avoids brief blips) |
+| `minSpeedForEventsKmh` | `5` | Ignore events below this speed (parking-lot noise) |
+
+<Callout type="info">
+**Why no events sometimes?** Driving events are derived from GPS speed, which
+updates about once per second and is a bit noisy. Tracelet deliberately favours
+**accuracy over sensitivity** — it would rather miss a borderline event than
+cry wolf. For best results, use it while actually driving (not walking).
+</Callout>
+
+---
+
+## 2. Transport mode
+
+Tells you whether the user is `still`, `walking`, `running`, `cycling`, or in a
+`vehicle`, by combining accelerometer movement with GPS speed.
+
+```dart
+await Tracelet.ready(Config(
+  classifier: ClassifierConfig(enableFusedClassifier: true),
+));
+
+Tracelet.onModeChange((event) {
+  print('Now: ${event.mode} (confidence ${event.confidence})');
+});
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `enableFusedClassifier` | `false` | Master switch |
+| `fusedClassifierAuthoritative` | `false` | If `true`, the fused mode overrides the OS's activity for battery decisions. If `false` (default), it just **annotates** — the OS value stays in charge |
+| `modeSwitchDwellMs` | `8000` | A new mode must persist this long before it's reported (stops flickering) |
+| `minModeConfidence` | `0.6` | Below this, the mode is reported as `unknown` |
+
+<Callout type="info">
+**Annotate vs. override:** by default the classifier is a *second opinion* — it
+reports a mode but doesn't change how Tracelet samples GPS. Most apps want this.
+Only set `fusedClassifierAuthoritative: true` if you specifically want the fused
+result to drive battery/sampling behaviour.
+</Callout>
+
+---
+
+## 3. Crash & fall detection
+
+<Callout type="info">
+**Production-ready.** Crash detection ships with a stable on-device pipeline: a
+**rule engine** by default, plus an optional licensed **AI crash model** trained
+on a **CC0 / public-domain** crash dataset — so it is cleared for commercial use
+in production apps. Fall detection remains opt-in and best-effort. Track ongoing
+accuracy research in [Issue #183](https://github.com/Ikolvi/Tracelet/issues/183).
+</Callout>
+
+Detects a likely crash (a hard impact **while moving**) or, optionally, a
+personal fall. Because false alarms are costly, detection is **corroborated**
+(a big jolt alone is never enough) and gives the user a **countdown to cancel**.
+
+```dart
+await Tracelet.ready(Config(
+  impact: ImpactConfig(
+    enableCrashDetection: true,
+    confirmWindowMs: 15000,   // 15s for the user to say "I'm fine"
+  ),
+));
+
+Tracelet.onImpact((event) async {
+  if (event.isPotential) {
+    // Show a big "Are you OK?" countdown screen.
+    // If the user taps "I'm fine":
+    await Tracelet.cancelImpact(event.id);
+    // If they tap "Get help now":
+    // await Tracelet.confirmImpact(event.id);
+  } else {
+    // event.kind == 'crash' (or 'fall') — confirmed.
+    // The user didn't cancel in time → start your SOS flow.
+  }
+});
+```
+
+### How the flow works
+
+1. A hard impact while moving fast → you get a **`potential_crash`** event with
+   a `confirmDeadline`.
+2. Show a countdown UI. The user can **cancel** (`cancelImpact`) or **confirm now**
+   (`confirmImpact`).
+3. If they do nothing before the deadline → a confirmed **`crash`** event fires.
+
+| Option | Default | What it does |
+|---|---|---|
+| `enableCrashDetection` | `false` | Vehicle crash detection |
+| `enableFallDetection` | `false` | Personal fall (best-effort — more false alarms) |
+| `crashGThreshold` | `2.0` | Impact strength (g) to count as a crash. Lowered from 3.0 based on a large field-data study (3.0 g missed ~half of real crashes); favours recall since the cancel-countdown catches false alarms. Tune up if you see too many prompts. |
+| `crashMinSpeedKmh` | `25` | Must have been moving this fast (corroboration) |
+| `confirmWindowMs` | `15000` | Cancel countdown length |
+| `minImpactConfidence` | `0.6` | Suppress low-confidence candidates |
+
+<Callout type="warning">
+Tracelet gives you the **trigger and the cancel window** — it never makes phone
+calls or contacts emergency services. Building the actual SOS/emergency flow is
+your app's responsibility (and lets you control the UX and legal copy).
+</Callout>
+
+### The confirmation survives the app being killed
+
+A violent impact often ends with the OS killing the app — the phone is thrown,
+the vehicle comes to rest, the device goes into Doze. If the cancel-countdown
+lived only in memory, the confirmed `crash`/`fall` would silently never fire.
+Tracelet makes the countdown **process-death safe**: the instant a
+`potential_crash`/`potential_fall` is raised it is **persisted to disk** and a
+wake-up is armed for just after the deadline. If the app is still alive it
+confirms normally and disarms the wake-up; if it was killed, the wake-up
+**re-emits the confirmed event from a fresh process** so your SOS flow still runs.
+
+| Platform | Mechanism |
+|---|---|
+| **Android** | An exact `AlarmManager` alarm (`setExactAndAllowWhileIdle`, fires even in Doze) wakes a receiver that re-delivers the confirmed event. |
+| **iOS** | A local notification scheduled at the deadline alerts the user even while the app is dead; the confirmed event is re-delivered the next time the SDK runs (background relaunch or foreground). Grant notification permission for the user-facing alert — the re-delivery works either way. |
+
+A user **cancel** removes the persisted candidate and disarms the wake-up, so a
+cancelled candidate is never re-confirmed after a restart.
+
+### Extra clues that confirm a real crash or fall
+
+A big jolt on its own isn't enough — that would cause too many false alarms.
+So Tracelet looks for extra real-world clues that normally happen during a real
+crash or fall. The more clues it sees, the more sure it is. These clues can only
+make Tracelet **more** confident — they never cancel a real event.
+
+- **The phone was falling** — just before someone drops their phone or takes a
+  fall, the phone is briefly weightless. Spotting that makes a fall more
+  believable.
+- **Everything went still afterwards** — after a real fall, the person and phone
+  usually stop moving. That sudden stillness is a strong sign.
+- **The car suddenly stopped** — in a real crash the vehicle goes from fast to
+  almost stopped in a second or two. A sharp drop in speed backs up a crash.
+- **A pressure "pop"** — a serious crash (or an airbag going off) causes a quick
+  change in air pressure inside the car. Phones that have a pressure sensor can
+  notice this; phones without one simply skip this check, with no downside.
+
+### Optional: the licensed AI crash model
+
+By default crash detection uses a **rule engine** (the g-threshold + speed
+corroboration above) — no extra setup, works out of the box. For higher accuracy
+you can enable the **AI crash model**: a trained model that gates crashes on a
+learned probability instead of a fixed threshold.
+
+It's **opt-in and downloaded on demand** (never embedded), so the base SDK size
+is unchanged. To turn it on, get a license key and point your config at it:
+
+```dart
+await Tracelet.ready(Config(
+  impact: ImpactConfig(
+    enableCrashDetection: true,
+    crashModelUnlockUrl: 'https://unlock.ikolvi.com/unlock',
+    crashModelLicenseKey: '<your license key>',
+    crashModelThreshold: 0.5074,   // rf_probability_threshold from training
+  ),
+));
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `crashModelUnlockUrl` | `null` | Licensing endpoint that activates the model. `null` ⇒ pure rule engine |
+| `crashModelLicenseKey` | `null` | Your license key (from the Get a License page) |
+| `crashModelThreshold` | `0.5` | Probability at which the model flags a crash |
+
+If the model can't be activated for any reason (offline, invalid key) the SDK
+**automatically falls back to the rule engine** — your app keeps working.
+
+#### Get a license
+
+Grab a key from the **[Get a License](/en/get-license)** page: sign in, enter your
+**application id**, and copy a ready-to-paste key (or the full `ImpactConfig`
+snippet).
+
+- **dev license** — for debug builds & emulators. Just your app id, no extra
+  setup.
+- **prod license** — for your shipped app; also needs your app signing-cert
+  SHA-256 (Play Console → *App integrity → App signing*, or `./gradlew signingReport`).
+
+The portal also lists your issued keys and lets you **revoke** one instantly.
+
+---
+
+## Trying it without driving (simulation) & Database Access
+
+Tracelet includes dedicated database tables to store telematics events and a set of diagnostic APIs. These are heavily used by the **Tracelet Doctor** diagnostic overlay, but you can also use them directly in your app to build custom diagnostic screens or test your safety flows without needing to physically drive or crash a car.
+
+### Retrieving Telematics from the Database
+
+Every driving and impact event is automatically persisted to the local SQLite database. You can retrieve these structured records to display a history of risky driving behaviors:
+
+```dart
+// Fetch the 50 most recent telematics events from the database
+final events = await Tracelet.getTelematicsEvents(50);
+
+for (final event in events) {
+  print('Event Type: \${event.eventType}');   // e.g. harsh_braking, crash
+  print('Severity: \${event.severity}');
+  print('Location: \${event.latitude}, \${event.longitude}');
+}
+```
+
+### Simulating Events
+
+You can inject mock telematics events directly into the native tracking engines. This is perfect for testing your app's reaction (like showing an SOS screen on a crash) or testing your UI components. The example app's **Driving & Safety** page and the Tracelet Doctor overlay use this API to let developers trigger events via buttons.
+
+```dart
+// Simulate a harsh braking event (named arguments)
+await Tracelet.simulateTelematicsEvent(
+  eventType: 'harsh_braking',
+  severity: 0.85, // 0.0 to 1.0
+  latitude: 37.422,
+  longitude: -122.084,
+);
+```
+
+### Clearing the Database
+
+If you need to reset the diagnostic state or clear the history of telematics events from the local database, you can purge the queue:
+
+```dart
+await Tracelet.destroyTelematicsEvents();
+```
+
+In automated tests, you can also drive the engines directly from Dart (they're exposed via `flutter_rust_bridge`) — see `example/integration_test/behavior_simulation_test.dart`.
+
+---
+
+## Permissions
+
+- **Driving events** need only the location permission you already use for
+  tracking — **nothing extra**.
+- **Transport mode** and **crash/fall** use the accelerometer. On Android that's
+  already running for motion detection (no new permission). On iOS, adding the
+  *Motion & Fitness* usage description improves accuracy. See the
+  [iOS](/en/getting-started/platform-setup/ios) and
+  [Android](/en/getting-started/platform-setup/android) setup pages.
+
+## Good to know
+
+- **On-device & deterministic** — all detection runs in the shared Rust core. No
+  network, no cloud model, same results on Android and iOS.
+- **Driving events also work on Web** (they're GPS-derived).
+- **Side-channel** — these events are delivered *alongside* your normal
+  `onLocation` stream; they never change your locations, odometer, or sync.

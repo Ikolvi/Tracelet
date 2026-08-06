@@ -1,0 +1,61 @@
+import { Callout, Cards } from 'nextra/components'
+import LottiePlayer from '../../../../../components/LottiePlayer'
+
+# Core Concepts: A Journey Through Space and Time
+
+To truly understand how Tracelet's background location engine operates, we must abandon the idea of a simple "timer that pings the GPS." Instead, let's follow a user—Sarah, a delivery driver—through her day. Along the way, we'll see exactly how Tracelet's intelligent algorithms (the *what*) solve real-world problems (the *why* and *where*).
+
+---
+
+## Scenario 1: The Morning Commute
+**Concepts Explored:** Motion Detection, Adaptive Sampling, Elasticity
+
+<LottiePlayer src="/animations/delivery.json" />
+
+### The Problem
+Sarah wakes up, gets ready, and leaves her house. If her phone’s GPS was constantly polling at 10-meter intervals while she slept, her battery would be dead before she even started her shift. Once she gets in her car and drives onto the highway, a 10-meter interval is far too frequent and will overwhelm the database, but if it's too infrequent, her route will look like a straight line cutting through buildings.
+
+### How Tracelet Solves It
+
+1. **The STATIONARY State (`motion.stopTimeout`)**
+   While Sarah was sleeping, her phone's accelerometer detected zero movement. After 5 minutes (the default `stopTimeout`), Tracelet aggressively powered off the GPS radio entirely, entering the `STATIONARY` state. Her battery drain dropped to near 0%. The moment she picked up her phone to leave, the accelerometer woke Tracelet up instantaneously.
+
+2. **Adaptive Mode (`geo.enableAdaptiveMode`)**
+   As Sarah walks to her car, Tracelet uses a baseline `distanceFilter` of 10 meters. However, when she merges onto the highway doing 65 MPH, `enableAdaptiveMode` detects the high speed and automatically scales the `distanceFilter` up to 50 or 100 meters. 
+   
+   *Why?* Because at high speeds, you cover a lot of ground in a straight line. We don't need 100 points to draw a straight line on a highway.
+
+3. **Elasticity Multiplier (`geo.elasticityMultiplier`)**
+   This parameter controls *how aggressively* the distance filter stretches at high speeds. If she's a long-haul truck driver on an endless desert highway, you might set the `elasticityMultiplier` to `2.0` to stretch the filter even further, saving more battery.
+
+---
+
+## Scenario 2: The Subway Tunnel
+**Concepts Explored:** Dead Reckoning, Kalman Filtering, Odometer Accuracy
+
+### The Problem
+Sarah has a package to deliver downtown. She parks her car and takes the underground subway for three stops. While underground, she completely loses GPS signal. A normal location tracker would draw a straight line jumping from the entrance of the subway to the exit, ruining the total distance calculated for her payroll.
+
+### How Tracelet Solves It
+
+1. **Dead Reckoning (`geo.enableDeadReckoning`)**
+   After 10 seconds of zero GPS signal (configured via `deadReckoningActivationDelay`), Tracelet realizes she is in a GPS-denied environment. It activates the Dead Reckoning engine, fusing data from the accelerometer, gyroscope, and compass to guess her path through the tunnel based on her last known velocity and heading.
+
+2. **Odometer Accuracy Threshold (`geo.filter.odometerAccuracyThreshold`)**
+   As she exits the subway, the GPS signal bounces around the skyscrapers, giving a "fuzzy" location with 150m accuracy. Because her `odometerAccuracyThreshold` is set to `50` meters, Tracelet records the point but *refuses* to add that distance to her total trip odometer, ensuring she isn't paid for inaccurate "GPS bounce" distance.
+
+---
+
+## Scenario 3: The Office Desk
+**Concepts Explored:** Battery Budget Engine, Geofence Proxies
+
+### The Problem
+Sarah reaches a large corporate campus and spends 45 minutes walking around inside delivering packages. The GPS signal is weak, and the battery is starting to run low. 
+
+### How Tracelet Solves It
+
+1. **The Battery Budget (`android.batteryBudgetPerHour`)**
+   You configured Tracelet with a `batteryBudgetPerHour` of `2.0%`. Tracelet notices her battery is draining at 3.5% per hour due to the weak signal inside the building. The engine automatically degrades the `desiredAccuracy` from `high` to `medium` and increases the `distanceFilter` to force the battery drain back down under the 2.0% budget.
+
+2. **Unlimited Geofences via Proximity**
+   The corporate campus has 500 individual delivery zones (geofences). Both iOS and Android natively limit you to 20 or 100 geofences. Tracelet bypasses this hardware limitation by only registering the closest geofences within the `geofenceProximityRadius`. As Sarah walks through the campus, Tracelet seamlessly loads and unloads geofences into the OS hardware, allowing infinite geofences.

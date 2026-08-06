@@ -1,0 +1,274 @@
+import LottiePlayer from '../../../../../components/LottiePlayer'
+
+# Frequently Asked Questions
+
+<LottiePlayer src="/animations/help.json" />
+
+## General Permissions & Crashes
+
+### What happens if we don't add any permissions? Will it crash?
+**No, Tracelet will not crash.** Tracelet is designed to be highly resilient. If you attempt to call `Tracelet.start()` without declaring or requesting the mandatory location permissions, Tracelet will gracefully catch the SecurityException, log a detailed error to the console, and emit a failure event to your listeners. The app itself will continue running normally. However, no locations will be recorded until permissions are granted.
+
+### What happens if we don't enable motion (physical activity) permission?
+**No, it will not crash.** If the `ACTIVITY_RECOGNITION` (Android) or `Motion & Fitness` (iOS) permission is not granted, Tracelet will automatically fall back to standard distance-based tracking. 
+However, **battery drain will increase significantly**. Without motion detection, Tracelet cannot put the GPS hardware to sleep when the device is stationary. It is highly recommended to request this permission for production apps to ensure optimal battery life.
+
+## iOS Build & Setup
+
+### iOS build fails with "Undefined symbol" Rust/UniFFI errors (`_ffi_tracelet_core_rustbuffer_free`, `_uniffi_tracelet_core_checksum_method_*`)
+
+**Enable Flutter's Swift Package Manager integration.** Tracelet's Rust core (`TraceletCore.xcframework`, which exposes the UniFFI symbols used by `tracelet_ios`) is linked through Swift Package Manager. On the legacy CocoaPods-only path the framework isn't linked into the `tracelet_ios` target, so Xcode's linker reports undefined symbols such as `_ffi_tracelet_core_rustbuffer_free` and `_uniffi_tracelet_core_checksum_method_*`.
+
+Fix it with:
+
+```bash
+flutter config --enable-swift-package-manager
+flutter clean
+flutter pub get
+flutter run        # or: flutter build ios
+```
+
+Notes:
+
+- Build/run from the **Flutter CLI or your IDE** (VS Code), which drives the SPM-aware build, rather than opening the `.xcworkspace` and building straight from Xcode.
+- This is a one-time global Flutter setting; you don't need to change it per project.
+- `flutter clean` + a fresh `pod install` alone will **not** resolve it — the missing piece is SPM linking the Rust framework, not stale Pods.
+
+## Battery & Motion Sensors
+
+### Does the motion sensor pull drain more battery when walking?
+**No, it actually saves battery.** The hardware motion sensors (accelerometer/step detector) consume less than `0.1%` battery per hour. Tracelet uses this ultra-low-power sensor to completely turn off the extremely power-hungry GPS chip (which drains `4-8%` per hour) whenever the phone is resting on a desk. 
+
+When you start walking, the motion sensor immediately wakes up the GPS to record the trip. The overall result is a massive net-positive for battery life compared to traditional tracking.
+
+### Why don't I get continuous updates when the phone isn't moving?
+
+**This is intentional — it's the biggest battery saving Tracelet provides.** When motion detection determines the device has been still, Tracelet powers down the continuous GPS and switches to a low-power mode (periodic one-shot fixes or geofence monitoring). The moment real movement resumes, continuous tracking wakes automatically.
+
+If you still want a periodic "I'm here" location while stationary, set `heartbeatInterval` (seconds). Small GPS drift while parked does **not** inflate the odometer — fixes worse than `odometerAccuracyThreshold` (default `50` m) are excluded from distance.
+
+### How do I reduce battery usage even further?
+
+Tracelet already sleeps the GPS when stationary, but you have several levers:
+
+- **Battery budget** — set `batteryBudgetPerHour` in `GeoConfig` (e.g. `3.0` for 3%/hr). Tracelet then auto-adjusts `distanceFilter` and `desiredAccuracy` at runtime to stay under that target.
+- **Wakelock release** — set `releaseWakelockWhenStationary: true` in `AndroidConfig` to let the CPU sleep fully when the user is stationary (requires `MotionDetectionMode.smart`).
+- **Distance filter** — a larger `distanceFilter` (metres) records fewer fixes while moving.
+- **Lower accuracy** — `desiredAccuracy` of `medium`/`low` draws less power than `high`/`best`.
+- **Periodic mode** — for "roughly where are they" use cases, periodic one-shot fixes (`startPeriodic`) are dramatically cheaper than continuous tracking.
+- **Keep motion permission granted** — without `ACTIVITY_RECOGNITION` Tracelet can't sleep the GPS as aggressively.
+
+### What's the difference between the `motionDetectionMode` options?
+
+`motionDetectionMode` decides how Tracelet detects movement to start/stop the GPS:
+
+- **`accelerometer`** — uses the hardware motion sensors (and Activity Recognition where permitted). Lowest power, works indoors and without a GPS fix.
+- **`speed`** — uses GPS speed only. Simple and predictable, but it needs a GPS fix to notice you've stopped, so it reacts slower and uses more power.
+- **`smart`** — combines both: it stays in continuous tracking if *either* the accelerometer *or* GPS speed says you're moving, and only goes stationary when *both* agree you've stopped. Most robust against false transitions; recommended for most apps.
+
+---
+
+## Location Services & Tracking States
+
+### What happens if the user turns off location services while tracking is active?
+
+**Short answer:** Tracelet does **not** stop, crash, or tear down tracking. It keeps the tracking session armed, emits a **`providerchange`** event so your app can react, records no new locations while location is off (with two platform-specific exceptions below), and **automatically resumes** delivering locations the moment the user re-enables location — in every state (foreground, background, terminated). You do **not** need to call `start()` again.
+
+> "Location services off" here means the OS-level location toggle (Android: *Settings → Location*; iOS: *Settings → Privacy → Location Services*). Revoking the app's *permission* is a related but separate case — see the note at the end of this answer.
+
+#### How to detect it
+
+```dart
+final sub = tl.Tracelet.onProviderChange((tl.ProviderChangeEvent e) {
+  if (!e.enabled) {
+    // Location services were turned OFF — prompt the user / show a banner.
+  } else {
+    // Back ON — Tracelet has already resumed; no action required.
+  }
+});
+```
+
+`ProviderChangeEvent` carries `enabled`, `status` (authorization), `gps`, `network`, `accuracyAuthorization`, `gpsFallback`, and `mockLocationsDetected`. The same event is delivered to the **headless** callback in the background/killed state (if registered) and is persisted as a `providerchange` record unless you set `disableProviderChangeRecord: true`.
+
+#### Behavior by state and platform
+
+| State | Android | iOS |
+|---|---|---|
+| **Foreground** | `providerchange` (`enabled: false`) fires; the foreground service stays alive; no new fixes until re-enabled. | `providerchange` fires; `didFailWithError` is handled gracefully (one-shots fall back to the last known location); no new fixes. |
+| **Background** | Foreground service (and its notification) keeps running; fused updates simply stop; `providerchange` still dispatched. Resumes on re-enable. | The `CLLocationManager` subscription stays registered; iOS delivers nothing until location returns, then resumes (and can relaunch the app via region/SLC). |
+| **Terminated (killed)** | If a background/boot session is active (`stopOnTerminate: false` / `startOnBoot`), the service behaves as *Background* above. If the process isn't alive, nothing runs until the OS next starts it. | iOS relaunches the app via significant-location / region monitoring **only when a location/region event occurs** — which it can't while location is off. Once re-enabled, the next qualifying event relaunches and resumes. |
+
+In all cases the session state is preserved, so re-enabling location resumes tracking automatically without re-initialization.
+
+#### What Tracelet does *not* do
+
+- It does **not** auto-stop the session or clear your config/state.
+- It does **not** throw or crash — the platform "location off / denied" error is caught.
+- It does **not** fabricate locations (except Android dead reckoning, below) — your DB simply has a gap for the period location was off.
+
+#### Platform specifics worth knowing
+
+**Android** — If the user disables *GPS* but Wi-Fi/cell positioning is still on, Tracelet automatically **falls back** to balanced-power positioning and emits `providerchange` with `gpsFallback: true`, restoring full accuracy when GPS returns. Those approximate fixes **are** recorded and synced (tagged with `locationSource` and their real `accuracy`). If `enableDeadReckoning: true`, after GPS is lost for the configured delay Tracelet estimates positions from motion sensors until a real fix returns. The persistent notification stays visible throughout.
+
+**iOS** — A failed `requestLocation()` resolves one-shot requests with the last known location instead of hanging. iOS delivers no background or relaunch events while location is off; delivery and killed-state relaunch resume once it's turned back on.
+
+#### What you should do in your app
+
+1. Subscribe to `onProviderChange` and surface a banner/dialog when `enabled == false`.
+2. Optionally guide the user to settings via `Tracelet.openLocationSettings()`.
+3. Do **not** call `start()` again on re-enable — Tracelet resumes on its own; calling `start()` is harmless but unnecessary.
+
+#### Revoking the app's *permission* vs turning the toggle off
+
+Turning the **toggle** off affects all apps and is fully recoverable as above. Revoking the **app's location permission** (or downgrading "Always" → "While in use") is reported via the same `providerchange` event through the `status` / `accuracyAuthorization` fields. On Android 12+, if background-location permission is lost, a boot/background restart is intentionally skipped (it would otherwise fail silently) — re-grant the permission and re-initialize to resume.
+
+### How accurate are the locations, and how do I tell GPS from Wi-Fi/cell fixes?
+
+Every `Location` carries a real `coords.accuracy` in metres and a `locationSource` tag: `"gps"` (≤50 m), `"wifi"` (≤200 m), `"cell"` (worse), or `"network"` (during GPS fallback). Tracelet does **not** silently drop low-accuracy fixes — it records them so your trail stays continuous — but it keeps poor fixes out of the **odometer** (`odometerAccuracyThreshold`, default `50` m) and rejects impossible-speed jumps (`maxImpliedSpeed`).
+
+If you only want GPS-quality data, filter on your side by `locationSource == "gps"` or `accuracy <= 50`. If the user granted only **approximate/coarse** location (or iOS "Precise: Off"), every fix is approximate by OS policy — check `accuracyAuthorization` / `reducedAccuracy`.
+
+### Why does `getCurrentPosition()` fail with `LOCATION_FAILURE` on some phones but work on others?
+
+`PlatformException(LOCATION_FAILURE, "Failed to obtain location")` means the **one-shot request could not obtain a fresh fix within the `timeout` and had no cached location to fall back to**. It is not a bug in your code — it's the device's GPS/fused stack failing to deliver a fix in time. A high-accuracy one-shot asks for a *fresh* fix, and whether that succeeds within (e.g.) 30 s depends heavily on the device and environment:
+
+1. **"Google Location Accuracy" is OFF** — *Settings → Location → Location Services → Google Location Accuracy* (Wi-Fi/Bluetooth scanning). When on, the fused provider returns a Wi-Fi/cell fix indoors almost instantly; when off, the phone must wait for a raw GPS fix that never arrives indoors. **This is the #1 cause of "works on my phone, not theirs."**
+2. **Indoors / underground / no sky view** — a cold GPS fix needs sky visibility, and budget chipsets can exceed 30 s for a cold first fix (TTFF) while flagships get assisted-GPS fixes in seconds.
+3. **GPS provider disabled at the OS level** (network-only location) — a pure high-accuracy request has nothing to lock onto.
+4. **Google Play Services missing/outdated** (some Huawei/AOSP builds) — the fused client can't run.
+5. **Sample count** — with `samples: 3` Tracelet must collect three fixes; in marginal signal it may get one and time out before the rest. `samples: 1` is more forgiving indoors.
+
+**How to make it reliable — fall back to the last known location:**
+
+```dart
+Future<tl.Location?> bestPosition() async {
+  try {
+    return await tl.Tracelet.getCurrentPosition(
+      desiredAccuracy: tl.DesiredAccuracy.high,
+      timeout: 60,        // cold GPS fixes on budget phones can exceed 30 s
+      samples: 1,         // more forgiving indoors than 3
+      maximumAge: 30000,  // accept a <30 s-old cached fix instantly
+    );
+  } on PlatformException catch (e) {
+    if (e.code == 'LOCATION_FAILURE') {
+      // Weak/indoor signal — fall back to the cached fix before giving up.
+      return await tl.Tracelet.getLastKnownLocation();
+    }
+    rethrow;
+  }
+}
+```
+
+- `maximumAge` returns a recent cached fix immediately without waking the GPS — ideal for attendance/check-in where a 30 s-old position is fine.
+- `getLastKnownLocation()` never activates a provider and returns whatever the fused cache holds, so you only show a "weak signal" message when there is genuinely nothing available.
+- Keep `timeout` generous (45–60 s) for the first fix after launch, and prompt users to enable **Google Location Accuracy** if indoor fixes keep failing (detect provider state via `getProviderState()` / `getHealth()`).
+
+---
+
+## Background & Termination
+
+### Does Tracelet keep tracking after the app is closed or swiped away?
+
+**Android — yes, with `stopOnTerminate: false`.** When the user swipes the app out of recents, Tracelet hands tracking over to a native background service that needs no Flutter engine, so location capture and sync continue. The persistent foreground-service notification is what keeps that service alive. With `stopOnTerminate: true`, tracking stops on swipe-away as expected.
+
+**iOS — it depends on how the app was closed.** If iOS terminates the app for memory/system reasons, it **relaunches** it in the background on the next significant-location-change and resumes. If the **user** force-quits the app (swipe up in the app switcher), iOS deliberately suspends all of its location services until the app is opened again — Apple does not let any SDK override this.
+
+---
+
+## Offline & Sync
+
+### What happens to my locations if the device has no internet?
+
+**Nothing is lost.** Every fix is written to the on-device database (encrypted when `encryptDatabase: true`) the instant it's captured — independent of the network. Auto-sync uploads them when connectivity returns, retrying with exponential backoff (`maxRetries`, `retryBackoffBase`, `retryBackoffCap`). A batch is deleted from the database **only after the server confirms receipt**, so a failed or interrupted upload is simply retried, never dropped.
+
+Locations buffer within your retention limits (`maxDaysToPersist`, `maxRecordsToPersist`); the oldest are pruned once those are exceeded. You can also hold uploads off cellular with `disableAutoSyncOnCellular: true`.
+
+### Will tracelet_sync automatically push to my backend when the internet comes back?
+
+**Yes, automatically and entirely in the background.** If you use `tracelet_sync` (or its wrappers like `tracelet_supabase` / `tracelet_firebase`), you do not need to write any network-retry logic yourself. 
+
+When the OS detects that network connectivity has been restored, the native sync engine immediately wakes up in the background and begins uploading the cached locations to your backend in chronological batches. It continues uploading until the local database is fully caught up with the server, ensuring zero data loss even after prolonged offline periods.
+
+
+---
+
+## Reboot & Device Unlock
+
+### After a reboot, does Tracelet start tracking before I unlock the device?
+
+**No — the device must be unlocked at least once after a reboot before Tracelet resumes.** This is an Android platform rule (Direct Boot / File-Based Encryption), not a Tracelet limitation, and it applies to every location SDK.
+
+After a cold boot the device is in **Direct Boot** mode and most app data is still encrypted. Android only delivers the `BOOT_COMPLETED` broadcast that Tracelet's boot receiver listens for **after the user unlocks the device the first time** (PIN / pattern / password / biometric). Until then, the credential-encrypted storage that holds Tracelet's config, state, and location database is inaccessible — there is nothing to read or write.
+
+The sequence after a reboot is therefore:
+
+1. Device boots → **Tracelet is idle.**
+2. User unlocks once → `BOOT_COMPLETED` fires → Tracelet resumes tracking and sync.
+
+> Only the **first** unlock matters. After that the screen can be locked again (phone in pocket, screen off) and tracking/sync continue normally.
+
+**Requirements for boot resume:** `startOnBoot: true`, `stopOnTerminate: false`, and background-location ("Always") permission granted. On **Android 14+** the OS additionally forbids starting a *location* foreground service from boot, so Tracelet falls back to WorkManager/alarm tracking (no persistent notification) until the app is next opened.
+
+**iOS** cannot auto-start on reboot at all — apps can't run on boot and stay unlaunched until the user opens the app or a significant-location-change relaunches it, which itself only happens after the first post-reboot unlock.
+
+### Can it track *before* the first unlock?
+
+Not by default. Capturing locations before unlock requires Android **Direct Boot**, which means moving the data Tracelet needs into **device-encrypted** storage — readable before the user authenticates, a weaker at-rest guarantee than the credential-encrypted (and optionally `encryptDatabase`-protected) storage Tracelet uses normally. To keep your data fully protected, Tracelet does **not** enable Direct Boot out of the box. If pre-unlock tracking is a hard requirement for your use case, it can be enabled as an advanced, app-level opt-in — reach out before relying on it.
+
+---
+
+## Geofencing
+
+### Geofence transitions don't fire when I test with mock / simulated locations (it worked in 1.x)
+
+**Mock locations still work — but in high-accuracy geofence mode your mocked fixes are being filtered out before the geofence is evaluated.** With `geofenceModeHighAccuracy: true`, transitions are computed **in-app** from the continuous-GPS stream, and the evaluator only runs on fixes that **pass** the location filter. Route-simulation tools usually "teleport" between points, and those jumps get rejected by:
+
+- **`maxImpliedSpeed`** — the implausible speed between two far-apart samples is treated as an outlier and dropped.
+- **`useKalmanFilter: true`** — the smoother fights abrupt, non-physical mock jumps.
+- **`trackingAccuracyThreshold`** — some mock providers report `accuracy = 0` or an unrealistic value that fails the threshold.
+
+A geofence placed on your **current** location still fires because `geofenceInitialTriggerEntry: true` emits an `ENTER` on registration (no movement needed) — so it never goes through the filter.
+
+**For mock testing in high-accuracy mode**, relax the filters:
+
+```dart
+filter: tl.LocationFilter(
+  rejectMockLocations: false,
+  useKalmanFilter: false,        // disable smoothing
+  maxImpliedSpeed: 0,            // 0 disables the implied-speed reject
+  trackingAccuracyThreshold: 0,  // accept regardless of reported accuracy
+),
+geo: tl.GeoConfig(distanceFilter: 0, disableElasticity: true),
+```
+
+Also select your mock app under **Developer Options → Select mock location app**, and advance the simulated route in small, realistic steps.
+
+**The simplest path** is to test in *standard* geofence mode (`geofenceModeHighAccuracy: false`), which delegates to the OS geofencing service. The OS evaluates against the fused provider and honors the system mock-location app **without** the SDK filters — use a radius of **≥ ~100 m** there, since the OS enforces a practical minimum and small/EXIT transitions are unreliable below that.
+
+With `debug: true` and `logLevel: verbose`, watch the logs for `Location filtered by Rust processor: <reason>` — it tells you exactly which filter dropped each mocked fix.
+
+## Data Security & Privacy
+
+### Is my location data encrypted at rest?
+
+Optionally, yes. Set `encryptDatabase: true` to encrypt the local SQLite database that buffers locations. On Android this uses **SQLCipher** (AES-256) and requires you to add the SQLCipher dependency to your app — it's kept optional so the default build stays small, and calling `encryptDatabase` without it throws a clear error. On iOS the encrypted store is handled natively.
+
+For tamper-evidence rather than confidentiality, the **audit trail** (`audit.enabled`) hash-chains each record (e.g. SHA-256) so you can prove the history wasn't altered after the fact. **Privacy zones** let you suppress or redact fixes inside sensitive areas (such as a user's home).
+
+### Does Tracelet detect mock / fake GPS locations?
+
+Yes, via `mockDetectionLevel` on `LocationFilter`:
+
+- **`disabled`** (default) — all locations accepted unconditionally.
+- **`basic`** — trusts the platform's "is mock" flag.
+- **`heuristic`** — the platform flag *plus* native heuristics and a Dart-side timestamp check, to catch spoofers that hide the flag.
+
+At `heuristic`, each `Location` is annotated with why it was judged real or fake, so you can accept, flag, or reject mock fixes in your own logic.
+
+---
+
+## Migrating from flutter_background_geolocation
+
+### I'm coming from `flutter_background_geolocation` — how hard is the switch?
+
+Tracelet's API is intentionally close to `flutter_background_geolocation`, so most apps map over with minimal changes — `ready`/`start`/`stop`, the location/motion/provider events, and HTTP sync all have direct equivalents. See the full [migration guide](https://github.com/Ikolvi/Tracelet/blob/main/help/MIGRATION-FROM-FBG.md) for the config/event mapping table and the handful of behavioural differences to watch for.

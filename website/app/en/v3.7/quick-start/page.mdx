@@ -1,0 +1,119 @@
+---
+title: "Quick Start"
+description: "Get background tracking running in your app instantly using our highly optimized pre-built configuration profiles."
+---
+
+import { Callout } from 'nextra/components'
+import CopySetupPrompt from '../../../../components/CopySetupPrompt'
+
+# ⚡ 10-Minute Quick Start
+
+Get background tracking running in your app instantly using our highly optimized pre-built configuration profiles.
+
+<Callout type="info" emoji="✨">
+  **Prefer an AI to do the setup for you?** Copy our setup prompt and paste it into Claude, ChatGPT, Cursor, or any AI coding agent working in your project. It will fetch the latest docs from this website, ask you a few questions about your app (use case, battery targets, backend sync, compliance needs…), and then install and configure Tracelet for you automatically.
+
+  <div style={{ marginTop: '0.75rem' }}>
+    <CopySetupPrompt variant="inline" />
+  </div>
+</Callout>
+
+### 1. Install Tracelet
+
+```bash
+flutter pub add tracelet
+```
+
+### 2. Add Platform Permissions
+
+**iOS Setup (`ios/Runner/Info.plist`)**
+You must explicitly define usage descriptions and background modes to prevent Apple from rejecting your app or killing the background task:
+
+```xml
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>We need your location to track your route.</string>
+<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+<string>We need background location to record your route even when the app is closed.</string>
+<key>NSMotionUsageDescription</key>
+<string>Motion detection allows battery-efficient tracking by pausing GPS when stationary.</string>
+<key>UIBackgroundModes</key>
+<array>
+  <string>location</string>
+  <string>fetch</string>
+</array>
+```
+
+**Android Setup (`android/app/src/main/AndroidManifest.xml`)**
+Tracelet automatically injects all necessary permissions into your compiled app (such as `ACCESS_FINE_LOCATION`, `ACCESS_BACKGROUND_LOCATION`, `FOREGROUND_SERVICE`, `ACTIVITY_RECOGNITION`, etc.). **You do not need to manually add them to your manifest.**
+
+If you want to remove any optional permissions (for example, if you don't need motion detection), you can forcefully remove them using the Android manifest merger. For a full guide on which permissions are mandatory, which are optional, and exactly how to remove them, see the [Android Platform Setup](/en/installation).
+
+### 3. Initialize & Track
+
+Start Tracelet using the pre-configured **Balanced Profile**. This is the perfect default that actively tracks when the user is moving, and completely powers down GPS when stationary to save battery. This code also registers the **Headless Task** so tracking continues flawlessly even if the user swipes the app away!
+
+```dart
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:tracelet/tracelet.dart';
+
+// 1. Define a top-level Headless Task to handle events when the app is killed
+@pragma('vm:entry-point')
+void headlessTask(HeadlessEvent event) {
+  print('[Headless] Event received while app is killed: ${event.name}');
+}
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // 2. Register the headless task BEFORE runApp!
+  Tracelet.registerHeadlessTask(headlessTask);
+
+  // 3. Request permissions required for background tracking natively via Tracelet
+  if (Platform.isAndroid) {
+    await Tracelet.requestNotificationAuthorization(); // Required for Android 13+ Foreground Service
+    await Tracelet.requestMotionAuthorization(); // Required for Motion Detection heuristics
+  }
+  
+  final authStatus = await Tracelet.requestLocationAuthorization();
+  if (authStatus == AuthorizationStatus.deniedForever) {
+    print("Permissions denied!");
+    return;
+  }
+
+  // 4. (Optional) Mitigate Aggressive OEM Battery Managers (Xiaomi, Huawei, etc.)
+  if (Platform.isAndroid) {
+    final health = await Tracelet.getSettingsHealth();
+    if (health['isAggressiveOem'] == true) {
+      await Tracelet.showPowerManager(); // Prompts user to whitelist the app
+    }
+  }
+
+  // 5. Listen to real-time location events
+  Tracelet.onLocation((location) {
+    print('[Tracelet] Location: ${location.coords.latitude}, ${location.coords.longitude}');
+  });
+
+  // 6. Configure Tracelet with the Balanced Profile and Notification settings
+  await Tracelet.ready(Config.balanced(
+    url: 'https://api.your-server.com/locations',
+    headers: {'Authorization': 'Bearer YOUR_TOKEN'},
+    startOnBoot: true,
+    stopOnTerminate: false, // Ensures tracking continues when app is swiped away
+    android: AndroidConfig(
+      foregroundService: ForegroundServiceConfig(
+        contentTitle: "Background Tracking",
+        contentText: "We are tracking your location securely.",
+        notificationIcon: "mipmap/ic_launcher",
+      ),
+    ),
+  ));
+
+  // 7. Start tracking!
+  await Tracelet.start();
+
+  runApp(MyApp());
+}
+```
+
+That's it! Tracelet will now automatically handle background execution, motion detection heuristics, offline SQLite caching, and network synchronization entirely on its own.

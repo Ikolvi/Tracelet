@@ -1,11 +1,4 @@
 export default {
-  "v3.7": {
-    "title": "3.7.6 (archived)",
-    "display": "hidden"
-  },
-
-
-
   "index": "Home",
   "quick-start": "Quick Start (2 min)",
   "getting-started": "Getting Started",
