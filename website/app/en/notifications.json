@@ -1,15 +1,20 @@
 {
-  "badgeTitle": "New in 3.8.0-beta",
+  "badgeTitle": "New in 3.8.0-beta.2",
   "items": [
     {
-      "title": "Distance on foot is finally right",
-      "description": "Smoothing now applies to the odometer, so useKalmanFilter affects the distance you record — not just the track you draw.",
+      "title": "Filter settings now apply without a restart",
+      "description": "trackingAccuracyThreshold, odometerAccuracyThreshold, maxImpliedSpeed and useKalmanFilter used to be accepted and then ignored until the next cold start. They take effect on the next fix, and the odometer keeps its anchor.",
       "href": "/core/advanced-geo"
     },
     {
-      "title": "The location filters tune themselves",
-      "description": "A committed transport mode picks the distance filter and accuracy gates for walking, running, cycling or driving.",
-      "href": "/core/driving-safety#auto-tuning-the-location-filters"
+      "title": "See which thresholds are actually in force",
+      "description": "getCurrentLocationTuning() reads back from the native location processor instead of echoing your config — so you can tell what the filters are really using, including a transport-mode auto-tune you did not set.",
+      "href": "/core/driving-safety"
+    },
+    {
+      "title": "Docs for older versions",
+      "description": "The version dropdown next to the logo switches between the current docs and frozen archives of previous releases.",
+      "href": "/v3.7/en"
     }
   ]
 }
