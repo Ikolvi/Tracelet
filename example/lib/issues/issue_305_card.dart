@@ -151,7 +151,8 @@ class _Issue305CardState extends State<Issue305Card> {
           'geofenceInitialTrigger method channel web plugin deprecated '
           'AndroidConfig GeofenceConfig TraceletProfile highAccuracy preset '
           'cross-platform flag dropped transport',
-      title: '#305: Cross-platform geofence flag dropped on web + method channel',
+      title:
+          '#305: Cross-platform geofence flag dropped on web + method channel',
       description:
           'Asserts that the built-in profiles enable high-accuracy geofencing '
           'through the cross-platform GeofenceConfig flag (so iOS sees it), '
