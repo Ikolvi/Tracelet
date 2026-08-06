@@ -48,6 +48,10 @@ import 'package:tracelet_example/issues/issue_294_card.dart';
 import 'package:tracelet_example/issues/issue_297_card.dart';
 import 'package:tracelet_example/issues/issue_299_card.dart';
 import 'package:tracelet_example/issues/issue_301_card.dart';
+import 'package:tracelet_example/issues/issue_303_card.dart';
+import 'package:tracelet_example/issues/issue_304_card.dart';
+import 'package:tracelet_example/issues/issue_305_card.dart';
+import 'package:tracelet_example/issues/issue_306_card.dart';
 import 'package:tracelet_example/issues/battery_budget_remote_config_card.dart';
 import 'package:tracelet_example/issues/mock_rejection_card.dart';
 import 'package:tracelet_example/issues/remote_config_card.dart';
@@ -1720,6 +1724,10 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
                   // own title/description/keywords via IssueSearchScope, so they
                   // are rendered directly. Cards with a bespoke layout (no shell)
                   // stay wrapped in _searchableCard with explicit keywords.
+                  const Issue306Card(),
+                  const Issue305Card(),
+                  const Issue304Card(),
+                  const Issue303Card(),
                   const Issue301Card(),
                   const Issue299Card(),
                   const Issue297Card(),

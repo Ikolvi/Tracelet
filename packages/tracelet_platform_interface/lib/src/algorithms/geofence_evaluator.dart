@@ -163,16 +163,33 @@ class GeofenceEvaluator {
   /// accuracy circle clears the fence (`distance - accuracy > radius + buffer`),
   /// preventing a single high-drift fix from firing a false EXIT (#274). Pass
   /// `0.0` (the default) to disable gating and keep the legacy behavior.
+  ///
+  /// [exitAccuracyMax] mirrors `GeofenceConfig.geofenceExitAccuracyMax` (#276),
+  /// which both native managers apply to the raw accuracy *before* it reaches
+  /// this test. Until #306 this evaluator had no equivalent, so it gated on raw
+  /// accuracy and diverged from the SDK it mirrors:
+  ///
+  /// - `-1` (the default): pass accuracy through unchanged — full gating.
+  /// - `0`: disable gating — fastest EXIT, drift-prone.
+  /// - `N > 0`: clamp accuracy to `N`, bounding the worst-case EXIT delay.
   List<GeofenceTransition> evaluateProximity({
     required double latitude,
     required double longitude,
     required List<Map<String, Object?>> geofences,
     double accuracy = 0.0,
+    int exitAccuracyMax = -1,
   }) {
     // Clamp unknown/invalid accuracy (some platforms report negative when the
     // fix has no horizontal accuracy) to 0 so gating is a no-op rather than
     // pulling the exit threshold inward (#274).
-    final acc = accuracy.isFinite && accuracy > 0 ? accuracy : 0.0;
+    final rawAcc = accuracy.isFinite && accuracy > 0 ? accuracy : 0.0;
+    // Then apply the host's exit-accuracy policy (#276/#306), matching
+    // `effectiveExitAccuracy` in both native GeofenceManagers.
+    final acc = exitAccuracyMax < 0
+        ? rawAcc
+        : exitAccuracyMax == 0
+        ? 0.0
+        : (rawAcc < exitAccuracyMax ? rawAcc : exitAccuracyMax.toDouble());
 
     // When a spatial index exists, use it to narrow candidates.
     final effectiveGeofences = _resolveGeofences(

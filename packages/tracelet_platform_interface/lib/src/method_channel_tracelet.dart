@@ -642,12 +642,12 @@ class MethodChannelTracelet extends TraceletPlatform {
     return {
       'geo': _geoToMap(config.geo),
       'app': _appToMap(config.app),
-      'android': _androidToMap(config.android),
+      'android': _androidToMap(config.android, config.geofence),
       'ios': _iosToMap(config.ios),
       'http': _httpToMap(config.http),
       'logger': _loggerToMap(config.logger),
       'motion': _motionToMap(config.motion),
-      'geofence': _geofenceToMap(config.geofence),
+      'geofence': _geofenceToMap(config.geofence, config.android),
       'persistence': _persistenceToMap(config.persistence),
       'audit': _auditToMap(config.audit),
       'privacyZone': _privacyZoneToMap(config.privacyZone),
@@ -689,7 +689,14 @@ class MethodChannelTracelet extends TraceletPlatform {
     'remoteConfigRefreshInterval': c.remoteConfigRefreshInterval,
   };
 
-  Map<String, Object?> _androidToMap(TlAndroidConfig c) => {
+  /// [geofence] is threaded in only for `geofenceModeHighAccuracy`: the native
+  /// side reads that key from the `android` block as well as the `geofence`
+  /// one, and both must carry the same OR of the cross-platform flag with the
+  /// deprecated Android-only one (#305).
+  Map<String, Object?> _androidToMap(
+    TlAndroidConfig c,
+    TlGeofenceConfig geofence,
+  ) => {
     'locationUpdateInterval': c.locationUpdateInterval,
     'fastestLocationUpdateInterval': c.fastestLocationUpdateInterval,
     'deferTime': c.deferTime,
@@ -772,9 +779,22 @@ class MethodChannelTracelet extends TraceletPlatform {
     'activityTypes': c.activityTypes?.map((e) => e?.name).toList(),
   };
 
-  Map<String, Object?> _geofenceToMap(TlGeofenceConfig c) => {
+  /// #305: this previously emitted only two of the five geofence keys, silently
+  /// dropping `geofenceModeHighAccuracy`, `geofenceInitialTrigger` and
+  /// `geofenceExitAccuracyMax` (the #276 tunable) on the method-channel
+  /// transport. High-accuracy mode is the cross-platform flag OR'd with the
+  /// deprecated Android-only one, matching both Pigeon host implementations —
+  /// hence [android] is needed here.
+  Map<String, Object?> _geofenceToMap(
+    TlGeofenceConfig c,
+    TlAndroidConfig android,
+  ) => {
     'geofenceInitialTriggerEntry': c.geofenceInitialTriggerEntry,
+    'geofenceInitialTrigger': c.geofenceInitialTrigger,
     'geofenceProximityRadius': c.geofenceProximityRadius,
+    'geofenceModeHighAccuracy':
+        c.geofenceModeHighAccuracy || android.geofenceModeHighAccuracy,
+    'geofenceExitAccuracyMax': c.geofenceExitAccuracyMax,
   };
 
   Map<String, Object?> _persistenceToMap(TlPersistenceConfig c) => {

@@ -698,6 +698,8 @@ external fun uniffi_tracelet_core_checksum_method_locationprocessor_restore_base
 ): Short
 external fun uniffi_tracelet_core_checksum_method_locationprocessor_retune(
 ): Short
+external fun uniffi_tracelet_core_checksum_method_locationprocessor_set_base_tuning(
+): Short
 external fun uniffi_tracelet_core_checksum_method_scheduleparser_calculate_next_alarms(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_scheduleparser_is_within_schedule(
@@ -785,6 +787,8 @@ external fun uniffi_tracelet_core_checksum_method_databasemanager_is_empty(
 external fun uniffi_tracelet_core_checksum_method_databasemanager_mark_telematics_synced(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_prune_logs(
+): Short
+external fun uniffi_tracelet_core_checksum_method_databasemanager_prune_logs_older_than(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_set_encryption_key(
 ): Short
@@ -978,6 +982,8 @@ external fun uniffi_tracelet_core_fn_method_locationprocessor_restore_base_tunin
 ): Unit
 external fun uniffi_tracelet_core_fn_method_locationprocessor_retune(`ptr`: Long,`tuning`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+external fun uniffi_tracelet_core_fn_method_locationprocessor_set_base_tuning(`ptr`: Long,`tuning`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 external fun uniffi_tracelet_core_fn_clone_scheduleparser(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
 external fun uniffi_tracelet_core_fn_free_scheduleparser(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1101,6 +1107,8 @@ external fun uniffi_tracelet_core_fn_method_databasemanager_is_empty(`ptr`: Long
 external fun uniffi_tracelet_core_fn_method_databasemanager_mark_telematics_synced(`ptr`: Long,`maxId`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 external fun uniffi_tracelet_core_fn_method_databasemanager_prune_logs(`ptr`: Long,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_tracelet_core_fn_method_databasemanager_prune_logs_older_than(`ptr`: Long,`maxDays`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 external fun uniffi_tracelet_core_fn_method_databasemanager_set_encryption_key(`ptr`: Long,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -1422,6 +1430,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_retune() != 24775.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_set_base_tuning() != 15053.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_tracelet_core_checksum_method_scheduleparser_calculate_next_alarms() != 37817.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1552,6 +1563,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_prune_logs() != 51361.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tracelet_core_checksum_method_databasemanager_prune_logs_older_than() != 10098.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_set_encryption_key() != 2884.toShort()) {
@@ -3587,6 +3601,24 @@ public interface DatabaseManagerInterface {
     fun `pruneLogs`(`limit`: kotlin.Int)
     
     /**
+     * Deletes log rows older than `max_days` (#304).
+     *
+     * `logMaxDays` was a documented retention window that nothing implemented:
+     * both platforms pruned only by a row count derived from `logLevel`, so the
+     * configured number of days was accepted and discarded. Row-count pruning
+     * alone cannot express "keep two weeks", because how many rows that is
+     * depends entirely on how chatty the session was.
+     *
+     * `max_days <= 0` is a no-op rather than an error, so callers can pass the
+     * config value straight through to mean "no age-based retention" and keep
+     * relying on the count cap alone.
+     *
+     * `timestamp` is stored as `datetime('now')` (UTC, `YYYY-MM-DD HH:MM:SS`),
+     * so it compares correctly as text against SQLite's own modifier output.
+     */
+    fun `pruneLogsOlderThan`(`maxDays`: kotlin.Int)
+    
+    /**
      * Sets the encryption key (32 bytes max). If the string is empty or invalid, encryption is disabled.
      */
     fun `setEncryptionKey`(`key`: kotlin.String)
@@ -4171,6 +4203,35 @@ open class DatabaseManager: Disposable, AutoCloseable, DatabaseManagerInterface
     UniffiLib.uniffi_tracelet_core_fn_method_databasemanager_prune_logs(
         it,
         FfiConverterInt.lower(`limit`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Deletes log rows older than `max_days` (#304).
+     *
+     * `logMaxDays` was a documented retention window that nothing implemented:
+     * both platforms pruned only by a row count derived from `logLevel`, so the
+     * configured number of days was accepted and discarded. Row-count pruning
+     * alone cannot express "keep two weeks", because how many rows that is
+     * depends entirely on how chatty the session was.
+     *
+     * `max_days <= 0` is a no-op rather than an error, so callers can pass the
+     * config value straight through to mean "no age-based retention" and keep
+     * relying on the count cap alone.
+     *
+     * `timestamp` is stored as `datetime('now')` (UTC, `YYYY-MM-DD HH:MM:SS`),
+     * so it compares correctly as text against SQLite's own modifier output.
+     */
+    @Throws(TraceletException::class)override fun `pruneLogsOlderThan`(`maxDays`: kotlin.Int)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(TraceletException) { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_databasemanager_prune_logs_older_than(
+        it,
+        FfiConverterInt.lower(`maxDays`),_status)
 }
     }
     
@@ -6211,6 +6272,29 @@ public interface LocationProcessorInterface {
      */
     fun `retune`(`tuning`: LocationTuning)
     
+    /**
+     * Replaces the *base* thresholds — the ones [`Self::restore_base_tuning`]
+     * reverts to — so a host reconfiguration reaches the processor (#303).
+     *
+     * Until this existed, `base_tuning` was frozen at construction, so the only
+     * way to change a threshold was to rebuild the processor. That is exactly
+     * what [`Self::retune`] documents as unacceptable: a rebuild drops the
+     * positional anchor and forfeits one inter-fix delta from the odometer.
+     * `setConfig` therefore left `trackingAccuracyThreshold`,
+     * `odometerAccuracyThreshold` and `maxImpliedSpeed` stranded in the host's
+     * config cache, and `restore_base_tuning` reverted to stale values the host
+     * had already replaced.
+     *
+     * When no auto-tune is in force the live thresholds move too, so the change
+     * takes effect on the very next fix. When one *is* in force the committed
+     * mode keeps priority and only the restore target is updated — the new
+     * configuration takes over when the mode goes back to `Unknown` or
+     * auto-tuning is switched off. An active auto-tune is detected by comparing
+     * the live tuning against the base rather than tracking a separate flag, so
+     * this cannot disagree with [`Self::retune`] about what is in force.
+     */
+    fun `setBaseTuning`(`tuning`: LocationTuning)
+    
     companion object
 }
 
@@ -6422,6 +6506,39 @@ open class LocationProcessor: Disposable, AutoCloseable, LocationProcessorInterf
     callWithHandle {
     uniffiRustCall() { _status ->
     UniffiLib.uniffi_tracelet_core_fn_method_locationprocessor_retune(
+        it,
+        FfiConverterTypeLocationTuning.lower(`tuning`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Replaces the *base* thresholds — the ones [`Self::restore_base_tuning`]
+     * reverts to — so a host reconfiguration reaches the processor (#303).
+     *
+     * Until this existed, `base_tuning` was frozen at construction, so the only
+     * way to change a threshold was to rebuild the processor. That is exactly
+     * what [`Self::retune`] documents as unacceptable: a rebuild drops the
+     * positional anchor and forfeits one inter-fix delta from the odometer.
+     * `setConfig` therefore left `trackingAccuracyThreshold`,
+     * `odometerAccuracyThreshold` and `maxImpliedSpeed` stranded in the host's
+     * config cache, and `restore_base_tuning` reverted to stale values the host
+     * had already replaced.
+     *
+     * When no auto-tune is in force the live thresholds move too, so the change
+     * takes effect on the very next fix. When one *is* in force the committed
+     * mode keeps priority and only the restore target is updated — the new
+     * configuration takes over when the mode goes back to `Unknown` or
+     * auto-tuning is switched off. An active auto-tune is detected by comparing
+     * the live tuning against the base rather than tracking a separate flag, so
+     * this cannot disagree with [`Self::retune`] about what is in force.
+     */override fun `setBaseTuning`(`tuning`: LocationTuning)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_locationprocessor_set_base_tuning(
         it,
         FfiConverterTypeLocationTuning.lower(`tuning`),_status)
 }

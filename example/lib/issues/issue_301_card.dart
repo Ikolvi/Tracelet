@@ -181,11 +181,18 @@ class _Issue301CardState extends State<Issue301Card> {
       } else {
         final last = observed.last;
         final expected = _expectedTuning[last.mode];
+        // #306: `unknown` is a legitimate commit — it is the mode that restores
+        // your configured values — and it carries no tuning, so `appliedTuning`
+        // is correctly null. Asserting `!= null` unconditionally failed the card
+        // for correct SDK behaviour whenever the phone sat still. The contract
+        // is "appliedTuning matches the table for this mode", and for a mode
+        // with no entry that means null.
         check(
           'Live auto-tune arrives on onModeChange',
-          last.appliedTuning != null && last.appliedTuning == expected,
+          last.appliedTuning == expected,
           expected == null
-              ? 'committed "${last.mode}", which carries no tuning'
+              ? 'committed "${last.mode}", which carries no tuning — your '
+                    'configured thresholds are in force'
               : 'committed "${last.mode}" → ${last.appliedTuning}',
         );
       }
@@ -196,11 +203,17 @@ class _Issue301CardState extends State<Issue301Card> {
       await Tracelet.setConfig(
         const Config(classifier: ClassifierConfig(enableFusedClassifier: true)),
       );
+      // #306: this only ever asserted the Dart-side config mirror, while its
+      // label claimed the native thresholds had been restored — so it could not
+      // fail if the native restore regressed. Renamed to what it actually
+      // proves. The native restore itself has no Dart-observable surface (there
+      // is no getter for the processor's live tuning), so it is covered by the
+      // SDK unit tests and by the INFO log line #303 added to that path.
       check(
-        'Auto-tuning can be switched back off',
+        'Auto-tuning is off in the active config',
         !Tracelet.activeConfig.classifier.autoTuneFromTransportMode,
-        'configured thresholds are restored immediately, rather than the last '
-            'mode staying in force for the rest of the session',
+        'the flag round-trips; the native restore it triggers is asserted in '
+            'the SDK unit tests and logged at INFO by syncTransportModeTuning',
       );
 
       await _sub?.cancel();

@@ -836,6 +836,33 @@ impl DatabaseManager {
         Ok(())
     }
 
+    /// Deletes log rows older than `max_days` (#304).
+    ///
+    /// `logMaxDays` was a documented retention window that nothing implemented:
+    /// both platforms pruned only by a row count derived from `logLevel`, so the
+    /// configured number of days was accepted and discarded. Row-count pruning
+    /// alone cannot express "keep two weeks", because how many rows that is
+    /// depends entirely on how chatty the session was.
+    ///
+    /// `max_days <= 0` is a no-op rather than an error, so callers can pass the
+    /// config value straight through to mean "no age-based retention" and keep
+    /// relying on the count cap alone.
+    ///
+    /// `timestamp` is stored as `datetime('now')` (UTC, `YYYY-MM-DD HH:MM:SS`),
+    /// so it compares correctly as text against SQLite's own modifier output.
+    pub fn prune_logs_older_than(&self, max_days: i32) -> Result<(), TraceletError> {
+        if max_days <= 0 {
+            return Ok(());
+        }
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM logs WHERE timestamp < datetime('now', ?1)",
+            params![format!("-{} days", max_days)],
+        )
+        .map_err(|e| TraceletError::Database(e.to_string()))?;
+        Ok(())
+    }
+
     /// Clears all log entries from the database.
     pub fn clear_logs(&self) -> Result<(), TraceletError> {
         let conn = self.conn.lock().unwrap();
@@ -1122,6 +1149,50 @@ mod tests {
         
         let hash: String = db.conn.lock().unwrap().query_row("SELECT audit_hash FROM audit_trail WHERE uuid = 'uuid-1234'", [], |r| r.get(0)).unwrap();
         assert_eq!(hash, "hash1-updated");
+    }
+
+    #[test]
+    /// #304: `logMaxDays` must actually delete by age. Row-count pruning alone
+    /// cannot express a retention window.
+    #[test]
+    fn test_prune_logs_older_than_deletes_only_aged_rows() {
+        let db = DatabaseManager::new(":memory:").expect("Failed to create in-memory db");
+
+        db.insert_log("INFO", "fresh", "plugin").unwrap();
+        db.insert_log("INFO", "stale", "plugin").unwrap();
+        // Backdate the second row well past any retention window under test.
+        db.conn
+            .lock()
+            .unwrap()
+            .execute(
+                "UPDATE logs SET timestamp = datetime('now', '-30 days') WHERE message = 'stale'",
+                [],
+            )
+            .unwrap();
+
+        db.prune_logs_older_than(7).unwrap();
+
+        let logs = db.get_logs(10).unwrap();
+        assert_eq!(logs.len(), 1, "only the aged row should be pruned");
+        assert_eq!(logs[0].message, "fresh");
+    }
+
+    /// A non-positive window means "no age-based retention", not "delete all" —
+    /// callers pass the config value straight through.
+    #[test]
+    fn test_prune_logs_older_than_is_a_no_op_for_non_positive_windows() {
+        let db = DatabaseManager::new(":memory:").expect("Failed to create in-memory db");
+        db.insert_log("INFO", "keep me", "plugin").unwrap();
+        db.conn
+            .lock()
+            .unwrap()
+            .execute("UPDATE logs SET timestamp = datetime('now', '-999 days')", [])
+            .unwrap();
+
+        db.prune_logs_older_than(0).unwrap();
+        db.prune_logs_older_than(-1).unwrap();
+
+        assert_eq!(db.get_logs(10).unwrap().len(), 1);
     }
 
     #[test]

@@ -46,6 +46,11 @@ class AttestationConfig {
   const AttestationConfig({
     this.enabled = false,
     this.refreshInterval = 3600,
+    @Deprecated(
+      'Never implemented — no platform reads this value and the token is not '
+      'sent anywhere for verification. Verify it on your backend instead. '
+      'Will be removed in a future major version (#304).',
+    )
     this.verificationUrl,
   });
 
@@ -82,10 +87,18 @@ class AttestationConfig {
 
   /// Server URL to verify the attestation token (optional).
   ///
-  /// If set, the plugin sends the token to this URL for server-side
-  /// verification before including it in sync payloads.
+  /// **Not implemented.** The value is validated, serialized and stored, but no
+  /// platform ever reads it: nothing sends the token anywhere for server-side
+  /// verification, on Android, iOS or in the Rust core (#304). Setting it has
+  /// never had any effect. Verify the token on your own backend instead — it is
+  /// already included in sync payloads.
   ///
   /// Only HTTPS URLs are accepted. Defaults to `null`.
+  @Deprecated(
+    'Never implemented — no platform reads this value and the token is not '
+    'sent anywhere for verification. Verify it on your backend instead. '
+    'Will be removed in a future major version (#304).',
+  )
   final String? verificationUrl;
 
   /// Serializes to a map.

@@ -1290,7 +1290,25 @@ class TraceletSdk private constructor(private val context: Context) {
             "speedMovingThreshold", "speedStationaryDelay", "speedWakeConfirmCount",
             "stationaryTrackingMode", "stationaryPeriodicInterval", "stationaryPeriodicAccuracy",
         )
+        // #303: the four thresholds transport-mode auto-tuning swaps. They reach
+        // the processor through setBaseTuning, which preserves the positional
+        // anchor — a rebuild would drop it and forfeit an odometer delta (#299).
+        val tuningKeys = listOf(
+            "distanceFilter", "trackingAccuracyThreshold",
+            "odometerAccuracyThreshold", "maxImpliedSpeed",
+        )
+        // #303: the remaining LocationProcessor constructor parameters. These are
+        // immutable in Rust, so changing one genuinely needs a rebuild — but not
+        // a full pipeline restart, which is why they are kept out of
+        // [needsRestart]. Every one of them used to be silently ignored until the
+        // next cold start.
+        val processorKeys = listOf(
+            "filterPolicy", "enableAdaptiveMode", "rejectMockLocations",
+            "mockDetectionLevel", "enableSparseUpdates", "sparseDistanceThreshold",
+            "sparseMaxIdleSeconds",
+        )
         val needsRestart = (locationKeys + motionKeys).any { key -> oldConfig[key] != merged[key] }
+        val changed = { keys: List<String> -> keys.any { key -> oldConfig[key] != merged[key] } }
 
         if (stateManager.enabled) {
             if (needsRestart) {
@@ -1363,6 +1381,25 @@ class TraceletSdk private constructor(private val context: Context) {
             // start() picks up the new location config without a stale cache.
             locationEngine.rebuildProcessor()
         }
+
+        // #303: carry the rest of the location-filter config into the processor.
+        // Only the handful of keys in `locationKeys` ever reached it; everything
+        // else was accepted, cached, and ignored until the next cold start.
+        //
+        // Ordered cheapest-effect-first, and skipped entirely when a restart
+        // already rebuilt the processor from current config above.
+        if (::locationEngine.isInitialized && !needsRestart) {
+            when {
+                // Constructor-only parameters: nothing short of a rebuild moves
+                // them. No anchor to protect that a restart wouldn't drop anyway.
+                changed(processorKeys) -> locationEngine.rebuildProcessor()
+                // Thresholds: swap in place so the odometer anchor survives.
+                changed(tuningKeys) -> locationEngine.applyConfiguredBaseTuning()
+            }
+        }
+        // Independent of the processor — the filter is its own object, so a
+        // toggle must never cost the anchor.
+        if (::locationEngine.isInitialized) locationEngine.syncKalmanFilter()
 
         // Behavior engines (telematics / transport / crash-fall + ML model) are
         // built in initBehaviorEngines() at ready(). Rebuild them when any of
@@ -3020,15 +3057,30 @@ class TraceletSdk private constructor(private val context: Context) {
      * Calling this after any reconfiguration closes all three: with auto-tuning
      * off it restores the host's own values, and with it on it re-applies the
      * mode currently committed (`unknown` also restores).
+     *
+     * #303: this path changes the four thresholds without any `modeChange` event
+     * — the mode did not change, so synthesising one would corrupt the event
+     * stream for consumers that count commits. It is logged instead, at INFO for
+     * the same reason the geofence decision trace is: the symptom (filters not
+     * behaving as configured) is reported days later from a bug report, and DEBUG
+     * is not on in production.
      */
     private fun syncTransportModeTuning() {
         if (!::locationEngine.isInitialized) return
         if (!configManager.getAutoTuneFromTransportMode()) {
             locationEngine.restoreBaseTuning()
+            logger.info(
+                "auto-tune: off — reconfiguration restored the configured thresholds " +
+                    "(${locationEngine.currentTuningDescription()})"
+            )
             return
         }
         val mode = transportClassifier?.currentMode()?.name?.lowercase() ?: "unknown"
         locationEngine.applyTransportModeTuning(mode)
+        logger.info(
+            "auto-tune: reconfiguration re-aligned thresholds with committed mode " +
+                "'$mode' (${locationEngine.currentTuningDescription()})"
+        )
     }
 
     /** Starts the ~1 Hz accel-window loop (classifier + impact) if a consumer is active. */

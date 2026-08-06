@@ -116,10 +116,6 @@ class Tracelet {
   /// [activeConfig] stays in sync even when the app has no explicit listener.
   static StreamSubscription<Map<String?, Object?>>? _remoteConfigSub;
 
-  /// Geofence evaluator for high-accuracy proximity checks
-  /// (runs in Dart, not native).
-  static final GeofenceEvaluator _geofenceEvaluator = GeofenceEvaluator();
-
   /// Cached processed location broadcast stream.
   ///
   /// Filtering and Kalman smoothing are applied ONCE here, then shared
@@ -280,8 +276,6 @@ class Tracelet {
     await _ensureRustLibInitialized();
     _currentConfig = config;
 
-    _geofenceEvaluator.clear();
-
     // Initialize battery budget engine from config.
     _initBatteryBudget(config);
 
@@ -333,7 +327,6 @@ class Tracelet {
     // Stop trip detection and reset.
     _stopTripDetection();
     _tripManager.reset();
-    _geofenceEvaluator.clear();
     _stopBatteryBudgetTracking();
     _batteryBudgetEngine?.reset();
 

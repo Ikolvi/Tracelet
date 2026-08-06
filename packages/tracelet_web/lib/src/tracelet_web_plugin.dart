@@ -952,10 +952,18 @@ class TraceletWebPlugin extends TraceletPlatform {
         'useSignificantChangesOnly': c.motion.useSignificantChangesOnly,
       },
       'geofence': {
-        'geofenceModeHighAccuracy': c.android.geofenceModeHighAccuracy,
+        // #305: read the cross-platform GeofenceConfig flag, OR'd with the
+        // deprecated Android-only one for backward compatibility — matching
+        // both Pigeon host implementations. Web previously read ONLY the
+        // deprecated flag, so setting the documented cross-platform one had no
+        // effect here.
+        'geofenceModeHighAccuracy':
+            c.geofence.geofenceModeHighAccuracy ||
+            c.android.geofenceModeHighAccuracy,
         'geofenceInitialTriggerEntry': c.geofence.geofenceInitialTriggerEntry,
         'geofenceProximityRadius': c.geofence.geofenceProximityRadius,
         'geofenceInitialTrigger': c.geofence.geofenceInitialTrigger,
+        'geofenceExitAccuracyMax': c.geofence.geofenceExitAccuracyMax,
       },
       'persistence': {
         'persistMode': c.persistence.persistMode.index,

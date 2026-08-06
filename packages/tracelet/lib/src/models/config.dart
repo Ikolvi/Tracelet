@@ -207,13 +207,13 @@ class Config {
 
   static const Map<TraceletProfile, String> _profilesJson = {
     TraceletProfile.highAccuracy:
-        '{"geo":{"desiredAccuracy":0,"distanceFilter":5.0,"stationaryRadius":25.0,"enableAdaptiveMode":false,"disableElasticity":true,"enableDeadReckoning":true,"filter":{"useKalmanFilter":true,"rejectMockLocations":true}},"motion":{"motionDetectionMode":0,"stationaryTrackingMode":0,"stopTimeout":3},"android":{"geofenceModeHighAccuracy":true,"locationUpdateInterval":1000,"fastestLocationUpdateInterval":500}}',
+        '{"geo":{"desiredAccuracy":0,"distanceFilter":5.0,"stationaryRadius":25.0,"enableAdaptiveMode":false,"disableElasticity":true,"enableDeadReckoning":true,"filter":{"useKalmanFilter":true,"rejectMockLocations":true}},"motion":{"motionDetectionMode":0,"stationaryTrackingMode":0,"stopTimeout":3},"geofence":{"geofenceModeHighAccuracy":true},"android":{"locationUpdateInterval":1000,"fastestLocationUpdateInterval":500}}',
     TraceletProfile.balanced:
-        '{"geo":{"desiredAccuracy":1,"distanceFilter":20.0,"stationaryRadius":50.0,"enableAdaptiveMode":true,"disableElasticity":false,"elasticityMultiplier":1.0,"filter":{"useKalmanFilter":false}},"motion":{"motionDetectionMode":2,"stationaryTrackingMode":1,"stopTimeout":5},"android":{"geofenceModeHighAccuracy":false,"locationUpdateInterval":5000}}',
+        '{"geo":{"desiredAccuracy":1,"distanceFilter":20.0,"stationaryRadius":50.0,"enableAdaptiveMode":true,"disableElasticity":false,"elasticityMultiplier":1.0,"filter":{"useKalmanFilter":false}},"motion":{"motionDetectionMode":2,"stationaryTrackingMode":1,"stopTimeout":5},"geofence":{"geofenceModeHighAccuracy":false},"android":{"locationUpdateInterval":5000}}',
     TraceletProfile.lowPower:
-        '{"geo":{"desiredAccuracy":2,"distanceFilter":50.0,"stationaryRadius":100.0,"enableAdaptiveMode":true,"disableElasticity":false,"elasticityMultiplier":2.0,"enableSparseUpdates":true,"sparseDistanceThreshold":100.0},"motion":{"motionDetectionMode":1,"stationaryTrackingMode":1,"stopTimeout":2},"android":{"geofenceModeHighAccuracy":false,"locationUpdateInterval":10000}}',
+        '{"geo":{"desiredAccuracy":2,"distanceFilter":50.0,"stationaryRadius":100.0,"enableAdaptiveMode":true,"disableElasticity":false,"elasticityMultiplier":2.0,"enableSparseUpdates":true,"sparseDistanceThreshold":100.0},"motion":{"motionDetectionMode":1,"stationaryTrackingMode":1,"stopTimeout":2},"geofence":{"geofenceModeHighAccuracy":false},"android":{"locationUpdateInterval":10000}}',
     TraceletProfile.passive:
-        '{"geo":{"desiredAccuracy":4,"distanceFilter":0.0,"stationaryRadius":500.0,"enableAdaptiveMode":false,"enableSparseUpdates":true,"sparseDistanceThreshold":50.0},"motion":{"motionDetectionMode":1,"stationaryTrackingMode":1,"stopTimeout":2},"android":{"geofenceModeHighAccuracy":false,"locationUpdateInterval":60000}}',
+        '{"geo":{"desiredAccuracy":4,"distanceFilter":0.0,"stationaryRadius":500.0,"enableAdaptiveMode":false,"enableSparseUpdates":true,"sparseDistanceThreshold":50.0},"motion":{"motionDetectionMode":1,"stationaryTrackingMode":1,"stopTimeout":2},"geofence":{"geofenceModeHighAccuracy":false},"android":{"locationUpdateInterval":60000}}',
   };
 
   /// Internal factory to load a profile
