@@ -43,6 +43,10 @@ let package = Package(
                 "MotionDetectorTests.swift",
                 "BatteryBudgetRemoteConfigTests.swift",
                 "ConfigManagerNumericCoercionTests.swift",
+                // #303: the `filter` sub-map every transport nests inside `geo`
+                // has to reach the flat getters. It did not, so the whole
+                // location-filter block was pinned to its defaults on iOS.
+                "ConfigManagerFilterSectionTests.swift",
                 "SignificantChangesBackgroundSessionTests.swift",
                 // #280: pure LocationMapper API (buildLocationMap) — current, not
                 // stale — wired up so the persisted-metadata mapping is covered.

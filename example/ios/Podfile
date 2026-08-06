@@ -32,16 +32,25 @@ target 'Runner' do
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 
-  # LOCAL DEV OVERRIDE: use the in-repo TraceletSDK (v3.5.6) instead of the
-  # CocoaPods trunk release, which is not published yet. Uses local source
-  # files + the prebuilt sdk/rust-core/out/TraceletCore.xcframework.
-  # Must NOT apply in CI: the tracelet_ios plugin is consumed via Swift
-  # Package Manager there, which already embeds TraceletCore.framework —
-  # adding this pod too makes Xcode fail with "Multiple commands produce
-  # …/TraceletCore.framework". GitHub Actions always sets CI=true.
+  # LOCAL DEV OVERRIDE: use the in-repo TraceletSDK instead of the CocoaPods
+  # trunk release, which is not published yet. Uses local source files + the
+  # prebuilt sdk/rust-core/out/TraceletCore.xcframework.
+  #
+  # Must NOT apply whenever the plugins resolve through Swift Package Manager.
+  # tracelet_ios/tracelet_sync's Package.swift already depend on the TraceletSDK
+  # package at the monorepo root — the same local sources this pod vends — and
+  # that package embeds TraceletCore.framework as a binary target. Adding the
+  # pod on top embeds a second copy and Xcode fails with "Multiple commands
+  # produce …/TraceletCore.framework". Detect SPM by the generated package
+  # manifest rather than by ENV['CI']: SPM is the default on Flutter 3.35+, so
+  # it is on locally too, not just in GitHub Actions.
+  #
   # The podspec-existence check still covers release.yml ("Bundle iOS SDK"),
   # which deletes TraceletSDK.podspec so the example links the bundled plugin.
-  if ENV['CI'].nil? && File.exist?(File.expand_path('../../TraceletSDK.podspec', __dir__))
+  spm_manifest = File.expand_path(
+    'Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage/Package.swift', __dir__
+  )
+  if !File.exist?(spm_manifest) && File.exist?(File.expand_path('../../TraceletSDK.podspec', __dir__))
     pod 'TraceletSDK', :path => '../..'
   end
 

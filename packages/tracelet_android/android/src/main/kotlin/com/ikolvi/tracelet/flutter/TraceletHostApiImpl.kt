@@ -14,6 +14,7 @@ import com.ikolvi.tracelet.TlCoords
 import com.ikolvi.tracelet.TlCurrentPositionOptions
 import com.ikolvi.tracelet.TlGeofence
 import com.ikolvi.tracelet.TlLocation
+import com.ikolvi.tracelet.TlLocationTuning
 import com.ikolvi.tracelet.TlProviderChangeEvent
 import com.ikolvi.tracelet.TlState
 import com.ikolvi.tracelet.TlTrackingMode

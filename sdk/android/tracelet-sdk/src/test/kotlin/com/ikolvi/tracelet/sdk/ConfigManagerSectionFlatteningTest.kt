@@ -786,6 +786,78 @@ internal class ConfigManagerSectionFlatteningTest {
         assertEquals(60000, config.getDeferTime())
     }
 
+    // =========================================================================
+    // #303 — the location filter sub-map nested inside geo
+    // =========================================================================
+
+    @Test
+    fun geoSection_filterSubMap_isFlattened() {
+        config.setConfig(mapOf(
+            "geo" to mapOf<String, Any?>(
+                "distanceFilter" to 12.0,
+                "filter" to mapOf<String, Any?>(
+                    "trackingAccuracyThreshold" to 30,
+                    "odometerAccuracyThreshold" to 15,
+                    "maxImpliedSpeed" to 25,
+                    "rejectMockLocations" to true,
+                    "mockDetectionLevel" to 2,
+                    "useKalmanFilter" to true
+                )
+            )
+        ))
+
+        assertEquals(30, config.getTrackingAccuracyThreshold())
+        assertEquals(15, config.getOdometerAccuracyThreshold())
+        assertEquals(25, config.getMaxImpliedSpeed())
+        assertTrue(config.getRejectMockLocations())
+        assertEquals(2, config.getMockDetectionLevel())
+        assertTrue(config.getEnableKalmanFilter())
+    }
+
+    /**
+     * #303: `LocationFilter.policy` is serialized under `policy` by every
+     * transport, but `getFilterPolicy()` — and the processor-rebuild key list in
+     * `TraceletSdk.setConfig` — read `filterPolicy`. The value was flattened into
+     * the cache under a name nothing asked for, so the policy stayed at ADJUST
+     * however it was configured. The rename happens during flattening so both
+     * readers see it.
+     */
+    @Test
+    fun geoSection_filterPolicy_isRenamedFromWireName() {
+        config.setConfig(mapOf(
+            "geo" to mapOf<String, Any?>(
+                "filter" to mapOf<String, Any?>("policy" to 2) // DISCARD
+            )
+        ))
+
+        assertEquals(2, config.getFilterPolicy())
+        assertEquals(2, config.getConfig()["filterPolicy"])
+        assertNull(config.getConfig()["policy"])
+    }
+
+    @Test
+    fun geoSection_filter_nullValuesSkipped_existingPreserved() {
+        config.setConfig(mapOf(
+            "geo" to mapOf<String, Any?>(
+                "filter" to mapOf<String, Any?>(
+                    "trackingAccuracyThreshold" to 30,
+                    "odometerAccuracyThreshold" to 15
+                )
+            )
+        ))
+        config.setConfig(mapOf(
+            "geo" to mapOf<String, Any?>(
+                "filter" to mapOf<String, Any?>(
+                    "trackingAccuracyThreshold" to 45,
+                    "odometerAccuracyThreshold" to null
+                )
+            )
+        ))
+
+        assertEquals(45, config.getTrackingAccuracyThreshold())
+        assertEquals(15, config.getOdometerAccuracyThreshold())
+    }
+
     @Test
     fun attestation_nullValuesSkipped_existingPreserved() {
         config.setConfig(mapOf(

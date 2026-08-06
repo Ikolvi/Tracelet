@@ -30,6 +30,7 @@ public final class ConfigManager {
                 flat[key] = value
             }
         }
+        liftFilterSection(&flat)
         // Filter out NSNull / nil values — a partial setConfig() must not
         // overwrite existing non-null config with defaults.  E.g. calling
         // setConfig({app: {heartbeatInterval: -1}}) must not wipe the
@@ -38,6 +39,36 @@ public final class ConfigManager {
         cache.merge(filtered) { _, new in new }
         saveToDisk()
         return cache
+    }
+
+    /// Lifts the `filter` sub-map onto the flat top level the getters read (#303).
+    ///
+    /// Every transport serialises `LocationFilter` as a nested `filter`
+    /// dictionary — the Pigeon bridge, `TraceletConfig.toMap()`, its Obj-C twin
+    /// and remote-config JSON all agree on that shape — while every getter here
+    /// reads a flat key. `geo` was flattened one level and the block underneath
+    /// it was left as a single opaque `cache["filter"]` value that nothing ever
+    /// read, so `trackingAccuracyThreshold`, `odometerAccuracyThreshold`,
+    /// `maxImpliedSpeed`, `rejectMockLocations`, `mockDetectionLevel` and
+    /// `useKalmanFilter` sat at their defaults on iOS no matter what the host
+    /// configured. #303's own change detection then compared two keys that never
+    /// existed in either snapshot, so a filter change fired neither the rebuild
+    /// nor `setBaseTuning`. Android has flattened this since its ConfigManager
+    /// was written; this is the iOS half of the same bridge.
+    ///
+    /// `policy` is renamed to `filterPolicy`: that is the name `getFilterPolicy()`
+    /// and the processor-rebuild key list use, and no transport ever emitted it.
+    ///
+    /// The nested map is dropped rather than kept alongside the lifted keys —
+    /// two copies of one value in a cache that merges partial updates is how they
+    /// come to disagree. A key already present at the top level of the same call
+    /// wins over the nested one, matching the order Android applies them in.
+    private func liftFilterSection(_ flat: inout [String: Any]) {
+        guard let filter = flat.removeValue(forKey: "filter") as? [String: Any] else { return }
+        for (key, value) in filter {
+            let name = key == "policy" ? "filterPolicy" : key
+            if flat[name] == nil { flat[name] = value }
+        }
     }
 
     public func getConfig() -> [String: Any] {
@@ -60,7 +91,13 @@ public final class ConfigManager {
     private func loadFromDisk() {
         if let data = defaults.data(forKey: key),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            cache = json
+            // #303: caches written before the filter block was lifted still hold
+            // it nested. `autoResumeTracking()` starts the pipeline straight off
+            // this cache with no `ready()` in between, so a relaunch would keep
+            // running on default thresholds until the host next called setConfig.
+            var loaded = json
+            liftFilterSection(&loaded)
+            cache = loaded
         } else {
             cache = defaultConfig()
         }

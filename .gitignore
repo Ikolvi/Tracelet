@@ -139,6 +139,13 @@ skills-lock.json
 
 # Rust
 **/target/
+# `**/target/` matches directories only. Devs may relocate the (18GB+) cargo
+# target dir outside the repo and symlink it back — Xcode walks the SwiftPM
+# package root (this repo) on every `-showBuildSettings`, and a target dir that
+# large pushes it past flutter_tools' hardcoded 60s timeout, which silently
+# skips the iOS deployment-target bump. A symlink isn't a directory, so it
+# needs its own rule.
+sdk/rust-core/target
 *.a
 *.xcframework
 *.so

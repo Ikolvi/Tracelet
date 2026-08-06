@@ -201,12 +201,17 @@ class ConfigManager(context: Context) {
             }
         }
 
-        // Flatten filter sub-map (nested inside geo section)
+        // Flatten filter sub-map (nested inside geo section).
+        // `policy` is renamed on the way in: every transport serialises
+        // LocationFilter.policy under that name, but getFilterPolicy() and the
+        // processor-rebuild key list in TraceletSdk both read `filterPolicy`, so
+        // the value landed in the cache under a name nothing asked for and the
+        // filter policy stayed at its default however it was configured (#303).
         val filter = flat["filter"]
         if (filter is Map<*, *>) {
             @Suppress("UNCHECKED_CAST")
             for ((k, v) in filter as Map<String, Any?>) {
-                if (v != null) merged[k] = v
+                if (v != null) merged[if (k == "policy") "filterPolicy" else k] = v
             }
         }
 
