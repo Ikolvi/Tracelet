@@ -221,8 +221,8 @@ class _Issue299CardState extends State<Issue299Card> {
         'Defaults over-report the walk',
         oldDistance > truth * 1.15,
         'measured ${oldDistance.toStringAsFixed(0)} m vs '
-        '${truth.toStringAsFixed(0)} m truth '
-        '(+${errorPct(oldDistance).toStringAsFixed(0)}%)',
+            '${truth.toStringAsFixed(0)} m truth '
+            '(+${errorPct(oldDistance).toStringAsFixed(0)}%)',
       );
 
       // 2. The reported dead end. Smoothing genuinely lowers the measured
@@ -233,8 +233,8 @@ class _Issue299CardState extends State<Issue299Card> {
         'Smoothing does move the number — the old odometer never saw it',
         oldDefaultsSmoothed < oldDistance * 0.95,
         'raw ${oldDistance.toStringAsFixed(0)} m vs smoothed '
-        '${oldDefaultsSmoothed.toStringAsFixed(0)} m, yet the pre-fix odometer '
-        'recorded the raw value regardless of useKalmanFilter',
+            '${oldDefaultsSmoothed.toStringAsFixed(0)} m, yet the pre-fix odometer '
+            'recorded the raw value regardless of useKalmanFilter',
       );
 
       // 3. The fix: smoothing first + walking thresholds lands near truth.
@@ -242,8 +242,8 @@ class _Issue299CardState extends State<Issue299Card> {
         'Smoothing + walking auto-tune tracks truth',
         errorPct(newDistance) < 10,
         'measured ${newDistance.toStringAsFixed(0)} m vs '
-        '${truth.toStringAsFixed(0)} m truth '
-        '(${errorPct(newDistance).toStringAsFixed(0)}% error, want <10%)',
+            '${truth.toStringAsFixed(0)} m truth '
+            '(${errorPct(newDistance).toStringAsFixed(0)}% error, want <10%)',
       );
 
       // 4. And it is a clear improvement, not a wash.
@@ -251,7 +251,7 @@ class _Issue299CardState extends State<Issue299Card> {
         'Auto-tune beats the defaults',
         errorPct(newDistance) < errorPct(oldDistance) / 2,
         'error ${errorPct(oldDistance).toStringAsFixed(0)}% → '
-        '${errorPct(newDistance).toStringAsFixed(0)}%',
+            '${errorPct(newDistance).toStringAsFixed(0)}%',
       );
 
       final header = allPass

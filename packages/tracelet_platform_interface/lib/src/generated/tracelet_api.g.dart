@@ -1856,10 +1856,7 @@ class TlClassifierConfig {
         ) &&
         _deepEquals(modeSwitchDwellMs, other.modeSwitchDwellMs) &&
         _deepEquals(minModeConfidence, other.minModeConfidence) &&
-        _deepEquals(
-          autoTuneFromTransportMode,
-          other.autoTuneFromTransportMode,
-        );
+        _deepEquals(autoTuneFromTransportMode, other.autoTuneFromTransportMode);
   }
 
   @override

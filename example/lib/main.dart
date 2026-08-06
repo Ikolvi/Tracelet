@@ -581,6 +581,10 @@ class _DashboardPageState extends State<DashboardPage>
   /// path set `_isReady = true` without ever calling `ready()`).
   tl.Config _buildConfig() {
     return tl.Config(
+      classifier: const tl.ClassifierConfig(
+        enableFusedClassifier: true, // required — classifier must be running
+        autoTuneFromTransportMode: true,
+      ),
       geo: const tl.GeoConfig(
         distanceFilter: 0,
         resolveAddress: true,
