@@ -1074,6 +1074,15 @@ abstract class TraceletHostApi {
   @async
   Map<String?, Object?> getForegroundServiceHealth();
 
+  /// The location-filter thresholds actually in force right now (#303).
+  ///
+  /// Read back from the Rust `LocationProcessor`, not from the config cache, so
+  /// it reports what the filter is really using — including a transport-mode
+  /// auto-tune the host did not set. Returns `null` before a processor exists
+  /// (no tracking session has configured one yet).
+  @async
+  TlLocationTuning? getCurrentLocationTuning();
+
   @async
   bool openOemSettings(String label);
 

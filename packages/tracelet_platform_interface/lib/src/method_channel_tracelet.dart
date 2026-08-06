@@ -701,7 +701,11 @@ class MethodChannelTracelet extends TraceletPlatform {
     'fastestLocationUpdateInterval': c.fastestLocationUpdateInterval,
     'deferTime': c.deferTime,
     'allowIdenticalLocations': c.allowIdenticalLocations,
-    'geofenceModeHighAccuracy': c.geofenceModeHighAccuracy,
+    // Must be the same OR the geofence block carries: native reads this key
+    // from both, so emitting the raw Android-only flag here would make
+    // behavior depend on which block the platform happens to consult (#305).
+    'geofenceModeHighAccuracy':
+        geofence.geofenceModeHighAccuracy || c.geofenceModeHighAccuracy,
     'periodicUseForegroundService': c.periodicUseForegroundService,
     'periodicUseExactAlarms': c.periodicUseExactAlarms,
     'scheduleUseAlarmManager': c.scheduleUseAlarmManager,

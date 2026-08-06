@@ -293,6 +293,12 @@ class TraceletWebPlugin extends TraceletPlatform {
     };
   }
 
+  /// Web has no native location processor, so there is no live tuning to
+  /// report — the browser Geolocation API exposes no equivalent filter state
+  /// (#303).
+  @override
+  Future<TlLocationTuning?> getCurrentLocationTuning() async => null;
+
   @override
   Future<Map<String, Object?>> setConfig(TlConfig config) async {
     final map = _tlConfigToMap(config);

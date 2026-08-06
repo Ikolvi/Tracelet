@@ -438,6 +438,10 @@ class PigeonTracelet extends TraceletPlatform {
   }
 
   @override
+  Future<TlLocationTuning?> getCurrentLocationTuning() =>
+      _api.getCurrentLocationTuning();
+
+  @override
   Future<bool> openOemSettings(String label) => _api.openOemSettings(label);
 
   @override

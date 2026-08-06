@@ -2502,6 +2502,22 @@ class TraceletSdk private constructor(private val context: Context) {
      *   transition.
      * - `platform` (String): `android`.
      */
+    /**
+     * The location-filter thresholds actually in force in the Rust processor,
+     * or `null` before one exists (#303).
+     *
+     * Deliberately reads the processor rather than [ConfigManager]: the two
+     * silently disagreeing is exactly the bug #303 fixed, so a getter answering
+     * from config could never surface a regression. While a transport-mode
+     * auto-tune is committed these are the tuned values, not the configured
+     * ones — which is what makes an auto-tune observable rather than a silent
+     * mutation.
+     */
+    fun getCurrentLocationTuning(): uniffi.tracelet_core.LocationTuning? {
+        if (!::locationEngine.isInitialized) return null
+        return locationEngine.currentTuning()
+    }
+
     fun getForegroundServiceHealth(): Map<String, Any?> {
         val health = LocationService.foregroundServiceHealth().toMutableMap()
         health["desiredEnabled"] = stateManager.enabled

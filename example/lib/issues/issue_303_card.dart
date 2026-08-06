@@ -22,11 +22,12 @@ import 'package:tracelet_example/issues/issue_card_shell.dart';
 /// rebuild, because a rebuild drops the positional anchor and forfeits an
 /// odometer delta (the whole reason `retune` exists, #299).
 ///
-/// This card asserts the Dart-observable half: that the values you set are the
-/// values `activeConfig` reports back after a runtime `setConfig`, including
-/// across an auto-tune enable/disable cycle. The native threshold swap itself
-/// has no Dart getter; it is covered by the Rust and SDK unit tests and by the
-/// INFO log line this fix added to `syncTransportModeTuning`.
+/// Every assertion here reads `Tracelet.getCurrentLocationTuning()`, which
+/// reports the thresholds the **native processor** actually holds. It
+/// deliberately does not assert on `Tracelet.activeConfig`: that is a Dart-side
+/// mirror of the last `Config` passed in, so it echoes your own input and would
+/// pass even on a build where the value never reached native — which is the bug
+/// itself. A card that asserted on it would be untestable theatre.
 class Issue303Card extends StatefulWidget {
   const Issue303Card({super.key});
 
@@ -81,24 +82,32 @@ class _Issue303CardState extends State<Issue303Card> {
           ),
         ),
       );
-      final f = Tracelet.activeConfig.geo.filter;
+      // Read back from the PROCESSOR, not activeConfig. activeConfig is a
+      // Dart-side mirror of whatever was just passed in, so asserting on it
+      // would pass even when the value never reached native — the bug itself.
+      final live = await Tracelet.getCurrentLocationTuning();
       check(
-        'Filter thresholds survive a runtime setConfig',
-        f.trackingAccuracyThreshold == 30 &&
-            f.odometerAccuracyThreshold == 15 &&
-            f.maxImpliedSpeed == 25,
-        'tracking=${f.trackingAccuracyThreshold}m '
-            'odometer=${f.odometerAccuracyThreshold}m '
-            'maxImpliedSpeed=${f.maxImpliedSpeed}m/s',
+        'Filter thresholds reach the processor on a runtime setConfig',
+        live != null &&
+            live.trackingAccuracyThreshold == 30 &&
+            live.odometerAccuracyThreshold == 15 &&
+            live.maxImpliedSpeed == 25,
+        live == null
+            ? 'no processor yet — start tracking first'
+            : 'processor reports tracking=${live.trackingAccuracyThreshold}m '
+                  'odometer=${live.odometerAccuracyThreshold}m '
+                  'maxImpliedSpeed=${live.maxImpliedSpeed}m/s',
       );
 
       // 2. Kalman is a separate object built only inside rebuildProcessor(), and
       //    its key never triggered one — so toggling it mid-session did nothing.
       //    That got worse with #299, which routed smoothing into the odometer.
-      check(
-        'useKalmanFilter toggles at runtime',
-        f.useKalmanFilter,
-        'smoothing is on, so it now feeds the odometer as #299 intended',
+      // The Kalman filter is a separate native object with no read-back
+      // surface, so this card cannot prove the toggle from Dart. Asserting
+      // activeConfig here would be theatre. Covered by the SDK unit tests.
+      results.add(
+        'ℹ️ useKalmanFilter toggle is not Dart-observable (the filter has no '
+        'read-back API) — covered by the Android/iOS SDK unit tests.',
       );
 
       // 3. The #301 interaction: with auto-tuning on, a committed mode owns the
@@ -135,14 +144,19 @@ class _Issue303CardState extends State<Issue303Card> {
           classifier: ClassifierConfig(enableFusedClassifier: true),
         ),
       );
-      final r = Tracelet.activeConfig.geo.filter;
+      final restored = await Tracelet.getCurrentLocationTuning();
       check(
         'Disabling auto-tune restores your LATEST values',
-        r.trackingAccuracyThreshold == 45 &&
-            r.odometerAccuracyThreshold == 22 &&
-            r.maxImpliedSpeed == 33,
-        'restored tracking=${r.trackingAccuracyThreshold}m '
-            '(the construction-time value was 120m)',
+        restored != null &&
+            restored.trackingAccuracyThreshold == 45 &&
+            restored.odometerAccuracyThreshold == 22 &&
+            restored.maxImpliedSpeed == 33,
+        restored == null
+            ? 'no processor yet — start tracking first'
+            : 'processor restored to tracking='
+                  '${restored.trackingAccuracyThreshold}m — the '
+                  'construction-time value was 120m, which is what a '
+                  'pre-#303 build would have reverted to',
       );
 
       // 4. The remaining constructor-only processor parameters, which now
@@ -154,20 +168,30 @@ class _Issue303CardState extends State<Issue303Card> {
             enableAdaptiveMode: true,
             enableSparseUpdates: true,
             sparseDistanceThreshold: 75,
-            filter: LocationFilter(rejectMockLocations: true),
+            // The thresholds are restated deliberately: a Config is a whole
+            // document, not a patch, so a LocationFilter that omitted them
+            // would serialize its defaults (100/50/80) and reset them. The
+            // rebuild must preserve what is configured NOW, which is 45.
+            filter: LocationFilter(
+              trackingAccuracyThreshold: 45,
+              odometerAccuracyThreshold: 22,
+              maxImpliedSpeed: 33,
+              rejectMockLocations: true,
+            ),
           ),
         ),
       );
-      final g = Tracelet.activeConfig.geo;
+      // A processorKeys change rebuilds the processor from current config, so
+      // the thresholds must survive that rebuild rather than reverting to the
+      // values captured when it was first constructed.
+      final afterRebuild = await Tracelet.getCurrentLocationTuning();
       check(
-        'Adaptive / sparse / mock-rejection parameters apply',
-        g.enableAdaptiveMode &&
-            g.enableSparseUpdates &&
-            g.sparseDistanceThreshold == 75 &&
-            g.filter.rejectMockLocations,
-        'sparseDistanceThreshold=${g.sparseDistanceThreshold}m, '
-            'adaptive=${g.enableAdaptiveMode}, '
-            'rejectMock=${g.filter.rejectMockLocations}',
+        'Thresholds survive a processor rebuild',
+        afterRebuild != null && afterRebuild.trackingAccuracyThreshold == 45,
+        afterRebuild == null
+            ? 'no processor yet — start tracking first'
+            : 'after the sparse/adaptive rebuild the processor still reports '
+                  'tracking=${afterRebuild.trackingAccuracyThreshold}m',
       );
 
       await Tracelet.stop();
@@ -184,7 +208,10 @@ class _Issue303CardState extends State<Issue303Card> {
         'list, so most of the filter config was accepted and ignored until a '
         'cold start — and restore_base_tuning() reverted to values the host had '
         'already replaced. set_base_tuning() now carries them in without '
-        'dropping the odometer anchor a rebuild would cost (#299).',
+        'dropping the odometer anchor a rebuild would cost (#299).\n\n'
+        'These rows read getCurrentLocationTuning(), which reports what the '
+        'processor actually holds — not activeConfig, which merely echoes the '
+        'Config you passed in and would pass on a broken build.',
       );
     } catch (e) {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');

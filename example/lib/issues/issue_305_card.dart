@@ -81,30 +81,19 @@ class _Issue305CardState extends State<Issue305Card> {
             'block',
       );
 
-      // 3. The round-trip that the method channel used to break. All five
-      //    geofence keys must survive a toMap/fromMap cycle — three of them
-      //    were previously dropped on that transport.
-      const configured = Config(
-        geofence: GeofenceConfig(
-          geofenceModeHighAccuracy: true,
-          geofenceInitialTrigger: false,
-          geofenceExitAccuracyMax: 35,
-          geofenceProximityRadius: 2500,
-          geofenceInitialTriggerEntry: false,
-        ),
-      );
-      final restored = Config.fromMap(configured.toMap());
-      final g = restored.geofence;
-      check(
-        'All five geofence keys survive a config round-trip',
-        g.geofenceModeHighAccuracy &&
-            !g.geofenceInitialTrigger &&
-            g.geofenceExitAccuracyMax == 35 &&
-            g.geofenceProximityRadius == 2500 &&
-            !g.geofenceInitialTriggerEntry,
-        'exitAccuracyMax=${g.geofenceExitAccuracyMax}, '
-            'initialTrigger=${g.geofenceInitialTrigger}, '
-            'highAccuracy=${g.geofenceModeHighAccuracy}',
+      // 3. The transport itself — the code that was actually broken — is NOT
+      //    assertable from here. `_geofenceToMap` is private to
+      //    MethodChannelTracelet and only observable with a mocked channel, and
+      //    the web mapping needs a browser. A Config.toMap()/fromMap() cycle
+      //    would look like a test but prove nothing: the Dart model always
+      //    serialized all five keys, so that round-trip passes on a build where
+      //    the transport drops them.
+      results.add(
+        'ℹ️ The method-channel and web mappings are covered by '
+        'method_channel_geofence_config_test.dart, which asserts the map that '
+        "actually crosses the channel (all five keys, both flags OR'd, and "
+        'the android/geofence blocks agreeing). That test caught a real bug '
+        'this card could not see.',
       );
 
       // 4. Backward compatibility: the deprecated Android-only flag must still

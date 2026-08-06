@@ -3442,6 +3442,13 @@ protocol TraceletHostApi {
   func getSensors(completion: @escaping (Result<[String?: Any?], Error>) -> Void)
   func getSettingsHealth(completion: @escaping (Result<[String?: Any?], Error>) -> Void)
   func getForegroundServiceHealth(completion: @escaping (Result<[String?: Any?], Error>) -> Void)
+  /// The location-filter thresholds actually in force right now (#303).
+  ///
+  /// Read back from the Rust `LocationProcessor`, not from the config cache, so
+  /// it reports what the filter is really using — including a transport-mode
+  /// auto-tune the host did not set. Returns `null` before a processor exists
+  /// (no tracking session has configured one yet).
+  func getCurrentLocationTuning(completion: @escaping (Result<TlLocationTuning?, Error>) -> Void)
   func openOemSettings(label: String, completion: @escaping (Result<Bool, Error>) -> Void)
   func showPowerManager(completion: @escaping (Result<Bool, Error>) -> Void)
   func getLog(query: [String?: Any?]?, completion: @escaping (Result<String, Error>) -> Void)
@@ -4516,6 +4523,27 @@ class TraceletHostApiSetup {
       }
     } else {
       getForegroundServiceHealthChannel.setMessageHandler(nil)
+    }
+    /// The location-filter thresholds actually in force right now (#303).
+    ///
+    /// Read back from the Rust `LocationProcessor`, not from the config cache, so
+    /// it reports what the filter is really using — including a transport-mode
+    /// auto-tune the host did not set. Returns `null` before a processor exists
+    /// (no tracking session has configured one yet).
+    let getCurrentLocationTuningChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.getCurrentLocationTuning\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      getCurrentLocationTuningChannel.setMessageHandler { _, reply in
+        api.getCurrentLocationTuning { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      getCurrentLocationTuningChannel.setMessageHandler(nil)
     }
     let openOemSettingsChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.openOemSettings\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {

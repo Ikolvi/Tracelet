@@ -1626,6 +1626,41 @@ class Tracelet {
     return _platform.getForegroundServiceHealth();
   }
 
+  /// The location-filter thresholds **actually in force**, or `null` before a
+  /// tracking session has built a location processor (#303).
+  ///
+  /// This reads back from the native processor, not from [activeConfig].
+  /// [activeConfig] is a Dart-side mirror of the last [Config] you passed in,
+  /// so it cannot tell you whether a value reached the filter that uses it —
+  /// and it cannot show you a transport-mode auto-tune, which changes these
+  /// thresholds without any config call at all.
+  ///
+  /// Two things it surfaces that nothing else can:
+  ///
+  /// - **Auto-tune state.** While `ClassifierConfig.autoTuneFromTransportMode`
+  ///   has a mode committed, these are the *tuned* values, not the ones you
+  ///   set. `ModeChangeEvent.appliedTuning` reports the swap at the moment it
+  ///   happens; this reports the current state at any time.
+  /// - **Whether your configuration took effect.** Prior to #303 most of the
+  ///   filter config never reached the processor at runtime, and there was no
+  ///   way to observe that from Dart.
+  ///
+  /// On Web this is always `null` — the browser Geolocation API exposes no
+  /// equivalent filter state.
+  ///
+  /// ```dart
+  /// await Tracelet.setConfig(const Config(
+  ///   geo: GeoConfig(filter: LocationFilter(trackingAccuracyThreshold: 30)),
+  /// ));
+  /// final tuning = await Tracelet.getCurrentLocationTuning();
+  /// // 30 unless a committed transport mode is currently overriding it.
+  /// print(tuning?.trackingAccuracyThreshold);
+  /// ```
+  static Future<LocationTuning?> getCurrentLocationTuning() async {
+    final t = await _platform.getCurrentLocationTuning();
+    return t == null ? null : LocationTuning.fromTl(t);
+  }
+
   /// Open an OEM-specific settings screen by [label].
   ///
   /// The [label] must match one of the labels from the `oemSettingsScreens`

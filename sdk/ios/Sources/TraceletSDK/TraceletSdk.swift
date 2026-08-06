@@ -1721,6 +1721,20 @@ public final class TraceletSdk {
     /// Get information about available device sensors.
     ///
     /// - Returns: Sensors dictionary.
+    /// The location-filter thresholds actually in force in the Rust processor,
+    /// or `nil` before one exists (#303).
+    ///
+    /// Deliberately reads the processor rather than `ConfigManager`: the two
+    /// silently disagreeing is exactly the bug #303 fixed, so a getter answering
+    /// from config could never surface a regression. While a transport-mode
+    /// auto-tune is committed these are the tuned values, not the configured
+    /// ones — which is what makes an auto-tune observable rather than a silent
+    /// mutation.
+    public func getCurrentLocationTuning() -> LocationTuning? {
+        guard let engine = locationEngine else { return nil }
+        return engine.currentTuning()
+    }
+
     public func getSensors() -> [String: Any] {
         return [
             "accelerometer": true,

@@ -795,6 +795,27 @@ class TraceletHostApiImpl: TraceletHostApi {
         ]))
     }
 
+    /// Reports the thresholds actually in force in the Rust processor (#303).
+    ///
+    /// Read back from the processor rather than from ConfigManager: those two
+    /// could silently disagree, which is the whole bug #303 fixed, so a getter
+    /// that answered from config would be unable to detect a regression. Nil
+    /// before a processor exists, and while a transport-mode auto-tune is in
+    /// force these are the tuned values, not the configured ones.
+    func getCurrentLocationTuning(
+        completion: @escaping (Result<TlLocationTuning?, Error>) -> Void
+    ) {
+        guard let t = sdk.getCurrentLocationTuning() else {
+            return completion(.success(nil))
+        }
+        completion(.success(TlLocationTuning(
+            distanceFilter: t.distanceFilter,
+            trackingAccuracyThreshold: Int64(t.trackingAccuracyThreshold),
+            odometerAccuracyThreshold: Int64(t.odometerAccuracyThreshold),
+            maxImpliedSpeed: Int64(t.maxImpliedSpeed)
+        )))
+    }
+
     func openOemSettings(label: String, completion: @escaping (Result<Bool, Error>) -> Void) {
         completion(.success(false)) // N/A on iOS
     }

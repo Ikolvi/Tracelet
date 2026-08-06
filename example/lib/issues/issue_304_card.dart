@@ -73,11 +73,15 @@ class _Issue304CardState extends State<Issue304Card> {
       //    Pruning itself happens natively against the log table; what this
       //    card can prove from Dart is that the value reaches the SDK rather
       //    than being dropped at the Pigeon boundary.
-      check(
-        'logMaxDays reaches the SDK',
-        Tracelet.activeConfig.logger.logMaxDays == 2,
-        'retention window is ${Tracelet.activeConfig.logger.logMaxDays} days — '
-            'pruneOldLogs now applies it alongside the level-derived row cap',
+      // Deliberately NOT asserted via activeConfig: that is a Dart-side mirror
+      // of the Config just passed in, so it would pass on a build where the
+      // value never reached native. Day-based pruning has no read-back surface,
+      // so the honest scope of this card is "the logging path still works with
+      // the age cap in place"; the cap itself is asserted in the Rust tests
+      // (prune_logs_older_than) and the SDK unit tests.
+      results.add(
+        'ℹ️ logMaxDays application is not Dart-observable — asserted by the '
+        'Rust prune_logs_older_than tests and the SDK unit tests.',
       );
 
       // 2. Writing a log line and reading the buffer back proves the logging
@@ -94,23 +98,32 @@ class _Issue304CardState extends State<Issue304Card> {
       // 3. disableLocationAuthorizationAlert round-trips. On iOS the permission
       //    manager now reports the current status instead of prompting; on
       //    Android and web the flag is inert by design.
+      // Observable behaviourally on iOS: with the flag on, a permission
+      // request must return the CURRENT status without presenting a prompt.
+      // If it hung waiting on a dialog, or changed status without user input,
+      // the flag was not honored.
+      final before = await Tracelet.getProviderState();
+      final requested = await Tracelet.requestLocationAuthorization();
+      final after = await Tracelet.getProviderState();
       check(
-        'disableLocationAuthorizationAlert reaches the SDK',
-        Tracelet.activeConfig.ios.disableLocationAuthorizationAlert,
-        'iOS suppresses the system prompt and returns the current status so '
-            'your app can route to Settings itself',
+        'A suppressed request returns without changing authorization',
+        before.status == after.status,
+        'status stayed ${after.status} across a request that returned '
+            '$requested — no prompt was presented',
       );
 
       // 4. The keys that are now honestly marked unimplemented. Their values
       //    still round-trip — deprecation does not change behavior — but the
       //    analyzer will now tell you they do nothing.
-      check(
-        'Unimplemented keys are deprecated, not silently ignored',
-        true,
-        'AuditConfig.includeExtrasInHash and '
-            'AttestationConfig.verificationUrl now carry @Deprecated with the '
-            'reason; locationTemplate / geofenceTemplate / persistenceExtras '
-            'are documented as unimplemented natively',
+      // Not a check — there is nothing to assert at runtime, because a
+      // @Deprecated annotation is a compile-time signal. Stating it as a
+      // passing check would be theatre.
+      results.add(
+        'ℹ️ AuditConfig.includeExtrasInHash and '
+        'AttestationConfig.verificationUrl now carry @Deprecated with the '
+        'reason, so the analyzer flags them in your code; '
+        'locationTemplate / geofenceTemplate / persistenceExtras are '
+        'documented as unimplemented natively.',
       );
 
       await Tracelet.stop();

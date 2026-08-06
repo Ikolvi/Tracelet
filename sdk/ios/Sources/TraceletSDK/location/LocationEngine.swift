@@ -226,6 +226,16 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         )
     }
 
+    /// The thresholds actually in force right now, or `nil` before a processor
+    /// exists (#303).
+    ///
+    /// Reads back from the processor, never from config: the two disagreeing is
+    /// precisely the bug #303 fixed, so answering from config would make a
+    /// regression undetectable.
+    public func currentTuning() -> LocationTuning? {
+        locationProcessor?.currentTuning()
+    }
+
     /// The thresholds actually in force right now, formatted for a log line
     /// (#303).
     ///

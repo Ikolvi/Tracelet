@@ -320,6 +320,16 @@ class LocationEngine(
     }
 
     /**
+     * The thresholds actually in force right now, or `null` before a processor
+     * exists (#303).
+     *
+     * Reads back from the processor, never from config: the two disagreeing is
+     * precisely the bug #303 fixed, so answering from config would make a
+     * regression undetectable.
+     */
+    fun currentTuning(): LocationTuning? = locationProcessor?.currentTuning()
+
+    /**
      * The thresholds actually in force right now, formatted for a log line
      * (#303).
      *
