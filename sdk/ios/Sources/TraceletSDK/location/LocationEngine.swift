@@ -163,7 +163,13 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// auto-tune shows up in logs instead of being a silent config mutation.
     @discardableResult
     public func applyTransportModeTuning(_ mode: String) -> LocationTuning? {
-        guard configManager.getAutoTuneFromTransportMode() else { return nil }
+        guard configManager.getAutoTuneFromTransportMode() else {
+            // #301: auto-tuning may have been switched off *after* a mode
+            // committed. Undo any tuning still in force rather than leaving the
+            // host running on thresholds it no longer asked for.
+            restoreBaseTuning()
+            return nil
+        }
         let processor = getProcessor()
         guard let tuning = tuningForTransportMode(mode: Self.rustTransportMode(mode)) else {
             processor.restoreBaseTuning()
@@ -178,6 +184,16 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
                 + "maxImpliedSpeed=\(tuning.maxImpliedSpeed)m/s"
         )
         return tuning
+    }
+
+    /// Restores the thresholds this engine was configured with, undoing any
+    /// auto-tune (#301).
+    ///
+    /// No-op when no processor exists yet — unlike `getProcessor()` this must not
+    /// build one as a side effect, since it is called from reconfiguration paths
+    /// that run before tracking has ever started.
+    public func restoreBaseTuning() {
+        locationProcessor?.restoreBaseTuning()
     }
 
     /// Maps a classifier mode name back to the Rust `TransportMode` enum.

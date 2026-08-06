@@ -3133,14 +3133,22 @@ class TlImpactEvent {
 
 /// A fused transport-mode change.
 class TlModeChangeEvent {
-  TlModeChangeEvent({required this.mode, required this.confidence});
+  TlModeChangeEvent({
+    required this.mode,
+    required this.confidence,
+    this.appliedTuning,
+  });
 
   String mode;
 
   double confidence;
 
+  /// Thresholds `autoTuneFromTransportMode` applied for this mode, or `null`
+  /// when auto-tuning is off or the mode carries no tuning (#301).
+  TlLocationTuning? appliedTuning;
+
   List<Object?> _toList() {
-    return <Object?>[mode, confidence];
+    return <Object?>[mode, confidence, appliedTuning];
   }
 
   Object encode() {
@@ -3152,6 +3160,7 @@ class TlModeChangeEvent {
     return TlModeChangeEvent(
       mode: result[0]! as String,
       confidence: result[1]! as double,
+      appliedTuning: result[2] as TlLocationTuning?,
     );
   }
 
@@ -3165,7 +3174,8 @@ class TlModeChangeEvent {
       return true;
     }
     return _deepEquals(mode, other.mode) &&
-        _deepEquals(confidence, other.confidence);
+        _deepEquals(confidence, other.confidence) &&
+        _deepEquals(appliedTuning, other.appliedTuning);
   }
 
   @override
@@ -3355,6 +3365,81 @@ class TlLogEntry {
         _deepEquals(level, other.level) &&
         _deepEquals(message, other.message) &&
         _deepEquals(timestamp, other.timestamp);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// Location-filter thresholds applied by transport-mode auto-tuning (#301).
+///
+/// Declared last on purpose: pigeon assigns codec type IDs by declaration
+/// order, so inserting a class higher up would renumber every type after it
+/// and break any app that resolves a plugin and the platform interface at
+/// different versions.
+class TlLocationTuning {
+  TlLocationTuning({
+    required this.distanceFilter,
+    required this.trackingAccuracyThreshold,
+    required this.odometerAccuracyThreshold,
+    required this.maxImpliedSpeed,
+  });
+
+  /// Minimum movement (m) between recorded fixes.
+  double distanceFilter;
+
+  /// Fixes worse than this accuracy (m) are rejected.
+  int trackingAccuracyThreshold;
+
+  /// Only fixes at least this accurate (m) contribute to the odometer.
+  int odometerAccuracyThreshold;
+
+  /// Fixes implying a speed above this (m/s) are rejected.
+  int maxImpliedSpeed;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      distanceFilter,
+      trackingAccuracyThreshold,
+      odometerAccuracyThreshold,
+      maxImpliedSpeed,
+    ];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static TlLocationTuning decode(Object result) {
+    result as List<Object?>;
+    return TlLocationTuning(
+      distanceFilter: result[0]! as double,
+      trackingAccuracyThreshold: result[1]! as int,
+      odometerAccuracyThreshold: result[2]! as int,
+      maxImpliedSpeed: result[3]! as int,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! TlLocationTuning || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(distanceFilter, other.distanceFilter) &&
+        _deepEquals(
+          trackingAccuracyThreshold,
+          other.trackingAccuracyThreshold,
+        ) &&
+        _deepEquals(
+          odometerAccuracyThreshold,
+          other.odometerAccuracyThreshold,
+        ) &&
+        _deepEquals(maxImpliedSpeed, other.maxImpliedSpeed);
   }
 
   @override
@@ -3555,6 +3640,9 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is TlLogEntry) {
       buffer.putUint8(190);
       writeValue(buffer, value.encode());
+    } else if (value is TlLocationTuning) {
+      buffer.putUint8(191);
+      writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
     }
@@ -3708,6 +3796,8 @@ class _PigeonCodec extends StandardMessageCodec {
         return TlTelematicsRecord.decode(readValue(buffer)!);
       case 190:
         return TlLogEntry.decode(readValue(buffer)!);
+      case 191:
+        return TlLocationTuning.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }

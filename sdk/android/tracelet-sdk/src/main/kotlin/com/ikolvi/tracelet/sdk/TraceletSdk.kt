@@ -1378,7 +1378,19 @@ class TraceletSdk private constructor(private val context: Context) {
         )
         if (behaviorKeys.any { key -> oldConfig[key] != merged[key] }) {
             initBehaviorEngines()
+            // #301: initBehaviorEngines() creates the classifier but only start()
+            // ever started the ~1 Hz accel-window loop that drives it. Enabling
+            // the classifier mid-session therefore produced a classifier that
+            // never classified — and, with auto-tuning on, never retuned.
+            // startBehaviorSampling() stops the old loop first and no-ops when
+            // there is no consumer, so this is safe to call unconditionally.
+            if (stateManager.enabled) startBehaviorSampling()
         }
+
+        // #301: any of the above can leave the processor's thresholds out of step
+        // with the committed transport mode — a rebuilt processor has dropped an
+        // active auto-tune, and a disabled auto-tune has left one in force.
+        syncTransportModeTuning()
 
         // The battery-budget engine is built at ready() from batteryBudgetPerHour
         // and is otherwise never touched here — so enabling/disabling/retargeting
@@ -2988,6 +3000,35 @@ class TraceletSdk private constructor(private val context: Context) {
                 logger.error("Failed to persist driving event: ${ex.message}")
             }
         }
+    }
+
+    /**
+     * Re-aligns the location processor's thresholds with the classifier's
+     * committed transport mode (#301).
+     *
+     * Auto-tuning only ever fires on a *committed mode change*, which makes it
+     * blind to everything else that can move the two out of step:
+     *
+     * - `setConfig()` rebuilds the processor for a location-key change, resetting
+     *   it to the configured thresholds while the committed mode stays put — so
+     *   a user who never changes activity keeps the base thresholds forever.
+     * - Turning `autoTuneFromTransportMode` off leaves the last applied tuning in
+     *   force, since the next commit returns early before it can restore.
+     * - Turning `enableFusedClassifier` off destroys the classifier, so no
+     *   further commit ever arrives to undo the tuning.
+     *
+     * Calling this after any reconfiguration closes all three: with auto-tuning
+     * off it restores the host's own values, and with it on it re-applies the
+     * mode currently committed (`unknown` also restores).
+     */
+    private fun syncTransportModeTuning() {
+        if (!::locationEngine.isInitialized) return
+        if (!configManager.getAutoTuneFromTransportMode()) {
+            locationEngine.restoreBaseTuning()
+            return
+        }
+        val mode = transportClassifier?.currentMode()?.name?.lowercase() ?: "unknown"
+        locationEngine.applyTransportModeTuning(mode)
     }
 
     /** Starts the ~1 Hz accel-window loop (classifier + impact) if a consumer is active. */

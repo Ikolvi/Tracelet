@@ -340,11 +340,25 @@ class EventDispatcher : TraceletEventSender {
             val event = com.ikolvi.tracelet.TlModeChangeEvent(
                 mode = data["mode"] as? String ?: "unknown",
                 confidence = num(data["confidence"]),
+                // #301: forward the auto-tuned thresholds. Absent unless
+                // autoTuneFromTransportMode is on and the mode carries a tuning.
+                appliedTuning = tuningOf(data["appliedTuning"]),
             )
             postToMain { api.onModeChange(event) {} }
         } else {
             fallback("modechange", data)
         }
+    }
+
+    /** Maps the SDK's `appliedTuning` payload onto the Pigeon record (#301). */
+    private fun tuningOf(v: Any?): com.ikolvi.tracelet.TlLocationTuning? {
+        val map = v as? Map<*, *> ?: return null
+        return com.ikolvi.tracelet.TlLocationTuning(
+            distanceFilter = num(map["distanceFilter"]),
+            trackingAccuracyThreshold = lng(map["trackingAccuracyThreshold"]),
+            odometerAccuracyThreshold = lng(map["odometerAccuracyThreshold"]),
+            maxImpliedSpeed = lng(map["maxImpliedSpeed"]),
+        )
     }
 
     override fun sendCrashModelStatus(data: Map<String, Any?>) {

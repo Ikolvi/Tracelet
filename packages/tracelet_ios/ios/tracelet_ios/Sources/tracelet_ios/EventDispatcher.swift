@@ -229,9 +229,23 @@ public final class PluginEventDispatcher: NSObject, TraceletEventSending {
         guard let api = eventApi else { return fallback("modechange", data) }
         let event = TlModeChangeEvent(
             mode: data["mode"] as? String ?? "unknown",
-            confidence: num(data["confidence"])
+            confidence: num(data["confidence"]),
+            // #301: forward the auto-tuned thresholds. Absent unless
+            // autoTuneFromTransportMode is on and the mode carries a tuning.
+            appliedTuning: tuningOf(data["appliedTuning"])
         )
         DispatchQueue.main.async { api.onModeChange(event: event) { _ in } }
+    }
+
+    /// Maps the SDK's `appliedTuning` payload onto the Pigeon record (#301).
+    private func tuningOf(_ v: Any?) -> TlLocationTuning? {
+        guard let map = v as? [String: Any] else { return nil }
+        return TlLocationTuning(
+            distanceFilter: num(map["distanceFilter"]),
+            trackingAccuracyThreshold: lng(map["trackingAccuracyThreshold"]),
+            odometerAccuracyThreshold: lng(map["odometerAccuracyThreshold"]),
+            maxImpliedSpeed: lng(map["maxImpliedSpeed"])
+        )
     }
 
     public func sendCrashModelStatus(_ data: [String: Any]) {

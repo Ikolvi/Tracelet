@@ -727,6 +727,7 @@ public final class TraceletSdk {
         // the model. Mirrors the Android SDK. initBehaviorEngines() is idempotent.
         let oldBehavior: [AnyHashable] = [
             configManager.getEnableDrivingEvents(), configManager.getEnableFusedClassifier(),
+            configManager.getAutoTuneFromTransportMode(),
             configManager.getEnableCrashDetection(), configManager.getEnableFallDetection(),
             configManager.getCrashModelUrl() ?? "", configManager.getCrashModelUnlockUrl() ?? "",
             configManager.getCrashModelLicenseKey() ?? "", configManager.getCrashModelSha256() ?? "",
@@ -855,6 +856,9 @@ public final class TraceletSdk {
 
         let newBehavior: [AnyHashable] = [
             configManager.getEnableDrivingEvents(), configManager.getEnableFusedClassifier(),
+            // #301: Android already watched this key; iOS did not, so the two
+            // platforms took different paths on the same setConfig() call.
+            configManager.getAutoTuneFromTransportMode(),
             configManager.getEnableCrashDetection(), configManager.getEnableFallDetection(),
             configManager.getCrashModelUrl() ?? "", configManager.getCrashModelUnlockUrl() ?? "",
             configManager.getCrashModelLicenseKey() ?? "", configManager.getCrashModelSha256() ?? "",
@@ -862,7 +866,19 @@ public final class TraceletSdk {
         ]
         if oldBehavior != newBehavior {
             initBehaviorEngines()
+            // #301: initBehaviorEngines() creates the classifier but only start()
+            // ever started the ~1 Hz accel-window loop that drives it. Enabling
+            // the classifier mid-session therefore produced a classifier that
+            // never classified — and, with auto-tuning on, never retuned.
+            // startBehaviorSampling() stops the old loop first and no-ops when
+            // there is no consumer, so this is safe to call unconditionally.
+            if stateManager.enabled { startBehaviorSampling() }
         }
+
+        // #301: any of the above can leave the processor's thresholds out of step
+        // with the committed transport mode — a rebuilt processor has dropped an
+        // active auto-tune, and a disabled auto-tune has left one in force.
+        syncTransportModeTuning()
 
         // The battery-budget engine is built at ready() from batteryBudgetPerHour
         // and is otherwise never touched here — so enabling/disabling/retargeting
@@ -2517,6 +2533,34 @@ public final class TraceletSdk {
         accelBufferLock.lock()
         accelBuffer.append(magnitudeG)
         accelBufferLock.unlock()
+    }
+
+    /// Re-aligns the location processor's thresholds with the classifier's
+    /// committed transport mode (#301).
+    ///
+    /// Auto-tuning only ever fires on a *committed mode change*, which makes it
+    /// blind to everything else that can move the two out of step:
+    ///
+    /// - `setConfig()` rebuilds the processor for a location-key change, resetting
+    ///   it to the configured thresholds while the committed mode stays put — so
+    ///   a user who never changes activity keeps the base thresholds forever.
+    /// - Turning `autoTuneFromTransportMode` off leaves the last applied tuning in
+    ///   force, since the next commit returns early before it can restore.
+    /// - Turning `enableFusedClassifier` off destroys the classifier, so no
+    ///   further commit ever arrives to undo the tuning.
+    ///
+    /// Calling this after any reconfiguration closes all three: with auto-tuning
+    /// off it restores the host's own values, and with it on it re-applies the
+    /// mode currently committed (`unknown` also restores).
+    private func syncTransportModeTuning() {
+        guard let engine = locationEngine else { return }
+        guard configManager.getAutoTuneFromTransportMode() else {
+            engine.restoreBaseTuning()
+            return
+        }
+        let mode = transportClassifier.map { String(describing: $0.currentMode()).lowercased() }
+            ?? "unknown"
+        engine.applyTransportModeTuning(mode)
     }
 
     private func startBehaviorSampling() {

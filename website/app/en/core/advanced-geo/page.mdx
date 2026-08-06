@@ -28,8 +28,8 @@ final config = Config.highAccuracy(
 ```
 
 <Callout type="warning">
-**Changed in 3.8.0-alpha.** Smoothing now runs *before* the location filters, so
-it also applies to the **odometer**. Before 3.8.0-alpha it only affected the
+**Changed in 3.8.0.** Smoothing now runs *before* the location filters, so
+it also applies to the **odometer**. Before 3.8.0 it only affected the
 `coords` you received — the odometer kept accumulating raw, jagged deltas, so
 turning the filter on smoothed your map but left distance over-reported. If you
 read `Tracelet.getOdometer()`, expect your recorded distances to drop after
