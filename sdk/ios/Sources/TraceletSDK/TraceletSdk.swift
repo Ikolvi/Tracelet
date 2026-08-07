@@ -2456,6 +2456,55 @@ public final class TraceletSdk {
     /// Last location timestamp persisted by a heartbeat — used to deduplicate DB writes.
     private var lastHeartbeatLocationTime: TimeInterval = 0
 
+    /// Re-aligns the engine with the committed motion state (#319).
+    ///
+    /// The Android counterpart fixes a confirmed field failure: its motion
+    /// subsystems can settle back into stationary *without* emitting a
+    /// transition, and because the engine's mode is switched only from those
+    /// transitions it kept running continuous GPS — location indicator pinned
+    /// on, fixes every couple of seconds — until the app was next opened.
+    ///
+    /// iOS has no reproduction of that specific trigger, and is less exposed to
+    /// it: the Android path runs through `MotionDetector.onManualPaceChange()`
+    /// reconfiguring sensors directly, which has no iOS equivalent because
+    /// `CMMotionActivityManager` runs continuously regardless of the tracking
+    /// mode. This is therefore a safety net rather than a port of a known bug.
+    ///
+    /// It is still worth having on both platforms. The failure is silent, costs
+    /// the user battery for the rest of the session, and every other way of
+    /// reaching it — a queued callback landing after a mode switch, a
+    /// force-switch bailing on its `stateManager.enabled` guard after the state
+    /// was already written — leaves the same divergence. Reconciling on the
+    /// heartbeat bounds the damage to one interval, and the lifecycle entry
+    /// makes it visible in a bug report instead of invisible.
+    ///
+    /// `stateManager.isMoving` is the authority: `switchToContinuousForce()` and
+    /// `switchToStationaryPeriodicForce()` both write it as they switch, so it
+    /// is the committed intent rather than a competing opinion.
+    private func reconcileTrackingMode() {
+        guard stateManager.enabled else { return }
+        // Only continuous sessions run the stationary/continuous split; periodic
+        // and geofence modes own their own scheduling.
+        guard stateManager.trackingMode == .continuous else { return }
+
+        let wantsStationary = !stateManager.isMoving
+        let isStationary = locationEngine.isPeriodicTracking
+        guard wantsStationary != isStationary else { return }
+
+        if wantsStationary {
+            TraceletLog.lifecycle(
+                "motion: engine was still tracking continuously while the "
+                    + "committed state is stationary — switching to stationary "
+                    + "periodic (#319)")
+            switchToStationaryPeriodicForce()
+        } else {
+            TraceletLog.lifecycle(
+                "motion: engine was in stationary periodic while the committed "
+                    + "state is moving — resuming continuous (#319)")
+            switchToContinuousForce()
+        }
+    }
+
     private func startHeartbeat() {
         stopHeartbeat()
         let interval = configManager.getHeartbeatInterval()
@@ -2468,6 +2517,7 @@ public final class TraceletSdk {
             ) { [weak self] _ in
                 guard let self = self else { return }
                 TraceletLog.debug("[Tracelet] Heartbeat fired")
+                self.reconcileTrackingMode()
                 guard let location = self.locationEngine.getLastGpsLocation() else {
                     if self.configManager.isDebug() {
                         TraceletLog.debug("[Tracelet] Heartbeat: no cached location, skipping")

@@ -727,11 +727,24 @@ class MotionDetector(
                     maxMagLast10 = absMag
                 }
 
-                // Log periodically to avoid spam but show sensor details
+                // Per-sample sensor trace, at VERBOSE (#319).
+                //
+                // Deliberately not DEBUG. Every persisted line is a SQLite INSERT
+                // and shares one row cap with everything else, so at DEBUG this
+                // single statement dominated the log: a field report sampling at
+                // ~200 Hz emitted ~4 lines/s, which turned the whole 2000-row
+                // table over roughly every 8 minutes. The database does not grow
+                // — the cap holds — but the retention window collapses from the
+                // configured 3 days to minutes, and the background events someone
+                // enabled logging to investigate are evicted before they can read
+                // them. Turning logging up must not destroy the evidence.
+                //
+                // VERBOSE keeps the raw trace available for sensor-level work
+                // while leaving DEBUG usable for diagnosing behaviour.
                 val isFrozen = consecutiveFrozenCount >= 5
                 val logInterval = if (isFrozen) 5000 else 50
                 if (sampleCount % logInterval == 1) {
-                    logger.debug("[SHAKE] sample #$sampleCount: current_mag=${String.format("%.3f", magnitude)}, max_mag_last_10=${String.format("%.3f", maxMagLast10)}, threshold=$shakeThreshold, raw=[$x, $y, $z]")
+                    logger.verbose("[SHAKE] sample #$sampleCount: current_mag=${String.format("%.3f", magnitude)}, max_mag_last_10=${String.format("%.3f", maxMagLast10)}, threshold=$shakeThreshold, raw=[$x, $y, $z]")
                 }
                 // Always reset max mag every 10 samples
                 if (sampleCount % 10 == 0) {

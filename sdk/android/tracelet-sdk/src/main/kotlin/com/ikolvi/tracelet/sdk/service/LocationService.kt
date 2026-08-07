@@ -323,6 +323,15 @@ class LocationService : Service(), DefaultLifecycleObserver {
             TraceletLog.debug("switchToContinuous() — continuous tracking resumed")
         }
 
+        /**
+         * Whether the stationary-periodic timer is currently running (#319).
+         *
+         * This is what "the engine is actually in stationary mode" means, as
+         * opposed to what the persisted state claims — the two diverging is the
+         * bug [reconcileBootTrackingMode] exists to catch.
+         */
+        internal fun isStationaryTimerActive(): Boolean = stationaryTimerRunnable != null
+
         /** Cancels the stationary periodic timer if active. */
         fun stopStationaryTimer() {
             stationaryTimerRunnable?.let { stationaryTimerHandler?.removeCallbacks(it) }
@@ -1382,6 +1391,67 @@ class LocationService : Service(), DefaultLifecycleObserver {
      * Mirrors the heartbeat logic in [TraceletAndroidPlugin.startHeartbeat]
      * but uses the boot-mode [LocationEngine] and [TraceletEventSender].
      */
+    /**
+     * Re-aligns the killed-state engine with the committed motion state (#319).
+     *
+     * In the killed state the engine's tracking mode is switched **only** from a
+     * motion *transition* — `MotionDetector.onMotionStateChanged` and the
+     * `SpeedMotionManager` callbacks. That is fine while transitions keep
+     * arriving, but the motion subsystems can settle back into stationary
+     * *without emitting one*: `MotionDetector.onManualPaceChange()` reconfigures
+     * its sensors between the shake/significant-motion set and the stillness set
+     * directly, and never routes through `declareStationary()`. When that
+     * happens the detector reports stationary, `state.isMoving` reads false —
+     * and the engine is still running continuous GPS, with the OS location
+     * indicator pinned on and fixes landing every couple of seconds until the
+     * user next opens the app.
+     *
+     * A field report showed exactly that: a single `isMoving=true` transition,
+     * then 87 s of a demonstrably still device (peak 0.02 g against a 2.0 g
+     * threshold) with continuous fixes still being persisted, and the detector
+     * internally back in its stationary configuration.
+     *
+     * [startBootTracking] already reconciles this once at bootstrap, which is
+     * why the divergence only appears mid-session. This runs the same check on
+     * every heartbeat, so a missed transition costs one heartbeat interval
+     * rather than the rest of the process lifetime.
+     *
+     * `state.isMoving` is the right authority here: both [switchToContinuous]
+     * and [switchToStationaryPeriodic] write it as they switch, so it *is* the
+     * committed intent rather than an independent opinion that could fight the
+     * coordinator.
+     *
+     * Skipped when stationary tracking is configured for geofences: that mode
+     * has no equivalent "is it running" signal to compare against, and guessing
+     * would risk tearing down a correct session.
+     */
+    private fun reconcileBootTrackingMode(config: ConfigManager, engine: LocationEngine) {
+        if (config.getStationaryTrackingMode() ==
+            com.ikolvi.tracelet.sdk.model.StationaryTrackingMode.GEOFENCES
+        ) {
+            return
+        }
+        val state = StateManager(applicationContext)
+        val wantsStationary = !state.isMoving
+        val isStationary = isStationaryTimerActive()
+        if (wantsStationary == isStationary) return
+
+        if (wantsStationary) {
+            TraceletLog.lifecycle(
+                "motion (killed-state): engine was still tracking continuously " +
+                    "while the committed state is stationary — switching to " +
+                    "stationary periodic (#319)"
+            )
+            switchToStationaryPeriodic(engine, config, state)
+        } else {
+            TraceletLog.lifecycle(
+                "motion (killed-state): engine was in stationary periodic while " +
+                    "the committed state is moving — resuming continuous (#319)"
+            )
+            switchToContinuous(engine, state)
+        }
+    }
+
     private fun startBootHeartbeat(
         config: ConfigManager,
         engine: LocationEngine,
@@ -1398,6 +1468,10 @@ class LocationService : Service(), DefaultLifecycleObserver {
             override fun run() {
                 if (bootLocationEngine == null) return // Tracking stopped
                 TraceletLog.debug("Boot heartbeat fired")
+                // #319: re-align the engine with the committed motion state. The
+                // heartbeat is the only thing that ticks reliably in the killed
+                // state, so it is where the two are re-checked.
+                reconcileBootTrackingMode(config, engine)
                 val cached = engine.getLastGpsLocation()
                 if (cached != null) {
                     val locationData = engine.enrichLocation(cached, "heartbeat").toMutableMap()
