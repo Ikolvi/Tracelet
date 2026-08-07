@@ -883,10 +883,67 @@ impl DatabaseManager {
         Ok(conn.last_insert_rowid())
     }
 
-    /// Retrieves a batch of unsynced telematics events.
+    /// Retrieves a batch of **unsynced** telematics events, oldest first.
+    ///
+    /// This is the *sync* view: the batcher uploads them in id order and then
+    /// calls [`mark_telematics_synced`](Self::mark_telematics_synced) with the
+    /// highest id it sent, so already-uploaded events must be excluded and the
+    /// order must be ascending. Use
+    /// [`get_telematics_history`](Self::get_telematics_history) for anything
+    /// user-facing (#313).
     pub fn get_telematics_events(&self, limit: i32) -> Result<Vec<DbTelematicsRecord>, TraceletError> {
+        self.query_telematics(
+            "SELECT id, event_type, severity, latitude, longitude, timestamp, synced FROM tracelet_telematics WHERE synced = 0 ORDER BY id ASC LIMIT ?1",
+            limit,
+        )
+    }
+
+    /// Retrieves the most recent telematics events — **newest first, regardless
+    /// of sync state** (#313).
+    ///
+    /// This is the *history* view behind `Tracelet.getTelematicsEvents()` and the
+    /// Doctor bug report. It deliberately does not filter on `synced`: the sync
+    /// flag records whether an event was uploaded, which says nothing about
+    /// whether the user should still see it. Sharing the sync query meant an app
+    /// with `syncTelematics` enabled watched its own local history empty out, and
+    /// that `ORDER BY id ASC LIMIT n` returned the *oldest* n rather than the
+    /// most recent n it documented.
+    pub fn get_telematics_history(&self, limit: i32) -> Result<Vec<DbTelematicsRecord>, TraceletError> {
+        self.query_telematics(
+            "SELECT id, event_type, severity, latitude, longitude, timestamp, synced FROM tracelet_telematics ORDER BY id DESC LIMIT ?1",
+            limit,
+        )
+    }
+
+    /// Marks telematics events up to max_id as synced.
+    pub fn mark_telematics_synced(&self, max_id: i64) -> Result<(), TraceletError> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT id, event_type, severity, latitude, longitude, timestamp, synced FROM tracelet_telematics WHERE synced = 0 ORDER BY id ASC LIMIT ?1")
+        conn.execute("UPDATE tracelet_telematics SET synced = 1 WHERE id <= ?1", params![max_id])
+            .map_err(|e| TraceletError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Clears all telematics events from the database.
+    pub fn clear_telematics_events(&self) -> Result<(), TraceletError> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM tracelet_telematics", [])
+            .map_err(|e| TraceletError::Database(e.to_string()))?;
+        Ok(())
+    }
+}
+
+/// Internal helpers.
+///
+/// Deliberately a separate, **non-exported** impl block: `#[uniffi::export]`
+/// exports every method in its block regardless of visibility, so putting a
+/// SQL-taking helper there would hand hosts an arbitrary-query FFI entry point.
+impl DatabaseManager {
+    /// Runs a telematics `SELECT` taking a single `LIMIT` parameter and whose
+    /// columns are `id, event_type, severity, latitude, longitude, timestamp,
+    /// synced` in that order.
+    fn query_telematics(&self, sql: &str, limit: i32) -> Result<Vec<DbTelematicsRecord>, TraceletError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(sql)
             .map_err(|e| TraceletError::Database(e.to_string()))?;
 
         let iter = stmt.query_map([limit], |row| {
@@ -909,22 +966,6 @@ impl DatabaseManager {
             }
         }
         Ok(records)
-    }
-
-    /// Marks telematics events up to max_id as synced.
-    pub fn mark_telematics_synced(&self, max_id: i64) -> Result<(), TraceletError> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute("UPDATE tracelet_telematics SET synced = 1 WHERE id <= ?1", params![max_id])
-            .map_err(|e| TraceletError::Database(e.to_string()))?;
-        Ok(())
-    }
-
-    /// Clears all telematics events from the database.
-    pub fn clear_telematics_events(&self) -> Result<(), TraceletError> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM tracelet_telematics", [])
-            .map_err(|e| TraceletError::Database(e.to_string()))?;
-        Ok(())
     }
 }
 
@@ -1444,5 +1485,62 @@ mod tests {
         let rows = db.get_locations_batch(None).unwrap();
         let r = rows.iter().find(|r| r.uuid.as_deref() == Some("enc-addr")).expect("row");
         assert_eq!(r.address.as_deref(), Some(address), "encrypted address must round-trip");
+    }
+
+    // ── #313: history view vs sync view ──
+
+    fn telematics_db() -> DatabaseManager {
+        let db = DatabaseManager::new(":memory:").expect("Failed to create in-memory db");
+        db.set_encryption_key("");
+        for kind in ["harsh_braking", "harsh_cornering", "speeding", "crash"] {
+            db.insert_telematics_event(kind, 0.5, 1.0, 2.0).unwrap();
+        }
+        db
+    }
+
+    #[test]
+    fn telematics_history_is_newest_first() {
+        let db = telematics_db();
+        let history = db.get_telematics_history(2).unwrap();
+        assert_eq!(history.len(), 2);
+        // `crash` was inserted last, so it must lead a "most recent" listing.
+        assert_eq!(history[0].event_type, "crash");
+        assert_eq!(history[1].event_type, "speeding");
+    }
+
+    #[test]
+    fn telematics_history_survives_sync() {
+        // The sync flag records whether an event was uploaded — it must not
+        // decide whether the user can still see it. Sharing the sync query meant
+        // an app with syncTelematics on watched its own history empty out.
+        let db = telematics_db();
+        let batch = db.get_telematics_events(10).unwrap();
+        let max_id = batch.iter().map(|e| e.id).max().unwrap();
+        db.mark_telematics_synced(max_id).unwrap();
+
+        assert!(
+            db.get_telematics_events(10).unwrap().is_empty(),
+            "sync view must be drained once everything is marked synced"
+        );
+        assert_eq!(
+            db.get_telematics_history(10).unwrap().len(),
+            4,
+            "history must still show every event after a sync"
+        );
+    }
+
+    #[test]
+    fn telematics_sync_view_stays_oldest_first_and_unsynced_only() {
+        // The batcher uploads in id order then marks synced up to a max id, so
+        // this view must keep its ascending, unsynced-only contract.
+        let db = telematics_db();
+        let first_two = db.get_telematics_events(2).unwrap();
+        assert_eq!(first_two[0].event_type, "harsh_braking");
+        assert_eq!(first_two[1].event_type, "harsh_cornering");
+
+        db.mark_telematics_synced(first_two[1].id).unwrap();
+        let rest = db.get_telematics_events(10).unwrap();
+        assert_eq!(rest.len(), 2, "already-synced events must not be re-sent");
+        assert_eq!(rest[0].event_type, "speeding");
     }
 }

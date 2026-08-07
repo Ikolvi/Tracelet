@@ -1182,7 +1182,8 @@ public static func fromEncrypted(blob: Data, key: Data)throws  -> CrashModel  {
     
     /**
      * Loads a model from the training-notebook JSON. Returns a `Config` error if
-     * the JSON is malformed or the positive class (`1`) is absent.
+     * the JSON is malformed, the positive class (`1`) is absent, or any declared
+     * feature is outside [`SUPPORTED_FEATURES`].
      */
 public static func fromJson(json: String)throws  -> CrashModel  {
     return try  FfiConverterTypeCrashModel_lift(try rustCallWithError(FfiConverterTypeTraceletError_lift) {
@@ -1384,9 +1385,30 @@ public protocol DatabaseManagerProtocol: AnyObject, Sendable {
     func getPrivacyZones() throws  -> [CorePrivacyZone]
     
     /**
-     * Retrieves a batch of unsynced telematics events.
+     * Retrieves a batch of **unsynced** telematics events, oldest first.
+     *
+     * This is the *sync* view: the batcher uploads them in id order and then
+     * calls [`mark_telematics_synced`](Self::mark_telematics_synced) with the
+     * highest id it sent, so already-uploaded events must be excluded and the
+     * order must be ascending. Use
+     * [`get_telematics_history`](Self::get_telematics_history) for anything
+     * user-facing (#313).
      */
     func getTelematicsEvents(limit: Int32) throws  -> [DbTelematicsRecord]
+    
+    /**
+     * Retrieves the most recent telematics events — **newest first, regardless
+     * of sync state** (#313).
+     *
+     * This is the *history* view behind `Tracelet.getTelematicsEvents()` and the
+     * Doctor bug report. It deliberately does not filter on `synced`: the sync
+     * flag records whether an event was uploaded, which says nothing about
+     * whether the user should still see it. Sharing the sync query meant an app
+     * with `syncTelematics` enabled watched its own local history empty out, and
+     * that `ORDER BY id ASC LIMIT n` returned the *oldest* n rather than the
+     * most recent n it documented.
+     */
+    func getTelematicsHistory(limit: Int32) throws  -> [DbTelematicsRecord]
     
     /**
      * Inserts or replaces a validated tamper-proof cryptographic audit trail record.
@@ -1730,11 +1752,39 @@ open func getPrivacyZones()throws  -> [CorePrivacyZone]  {
 }
     
     /**
-     * Retrieves a batch of unsynced telematics events.
+     * Retrieves a batch of **unsynced** telematics events, oldest first.
+     *
+     * This is the *sync* view: the batcher uploads them in id order and then
+     * calls [`mark_telematics_synced`](Self::mark_telematics_synced) with the
+     * highest id it sent, so already-uploaded events must be excluded and the
+     * order must be ascending. Use
+     * [`get_telematics_history`](Self::get_telematics_history) for anything
+     * user-facing (#313).
      */
 open func getTelematicsEvents(limit: Int32)throws  -> [DbTelematicsRecord]  {
     return try  FfiConverterSequenceTypeDbTelematicsRecord.lift(try rustCallWithError(FfiConverterTypeTraceletError_lift) {
     uniffi_tracelet_core_fn_method_databasemanager_get_telematics_events(
+            self.uniffiCloneHandle(),
+        FfiConverterInt32.lower(limit),$0
+    )
+})
+}
+    
+    /**
+     * Retrieves the most recent telematics events — **newest first, regardless
+     * of sync state** (#313).
+     *
+     * This is the *history* view behind `Tracelet.getTelematicsEvents()` and the
+     * Doctor bug report. It deliberately does not filter on `synced`: the sync
+     * flag records whether an event was uploaded, which says nothing about
+     * whether the user should still see it. Sharing the sync query meant an app
+     * with `syncTelematics` enabled watched its own local history empty out, and
+     * that `ORDER BY id ASC LIMIT n` returned the *oldest* n rather than the
+     * most recent n it documented.
+     */
+open func getTelematicsHistory(limit: Int32)throws  -> [DbTelematicsRecord]  {
+    return try  FfiConverterSequenceTypeDbTelematicsRecord.lift(try rustCallWithError(FfiConverterTypeTraceletError_lift) {
+    uniffi_tracelet_core_fn_method_databasemanager_get_telematics_history(
             self.uniffiCloneHandle(),
         FfiConverterInt32.lower(limit),$0
     )
@@ -10056,7 +10106,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_tracelet_core_checksum_method_databasemanager_get_privacy_zones() != 61961) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_tracelet_core_checksum_method_databasemanager_get_telematics_events() != 50151) {
+    if (uniffi_tracelet_core_checksum_method_databasemanager_get_telematics_events() != 54182) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tracelet_core_checksum_method_databasemanager_get_telematics_history() != 54287) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_databasemanager_insert_audit_trail() != 2860) {
@@ -10179,7 +10232,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_tracelet_core_checksum_constructor_crashmodel_from_encrypted() != 59752) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_tracelet_core_checksum_constructor_crashmodel_from_json() != 24161) {
+    if (uniffi_tracelet_core_checksum_constructor_crashmodel_from_json() != 16401) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_constructor_impactdetector_new() != 56951) {

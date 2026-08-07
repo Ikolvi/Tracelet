@@ -807,7 +807,12 @@ class Tracelet {
     await _platform.clearLogs();
   }
 
-  /// Get stored telematics events.
+  /// Get stored telematics events — **most recent first**.
+  ///
+  /// Returns up to [limit] driving/impact events from the local database,
+  /// newest first, whether or not they have already been synced. Enabling
+  /// `syncTelematics` therefore no longer empties your own local history
+  /// (#313).
   static Future<List<TelematicsRecord>> getTelematicsEvents(int limit) async {
     final result = await _platform.getTelematicsEvents(limit);
     return result

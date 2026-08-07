@@ -399,6 +399,10 @@ for (final event in events) {
 }
 ```
 
+Events come back **newest first**, and syncing does not remove them from this
+view — enabling `syncTelematics` uploads events but leaves your local history
+intact.
+
 ### Simulating Events
 
 You can inject mock telematics events directly into the native tracking engines. This is perfect for testing your app's reaction (like showing an SOS screen on a crash) or testing your UI components. The example app's **Driving & Safety** page and the Tracelet Doctor overlay use this API to let developers trigger events via buttons.

@@ -70,10 +70,11 @@ class MainActivity : FlutterActivity() {
                             com.ikolvi.tracelet.sdk.crash.CrashModelLoader.decryptionKey =
                                 Base64.decode(keyB64, Base64.DEFAULT)
                             // Force a fresh download for the test (ignore any cache).
-                            java.io.File(
-                                applicationContext.filesDir,
-                                "tracelet_crash_model.enc",
-                            ).delete()
+                            // Cache files are keyed by model URL (#314), so clear
+                            // every blob rather than one fixed filename.
+                            applicationContext.filesDir
+                                .listFiles { f -> f.name.startsWith("tracelet_crash_model") }
+                                ?.forEach { it.delete() }
                             val logs = StringBuilder()
                             val model = com.ikolvi.tracelet.sdk.crash.CrashModelLoader.load(
                                 applicationContext, url, sha,

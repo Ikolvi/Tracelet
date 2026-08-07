@@ -160,12 +160,56 @@ public final class TraceletSdk {
     private static let crashConfirmGuardMs: Int64 = 3_000
 
     // #183 opt-in ML crash model; nil ⇒ rule engine. Loaded off the main thread.
-    private var crashModel: CrashModel?
+    //
+    // #311: written from the loader's background queue and read from the main
+    // run loop (the accel-window Timer), so every access goes through
+    // `crashModelLock`. Without it this is an unsynchronised cross-thread ARC
+    // retain/release on a class reference — a crash risk, not just a stale read.
+    // Android guards the same field with `@Volatile`.
+    private var _crashModel: CrashModel?
+    private let crashModelLock = NSLock()
+    private var crashModel: CrashModel? {
+        get { crashModelLock.lock(); defer { crashModelLock.unlock() }; return _crashModel }
+        set { crashModelLock.lock(); _crashModel = newValue; crashModelLock.unlock() }
+    }
     // Recent GPS speed history (timestamp ms, km/h) for the model's speed_max/dv
     // features over the same ~16 s window the crash model was trained on.
     private let crashSpeedWindowMs: Int64 = 16_000
     private var speedHistory: [(Int64, Double)] = []
     private let speedHistoryLock = NSLock()
+
+    /// One processed accel window's model features (#310).
+    ///
+    /// The model was trained on scalars reduced from a fixed **16 s** event
+    /// window, but detection runs every `accelWindowInterval`. Keeping the
+    /// per-window features lets `crashFeatureVector` aggregate back up to the
+    /// training window while the detector still evaluates once a second.
+    private struct AccelWindowFeatures {
+        let timestampMs: Int64
+        let peakG: Double
+        let meanG: Double
+        let gyroPeakDps: Double
+    }
+
+    /// Rolling ~16 s history of per-window accel/gyro features (#310).
+    ///
+    /// `peak_g`, `mean_g` and `gyro_peak_dps` used to be taken from the single
+    /// 1 s window being scored, while `speed_max`/`dv` came from the 16 s
+    /// `speedHistory` — so the model saw a feature vector straddling two time
+    /// bases, none of it matching how it was trained. `mean_g` was the worst
+    /// offender: the mean over the 1 s window containing a spike is nothing like
+    /// the mean over 16 s of driving.
+    private var crashFeatureHistory: [AccelWindowFeatures] = []
+    private let crashFeatureHistoryLock = NSLock()
+
+    /// How far back `preImpactSpeedMps` looks for the speed the vehicle was
+    /// carrying into an impact (#312).
+    ///
+    /// A crash collapses speed within 1–2 s and GPS arrives at ~1 Hz, so the
+    /// "current" speed at the moment a window is scored can already be the
+    /// post-impact one. Short enough that it is still *this* event's speed, long
+    /// enough to survive a fix or two of collapse.
+    private let crashPreImpactWindowMs: Int64 = 3_000
 
     /// Whether ``ready(config:)`` has been called.
     public var isReadyState: Bool { isReady }
@@ -1816,16 +1860,39 @@ public final class TraceletSdk {
     // MARK: - Telematics
     // =========================================================================
 
-    /// Retrieve raw telematics events.
+    /// The most recent stored driving/impact events — **newest first, whether or
+    /// not they have been synced** (#313).
+    ///
+    /// This is the history API behind `Tracelet.getTelematicsEvents()` and the
+    /// Doctor bug report. It used to share the sync batcher's query
+    /// (`WHERE synced = 0 ORDER BY id ASC`), which meant it returned the *oldest*
+    /// events rather than the most recent, and that enabling `syncTelematics`
+    /// silently emptied the app's own local history. Sync keeps that query via
+    /// ``getUnsyncedTelematics(limit:)``.
     ///
     /// - Parameter limit: Maximum number of events to return.
     /// - Returns: Array of `DbTelematicsRecord` objects.
     public func getTelematicsEvents(limit: Int) -> [DbTelematicsRecord] {
         guard isReady, let db = rustDatabase else { return [] }
         do {
-            return try db.getTelematicsEvents(limit: Int32(limit))
+            return try db.getTelematicsHistory(limit: Int32(limit))
         } catch {
             TraceletLog.error("Failed to get telematics events: \(error)")
+            return []
+        }
+    }
+
+    /// Unsynced telematics events, oldest first — the *sync* view (#313).
+    ///
+    /// The batcher uploads these in id order and then marks everything up to the
+    /// highest id synced, so this must stay ascending and must exclude anything
+    /// already uploaded.
+    private func getUnsyncedTelematics(limit: Int) -> [DbTelematicsRecord] {
+        guard isReady, let db = rustDatabase else { return [] }
+        do {
+            return try db.getTelematicsEvents(limit: Int32(limit))
+        } catch {
+            TraceletLog.error("Failed to get unsynced telematics events: \(error)")
             return []
         }
     }
@@ -1837,7 +1904,7 @@ public final class TraceletSdk {
     /// default payload's `__telematics` gating.
     public func getTelematicsForCustomBuilder(limit: Int = 250) -> [[String: Any]] {
         guard isReady, configManager.getSyncTelematics() else { return [] }
-        let events = getTelematicsEvents(limit: limit)
+        let events = getUnsyncedTelematics(limit: limit)
         // Remember the highest id exposed so a successful sync marks exactly these
         // synced — avoids re-sending them every batch (#214 dedup).
         if let maxId = events.map({ $0.id }).max() {
@@ -2652,6 +2719,8 @@ public final class TraceletSdk {
         gyroBufferLock.lock(); gyroBuffer.removeAll(); gyroBufferLock.unlock()
         rawAccelBufferLock.lock(); rawAccelBuffer.removeAll(); rawAccelBufferLock.unlock()
         baroBufferLock.lock(); baroBuffer.removeAll(); baroBufferLock.unlock()
+        // #310: don't carry a previous session's feature window into a new one.
+        crashFeatureHistoryLock.lock(); crashFeatureHistory.removeAll(); crashFeatureHistoryLock.unlock()
         // NOTE: the impact confirmation loop is intentionally NOT stopped here.
         // A crash typically ends in the vehicle stopping, which disables tracking
         // (stopTimeout) and would otherwise abandon a pending `potential_crash`
@@ -2695,22 +2764,77 @@ public final class TraceletSdk {
         speedHistoryLock.unlock()
     }
 
-    /// Builds the crash model's feature vector for this window, ordered to match
+    /// The speed (m/s) the device was carrying into an impact (#312).
+    ///
+    /// The maximum GPS speed over the last `crashPreImpactWindowMs`, falling back
+    /// to the latest fix when no history has accumulated yet. Using the *latest*
+    /// fix directly is what the crash gate used to do, and it loses real crashes:
+    /// a collision collapses speed within 1–2 s, so a post-impact fix can land
+    /// before the window containing the impact is scored, dropping the reported
+    /// speed under `crashMinSpeedKmh` and failing the gate both the rule and the
+    /// ML path sit behind.
+    private func preImpactSpeedMps(_ nowMs: Int64) -> Double {
+        speedHistoryLock.lock()
+        let cutoff = nowMs - crashPreImpactWindowMs
+        let recentMax = speedHistory.filter { $0.0 >= cutoff }.map { $0.1 }.max()
+        speedHistoryLock.unlock()
+        return max(recentMax ?? 0.0, lastSpeedMps)
+    }
+
+    /// Records one processed accel window's features into the rolling ~16 s
+    /// history, evicting entries older than `crashSpeedWindowMs` (#310).
+    private func recordCrashFeatureWindow(_ nowMs: Int64, _ window: AccelWindow, _ gyroPeakDps: Double) {
+        crashFeatureHistoryLock.lock()
+        crashFeatureHistory.append(
+            AccelWindowFeatures(
+                timestampMs: nowMs, peakG: window.peakG, meanG: window.meanG,
+                gyroPeakDps: gyroPeakDps))
+        let cutoff = nowMs - crashSpeedWindowMs
+        while let first = crashFeatureHistory.first, first.timestampMs < cutoff {
+            crashFeatureHistory.removeFirst()
+        }
+        crashFeatureHistoryLock.unlock()
+    }
+
+    /// Builds the crash model's feature vector, ordered to match
     /// `model.featureNames()`. peak_g/mean_g in g, gyro_peak_dps in deg/s,
-    /// speed_max/dv (pre-impact speed drop) in km/h over the recent window (#183).
-    private func crashFeatureVector(_ model: CrashModel, _ window: AccelWindow, _ gyroPeakDps: Double) -> [Double] {
+    /// speed_max/dv (pre-impact speed drop) in km/h (#183).
+    ///
+    /// Every feature is aggregated over the same ~16 s window the model was
+    /// trained on (#310) — `peak_g`/`gyro_peak_dps` as the maximum across the
+    /// window's 1 s slices, `mean_g` as their mean, `speed_max`/`dv` from the GPS
+    /// speed history. Detection still runs once a second; only the *features* are
+    /// widened, so a spike is scored in the context the model expects rather than
+    /// against a 1 s slice it never saw in training.
+    ///
+    /// Call `recordCrashFeatureWindow` for the current window first, so it is
+    /// included here.
+    private func crashFeatureVector(_ model: CrashModel) -> [Double] {
         speedHistoryLock.lock()
         let speedsKmh = speedHistory.map { $0.1 * 3.6 }
         speedHistoryLock.unlock()
         let speedMax = speedsKmh.max() ?? (lastSpeedMps * 3.6)
         let speedMin = speedsKmh.min() ?? (lastSpeedMps * 3.6)
+
+        crashFeatureHistoryLock.lock()
+        let windows = crashFeatureHistory
+        crashFeatureHistoryLock.unlock()
+        let peakG = windows.map { $0.peakG }.max() ?? 0.0
+        let meanG = windows.isEmpty
+            ? 0.0
+            : windows.reduce(0.0) { $0 + $1.meanG } / Double(windows.count)
+        let gyroPeak = windows.map { $0.gyroPeakDps }.max() ?? 0.0
+
         let byName: [String: Double] = [
-            "peak_g": window.peakG,
-            "mean_g": window.meanG,
-            "gyro_peak_dps": gyroPeakDps,
+            "peak_g": peakG,
+            "mean_g": meanG,
+            "gyro_peak_dps": gyroPeak,
             "speed_max": speedMax,
             "dv": speedMax - speedMin,
         ]
+        // Every declared name is guaranteed to be present: the Rust core rejects
+        // a model declaring anything outside its supported set at load (#309), so
+        // a miss here is unreachable.
         return model.featureNames().map { byName[$0] ?? 0.0 }
     }
 
@@ -2790,7 +2914,11 @@ public final class TraceletSdk {
             }
         }
         if let detector = impactDetector {
-            let onFoot = lastSpeedMps * 3.6 < configManager.getCrashMinSpeedKmh()
+            // #312: the speed carried into the impact, not the latest fix — which
+            // by now may already be the post-crash one. Drives both the speed gate
+            // and the on-foot fall context so the two stay coherent.
+            let speedBeforeMps = preImpactSpeedMps(nowMs)
+            let onFoot = speedBeforeMps * 3.6 < configManager.getCrashMinSpeedKmh()
             // Peak rotation (deg/s) over this window — crash corroboration (#179).
             gyroBufferLock.lock()
             let gyroPeak = gyroBuffer.max() ?? 0.0
@@ -2817,9 +2945,12 @@ public final class TraceletSdk {
             // #183 ML gating (Replace mode): when the opt-in model is loaded, run
             // inference for this window and let its probability decide the crash
             // (still speed-gated in the core). crashProba < 0 ⇒ rule engine.
+            // #310: fold this window into the rolling ~16 s feature history so the
+            // model is scored over the window it was trained on.
+            recordCrashFeatureWindow(nowMs, window, gyroPeak)
             var crashProba = -1.0
             if let model = crashModel {
-                crashProba = model.predictProba(features: crashFeatureVector(model, window, gyroPeak))
+                crashProba = model.predictProba(features: crashFeatureVector(model))
             }
             // Observability (#183): surface each real model inference so the
             // model path can be verified on-device. Only logged when the model
@@ -2831,11 +2962,11 @@ public final class TraceletSdk {
                 logger.debug(
                     String(
                         format: "crash model: proba=%.3f peak=%.2fg speed=%.1fkm/h thr=%.3f → %@",
-                        crashProba, window.peakG, lastSpeedMps * 3.6, thr, verdict
+                        crashProba, window.peakG, speedBeforeMps * 3.6, thr, verdict
                     )
                 )
             }
-            if let candidate = detector.onImpactWindow(peakG: window.peakG, speedBeforeMps: lastSpeedMps, gyroPeakDps: gyroPeak, wasInFreeFall: wasInFreeFall, postImpactStill: postImpactStill, isOnFoot: onFoot, latitude: lastLat, longitude: lastLng, nowMs: nowMs, crashProba: crashProba, crashProbaThreshold: configManager.getCrashModelThreshold()) {
+            if let candidate = detector.onImpactWindow(peakG: window.peakG, speedBeforeMps: speedBeforeMps, gyroPeakDps: gyroPeak, wasInFreeFall: wasInFreeFall, postImpactStill: postImpactStill, isOnFoot: onFoot, latitude: lastLat, longitude: lastLng, nowMs: nowMs, crashProba: crashProba, crashProbaThreshold: configManager.getCrashModelThreshold()) {
                 emitImpact(candidate)
                 // Keep the countdown alive even if tracking stops right after the
                 // crash (vehicle comes to rest → stopTimeout disables tracking).

@@ -9,7 +9,8 @@ import CryptoKit
 /// via the Rust core (`CrashModel.fromEncrypted`). Only the *encrypted* blob is
 /// ever written to disk — the decrypted model lives in memory only.
 public enum CrashModelLoader {
-    private static let cacheFile = "tracelet_crash_model.enc"
+    /// Prefix shared by every cached model blob, so stale ones can be pruned.
+    private static let cachePrefix = "tracelet_crash_model"
 
     /// AES-256-GCM decryption key (32 bytes), supplied at runtime by the host —
     /// injected from a build-time secret or fetched from a key endpoint. Never
@@ -22,10 +23,49 @@ public enum CrashModelLoader {
     /// supply it. `nil` ⇒ no token sent (fine for `dev` licenses).
     public static var integrityTokenProvider: (() -> String?)?
 
-    private static func cacheURL() -> URL {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
-        return dir.appendingPathComponent(cacheFile)
+    /// Cache location for [url] (#314).
+    ///
+    /// Two fixes over the previous fixed-name-in-Application-Support scheme:
+    ///
+    /// - The filename is derived from the model **URL**. Cache invalidation used
+    ///   to depend entirely on the optional `crashModelSha256`; that field is
+    ///   only "recommended" and the unlock path may return no digest, so
+    ///   repointing `crashModelUrl` at a new model kept loading the old blob
+    ///   forever with no signal to the host.
+    /// - `Library/Application Support` is **created if missing**. iOS does not
+    ///   create it by default, so the best-effort `try?` write silently failed
+    ///   and the model was re-downloaded on every `initBehaviorEngines()` — that
+    ///   is, every `ready()` and every behaviour-config `setConfig()`.
+    private static func cacheURL(for url: String) -> URL {
+        return cacheDirectory().appendingPathComponent(cacheFileName(for: url))
+    }
+
+    private static func cacheFileName(for url: String) -> String {
+        let digest = sha256Hex(Data(url.utf8)).prefix(16)
+        return "\(cachePrefix)_\(digest).enc"
+    }
+
+    private static func cacheDirectory() -> URL {
+        let fm = FileManager.default
+        guard let dir = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return fm.temporaryDirectory
+        }
+        do {
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            return dir
+        } catch {
+            return fm.temporaryDirectory
+        }
+    }
+
+    /// Deletes cached model blobs other than `keep` (#314).
+    private static func pruneStaleCaches(keep: String) {
+        let fm = FileManager.default
+        let dir = cacheDirectory()
+        guard let entries = try? fm.contentsOfDirectory(atPath: dir.path) else { return }
+        for name in entries where name.hasPrefix(cachePrefix) && name != keep {
+            try? fm.removeItem(at: dir.appendingPathComponent(name))
+        }
     }
 
     /// Loads the model for [url], or `nil` to fall back to the rule engine.
@@ -40,7 +80,10 @@ public enum CrashModelLoader {
             log("crash model: decryption key must be 32 bytes — using rule engine")
             return nil
         }
-        let cache = cacheURL()
+        let cache = cacheURL(for: url)
+        // Drop blobs cached for any other model URL — only one model is ever
+        // active, so keeping the others just wastes disk (#314).
+        pruneStaleCaches(keep: cache.lastPathComponent)
         do {
             var blob = (try? Data(contentsOf: cache)).flatMap { $0.isEmpty ? nil : $0 }
             var fromCache = blob != nil
@@ -50,7 +93,7 @@ public enum CrashModelLoader {
                     return nil
                 }
                 blob = downloaded
-                try? downloaded.write(to: cache)
+                writeCache(downloaded, to: cache, log: log)
             }
             guard var data = blob else { return nil }
             if let sha = sha256, sha256Hex(data).lowercased() != sha.lowercased() {
@@ -65,7 +108,7 @@ public enum CrashModelLoader {
                         return nil
                     }
                     data = downloaded
-                    try? downloaded.write(to: cache)
+                    writeCache(downloaded, to: cache, log: log)
                     fromCache = false
                 }
                 if sha256Hex(data).lowercased() != sha.lowercased() {
@@ -134,6 +177,16 @@ public enum CrashModelLoader {
     }
 
     // MARK: - Private
+
+    /// Caches the encrypted blob, reporting rather than swallowing a failure
+    /// (#314) — a silent miss here costs a full re-download on every load.
+    private static func writeCache(_ data: Data, to cache: URL, log: (String) -> Void) {
+        do {
+            try data.write(to: cache)
+        } catch {
+            log("crash model: could not cache blob (\(error)) — will re-download next load")
+        }
+    }
 
     private static func download(_ url: String) -> Data? {
         guard let u = URL(string: url) else { return nil }
