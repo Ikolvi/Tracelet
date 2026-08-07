@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
@@ -26,11 +28,18 @@ import 'package:tracelet_example/issues/issue_card_shell.dart';
 ///
 /// What it *can* do is verify the invariant the fixes preserve on the live path:
 /// that standard geofence-only mode does not hold the continuous-tracking
-/// machinery. `getCurrentLocationTuning()` returns non-null only once a tracking
-/// session has built a native location processor, which is exactly what the
-/// buggy restore paths were creating and the correct ones are not. The card
-/// checks that entering standard geofence mode does not, and that high-accuracy
-/// mode does — the same branch the restore paths now take.
+/// machinery. Two signals, both of which actually distinguish the modes:
+///
+/// 1. **No location updates are delivered.** In standard mode the engine is
+///    stopped and crossings come from native region monitoring, so the location
+///    stream must stay silent. This is the cross-platform signal.
+/// 2. **No foreground service is promoted** (Android). This is the Play-policy
+///    invariant #316 is about — an FGS running solely for geofencing.
+///
+/// Note `getCurrentLocationTuning()` is *not* usable here, which an earlier
+/// version of this card got wrong: `LocationEngine.stop()` leaves the Rust
+/// processor allocated (only `destroy()` clears it), so the tuning reads
+/// non-null in both modes and distinguishes nothing.
 class Issue316Card extends StatefulWidget {
   const Issue316Card({super.key});
 
@@ -75,43 +84,68 @@ class _Issue316CardState extends State<Issue316Card> {
         'enabled=${state.enabled} trackingMode=${state.trackingMode}',
       );
 
-      final lowPowerTuning = await Tracelet.getCurrentLocationTuning();
+      // The engine is stopped in this mode, so the location stream must stay
+      // silent. Watch it for a window long enough to catch the ~1 Hz stream a
+      // continuous session would produce.
+      var lowPowerFixes = 0;
+      final lowPowerSub = Tracelet.onLocation((_) => lowPowerFixes++);
+      await Future<void>.delayed(const Duration(seconds: 8));
+      await lowPowerSub.cancel();
+
       check(
-        '#316 standard geofence-only mode runs no continuous location processor',
-        lowPowerTuning == null,
-        lowPowerTuning == null
-            ? 'no processor built — native region monitoring only, which is what '
-                  'the reboot / task-removal / relaunch restore paths must also do'
-            : 'REGRESSED — a location processor is active '
-                  '(distanceFilter=${lowPowerTuning.distanceFilter}), so '
-                  'continuous tracking is running for a low-power geofence-only '
+        '#316 standard geofence-only mode delivers no continuous location updates',
+        lowPowerFixes == 0,
+        lowPowerFixes == 0
+            ? 'no location updates in 8s — native region monitoring only, which '
+                  'is what the reboot / task-removal / relaunch restore paths '
+                  'must also do'
+            : 'REGRESSED — $lowPowerFixes location update(s) arrived, so the '
+                  'continuous engine is running for a low-power geofence-only '
                   'session',
       );
 
+      if (!kIsWeb && Platform.isAndroid) {
+        final health = await Tracelet.getForegroundServiceHealth();
+        final promoted = health['serviceForeground'] == true;
+        check(
+          '#316 standard geofence-only mode runs no foreground service',
+          !promoted,
+          promoted
+              ? 'REGRESSED — a foreground service is promoted solely for '
+                    'geofencing, which Google Play prohibits as of 2026-10-28'
+              : 'no foreground service promoted '
+                    '(serviceRunning=${health['serviceRunning']})',
+        );
+      }
+
       // ── High-accuracy geofence mode genuinely needs the engine ──
+      // Reported, not gated: this needs a real fix to arrive, and indoors the
+      // GPS may legitimately produce none within the window. A zero here is
+      // inconclusive rather than a failure, so it must not fail the card.
       await Tracelet.setConfig(
         const Config(geofence: GeofenceConfig(geofenceModeHighAccuracy: true)),
       );
       await Tracelet.startGeofences();
-      await Future<void>.delayed(const Duration(seconds: 3));
 
-      final highAccuracyTuning = await Tracelet.getCurrentLocationTuning();
-      check(
-        '#316 high-accuracy geofence mode does start the location processor',
-        highAccuracyTuning != null,
-        highAccuracyTuning != null
-            ? 'processor active (distanceFilter=${highAccuracyTuning.distanceFilter}) '
-                  '— in-app proximity detection needs continuous GPS, so the fix '
-                  'must not suppress this branch'
-            : 'no processor — the fix over-corrected and broke high-accuracy '
-                  'geofencing',
+      var highAccuracyFixes = 0;
+      final highAccuracySub = Tracelet.onLocation((_) => highAccuracyFixes++);
+      await Future<void>.delayed(const Duration(seconds: 10));
+      await highAccuracySub.cancel();
+
+      results.add(
+        highAccuracyFixes > 0
+            ? 'ℹ️ #316 high-accuracy geofence mode is tracking — '
+                  '$highAccuracyFixes location update(s) in 10s, so the fix did '
+                  'not suppress the branch that genuinely needs continuous GPS'
+            : 'ℹ️ #316 high-accuracy geofence mode produced no fix in 10s — '
+                  'inconclusive indoors; not counted as a failure',
       );
 
       await Tracelet.stop();
 
       final header = allPass
-          ? '✅ SUCCESS: geofence mode only builds a continuous location '
-                'processor when high-accuracy mode asks for one.'
+          ? '✅ SUCCESS: standard geofence-only mode holds none of the '
+                'continuous-tracking machinery.'
           : '❌ FAILED — see the failing rows below.';
 
       _set(
@@ -147,10 +181,10 @@ class _Issue316CardState extends State<Issue316Card> {
           'startBootTracking bootstrapForBackground retry START_STICKY 316 317',
       title: '#316–#317: geofence-only & boot restore paths',
       description:
-          'Checks that standard (low-power) geofence-only mode does not build a '
-          'continuous location processor while high-accuracy mode does — the '
-          'invariant the reboot, task-removal and killed-state restore paths '
-          'were violating, silently converting geofence-only apps to continuous '
+          'Checks that standard (low-power) geofence-only mode delivers no '
+          'location updates and promotes no foreground service — the invariant '
+          'the reboot, task-removal and killed-state restore paths were '
+          'violating, silently converting geofence-only apps to continuous '
           'tracking. Also documents how to confirm the Android boot-retry fix by '
           'hand.',
       status: _status,
