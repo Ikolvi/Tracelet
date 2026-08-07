@@ -17,7 +17,21 @@ import java.security.MessageDigest
  * blob is ever written to disk — the decrypted model lives in memory only.
  */
 object CrashModelLoader {
-    private const val CACHE_FILE = "tracelet_crash_model.enc"
+    /** Prefix shared by every cached model blob, so stale ones can be pruned. */
+    internal const val CACHE_PREFIX = "tracelet_crash_model"
+
+    /**
+     * Cache filename for [url] (#314).
+     *
+     * Every model used to share one fixed filename, which made cache
+     * invalidation depend entirely on the optional `crashModelSha256`. That
+     * field is only "recommended", and the licensing unlock path may return no
+     * digest at all — so pointing `crashModelUrl` at a new model kept loading
+     * the old blob forever, with no signal to the host. Keying the cache on the
+     * URL makes a URL change a cache miss on its own.
+     */
+    private fun cacheFileName(url: String): String =
+        "${CACHE_PREFIX}_${sha256Hex(url.toByteArray(Charsets.UTF_8)).take(16)}.enc"
 
     /**
      * AES-256-GCM decryption key (32 bytes), supplied at runtime by the host —
@@ -62,7 +76,10 @@ object CrashModelLoader {
             return null
         }
         return try {
-            val cache = File(context.filesDir, CACHE_FILE)
+            val cache = File(context.filesDir, cacheFileName(url))
+            // Drop blobs cached for any other model URL — only one model is ever
+            // active, so keeping the others just wastes disk (#314).
+            pruneStaleCaches(context, keep = cache.name)
             var blob = if (cache.exists() && cache.length() > 0) cache.readBytes() else null
             var fromCache = blob != null
             if (blob == null) {
@@ -92,6 +109,17 @@ object CrashModelLoader {
         } catch (e: Exception) {
             log("crash model: load failed (${e.message}) — using rule engine")
             null
+        }
+    }
+
+    /** Deletes cached model blobs other than [keep] (#314). */
+    private fun pruneStaleCaches(context: Context, keep: String) {
+        try {
+            context.filesDir
+                .listFiles { f -> f.name.startsWith(CACHE_PREFIX) && f.name != keep }
+                ?.forEach { it.delete() }
+        } catch (_: Exception) {
+            // Best-effort housekeeping — never fail a load over it.
         }
     }
 

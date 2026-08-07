@@ -770,6 +770,8 @@ external fun uniffi_tracelet_core_checksum_method_databasemanager_get_privacy_zo
 ): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_get_telematics_events(
 ): Short
+external fun uniffi_tracelet_core_checksum_method_databasemanager_get_telematics_history(
+): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_insert_audit_trail(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_insert_geofence(
@@ -1089,6 +1091,8 @@ external fun uniffi_tracelet_core_fn_method_databasemanager_get_logs(`ptr`: Long
 external fun uniffi_tracelet_core_fn_method_databasemanager_get_privacy_zones(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun uniffi_tracelet_core_fn_method_databasemanager_get_telematics_events(`ptr`: Long,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_tracelet_core_fn_method_databasemanager_get_telematics_history(`ptr`: Long,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun uniffi_tracelet_core_fn_method_databasemanager_insert_audit_trail(`ptr`: Long,`uuid`: RustBuffer.ByValue,`hash`: RustBuffer.ByValue,`prevHash`: RustBuffer.ByValue,`index`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -1535,7 +1539,10 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_get_privacy_zones() != 61961.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tracelet_core_checksum_method_databasemanager_get_telematics_events() != 50151.toShort()) {
+    if (lib.uniffi_tracelet_core_checksum_method_databasemanager_get_telematics_events() != 54182.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tracelet_core_checksum_method_databasemanager_get_telematics_history() != 54287.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_insert_audit_trail() != 2860.toShort()) {
@@ -1658,7 +1665,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_tracelet_core_checksum_constructor_crashmodel_from_encrypted() != 59752.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tracelet_core_checksum_constructor_crashmodel_from_json() != 24161.toShort()) {
+    if (lib.uniffi_tracelet_core_checksum_constructor_crashmodel_from_json() != 16401.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_constructor_impactdetector_new() != 56951.toShort()) {
@@ -3315,7 +3322,8 @@ open class CrashModel: Disposable, AutoCloseable, CrashModelInterface
         
     /**
      * Loads a model from the training-notebook JSON. Returns a `Config` error if
-     * the JSON is malformed or the positive class (`1`) is absent.
+     * the JSON is malformed, the positive class (`1`) is absent, or any declared
+     * feature is outside [`SUPPORTED_FEATURES`].
      */
     @Throws(TraceletException::class) fun `fromJson`(`json`: kotlin.String): CrashModel {
             return FfiConverterTypeCrashModel.lift(
@@ -3543,9 +3551,30 @@ public interface DatabaseManagerInterface {
     fun `getPrivacyZones`(): List<CorePrivacyZone>
     
     /**
-     * Retrieves a batch of unsynced telematics events.
+     * Retrieves a batch of **unsynced** telematics events, oldest first.
+     *
+     * This is the *sync* view: the batcher uploads them in id order and then
+     * calls [`mark_telematics_synced`](Self::mark_telematics_synced) with the
+     * highest id it sent, so already-uploaded events must be excluded and the
+     * order must be ascending. Use
+     * [`get_telematics_history`](Self::get_telematics_history) for anything
+     * user-facing (#313).
      */
     fun `getTelematicsEvents`(`limit`: kotlin.Int): List<DbTelematicsRecord>
+    
+    /**
+     * Retrieves the most recent telematics events — **newest first, regardless
+     * of sync state** (#313).
+     *
+     * This is the *history* view behind `Tracelet.getTelematicsEvents()` and the
+     * Doctor bug report. It deliberately does not filter on `synced`: the sync
+     * flag records whether an event was uploaded, which says nothing about
+     * whether the user should still see it. Sharing the sync query meant an app
+     * with `syncTelematics` enabled watched its own local history empty out, and
+     * that `ORDER BY id ASC LIMIT n` returned the *oldest* n rather than the
+     * most recent n it documented.
+     */
+    fun `getTelematicsHistory`(`limit`: kotlin.Int): List<DbTelematicsRecord>
     
     /**
      * Inserts or replaces a validated tamper-proof cryptographic audit trail record.
@@ -4038,13 +4067,46 @@ open class DatabaseManager: Disposable, AutoCloseable, DatabaseManagerInterface
 
     
     /**
-     * Retrieves a batch of unsynced telematics events.
+     * Retrieves a batch of **unsynced** telematics events, oldest first.
+     *
+     * This is the *sync* view: the batcher uploads them in id order and then
+     * calls [`mark_telematics_synced`](Self::mark_telematics_synced) with the
+     * highest id it sent, so already-uploaded events must be excluded and the
+     * order must be ascending. Use
+     * [`get_telematics_history`](Self::get_telematics_history) for anything
+     * user-facing (#313).
      */
     @Throws(TraceletException::class)override fun `getTelematicsEvents`(`limit`: kotlin.Int): List<DbTelematicsRecord> {
             return FfiConverterSequenceTypeDbTelematicsRecord.lift(
     callWithHandle {
     uniffiRustCallWithError(TraceletException) { _status ->
     UniffiLib.uniffi_tracelet_core_fn_method_databasemanager_get_telematics_events(
+        it,
+        FfiConverterInt.lower(`limit`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Retrieves the most recent telematics events — **newest first, regardless
+     * of sync state** (#313).
+     *
+     * This is the *history* view behind `Tracelet.getTelematicsEvents()` and the
+     * Doctor bug report. It deliberately does not filter on `synced`: the sync
+     * flag records whether an event was uploaded, which says nothing about
+     * whether the user should still see it. Sharing the sync query meant an app
+     * with `syncTelematics` enabled watched its own local history empty out, and
+     * that `ORDER BY id ASC LIMIT n` returned the *oldest* n rather than the
+     * most recent n it documented.
+     */
+    @Throws(TraceletException::class)override fun `getTelematicsHistory`(`limit`: kotlin.Int): List<DbTelematicsRecord> {
+            return FfiConverterSequenceTypeDbTelematicsRecord.lift(
+    callWithHandle {
+    uniffiRustCallWithError(TraceletException) { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_databasemanager_get_telematics_history(
         it,
         FfiConverterInt.lower(`limit`),_status)
 }

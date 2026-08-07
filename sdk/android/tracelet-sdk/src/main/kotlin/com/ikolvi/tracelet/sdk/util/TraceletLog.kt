@@ -86,6 +86,25 @@ object TraceletLog {
         }
     }
 
+    /**
+     * Records an always-on **lifecycle** event — see [TraceletLogger.lifecycle]
+     * for what belongs here and why it bypasses `logLevel` (#318).
+     *
+     * Before the SDK has [attach]ed a logger this falls back to logcat, exactly
+     * like the level-based methods. That gap is why [TraceletLogger.lifecycle]
+     * buffers: entries recorded through the real logger while its database is
+     * still opening are flushed once it is available, so a bootstrap that never
+     * finished still leaves a trail.
+     */
+    fun lifecycle(message: String, tag: String = TAG) {
+        val d = delegate
+        if (d != null) {
+            d.lifecycle(message, tag)
+        } else {
+            Log.i(tag, message)
+        }
+    }
+
     private fun fmt(message: String, throwable: Throwable?): String =
         if (throwable != null) "$message: ${throwable.message}" else message
 }

@@ -20,6 +20,10 @@
 //! The model is an **opt-in, downloaded** add-on (it is never embedded), so the
 //! base SDK size is unchanged. Loading is gated by the host so it only lives in
 //! memory while crash detection is active.
+//!
+//! Loading rejects any model whose declared features are not in
+//! [`SUPPORTED_FEATURES`] (#309) — see that constant for why an unrecognised
+//! name is far worse than a load failure.
 
 use crate::error::TraceletError;
 use aes_gcm::{
@@ -47,6 +51,23 @@ struct Forest {
     feature_names: Vec<String>,
     trees: Vec<Vec<Node>>,
 }
+
+/// The feature names the SDK can actually supply at inference time, in the units
+/// the model is trained on (`peak_g`/`mean_g` in g, `gyro_peak_dps` in deg/s,
+/// `speed_max`/`dv` in km/h).
+///
+/// A model is only accepted if every name it declares is in this set (#309).
+/// The hosts build the feature vector by looking each declared name up in a
+/// `byName` map and defaulting misses to `0.0`, so an unrecognised name is not a
+/// loud failure — it feeds the model a zero. A model trained on differently
+/// named features (e.g. the `accel_g`/`gyro_dps`/`speed_kmh` triple an older
+/// training notebook emitted) would therefore score an all-zero vector — "0 g,
+/// 0 deg/s, 0 km/h" — as firmly not-a-crash on every window. And because a
+/// probability of `0.0` still satisfies `crash_proba >= 0.0`, the detector stays
+/// in ML **Replace** mode and never falls back to the g-threshold rule: crash
+/// detection would be silently dead while the SDK reported the model as ready.
+pub const SUPPORTED_FEATURES: [&str; 5] =
+    ["peak_g", "mean_g", "gyro_peak_dps", "speed_max", "dv"];
 
 // ── Raw JSON shapes (parsed once, then discarded for the compact form) ────────
 
@@ -77,7 +98,8 @@ pub struct CrashModel {
 #[uniffi::export]
 impl CrashModel {
     /// Loads a model from the training-notebook JSON. Returns a `Config` error if
-    /// the JSON is malformed or the positive class (`1`) is absent.
+    /// the JSON is malformed, the positive class (`1`) is absent, or any declared
+    /// feature is outside [`SUPPORTED_FEATURES`].
     #[uniffi::constructor]
     pub fn from_json(json: String) -> Result<CrashModel, TraceletError> {
         let raw: RawForest = serde_json::from_str(&json)
@@ -173,6 +195,25 @@ fn walk(tree: &[Node], x: &[f64]) -> f32 {
 /// Compiles the raw JSON forest into the compact flat form, pre-computing each
 /// leaf's normalized P(class==1).
 fn compile(raw: RawForest) -> Result<Forest, TraceletError> {
+    // Reject a model the host cannot actually feed (#309). Checked before
+    // anything else so a mis-exported model fails at load — where the caller
+    // falls back to the rule engine — rather than scoring zeros forever.
+    if raw.features.is_empty() {
+        return Err(TraceletError::Config(
+            "crash model: no feature names declared — cannot map the host's features".into(),
+        ));
+    }
+    if let Some(unknown) = raw
+        .features
+        .iter()
+        .find(|f| !SUPPORTED_FEATURES.contains(&f.as_str()))
+    {
+        return Err(TraceletError::Config(format!(
+            "crash model: unsupported feature '{unknown}' (supported: {})",
+            SUPPORTED_FEATURES.join(", ")
+        )));
+    }
+
     // Index of the positive ("crash") class == 1 in the model's class list.
     let class_idx = raw
         .classes
@@ -231,7 +272,7 @@ mod tests {
     // Tree A: if x0 <= 2.0 -> leaf [9,1] (P1=0.1) else leaf [1,9] (P1=0.9)
     // Tree B: if x0 <= 5.0 -> leaf [6,4] (P1=0.4) else leaf [0,10] (P1=1.0)
     const FIXTURE: &str = r#"{
-      "features": ["x0"],
+      "features": ["peak_g"],
       "classes": [0, 1],
       "trees": [
         {"feature":[0,-2,-2],"threshold":[2.0,-2.0,-2.0],
@@ -246,7 +287,7 @@ mod tests {
     #[test]
     fn parses_and_reports_metadata() {
         let m = CrashModel::from_json(FIXTURE.into()).unwrap();
-        assert_eq!(m.feature_names(), vec!["x0".to_string()]);
+        assert_eq!(m.feature_names(), vec!["peak_g".to_string()]);
         assert_eq!(m.tree_count(), 2);
     }
 
@@ -270,8 +311,68 @@ mod tests {
 
     #[test]
     fn missing_class_one_errors() {
-        let bad = r#"{"features":["x"],"classes":[0,2],"trees":[]}"#;
+        let bad = r#"{"features":["peak_g"],"classes":[0,2],"trees":[]}"#;
         assert!(CrashModel::from_json(bad.into()).is_err());
+    }
+
+    // ── #309: a model the host cannot feed must be rejected at load ──
+
+    #[test]
+    fn unsupported_feature_names_are_rejected() {
+        // The `accel_g`/`gyro_dps`/`speed_kmh` triple an older training notebook
+        // emitted: the host has no such names, so every feature would resolve to
+        // 0.0 and the model would score "not a crash" on every window — while
+        // still holding the detector in ML Replace mode, silently suppressing the
+        // g-threshold rule. Loading must fail so the caller falls back.
+        let bad = r#"{"features":["accel_g","gyro_dps","speed_kmh"],"classes":[0,1],
+                      "trees":[{"feature":[-2],"threshold":[-2.0],
+                                "children_left":[-1],"children_right":[-1],
+                                "value":[[1,1]]}]}"#;
+        let Err(err) = CrashModel::from_json(bad.into()) else {
+            panic!("a model with unsupported feature names must not load");
+        };
+        assert!(
+            format!("{err}").contains("accel_g"),
+            "error should name the offending feature, got: {err}"
+        );
+    }
+
+    #[test]
+    fn one_unsupported_feature_among_valid_ones_is_rejected() {
+        let bad = r#"{"features":["peak_g","speed_kmh"],"classes":[0,1],
+                      "trees":[{"feature":[-2],"threshold":[-2.0],
+                                "children_left":[-1],"children_right":[-1],
+                                "value":[[1,1]]}]}"#;
+        assert!(CrashModel::from_json(bad.into()).is_err());
+    }
+
+    #[test]
+    fn missing_features_key_is_rejected() {
+        // `features` is `#[serde(default)]`, so a model exported without it used
+        // to parse into an empty name list — the host then built an EMPTY feature
+        // vector and every tree took the all-left path.
+        let bad = r#"{"classes":[0,1],
+                      "trees":[{"feature":[-2],"threshold":[-2.0],
+                                "children_left":[-1],"children_right":[-1],
+                                "value":[[1,1]]}]}"#;
+        assert!(CrashModel::from_json(bad.into()).is_err());
+    }
+
+    #[test]
+    fn every_supported_feature_name_loads() {
+        let names = SUPPORTED_FEATURES
+            .iter()
+            .map(|f| format!("\"{f}\""))
+            .collect::<Vec<_>>()
+            .join(",");
+        let json = format!(
+            r#"{{"features":[{names}],"classes":[0,1],
+                 "trees":[{{"feature":[-2],"threshold":[-2.0],
+                            "children_left":[-1],"children_right":[-1],
+                            "value":[[1,1]]}}]}}"#
+        );
+        let m = CrashModel::from_json(json).unwrap();
+        assert_eq!(m.feature_names().len(), SUPPORTED_FEATURES.len());
     }
 
     #[test]

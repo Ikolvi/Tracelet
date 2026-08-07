@@ -347,6 +347,10 @@ class ImpactConfig {
 
   /// Optional SHA-256 (hex) of the encrypted model blob for integrity
   /// verification after download. Recommended whenever [crashModelUrl] is set.
+  ///
+  /// Not required for cache invalidation: the on-disk cache is keyed by
+  /// [crashModelUrl], so pointing at a new model is a cache miss on its own
+  /// (#314).
   final String? crashModelSha256;
 
   /// Probability threshold (`0..1`) at which the ML model flags a crash. Default

@@ -48,4 +48,22 @@ public enum TraceletLog {
     public static func verbose(_ message: @autoclosure () -> String) {
         if let d = current { d.verbose(message()) } else { NSLog("[Tracelet] [VERBOSE] \(message())") }
     }
+
+    /// Records an always-on **lifecycle** event — see
+    /// ``TraceletLogger/lifecycle(_:)`` for what belongs here and why it bypasses
+    /// `logLevel` (#318).
+    ///
+    /// Before the SDK has attached a logger this falls back to the console,
+    /// exactly like the level-based methods. That gap is why
+    /// ``TraceletLogger/lifecycle(_:)`` buffers: entries recorded through the
+    /// real logger while its database is still opening are flushed once it is
+    /// available, so a relaunch that never finished resuming still leaves a
+    /// trail.
+    public static func lifecycle(_ message: String) {
+        if let d = current {
+            d.lifecycle(message)
+        } else {
+            NSLog("[Tracelet] [\(TraceletLogger.lifecycleLevelName)] \(message)")
+        }
+    }
 }

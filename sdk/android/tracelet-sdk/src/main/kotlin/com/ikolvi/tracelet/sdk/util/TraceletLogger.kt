@@ -13,13 +13,47 @@ class TraceletLogger(
     private val context: Context,
     private val config: ConfigManager,
 ) {
+    /**
+     * The log store. Assigning it flushes anything [lifecycle] buffered while the
+     * database was still being opened (#318).
+     */
     var rustDatabase: uniffi.tracelet_core.DatabaseManager? = null
+        set(value) {
+            field = value
+            if (value != null) flushPendingLifecycle()
+        }
 
     /** Writes since the last prune. See [logInternal]. */
     private val writesSincePrune = java.util.concurrent.atomic.AtomicInteger(0)
 
+    /**
+     * Lifecycle entries recorded before the database was open, flushed as soon as
+     * it is (#318).
+     *
+     * The failures this channel exists to explain — a boot bootstrap that never
+     * completed, a service that came up and stood itself down — happen *during*
+     * initialization, so without this buffer the most valuable entries would be
+     * exactly the ones dropped. Bounded by [MAX_PENDING_LIFECYCLE]; on overflow
+     * the oldest are discarded, because a run that produced more than this many
+     * lifecycle events before opening a database is already pathological and the
+     * newest lines describe where it ended up.
+     */
+    private val pendingLifecycle = java.util.ArrayDeque<Pair<String, String>>()
+
     companion object {
         private const val TAG = "Tracelet"
+
+        /**
+         * Level name for the always-on lifecycle channel.
+         *
+         * Not part of the OFF..VERBOSE severity scale — it is deliberately
+         * outside it, because these entries are written regardless of `logLevel`
+         * and must not be filtered out by a level comparison.
+         */
+        const val LEVEL_NAME_LIFECYCLE = "LIFECYCLE"
+
+        /** Cap on lifecycle entries buffered before the database is available. */
+        private const val MAX_PENDING_LIFECYCLE = 50
 
         /**
          * Amortization window for log pruning.
@@ -71,6 +105,80 @@ class TraceletLogger(
     /** Log a verbose message. */
     fun verbose(message: String, tag: String = TAG) {
         logInternal(LEVEL_VERBOSE, message, tag)
+    }
+
+    /**
+     * Records a **lifecycle** event — persisted regardless of `logLevel` (#318).
+     *
+     * `logLevel` defaults to `OFF`, and [logInternal] drops everything when it
+     * is, so an app that never opted into logging has an empty log table. That
+     * is fine for chatty tracing, but it also means the one class of problem a
+     * developer cannot reproduce on demand — background and killed-state
+     * behaviour, where the UI is gone and logcat is not attached — leaves no
+     * evidence behind either. By the time a user reports "it stopped updating
+     * while my phone was idle", the run that failed is long over.
+     *
+     * So a small, curated set of events bypasses the level gate: motion-state
+     * transitions, service start/stop and sticky restarts, boot/task-removal
+     * bootstrap outcomes, and tracking-mode switches. These are low-frequency
+     * (a handful per session, not per location fix), which is what makes
+     * always-on affordable.
+     *
+     * Retention is unchanged and already bounded on two axes — a row cap from
+     * [pruneOldLogs] (500 rows at the default `OFF` level) and `logMaxDays`
+     * (3 days by default) — so this cannot grow the database without limit.
+     * With `logLevel` raised, ordinary logging shares those same caps and may
+     * evict lifecycle rows; that is deliberate, since a developer who turned
+     * logging up has the full trace anyway.
+     *
+     * Use [info] instead for anything that fires per fix or per sensor sample.
+     */
+    fun lifecycle(message: String, tag: String = TAG) {
+        // Always mirror to logcat: when a developer *is* attached this is the
+        // channel they most want to see, and it costs nothing when they are not.
+        Log.i(tag, message)
+
+        val db = rustDatabase
+        if (db == null) {
+            synchronized(pendingLifecycle) {
+                while (pendingLifecycle.size >= MAX_PENDING_LIFECYCLE) {
+                    pendingLifecycle.removeFirst()
+                }
+                pendingLifecycle.addLast(message to tag)
+            }
+            return
+        }
+        persistLifecycle(db, message)
+    }
+
+    /** Writes the entries [lifecycle] buffered before the database existed. */
+    private fun flushPendingLifecycle() {
+        val db = rustDatabase ?: return
+        val drained = synchronized(pendingLifecycle) {
+            if (pendingLifecycle.isEmpty()) return
+            val copy = pendingLifecycle.toList()
+            pendingLifecycle.clear()
+            copy
+        }
+        for ((message, _) in drained) {
+            persistLifecycle(db, message)
+        }
+    }
+
+    private fun persistLifecycle(db: uniffi.tracelet_core.DatabaseManager, message: String) {
+        try {
+            db.insertLog(LEVEL_NAME_LIFECYCLE, message, "plugin")
+            // Share the amortized prune counter with ordinary logging so the row
+            // cap is still enforced when lifecycle entries are the only writes
+            // (the default `OFF` case, where logInternal returns before ever
+            // incrementing it).
+            if (writesSincePrune.incrementAndGet() >= PRUNE_INTERVAL_WRITES) {
+                writesSincePrune.set(0)
+                pruneOldLogs()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to persist lifecycle entry: ${e.message}")
+        }
     }
 
     /** Log with explicit level (from Dart). */
