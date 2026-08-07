@@ -560,6 +560,19 @@ class LocationService : Service(), DefaultLifecycleObserver {
         super<Service>.onCreate()
         configManager = ConfigManager.getInstance(applicationContext)
 
+        // #318: wire the persistent logger before anything else runs here.
+        // Touching `.logger` is what calls TraceletLog.attach(), and on a cold
+        // boot process this service is the first thing to execute — so without
+        // this every lifecycle entry below would fall back to logcat, which is
+        // precisely the evidence that is unavailable when a user reports that
+        // background tracking stopped while their phone was idle.
+        try {
+            com.ikolvi.tracelet.sdk.TraceletSdk.getInstance(applicationContext).logger
+        } catch (e: Throwable) {
+            TraceletLog.warning("Could not attach the persistent logger: ${e.message}")
+        }
+        TraceletLog.lifecycle("service: onCreate")
+
         // Layer 1: Process-level lifecycle monitoring.
         // We register as an observer to automatically manage notification
         // visibility when the app moves between foreground and background.
@@ -608,14 +621,18 @@ class LocationService : Service(), DefaultLifecycleObserver {
                 configManager.isForegroundServiceEnabled() &&
                 !periodicWithoutService
             if (!wantsService) {
-                TraceletLog.debug(
-                    "Sticky restart — current state/config does not use a " +
-                        "foreground service; stopping without notification"
+                TraceletLog.lifecycle(
+                    "service: sticky restart declined — enabled=${state.enabled} " +
+                        "mode=${state.trackingMode} fgsEnabled=" +
+                        "${configManager.isForegroundServiceEnabled()}; stopping"
                 )
                 stopSelf()
                 isRunning = false
                 return START_NOT_STICKY
             }
+            TraceletLog.lifecycle(
+                "service: sticky restart after process death — mode=${state.trackingMode}"
+            )
         }
 
         // Initial setup for the very first start command
@@ -939,6 +956,10 @@ class LocationService : Service(), DefaultLifecycleObserver {
             // is tracking nothing. bootstrapForBackground() also fails *fast* when
             // init already failed (rather than after the 30 s await), so this is
             // not necessarily a slow-boot race that would resolve on its own.
+            TraceletLog.lifecycle(
+                "boot-tracking: bootstrap failed — SDK init did not complete; " +
+                    "scheduling retry (#317)"
+            )
             scheduleBootTrackingRetry()
             return
         }
@@ -947,6 +968,14 @@ class LocationService : Service(), DefaultLifecycleObserver {
 
         val trackingMode = state.trackingMode
         TraceletLog.debug("Bootstrapping native tracking after boot/task-removal (trackingMode=$trackingMode, isMoving=${state.isMoving}, speedState=${state.speedMotionState}, enabled=${state.enabled})")
+        // #318: the anchor entry for every killed-state investigation — it records
+        // that the background pipeline actually came up, in which mode, and what
+        // motion state it inherited. Its *absence* in a bug report is the finding.
+        TraceletLog.lifecycle(
+            "boot-tracking: bootstrapping — mode=$trackingMode " +
+                "isMoving=${state.isMoving} speedState=${state.speedMotionState} " +
+                "motionMode=${config.getMotionDetectionMode()}"
+        )
 
         when (trackingMode) {
             TrackingMode.PERIODIC -> {
@@ -1133,7 +1162,13 @@ class LocationService : Service(), DefaultLifecycleObserver {
 
                     detector.onMotionStateChanged = { isMoving ->
                         TraceletLog.debug("Boot SMART: MotionDetector state changed — isMoving=$isMoving")
-                        
+                        // #318: pace changes in the killed state are invisible by
+                        // definition — no UI, no attached logcat — so persist the
+                        // transition itself.
+                        TraceletLog.lifecycle(
+                            "motion (killed-state, smart): isMoving=$isMoving"
+                        )
+
                         // Call coordinator first so it can switch the engine state (e.g. engine.start())
                         // This prevents engine.start() from overwriting forcePersistNextFilteredLocation to false.
                         bootSpeedMotionManager?.onManualPaceChange(isMoving)
@@ -1172,12 +1207,24 @@ class LocationService : Service(), DefaultLifecycleObserver {
                         if (hasMotion) {
                             detector.start()
                         } else {
+                            // #318: a killed-state session with no motion detector
+                            // can never change pace. Recorded as a lifecycle entry
+                            // because it explains "stationary forever" days later,
+                            // and a warning at the default OFF level is not kept.
+                            TraceletLog.lifecycle(
+                                "motion (killed-state, smart): DETECTOR NOT STARTED — " +
+                                    "ACTIVITY_RECOGNITION not granted; pace cannot change"
+                            )
                             TraceletLog.warning("ACTIVITY_RECOGNITION not granted in boot mode")
                         }
                     } else {
                         detector.start()
                     }
                     TraceletLog.debug("Smart-based motion detection started (boot mode)")
+                    TraceletLog.lifecycle(
+                        "motion (killed-state): smart detector started " +
+                            "(initial isMoving=${state.isMoving})"
+                    )
                 } else {
                     // Accelerometer / Activity Recognition only
                     val detector = com.ikolvi.tracelet.sdk.motion.MotionDetector(
@@ -1185,9 +1232,14 @@ class LocationService : Service(), DefaultLifecycleObserver {
                     )
                     bootMotionDetector = detector
                     detector.onMotionStateChanged = { isMoving ->
+                        // #318: see the smart branch — killed-state pace changes
+                        // leave no other trace.
+                        TraceletLog.lifecycle(
+                            "motion (killed-state, accelerometer): isMoving=$isMoving"
+                        )
                         val locMap = engine.getLastLocation()?.let { engine.enrichLocation(it, "motionchange") } ?: mapOf("is_moving" to isMoving)
                         eventSender.sendMotionChange(locMap)
-                        
+
                         if (isMoving) {
                             LocationService.switchToContinuous(engine, state)
                         } else {

@@ -2770,6 +2770,16 @@ class TraceletSdk private constructor(private val context: Context) {
     // =========================================================================
 
     private fun handleMotionStateChange(isMoving: Boolean) {
+        // #318: logged on the in-app path too, so one trace shows both. A report
+        // of "pace only changes while the app is open" is diagnosed by comparing
+        // these against the `motion (killed-state, …)` entries: if the foreground
+        // ones are present and the killed-state ones are not, the background
+        // detector never ran; if both are present, the transition was detected
+        // and the problem is downstream (delivery, persistence, or sync).
+        com.ikolvi.tracelet.sdk.util.TraceletLog.lifecycle(
+            "motion (foreground): isMoving=$isMoving " +
+                "mode=${configManager.getMotionDetectionMode()}"
+        )
         if (configManager.getMotionDetectionMode() == com.ikolvi.tracelet.sdk.model.MotionDetectionMode.SMART) {
             // In SMART mode, route the accel event through the coordinator first.
             // Only reset the speed state machine when the coordinator actually
