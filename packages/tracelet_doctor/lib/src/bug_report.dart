@@ -16,6 +16,11 @@ import 'package:tracelet/tracelet.dart';
 /// 6. The **geofence decision trace** — every `[geofence]`-tagged log line,
 ///    lifted into its own section so rare ENTER/EXIT transitions are not buried
 ///    by routine lifecycle chatter.
+/// 7. The **session lifecycle trace** — what the background and killed-state
+///    pipelines actually did (service and boot bootstrap outcomes on Android,
+///    relaunch and termination boundaries on iOS, motion-state transitions on
+///    both). Recorded regardless of `logLevel`, so a report carries it even
+///    when the developer never enabled logging.
 ///
 /// The output is GitHub-flavoured Markdown, ready to drop straight into an
 /// issue. Every section is gathered defensively — if one source fails (e.g.
@@ -59,10 +64,13 @@ class TraceletBugReport {
   /// - [geofenceTraceLimit] — how many recent log entries to scan for the
   ///   geofence decision trace (default 2000). Scans deeper than [logLimit]
   ///   because transitions are rare and routine chatter can bury them.
+  /// - [lifecycleTraceLimit] — how many recent log entries to scan for the
+  ///   session lifecycle trace (default 2000), for the same reason.
   static Future<String> build({
     int logLimit = 500,
     int telematicsLimit = 100,
     int geofenceTraceLimit = 2000,
+    int lifecycleTraceLimit = 2000,
     String? appName,
     String? appVersion,
     bool includeConfig = true,
@@ -90,6 +98,7 @@ class TraceletBugReport {
     await _writeLocationTuning(buffer);
     if (includeConfig) _writeConfig(buffer);
     await _writeTelematics(buffer, telematicsLimit);
+    await _writeLifecycleTrace(buffer, lifecycleTraceLimit);
     await _writeGeofenceTrace(buffer, geofenceTraceLimit);
     await _writeLogs(buffer, logLimit);
 
@@ -310,6 +319,56 @@ class TraceletBugReport {
       }
     } catch (e) {
       buffer.writeln('_Could not read telematics events: ${e}_');
+    }
+    buffer.writeln();
+  }
+
+  /// Writes the session lifecycle trace: every `LIFECYCLE`-level log line,
+  /// pulled out of the general log stream into its own section (#318).
+  ///
+  /// These entries are the SDK's account of what its background and
+  /// killed-state pipelines actually did — service start/stop and sticky
+  /// restarts and boot bootstrap outcomes on Android, relaunch and termination
+  /// boundaries on iOS, and motion-state transitions on both. They are written
+  /// regardless of `logLevel`, precisely because the failures they explain
+  /// cannot be reproduced on demand with logging turned up first.
+  ///
+  /// Given its own section for the same reason as the geofence trace: lifecycle
+  /// events are rare (a handful per session) while routine chatter is not, so
+  /// at `debug`/`verbose` the entry from the overnight run that actually failed
+  /// is exactly the one pushed out of the `## Logs` window. Scanning deeper and
+  /// keeping only these lines makes the report answer the question it was
+  /// generated for.
+  ///
+  /// **Reading it:** an absent entry is as informative as a present one. On
+  /// Android, `motion (foreground)` lines with no `motion (killed-state, …)`
+  /// counterpart mean the background detector never ran; no
+  /// `boot-tracking: bootstrapping` means the pipeline never came up. On iOS, a
+  /// `termination:` line with no `relaunch:` after it means the app was never
+  /// relaunched — expected after a user force-quit, a bug otherwise — and a
+  /// `relaunch: declined to resume` line names the precondition that failed.
+  static Future<void> _writeLifecycleTrace(
+    StringBuffer buffer,
+    int limit,
+  ) async {
+    buffer.writeln('## Session lifecycle (background & killed-state trace)');
+    buffer.writeln();
+    try {
+      final logs = await Tracelet.getLogs(limit);
+      final trace = logs
+          .where((log) => log.level.toUpperCase() == 'LIFECYCLE')
+          .toList();
+      if (trace.isEmpty) {
+        buffer.writeln('_No lifecycle events in the last $limit log entries._');
+      } else {
+        buffer.writeln('```');
+        for (final log in trace) {
+          buffer.writeln('${log.timestamp} ${log.message}');
+        }
+        buffer.writeln('```');
+      }
+    } catch (e) {
+      buffer.writeln('_Could not read the lifecycle trace: ${e}_');
     }
     buffer.writeln();
   }
