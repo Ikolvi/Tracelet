@@ -111,7 +111,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Setup sccache
         if: ${{ !(inputs.skip_flutter && inputs.skip_native_sdks) }}
-        uses: mozilla-actions/sccache-action@v0.0.10
+        uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: Install cargo-binstall
         if: ${{ !(inputs.skip_flutter && inputs.skip_native_sdks) }}
@@ -295,7 +295,7 @@ jobs:
           targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android
       - name: Setup sccache
         if: ${{ steps.check_published.outputs.already_published == 'false' }}
-        uses: mozilla-actions/sccache-action@v0.0.10
+        uses: mozilla-actions/sccache-action@v0.0.11
       - name: Install cargo-ndk
         if: ${{ steps.check_published.outputs.already_published == 'false' }}
         run: cargo install cargo-ndk
@@ -433,7 +433,7 @@ jobs:
           targets: aarch64-apple-ios, aarch64-apple-ios-sim, x86_64-apple-ios
       - name: Setup sccache
         if: ${{ steps.check_published.outputs.already_published == 'false' }}
-        uses: mozilla-actions/sccache-action@v0.0.10
+        uses: mozilla-actions/sccache-action@v0.0.11
       - name: Build iOS Rust Core
         if: ${{ steps.check_published.outputs.already_published == 'false' }}
         run: ./sdk/rust-core/build-ios.sh
@@ -523,7 +523,7 @@ jobs:
         with:
           targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.10
+        uses: mozilla-actions/sccache-action@v0.0.11
       - name: Install cargo-binstall
         run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
       - name: Install flutter_rust_bridge_codegen & cargo-ndk
@@ -584,7 +584,7 @@ jobs:
         with:
           targets: aarch64-apple-ios, aarch64-apple-ios-sim, x86_64-apple-ios
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.10
+        uses: mozilla-actions/sccache-action@v0.0.11
       - name: Install flutter_rust_bridge_codegen
         run: cargo binstall -y --force cargo-expand flutter_rust_bridge_codegen
       - name: Generate Rust Bindings
@@ -743,7 +743,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.10
+        uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: Install cargo-binstall
         run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
