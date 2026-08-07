@@ -27,6 +27,8 @@ The Doctor shows a premium dark-themed bottom sheet with:
 - 🛡️ **Permissions** — location, motion activity, accuracy authorization
 - 📍 **Tracking State** — enabled/disabled, mode, motion, odometer, scheduler
 - 🔋 **Battery & OEM** — power save, battery optimization, manufacturer, aggression rating meter
+- 🎚️ **Location Filter** — the thresholds **actually in force** in the native processor, beside the
+  ones you configured, so a transport-mode auto-tune is distinguishable from config that never landed
 - 📡 **Sensors** — accelerometer, gyroscope, magnetometer, significant-motion
 - 💾 **Database & Device** — pending location count, mock detection, platform, OS version
 

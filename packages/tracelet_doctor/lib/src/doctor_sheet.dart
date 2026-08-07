@@ -11,6 +11,7 @@ import 'package:tracelet_doctor/src/widgets/battery_oem_card.dart';
 import 'package:tracelet_doctor/src/widgets/config_review_card.dart';
 import 'package:tracelet_doctor/src/widgets/database_card.dart';
 import 'package:tracelet_doctor/src/widgets/foreground_service_card.dart';
+import 'package:tracelet_doctor/src/widgets/location_tuning_card.dart';
 import 'package:tracelet_doctor/src/widgets/log_viewer_sheet.dart';
 import 'package:tracelet_doctor/src/widgets/permission_card.dart';
 import 'package:tracelet_doctor/src/widgets/sensor_grid.dart';
@@ -70,6 +71,10 @@ class _DoctorSheetContentState extends State<_DoctorSheetContent>
   /// Authoritative foreground-service health (#255). Fetched alongside the
   /// main health check; null if it could not be read (e.g. not initialized).
   Map<String, Object?>? _fgHealth;
+
+  /// The location-filter thresholds actually in force (#303). Null before a
+  /// tracking session has built a processor, and always null on web.
+  LocationTuning? _tuning;
   bool _loading = true;
   String? _error;
   bool _notInitialized = false;
@@ -117,10 +122,19 @@ class _DoctorSheetContentState extends State<_DoctorSheetContent>
       } catch (_) {
         fgHealth = null;
       }
+      // Live filter thresholds (#303) — also best-effort. Null is a normal
+      // answer here (no processor yet, or web), not a failure.
+      LocationTuning? tuning;
+      try {
+        tuning = await Tracelet.getCurrentLocationTuning();
+      } catch (_) {
+        tuning = null;
+      }
       if (mounted) {
         setState(() {
           _health = health;
           _fgHealth = fgHealth;
+          _tuning = tuning;
           _loading = false;
         });
       }
@@ -502,6 +516,14 @@ class _DoctorSheetContentState extends State<_DoctorSheetContent>
         const _SectionLabel(label: 'CONFIGURATION'),
         const SizedBox(height: 8),
         ConfigReviewCard(health: health),
+        const SizedBox(height: DoctorTheme.cardSpacing),
+
+        // Location filter thresholds actually in force (#303) — the only
+        // place a transport-mode auto-tune, or config that never reached the
+        // native processor, is visible.
+        const _SectionLabel(label: 'LOCATION FILTER'),
+        const SizedBox(height: 8),
+        LocationTuningCard(tuning: _tuning, platform: health.platform),
         const SizedBox(height: DoctorTheme.cardSpacing),
 
         // Sensors

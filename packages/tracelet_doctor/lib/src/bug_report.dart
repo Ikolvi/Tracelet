@@ -6,11 +6,14 @@ import 'package:tracelet/tracelet.dart';
 /// everything a maintainer needs to triage a Tracelet issue:
 ///
 /// 1. The diagnostic [HealthCheck] (permissions, battery/OEM, sensors, device).
-/// 2. The **active configuration** (`Tracelet.activeConfig`) — with secrets
+/// 2. The **location filter in force** (`Tracelet.getCurrentLocationTuning`)
+///    beside the configured thresholds, so an auto-tune is distinguishable
+///    from configuration that never reached the native processor.
+/// 3. The **active configuration** (`Tracelet.activeConfig`) — with secrets
 ///    automatically redacted.
-/// 3. The most recent **device logs** (`Tracelet.getLogs`).
-/// 4. The most recent **telematics events** (`Tracelet.getTelematicsEvents`).
-/// 5. The **geofence decision trace** — every `[geofence]`-tagged log line,
+/// 4. The most recent **device logs** (`Tracelet.getLogs`).
+/// 5. The most recent **telematics events** (`Tracelet.getTelematicsEvents`).
+/// 6. The **geofence decision trace** — every `[geofence]`-tagged log line,
 ///    lifted into its own section so rare ENTER/EXIT transitions are not buried
 ///    by routine lifecycle chatter.
 ///
@@ -84,6 +87,7 @@ class TraceletBugReport {
 
     await _writeHealth(buffer);
     await _writeForegroundServiceHealth(buffer);
+    await _writeLocationTuning(buffer);
     if (includeConfig) _writeConfig(buffer);
     await _writeTelematics(buffer, telematicsLimit);
     await _writeGeofenceTrace(buffer, geofenceTraceLimit);
@@ -197,6 +201,74 @@ class TraceletBugReport {
       );
     } catch (e) {
       buffer.writeln('_Could not read foreground-service health: ${e}_');
+    }
+    buffer.writeln();
+  }
+
+  /// Writes the location-filter thresholds **actually in force**, next to the
+  /// configured ones.
+  ///
+  /// The `## Active configuration` section below is a Dart-side mirror of the
+  /// last `Config` passed in — it cannot show a transport-mode auto-tune, and
+  /// it cannot show a configured value that never reached the native processor.
+  /// Both look identical in a config dump and produce very different bug
+  /// reports, so the two columns are worth the space.
+  static Future<void> _writeLocationTuning(StringBuffer buffer) async {
+    buffer.writeln('## Location filter (in force vs. configured)');
+    buffer.writeln();
+    try {
+      final autoTune =
+          Tracelet.activeConfig.classifier.autoTuneFromTransportMode;
+      buffer.writeln('- **Auto-tune from transport mode:** $autoTune');
+      buffer.writeln();
+
+      final tuning = await Tracelet.getCurrentLocationTuning();
+      if (tuning == null) {
+        buffer.writeln(
+          '_No location processor — tracking has not run in this process '
+          '(or this is web, which has no equivalent filter state)._',
+        );
+      } else {
+        final geo = Tracelet.activeConfig.geo;
+        final filter = geo.filter;
+        buffer.writeln('| Threshold | Configured | In force |');
+        buffer.writeln('|---|---|---|');
+        buffer.writeln(
+          '| Distance filter (m) | ${geo.distanceFilter} '
+          '| ${tuning.distanceFilter} |',
+        );
+        buffer.writeln(
+          '| Tracking accuracy (m) | ${filter.trackingAccuracyThreshold} '
+          '| ${tuning.trackingAccuracyThreshold} |',
+        );
+        buffer.writeln(
+          '| Odometer accuracy (m) | ${filter.odometerAccuracyThreshold} '
+          '| ${tuning.odometerAccuracyThreshold} |',
+        );
+        buffer.writeln(
+          '| Max implied speed (m/s) | ${filter.maxImpliedSpeed} '
+          '| ${tuning.maxImpliedSpeed} |',
+        );
+        buffer.writeln();
+        final drifted =
+            geo.distanceFilter != tuning.distanceFilter ||
+            filter.trackingAccuracyThreshold !=
+                tuning.trackingAccuracyThreshold ||
+            filter.odometerAccuracyThreshold !=
+                tuning.odometerAccuracyThreshold ||
+            filter.maxImpliedSpeed != tuning.maxImpliedSpeed;
+        if (drifted) {
+          buffer.writeln(
+            autoTune
+                ? '⚙️ The columns differ because a committed transport mode is '
+                      'auto-tuning the filter.'
+                : '⚠️ The columns differ with auto-tuning **off** — configured '
+                      'values are not reaching the native processor.',
+          );
+        }
+      }
+    } catch (e) {
+      buffer.writeln('_Could not read the location tuning: ${e}_');
     }
     buffer.writeln();
   }
