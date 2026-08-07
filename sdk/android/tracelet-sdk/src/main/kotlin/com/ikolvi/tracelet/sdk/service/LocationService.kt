@@ -69,6 +69,16 @@ class LocationService : Service(), DefaultLifecycleObserver {
          * even though the foreground service was still alive (#222).
          */
         private const val WAKELOCK_RENEWAL_INTERVAL_MS = 10 * 60 * 1000L
+
+        /**
+         * Backoff for re-attempting a boot/task-removal bootstrap that could not
+         * complete (#317). Doubles per attempt from this base: 5s, 10s, 20s, 40s,
+         * 80s, 160s — roughly five minutes of retrying, which comfortably covers a
+         * slow cold boot without spinning indefinitely on a genuine init failure.
+         */
+        private const val BOOT_RETRY_BASE_DELAY_MS = 5_000L
+        private const val BOOT_RETRY_MAX_ATTEMPTS = 6
+
         const val ACTION_START = "com.tracelet.ACTION_START"
         const val ACTION_STOP = "com.tracelet.ACTION_STOP"
         const val ACTION_UPDATE_NOTIFICATION = "com.tracelet.ACTION_UPDATE_NOTIFICATION"
@@ -536,6 +546,11 @@ class LocationService : Service(), DefaultLifecycleObserver {
     private val wakelockHandler = Handler(Looper.getMainLooper())
     private var wakelockRenewalRunnable: Runnable? = null
 
+    // #317: retry state for a boot/task-removal bootstrap that could not complete.
+    private val bootRetryHandler = Handler(Looper.getMainLooper())
+    private var bootRetryRunnable: Runnable? = null
+    private var bootRetryAttempt = 0
+
     // Callback for notification action button taps dispatched to TraceletEventSender
     var onNotificationAction: ((String) -> Unit)? = null
 
@@ -765,6 +780,7 @@ class LocationService : Service(), DefaultLifecycleObserver {
 
     override fun onDestroy() {
         TraceletLog.debug("onDestroy")
+        cancelBootTrackingRetry()
         stopBootTrackingInternal()
         releaseOemWakelock()
         isRunning = false
@@ -915,8 +931,19 @@ class LocationService : Service(), DefaultLifecycleObserver {
                 "startBootTracking() — SDK initialization did not complete; deferring boot " +
                     "tracking without touching managers (#264)"
             )
+            // #317: retry rather than give up. START_STICKY only redelivers after
+            // the process is killed, and this service is alive and healthy — it
+            // just returned early — so nothing would ever call this again short of
+            // the user reopening the app. Meanwhile the foreground notification is
+            // already posted, so the user is shown an active tracking session that
+            // is tracking nothing. bootstrapForBackground() also fails *fast* when
+            // init already failed (rather than after the 30 s await), so this is
+            // not necessarily a slow-boot race that would resolve on its own.
+            scheduleBootTrackingRetry()
             return
         }
+        // Bootstrap succeeded — cancel any retry armed by an earlier attempt.
+        cancelBootTrackingRetry()
 
         val trackingMode = state.trackingMode
         TraceletLog.debug("Bootstrapping native tracking after boot/task-removal (trackingMode=$trackingMode, isMoving=${state.isMoving}, speedState=${state.speedMotionState}, enabled=${state.enabled})")
@@ -957,12 +984,39 @@ class LocationService : Service(), DefaultLifecycleObserver {
                 }
             }
             else -> {
-                // Continuous (0) or geofences (1) — start full LocationEngine
-                val engine = LocationEngine(ctx, config, state, eventSender)
-                engine.start()
-                bootLocationEngine = engine
-                TraceletLog.debug("Boot-mode native tracking started (trackingMode=$trackingMode)")
-                startBootHeartbeat(config, engine, eventSender)
+                // Standard (low-power) geofence-only mode must NOT start the
+                // continuous engine (#316). Mirror TraceletSdk.startGeofences():
+                // rely solely on the native GeofencingClient, which fires
+                // ENTER/EXIT while the app is suspended or terminated without
+                // continuous GPS.
+                //
+                // Sharing the continuous branch (as this used to) silently
+                // converted every geofence-only app to continuous tracking after
+                // a reboot or task removal — burning battery, pinning the
+                // location indicator, and leaving a foreground service running
+                // *solely* for geofencing, which Google Play prohibits as of
+                // 2026-10-28. Nothing converted it back until the app was
+                // reopened.
+                //
+                // The fences themselves are re-registered below, outside this
+                // `when`, so they are restored on this path too.
+                val geofenceOnlyLowPower = trackingMode == TrackingMode.GEOFENCES &&
+                    !config.getGeofenceModeHighAccuracy()
+                if (geofenceOnlyLowPower) {
+                    TraceletLog.debug(
+                        "Standard geofence-only mode — native geofences only, " +
+                            "no continuous engine (#316)"
+                    )
+                } else {
+                    // Continuous (0), or geofences (1) in high-accuracy mode,
+                    // which genuinely needs continuous GPS for in-app proximity
+                    // detection.
+                    val engine = LocationEngine(ctx, config, state, eventSender)
+                    engine.start()
+                    bootLocationEngine = engine
+                    TraceletLog.debug("Boot-mode native tracking started (trackingMode=$trackingMode)")
+                    startBootHeartbeat(config, engine, eventSender)
+                }
             }
         }
 
@@ -1193,7 +1247,82 @@ class LocationService : Service(), DefaultLifecycleObserver {
                 }
             }
             TraceletLog.debug("Geofence registrations restored after boot/task-removal (proximity stream wired)")
+
+            // #316: standard (low-power) geofence-only mode is now fully restored
+            // — the fences are re-registered with Play Services and the receiver
+            // is wired — and none of that needs this service. Stand it down so a
+            // geofence-only app does not keep a foreground service (and its
+            // notification) alive purely for geofencing, matching what
+            // TraceletSdk.startGeofences() does in the same mode.
+            //
+            // The service could not simply be skipped at boot: Play Services
+            // clears all geofences on reboot, so something has to run
+            // reRegisterAll() first. It just does not have to stay running.
+            if (trackingMode == TrackingMode.GEOFENCES && !config.getGeofenceModeHighAccuracy()) {
+                TraceletLog.debug(
+                    "Standard geofence-only mode — geofences restored, stopping the " +
+                        "foreground service (#316)"
+                )
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                isForegroundService = false
+                stopSelf()
+                isRunning = false
+            }
         }
+
+    /**
+     * Re-attempts [startBootTracking] after a failed bootstrap, with capped
+     * exponential backoff (#317).
+     *
+     * Retries at 5s, 10s, 20s, 40s, 80s and 160s (~5 minutes total). If the SDK
+     * still cannot initialize after that, the failure is not transient, so the
+     * service stops rather than leaving a "tracking active" notification standing
+     * over a session that never started — a silent failure is worse than a
+     * visibly stopped one.
+     */
+    private fun scheduleBootTrackingRetry() {
+        if (bootRetryRunnable != null) return // A retry is already armed.
+        if (bootRetryAttempt >= BOOT_RETRY_MAX_ATTEMPTS) {
+            TraceletLog.error(
+                "startBootTracking() — SDK initialization still failing after " +
+                    "$BOOT_RETRY_MAX_ATTEMPTS attempts; stopping the service rather than " +
+                    "showing a tracking notification for a session that never started (#317)"
+            )
+            bootRetryAttempt = 0
+            releaseOemWakelock()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            isForegroundService = false
+            stopSelf()
+            isRunning = false
+            return
+        }
+        val delayMs = BOOT_RETRY_BASE_DELAY_MS shl bootRetryAttempt
+        bootRetryAttempt++
+        TraceletLog.warning(
+            "startBootTracking() — retrying bootstrap in ${delayMs}ms " +
+                "(attempt $bootRetryAttempt/$BOOT_RETRY_MAX_ATTEMPTS) (#317)"
+        )
+        val runnable = Runnable {
+            bootRetryRunnable = null
+            // Only keep retrying while the session is still wanted. A stop() or a
+            // permission revocation in the meantime must end the loop.
+            if (!StateManager(applicationContext).enabled) {
+                TraceletLog.debug("Boot-tracking retry abandoned — tracking is no longer enabled")
+                bootRetryAttempt = 0
+                return@Runnable
+            }
+            startBootTracking()
+        }
+        bootRetryRunnable = runnable
+        bootRetryHandler.postDelayed(runnable, delayMs)
+    }
+
+    /** Cancels a pending boot-tracking retry and resets the backoff (#317). */
+    private fun cancelBootTrackingRetry() {
+        bootRetryRunnable?.let { bootRetryHandler.removeCallbacks(it) }
+        bootRetryRunnable = null
+        bootRetryAttempt = 0
+    }
 
     /**
      * Starts a self-rescheduling heartbeat timer for boot-mode tracking.
@@ -1234,6 +1363,10 @@ class LocationService : Service(), DefaultLifecycleObserver {
     }
 
     private fun stopBootTrackingInternal() {
+        // #317: a pending bootstrap retry must not resurrect tracking that is
+        // being torn down (ACTION_STOP, task removal with stopOnTerminate, a
+        // permission revocation, or onDestroy).
+        cancelBootTrackingRetry()
         stopBootHeartbeat()
         LocationService.stopStationaryTimer()
         bootSpeedMotionManager?.stop()

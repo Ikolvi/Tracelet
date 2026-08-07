@@ -1,4 +1,4 @@
-## Unreleased
+## 3.8.0
 
 **FEAT**: a **Location Filter** section reports the thresholds `Tracelet.getCurrentLocationTuning()` says are **actually in force**, beside the ones you configured. Every other card reads `Tracelet.activeConfig` — a Dart-side mirror of the last `Config` passed in — so until now the Doctor could only show what was asked for, never what the native filter was using. The verdict chip separates the two ways those can disagree: with `autoTuneFromTransportMode` on, a committed transport mode owns the thresholds and the difference is expected (`Auto-tuned`); with it off, nothing should be moving them and the configured value did not reach the processor (`Mismatch`, the #303 failure class). Reads `N/A` before a tracking session has built a processor, and always on Web ([#303](https://github.com/Ikolvi/Tracelet/issues/303)).
 

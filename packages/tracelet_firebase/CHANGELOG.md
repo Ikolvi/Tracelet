@@ -1,3 +1,7 @@
+## 3.8.0
+
+Version alignment with tracelet 3.8.0.
+
 ## 3.8.0-beta.2
 
 Version alignment with tracelet 3.8.0-beta.2.

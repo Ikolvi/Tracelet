@@ -3384,10 +3384,32 @@ public final class TraceletSdk {
         case .geofences:
             geofenceManager.reRegisterAll()
             wireGeofenceLocationCallbacks(includeTripWaypoints: false)
-            locationEngine.start()
-            preventSuspendManager.start()
-            backgroundActivitySessionManager.start()
-            serviceSessionManager.start()
+            // #316: branch on geofenceModeHighAccuracy exactly as startGeofences()
+            // does. This case used to start the engine and the background
+            // activity session unconditionally, so every significant-location
+            // relaunch silently converted a low-power geofence-only app into
+            // continuous tracking — with the persistent blue location indicator
+            // #210 removed — for the rest of the process lifetime.
+            if configManager.getGeofenceModeHighAccuracy() {
+                // High accuracy genuinely needs continuous GPS: OS-level
+                // transitions are suppressed and crossings come from per-location
+                // proximity evaluation.
+                locationEngine.start()
+                preventSuspendManager.start()
+                backgroundActivitySessionManager.start()
+                serviceSessionManager.start()
+            } else {
+                // Standard mode relies solely on native region monitoring, which
+                // fires ENTER/EXIT (and relaunches the app) while suspended or
+                // terminated, without continuous GPS.
+                if configManager.getPreventSuspend() {
+                    preventSuspendManager.start()
+                } else {
+                    preventSuspendManager.stop()
+                }
+                backgroundActivitySessionManager.stop()
+                startServiceSessionForCurrentAuth()
+            }
 
         case .periodic:
             locationEngine.startPeriodic()

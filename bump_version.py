@@ -1,13 +1,13 @@
 import os
 import re
 
-version_from = "3.8.0-beta"
-version_to = "3.8.0-beta.2"
+version_from = "3.8.0-beta.2"
+version_to = "3.8.0"
 
-# `3.8.0-beta.2` rather than `3.8.0-beta2`: dotted numeric identifiers are the
-# semver form, and both pub and CocoaPods order `3.8.0-beta.2` after
-# `3.8.0-beta`. `beta2` would be a single alphanumeric identifier, which still
-# sorts later but reads as an unrelated tag rather than the second beta.
+# Promoting the beta to the stable 3.8.0. Both pub and CocoaPods order a release
+# without a pre-release identifier AFTER every `3.8.0-*`, so `3.8.0` supersedes
+# `3.8.0-beta.2` and pub will now resolve it for plain `^3.8.0` constraints
+# rather than requiring an explicit pre-release opt-in.
 
 # 1. Bump version strings
 exact_replacements = [
@@ -93,6 +93,16 @@ detailed_changelogs = [
     'packages/tracelet/CHANGELOG.md',
     'packages/tracelet_platform_interface/CHANGELOG.md',
     'packages/tracelet_web/CHANGELOG.md',
+    # tracelet_doctor writes real entries under `## Unreleased` (its Doctor cards
+    # and bug-report sections ship independently of the core), so it belongs on
+    # the promote list, not the generic one. Treated as generic it got a "Version
+    # alignment" stub prepended while its actual entries stayed stranded under
+    # "Unreleased" — invisible in the released changelog, and re-promoted into
+    # whatever version happened to bump next.
+    #
+    # This list is safe for packages that have no Unreleased section: the loop
+    # below falls back to the generic entry when there is nothing to promote.
+    'packages/tracelet_doctor/CHANGELOG.md',
 ]
 
 # Packages that carry the new host-API plumbing but had no hand-written entry.
@@ -105,7 +115,6 @@ generic_changelogs = [
     'packages/tracelet_sync/CHANGELOG.md',
     'packages/tracelet_supabase/CHANGELOG.md',
     'packages/tracelet_firebase/CHANGELOG.md',
-    'packages/tracelet_doctor/CHANGELOG.md',
 ]
 
 plugin_addition = f"""## {version_to}
@@ -120,13 +129,25 @@ Version alignment with tracelet {version_to}.
 
 """
 
+def has_version_heading(content, version):
+    """Whether `content` already carries a `## <version>` heading.
+
+    Anchored to a whole line rather than a substring search. A plain
+    `f"## {version_to}" in content` check is wrong whenever the new version is a
+    prefix of an existing one — promoting `3.8.0-beta.2` to `3.8.0` matched the
+    existing `## 3.8.0-beta.2` heading and silently skipped every changelog, so
+    the release shipped with its entries still stranded under `## Unreleased`.
+    """
+    return re.search(rf'^## {re.escape(version)}[ \t]*$', content, flags=re.M) is not None
+
+
 for cl in detailed_changelogs:
     if not os.path.exists(cl):
         print(f"Warning: File {cl} does not exist.")
         continue
     with open(cl, 'r', encoding='utf-8') as f:
         content = f.read()
-    if f"## {version_to}" in content:
+    if has_version_heading(content, version_to):
         print(f"Skipped {cl} (already at {version_to})")
         continue
     # `[ \t]*` not `\s*`: \s matches newlines, so the greedy form swallowed the
@@ -149,7 +170,7 @@ for cl, addition in [(c, plugin_addition) for c in plugin_changelogs] + \
         continue
     with open(cl, 'r', encoding='utf-8') as f:
         content = f.read()
-    if f"## {version_to}" not in content:
+    if not has_version_heading(content, version_to):
         content = addition + content
         with open(cl, 'w', encoding='utf-8') as f:
             f.write(content)
