@@ -5,7 +5,27 @@ import Foundation
 /// Respects configured log level. Provides getLog, pruneOldLogs, and email export.
 public final class TraceletLogger {
     private let configManager: ConfigManager
-    public var rustDatabase: DatabaseManager? = nil
+
+    /// The log store. Assigning it flushes anything ``lifecycle(_:)`` buffered
+    /// while the database was still being opened (#318).
+    public var rustDatabase: DatabaseManager? = nil {
+        didSet {
+            if rustDatabase != nil { flushPendingLifecycle() }
+        }
+    }
+
+    /// Lifecycle entries recorded before the database was open, flushed as soon
+    /// as it is (#318).
+    ///
+    /// The failures this channel exists to explain — a relaunch that resumed
+    /// into the wrong mode, a termination that never registered its wake-up —
+    /// happen *during* initialization, so without this buffer the most valuable
+    /// entries would be exactly the ones dropped. Bounded by
+    /// ``maxPendingLifecycle``; on overflow the oldest are discarded, because a
+    /// run that produced more than this many lifecycle events before opening a
+    /// database is already pathological and the newest lines describe where it
+    /// ended up. Confined to `persistQueue`.
+    private var pendingLifecycle: [String] = []
 
     /// Serial queue for log persistence so callers (including high-frequency
     /// motion callbacks) never block on a synchronous SQLite write. Serial
@@ -21,6 +41,16 @@ public final class TraceletLogger {
     /// the limit between prunes is harmless and removes a DELETE from every
     /// single log write.
     private static let pruneIntervalWrites = 50
+
+    /// Level name for the always-on lifecycle channel.
+    ///
+    /// Deliberately outside the OFF...VERBOSE severity scale: these entries are
+    /// written regardless of `logLevel` and must not be filtered by a level
+    /// comparison.
+    public static let lifecycleLevelName = "LIFECYCLE"
+
+    /// Cap on lifecycle entries buffered before the database is available.
+    private static let maxPendingLifecycle = 50
 
     /// Log levels: OFF(0), ERROR(1), WARNING(2), INFO(3), DEBUG(4), VERBOSE(5)
     enum Level: Int, Comparable {
@@ -142,6 +172,83 @@ public final class TraceletLogger {
             try rustDatabase?.pruneLogsOlderThan(maxDays: Int32(configManager.getLogMaxDays()))
         } catch {
             NSLog("[Tracelet] Failed to prune logs: \(error.localizedDescription)")
+        }
+    }
+
+    /// Records a **lifecycle** event — persisted regardless of `logLevel` (#318).
+    ///
+    /// Everything the background and killed-state paths log through the
+    /// level-based methods is `debug`, and ``log(_:_:source:)`` drops anything
+    /// above the configured level. Flutter defaults to `info`, so the log table
+    /// is populated and contains none of the answers; a direct SDK consumer
+    /// defaults to `off` and gets nothing. Either way the one class of problem a
+    /// developer cannot reproduce on demand — behaviour after the app is
+    /// suspended, relaunched from a significant-location change, or terminated,
+    /// where there is no UI and no attached console — leaves nothing usable
+    /// behind. By the time a user reports "it stopped updating while my phone
+    /// was idle", the run that failed is long over.
+    ///
+    /// So a small, curated set of events bypasses the level gate: motion-state
+    /// transitions, killed-state relaunch and termination, tracking-mode
+    /// switches, and authorization changes that silently end a session. These
+    /// are low-frequency — a handful per session, not per location fix — which
+    /// is what makes always-on affordable.
+    ///
+    /// Retention is unchanged and already bounded on two axes: a row cap from
+    /// ``pruneOldLogs()`` and `logMaxDays` (3 days by default), so this cannot
+    /// grow the database without limit. With `logLevel` raised, ordinary logging
+    /// shares those caps and may evict lifecycle rows; that is deliberate, since
+    /// a developer who turned logging up has the full trace anyway.
+    ///
+    /// Use ``info(_:)`` instead for anything that fires per fix or per sample.
+    public func lifecycle(_ message: String) {
+        // Always mirror to the console: when a developer *is* attached this is
+        // the channel they most want, and it costs nothing when they are not.
+        NSLog("[Tracelet] [\(TraceletLogger.lifecycleLevelName)] \(message)")
+
+        let db = rustDatabase
+        persistQueue.async { [weak self] in
+            guard let self else { return }
+            guard let db else {
+                if self.pendingLifecycle.count >= TraceletLogger.maxPendingLifecycle {
+                    self.pendingLifecycle.removeFirst()
+                }
+                self.pendingLifecycle.append(message)
+                return
+            }
+            self.persistLifecycle(db, message)
+        }
+    }
+
+    /// Writes the entries ``lifecycle(_:)`` buffered before the database existed.
+    private func flushPendingLifecycle() {
+        let db = rustDatabase
+        persistQueue.async { [weak self] in
+            guard let self, let db, !self.pendingLifecycle.isEmpty else { return }
+            let drained = self.pendingLifecycle
+            self.pendingLifecycle.removeAll()
+            for message in drained {
+                self.persistLifecycle(db, message)
+            }
+        }
+    }
+
+    /// Must be called on `persistQueue`.
+    private func persistLifecycle(_ db: DatabaseManager, _ message: String) {
+        do {
+            try db.insertLog(
+                level: TraceletLogger.lifecycleLevelName, message: message, source: "plugin")
+            // Share the amortized prune counter with ordinary logging so the row
+            // cap is still enforced when lifecycle entries are the only writes —
+            // at levels that drop everything else, `log` returns before ever
+            // incrementing it.
+            writesSincePrune += 1
+            if writesSincePrune >= TraceletLogger.pruneIntervalWrites {
+                writesSincePrune = 0
+                pruneOldLogs()
+            }
+        } catch {
+            NSLog("[Tracelet] Failed to persist lifecycle entry: \(error.localizedDescription)")
         }
     }
 

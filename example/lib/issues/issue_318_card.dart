@@ -1,12 +1,12 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
 
-/// Issue #318 — killed-state failures left no evidence in the logs table.
+/// Issue #318 — killed-state failures left no usable evidence in the logs
+/// table (Android + iOS).
 ///
 /// The killed-state diagnostics the SDK already writes — boot bootstrap
 /// outcomes, sticky restarts, motion-state transitions — are all `debug`, and
@@ -16,17 +16,21 @@ import 'package:tracelet_example/issues/issue_card_shell.dart';
 /// of problem a developer cannot reproduce on demand — background behaviour,
 /// with no UI and no attached logcat — left nothing usable behind.
 ///
-/// A curated **lifecycle** channel now bypasses the level gate: motion-state
-/// transitions on both the in-app and killed-state paths, service start / stop /
-/// sticky restarts, boot and task-removal bootstrap outcomes, and tracking-mode
-/// switches. These are low-frequency, which is what makes always-on affordable,
-/// and they share the existing retention caps — a row cap by level (500 at the
-/// default `OFF`) plus `logMaxDays` (3 by default) — so worst-case database
-/// size is unchanged.
+/// A curated **lifecycle** channel now bypasses the level gate on both
+/// platforms. Android records its separate background pipeline — service start /
+/// stop / sticky restarts, boot and task-removal bootstrap outcomes, and
+/// motion-state transitions on the in-app and killed-state paths. iOS has no
+/// separate pipeline (a relaunched process runs the same handlers), so it
+/// records the relaunch and termination boundaries instead, including which
+/// precondition made a relaunch decline to resume. These are low-frequency,
+/// which is what makes always-on affordable, and they share the existing
+/// retention caps — a row cap by level (500–2000) plus `logMaxDays` (3 by
+/// default) — so worst-case database size is unchanged.
 ///
-/// This card verifies the channel records without any logging being configured,
-/// which is the whole point: it must work for a developer who never asked for
-/// logs, on the run that failed.
+/// The card pins `logLevel` to `error`, stricter than either platform default,
+/// so anything that survives did so by bypassing the gate. That is the whole
+/// point: it must work for a developer who never asked for logs, on the run that
+/// actually failed.
 class Issue318Card extends StatefulWidget {
   const Issue318Card({super.key});
 
@@ -53,12 +57,10 @@ class _Issue318CardState extends State<Issue318Card> {
     }
 
     try {
-      if (kIsWeb || !Platform.isAndroid) {
+      if (kIsWeb) {
         _set(
-          'ℹ️ Android-only. The lifecycle channel is implemented in the Android '
-          'SDK, where the killed-state pipeline (foreground service, boot '
-          'receiver, task removal) runs with no UI attached. iOS relaunch '
-          'diagnostics are tracked separately.',
+          'ℹ️ Not applicable on web — there is no killed-state pipeline and no '
+          'native log store.',
         );
         return;
       }
@@ -109,13 +111,27 @@ class _Issue318CardState extends State<Issue318Card> {
                   'would still have nothing to send.',
       );
 
-      final sawService = lifecycle.any((e) => e.message.contains('service:'));
+      // The two platforms have different killed-state machinery, so they emit
+      // different anchors: Android runs a separate foreground-service pipeline
+      // ("service:", "boot-tracking:"), while on iOS a relaunched process runs
+      // the same handlers as a foreground one ("relaunch:", "termination:",
+      // "motion:"). Accept either shape rather than asserting Android's.
+      const anchors = <String>[
+        'service:',
+        'boot-tracking:',
+        'relaunch:',
+        'termination:',
+        'motion',
+      ];
+      final sawAnchor = lifecycle.any((e) => anchors.any(e.message.contains));
       check(
-        '#318 service lifecycle is recorded',
-        sawService,
-        sawService
-            ? 'service start/stop transitions captured'
-            : 'no "service:" entries — the service lifecycle is not instrumented',
+        '#318 killed-state anchors are recorded',
+        sawAnchor,
+        sawAnchor
+            ? 'session lifecycle captured — a report now says which pipeline ran '
+                  'and what it decided'
+            : 'entries exist but none of the killed-state anchors '
+                  '(${anchors.join(', ')}) are present',
       );
 
       if (lifecycle.isNotEmpty) {
@@ -139,10 +155,16 @@ class _Issue318CardState extends State<Issue318Card> {
         'database without limit.\n\n'
         'To use this on a real killed-state bug: reproduce it (swipe the app '
         'away, leave the device idle, then move), reopen the app and read the '
-        'log — or paste TraceletBugReport, which includes it. The absence of '
-        '"motion (killed-state, …)" entries beside present "motion '
-        '(foreground)" ones is itself the finding: it means the background '
-        'detector never ran.',
+        'log — or paste TraceletBugReport, which includes it.\n\n'
+        'What the absence of an entry tells you:\n'
+        '• Android — "motion (foreground)" present but no "motion '
+        '(killed-state, …)": the background detector never ran. No '
+        '"boot-tracking: bootstrapping": the pipeline never came up at all.\n'
+        '• iOS — a "termination:" entry with no "relaunch:" after it: iOS never '
+        'relaunched the app, which is expected after a force-quit and a bug '
+        'otherwise. A "relaunch: declined to resume" entry names the '
+        'precondition that failed, and downgraded Always authorization is the '
+        'usual one.',
       );
     } catch (e) {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
@@ -158,7 +180,7 @@ class _Issue318CardState extends State<Issue318Card> {
           'logs logging logLevel off diagnostics lifecycle killed state '
           'background motion pace transition boot bootstrap sticky restart '
           'retention logMaxDays prune bug report evidence 318',
-      title: '#318: killed-state diagnostics survive logLevel off',
+      title: '#318: killed-state diagnostics survive the log level',
       description:
           'Verifies that the curated lifecycle channel (motion transitions, '
           'service start/stop, boot bootstrap outcomes) is persisted to the log '

@@ -2388,6 +2388,15 @@ public final class TraceletSdk {
             logger.debug("handleMotionStateChange ignored — tracking is stopped")
             return
         }
+        // #318: unlike Android there is no separate killed-state pipeline on iOS
+        // — a relaunched process runs this same handler — so one entry covers
+        // both. Read against the `relaunch:` entry above: transitions appearing
+        // only *before* it means the relaunched session never detected motion,
+        // while none at all after a resume points at CMMotionActivityManager
+        // rather than at delivery.
+        TraceletLog.lifecycle(
+            "motion: isMoving=\(isMoving) mode=\(configManager.getMotionDetectionMode()) "
+                + "launchedInBackground=\(stateManager.didLaunchInBackground)")
         if configManager.getMotionDetectionMode() == .smart {
             // In SMART mode, route the accel event through the coordinator first.
             // Only reset the speed state machine when the coordinator actually
@@ -3309,6 +3318,13 @@ public final class TraceletSdk {
         TraceletSdk._terminationLocationManager = terminationManager
 
         TraceletLog.debug("[Tracelet] onAppWillTerminate: significant location monitoring registered on termination manager")
+        // #318: the last thing written before the process dies, and the entry the
+        // next session is read against. If a relaunch entry never follows this
+        // one, iOS did not relaunch us — which is expected after a user force-quit
+        // and a bug otherwise.
+        TraceletLog.lifecycle(
+            "termination: registered significant-location monitoring for relaunch "
+                + "— mode=\(stateManager.trackingMode)")
     }
 
     /// Holds a reference to the CLLocationManager created at termination
@@ -3329,21 +3345,35 @@ public final class TraceletSdk {
             initialize()
         }
 
+        // #318: each guard below silently ends the session. Recorded so a report
+        // of "it stopped tracking overnight" distinguishes "iOS never relaunched
+        // us" from "we were relaunched and declined to resume" — and, in the last
+        // case, says which precondition failed.
+        //
         // Guard: stopOnTerminate means we should NOT resume after kill.
         if configManager.getStopOnTerminate() {
             TraceletLog.debug("[Tracelet] autoResumeTracking: stopOnTerminate=true, aborting")
+            TraceletLog.lifecycle(
+                "relaunch: declined to resume — stopOnTerminate=true")
             stateManager.enabled = false
             return
         }
 
         guard stateManager.enabled else {
             TraceletLog.debug("[Tracelet] autoResumeTracking: stateManager.enabled=false, aborting")
+            TraceletLog.lifecycle(
+                "relaunch: declined to resume — tracking was stopped before termination")
             return
         }
 
         let authStatus = locationEngine.getAuthorizationStatus()
         guard authStatus == 3 else { // authorizedAlways
             TraceletLog.debug("[Tracelet] autoResumeTracking: authStatus=\(authStatus), need 3 (Always), disabling")
+            // Downgrading from Always is a common and entirely silent cause of
+            // "it just stopped": the relaunch happens, then this disables tracking.
+            TraceletLog.lifecycle(
+                "relaunch: declined to resume — authorization is \(authStatus), "
+                    + "needs Always(3); tracking disabled")
             stateManager.enabled = false
             return
         }
@@ -3351,6 +3381,14 @@ public final class TraceletSdk {
         stateManager.didLaunchInBackground = true
         let trackingMode = stateManager.trackingMode
         TraceletLog.debug("[Tracelet] autoResumeTracking: trackingMode=\(trackingMode), resuming")
+        // #318: the anchor entry for every killed-state investigation on iOS — it
+        // records that the relaunch actually resumed, in which mode, and what
+        // motion state it inherited. Its *absence* in a bug report is the finding:
+        // iOS never relaunched the app, or bailed at one of the guards above.
+        TraceletLog.lifecycle(
+            "relaunch: resuming after killed-state launch — mode=\(trackingMode) "
+                + "isMoving=\(stateManager.isMoving) "
+                + "highAccuracyGeofence=\(configManager.getGeofenceModeHighAccuracy())")
 
         // HTTP Sync is auto-started by Rust Core Config
         TraceletLog.debug("[Tracelet] autoResumeTracking: Rust SyncManager active")
