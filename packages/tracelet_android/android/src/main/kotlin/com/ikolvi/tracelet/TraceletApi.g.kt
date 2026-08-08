@@ -673,36 +673,47 @@ data class TlAppConfig (
   }
 }
 
-/** Generated class from Pigeon that represents data sent in messages. */
+/**
+ * Foreground-service settings for a `setConfig()` call.
+ *
+ * Every field is nullable, and `null` means "not supplied by the caller" —
+ * never "reset to the default". The platform merges this into the
+ * configuration it already persisted and skips nulls, so a `setConfig()` that
+ * does not mention the foreground service leaves the stored notification
+ * settings untouched (#320). Sending a non-null value that happens to equal
+ * the default is still an explicit write.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
 data class TlForegroundServiceConfig (
-  val enabled: Boolean,
-  val channelId: String,
-  val channelName: String,
-  val notificationTitle: String,
-  val notificationText: String,
+  val enabled: Boolean? = null,
+  val channelId: String? = null,
+  val channelName: String? = null,
+  val notificationTitle: String? = null,
+  val notificationText: String? = null,
   val notificationColor: String? = null,
   val notificationSmallIcon: String? = null,
   val notificationLargeIcon: String? = null,
-  val notificationPriority: TlNotificationPriority,
-  val notificationOngoing: Boolean,
-  val showNotificationOnPauseOnly: Boolean,
-  val actions: List<String?>
+  val notificationPriority: TlNotificationPriority? = null,
+  val notificationOngoing: Boolean? = null,
+  val showNotificationOnPauseOnly: Boolean? = null,
+  val actions: List<String?>? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): TlForegroundServiceConfig {
-      val enabled = pigeonVar_list[0] as Boolean
-      val channelId = pigeonVar_list[1] as String
-      val channelName = pigeonVar_list[2] as String
-      val notificationTitle = pigeonVar_list[3] as String
-      val notificationText = pigeonVar_list[4] as String
+      val enabled = pigeonVar_list[0] as Boolean?
+      val channelId = pigeonVar_list[1] as String?
+      val channelName = pigeonVar_list[2] as String?
+      val notificationTitle = pigeonVar_list[3] as String?
+      val notificationText = pigeonVar_list[4] as String?
       val notificationColor = pigeonVar_list[5] as String?
       val notificationSmallIcon = pigeonVar_list[6] as String?
       val notificationLargeIcon = pigeonVar_list[7] as String?
-      val notificationPriority = pigeonVar_list[8] as TlNotificationPriority
-      val notificationOngoing = pigeonVar_list[9] as Boolean
-      val showNotificationOnPauseOnly = pigeonVar_list[10] as Boolean
-      val actions = pigeonVar_list[11] as List<String?>
+      val notificationPriority = pigeonVar_list[8] as TlNotificationPriority?
+      val notificationOngoing = pigeonVar_list[9] as Boolean?
+      val showNotificationOnPauseOnly = pigeonVar_list[10] as Boolean?
+      val actions = pigeonVar_list[11] as List<String?>?
       return TlForegroundServiceConfig(enabled, channelId, channelName, notificationTitle, notificationText, notificationColor, notificationSmallIcon, notificationLargeIcon, notificationPriority, notificationOngoing, showNotificationOnPauseOnly, actions)
     }
   }

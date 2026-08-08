@@ -1,3 +1,7 @@
+## Unreleased
+
+**FIX**: the foreground-service section of a `setConfig()` payload is forwarded with its nulls intact rather than substituted with defaults, so `ConfigManager`'s existing null-skip can do its job and a partial `setConfig()` leaves the stored notification settings untouched ([#320](https://github.com/Ikolvi/Tracelet/issues/320)).
+
 ## 3.8.0
 
 **FEAT**: implements the `getCurrentLocationTuning` host API, which reports the location-filter thresholds actually in force in the native processor rather than echoing the configured values ([#303](https://github.com/Ikolvi/Tracelet/issues/303)).

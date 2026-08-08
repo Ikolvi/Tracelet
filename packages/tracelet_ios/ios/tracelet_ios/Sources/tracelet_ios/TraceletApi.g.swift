@@ -566,36 +566,45 @@ struct TlAppConfig: Hashable {
   }
 }
 
+/// Foreground-service settings for a `setConfig()` call.
+///
+/// Every field is nullable, and `null` means "not supplied by the caller" —
+/// never "reset to the default". The platform merges this into the
+/// configuration it already persisted and skips nulls, so a `setConfig()` that
+/// does not mention the foreground service leaves the stored notification
+/// settings untouched (#320). Sending a non-null value that happens to equal
+/// the default is still an explicit write.
+///
 /// Generated class from Pigeon that represents data sent in messages.
 struct TlForegroundServiceConfig: Hashable {
-  var enabled: Bool
-  var channelId: String
-  var channelName: String
-  var notificationTitle: String
-  var notificationText: String
+  var enabled: Bool? = nil
+  var channelId: String? = nil
+  var channelName: String? = nil
+  var notificationTitle: String? = nil
+  var notificationText: String? = nil
   var notificationColor: String? = nil
   var notificationSmallIcon: String? = nil
   var notificationLargeIcon: String? = nil
-  var notificationPriority: TlNotificationPriority
-  var notificationOngoing: Bool
-  var showNotificationOnPauseOnly: Bool
-  var actions: [String?]
+  var notificationPriority: TlNotificationPriority? = nil
+  var notificationOngoing: Bool? = nil
+  var showNotificationOnPauseOnly: Bool? = nil
+  var actions: [String?]? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> TlForegroundServiceConfig? {
-    let enabled = pigeonVar_list[0] as! Bool
-    let channelId = pigeonVar_list[1] as! String
-    let channelName = pigeonVar_list[2] as! String
-    let notificationTitle = pigeonVar_list[3] as! String
-    let notificationText = pigeonVar_list[4] as! String
+    let enabled: Bool? = nilOrValue(pigeonVar_list[0])
+    let channelId: String? = nilOrValue(pigeonVar_list[1])
+    let channelName: String? = nilOrValue(pigeonVar_list[2])
+    let notificationTitle: String? = nilOrValue(pigeonVar_list[3])
+    let notificationText: String? = nilOrValue(pigeonVar_list[4])
     let notificationColor: String? = nilOrValue(pigeonVar_list[5])
     let notificationSmallIcon: String? = nilOrValue(pigeonVar_list[6])
     let notificationLargeIcon: String? = nilOrValue(pigeonVar_list[7])
-    let notificationPriority = pigeonVar_list[8] as! TlNotificationPriority
-    let notificationOngoing = pigeonVar_list[9] as! Bool
-    let showNotificationOnPauseOnly = pigeonVar_list[10] as! Bool
-    let actions = pigeonVar_list[11] as! [String?]
+    let notificationPriority: TlNotificationPriority? = nilOrValue(pigeonVar_list[8])
+    let notificationOngoing: Bool? = nilOrValue(pigeonVar_list[9])
+    let showNotificationOnPauseOnly: Bool? = nilOrValue(pigeonVar_list[10])
+    let actions: [String?]? = nilOrValue(pigeonVar_list[11])
 
     return TlForegroundServiceConfig(
       enabled: enabled,

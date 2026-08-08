@@ -511,31 +511,39 @@ class TlAppConfig {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
+/// Foreground-service settings for a `setConfig()` call.
+///
+/// Every field is nullable, and `null` means "not supplied by the caller" —
+/// never "reset to the default". The platform merges this into the
+/// configuration it already persisted and skips nulls, so a `setConfig()` that
+/// does not mention the foreground service leaves the stored notification
+/// settings untouched (#320). Sending a non-null value that happens to equal
+/// the default is still an explicit write.
 class TlForegroundServiceConfig {
   TlForegroundServiceConfig({
-    required this.enabled,
-    required this.channelId,
-    required this.channelName,
-    required this.notificationTitle,
-    required this.notificationText,
+    this.enabled,
+    this.channelId,
+    this.channelName,
+    this.notificationTitle,
+    this.notificationText,
     this.notificationColor,
     this.notificationSmallIcon,
     this.notificationLargeIcon,
-    required this.notificationPriority,
-    required this.notificationOngoing,
-    required this.showNotificationOnPauseOnly,
-    required this.actions,
+    this.notificationPriority,
+    this.notificationOngoing,
+    this.showNotificationOnPauseOnly,
+    this.actions,
   });
 
-  bool enabled;
+  bool? enabled;
 
-  String channelId;
+  String? channelId;
 
-  String channelName;
+  String? channelName;
 
-  String notificationTitle;
+  String? notificationTitle;
 
-  String notificationText;
+  String? notificationText;
 
   String? notificationColor;
 
@@ -543,13 +551,13 @@ class TlForegroundServiceConfig {
 
   String? notificationLargeIcon;
 
-  TlNotificationPriority notificationPriority;
+  TlNotificationPriority? notificationPriority;
 
-  bool notificationOngoing;
+  bool? notificationOngoing;
 
-  bool showNotificationOnPauseOnly;
+  bool? showNotificationOnPauseOnly;
 
-  List<String?> actions;
+  List<String?>? actions;
 
   List<Object?> _toList() {
     return <Object?>[
@@ -575,18 +583,18 @@ class TlForegroundServiceConfig {
   static TlForegroundServiceConfig decode(Object result) {
     result as List<Object?>;
     return TlForegroundServiceConfig(
-      enabled: result[0]! as bool,
-      channelId: result[1]! as String,
-      channelName: result[2]! as String,
-      notificationTitle: result[3]! as String,
-      notificationText: result[4]! as String,
+      enabled: result[0] as bool?,
+      channelId: result[1] as String?,
+      channelName: result[2] as String?,
+      notificationTitle: result[3] as String?,
+      notificationText: result[4] as String?,
       notificationColor: result[5] as String?,
       notificationSmallIcon: result[6] as String?,
       notificationLargeIcon: result[7] as String?,
-      notificationPriority: result[8]! as TlNotificationPriority,
-      notificationOngoing: result[9]! as bool,
-      showNotificationOnPauseOnly: result[10]! as bool,
-      actions: (result[11]! as List<Object?>).cast<String?>(),
+      notificationPriority: result[8] as TlNotificationPriority?,
+      notificationOngoing: result[9] as bool?,
+      showNotificationOnPauseOnly: result[10] as bool?,
+      actions: (result[11] as List<Object?>?)?.cast<String?>(),
     );
   }
 
