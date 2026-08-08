@@ -327,11 +327,13 @@ class TraceletBugReport {
   /// pulled out of the general log stream into its own section (#318).
   ///
   /// These entries are the SDK's account of what its background and
-  /// killed-state pipelines actually did — service start/stop and sticky
-  /// restarts and boot bootstrap outcomes on Android, relaunch and termination
-  /// boundaries on iOS, and motion-state transitions on both. They are written
-  /// regardless of `logLevel`, precisely because the failures they explain
-  /// cannot be reproduced on demand with logging turned up first.
+  /// killed-state pipelines actually did — the `session: start` / `session:
+  /// stop` boundaries and the mode and strategy each session ran with on both
+  /// platforms, plus service create/destroy and sticky restarts and boot
+  /// bootstrap outcomes on Android, relaunch and termination boundaries on iOS,
+  /// and motion-state transitions on both. They are written regardless of
+  /// `logLevel`, precisely because the failures they explain cannot be
+  /// reproduced on demand with logging turned up first.
   ///
   /// Given its own section for the same reason as the geofence trace: lifecycle
   /// events are rare (a handful per session) while routine chatter is not, so
@@ -340,7 +342,12 @@ class TraceletBugReport {
   /// keeping only these lines makes the report answer the question it was
   /// generated for.
   ///
-  /// **Reading it:** an absent entry is as informative as a present one. On
+  /// **Reading it:** an absent entry is as informative as a present one. Start
+  /// with the session boundaries on both platforms: a `session: stop` with
+  /// nothing after it means tracking was stopped and never restarted, which is
+  /// the ordinary explanation for "it stopped tracking" and the first thing to
+  /// rule out (`restart=true` marks setConfig()'s in-place restart, which is
+  /// always followed by a start and is not the session ending). On
   /// Android, `motion (foreground)` lines with no `motion (killed-state, …)`
   /// counterpart mean the background detector never ran; no
   /// `boot-tracking: bootstrapping` means the pipeline never came up. On iOS, a
