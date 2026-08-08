@@ -3,6 +3,47 @@
 import React, { useState, useRef, useEffect } from 'react'
 import versions from '../versions.json'
 
+const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
+
+/**
+ * Semver precedence, enough for pub.dev version strings.
+ *
+ * The only subtle rule is that a prerelease sorts BELOW its own release
+ * (`3.8.0-beta.2` < `3.8.0`), so publishing the stable build promotes the badge
+ * on its own. Build metadata (`+…`) is ignored, as the spec requires.
+ * Numeric prerelease identifiers compare numerically, so `beta.10` > `beta.2`.
+ */
+function compareSemver(a: string, b: string): number {
+  const parse = (v: string) => {
+    const [core, pre] = v.split('+')[0].split('-')
+    return {
+      nums: core.split('.').map(Number),
+      pre: pre ? pre.split('.') : null
+    }
+  }
+  const x = parse(a)
+  const y = parse(b)
+  for (let i = 0; i < 3; i++) {
+    if (x.nums[i] !== y.nums[i]) return x.nums[i] - y.nums[i]
+  }
+  if (!x.pre && !y.pre) return 0
+  if (!x.pre) return 1 // a release outranks any prerelease of it
+  if (!y.pre) return -1
+  for (let i = 0; i < Math.max(x.pre.length, y.pre.length); i++) {
+    const p = x.pre[i]
+    const q = y.pre[i]
+    if (p === undefined) return -1
+    if (q === undefined) return 1
+    if (p === q) continue
+    const pn = /^\d+$/.test(p)
+    const qn = /^\d+$/.test(q)
+    if (pn && qn) return Number(p) - Number(q)
+    if (pn !== qn) return pn ? -1 : 1 // numeric identifiers rank lower
+    return p < q ? -1 : 1
+  }
+  return 0
+}
+
 type Archived = {
   label: string
   slug: string
@@ -51,6 +92,60 @@ export default function VersionSwitch({
   const archived: Archived[] = versions.archived as Archived[]
   const current = versions.current
 
+  /**
+   * Latest published version, read from pub.dev at runtime.
+   *
+   * `versions.json` is the seed and the fallback, never the sole source: it
+   * drifts the moment a release publishes without a docs commit. pub.dev is
+   * authoritative for "what can someone actually install right now".
+   *
+   * This is a **client-side** fetch, which is why it works here where the
+   * original build-time one could not. Under `output: 'export'` there is no
+   * server and no revalidation, so a build-time fetch froze whatever the CI
+   * machine saw — and fell back to a hardcoded `v1.0.0` on any network hiccup,
+   * silently shipping a wrong badge. See the note in `versions.json`.
+   *
+   * On failure the committed label stands, so the worst case is a slightly
+   * stale but always *real* version rather than a fabricated one.
+   */
+  const [publishedLabel, setPublishedLabel] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('https://pub.dev/api/packages/tracelet', {
+      headers: { Accept: 'application/json' }
+    })
+      .then(r => (r.ok ? r.json() : null))
+      .then(
+        (
+          data: {
+            latest?: { version?: string }
+            versions?: { version?: string }[]
+          } | null
+        ) => {
+          if (cancelled || !data) return
+          // Include prereleases: the docs describe what is installable *now*,
+          // and during a release cycle that is the beta. `latest` is stable-only
+          // (3.7.6 while 3.8.0-beta.2 was the newest thing published), so scan
+          // every version rather than trusting that field or the array order.
+          const all = (data.versions ?? [])
+            .map(v => v?.version)
+            .filter((v): v is string => typeof v === 'string' && SEMVER.test(v))
+          if (data.latest?.version && SEMVER.test(data.latest.version)) {
+            all.push(data.latest.version)
+          }
+          const newest = all.sort(compareSemver).pop()
+          if (newest) setPublishedLabel(newest)
+        }
+      )
+      .catch(() => {
+        /* Offline or blocked — keep the committed label. */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   useEffect(() => {
     if (!open) return
     function onDocClick(e: MouseEvent) {
@@ -67,9 +162,12 @@ export default function VersionSwitch({
     }
   }, [open])
 
+  // Archives are frozen records of what a release shipped, so they always use
+  // their committed label; only the current docs track pub.dev.
+  const currentLabel = publishedLabel ?? current.label
   const activeLabel = archivedSlug
     ? archived.find(v => v.slug === archivedSlug)?.label ?? archivedSlug
-    : current.label
+    : currentLabel
 
   /**
    * Maps the current path onto `targetSlug`, keeping the sub-path when the
@@ -167,7 +265,7 @@ export default function VersionSwitch({
         >
           <VersionItem
             href={linkFor(null)}
-            label={current.label}
+            label={currentLabel}
             note="latest"
             active={!archivedSlug}
           />

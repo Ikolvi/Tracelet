@@ -56,10 +56,15 @@ exact_replacements = [
     ('packages/tracelet_sync/ios/tracelet_sync.podspec', f"s.version = '{version_from}'", f"s.version = '{version_to}'"),
     ('packages/tracelet_sync/ios/tracelet_sync.podspec', f"s.dependency 'TraceletSDK', '{version_from}'", f"s.dependency 'TraceletSDK', '{version_to}'"),
 
-    # The docs site reads the navbar version and the version switcher from this
-    # manifest, so it has to move with the packages or the site advertises a
-    # release that does not exist.
-    ('website/versions.json', f'"label": "{version_from}"', f'"label": "{version_to}"'),
+    # NOTE: website/versions.json is deliberately NOT bumped here. VersionSwitch
+    # reads the newest published version from pub.dev at runtime, prereleases
+    # included, so the badge is correct the moment a release publishes and wrong
+    # for nobody in between — a release step cannot be, because it runs before
+    # the publish. `current.label` there is only the offline fallback.
+    #
+    # The version *archives* in that file are still edited by hand, via
+    # `scripts/version-cut.js`, since cutting an archive is a separate decision
+    # from bumping a version.
 
     # Bumping the localStorage key is deliberate: it re-shows the "what's new"
     # bell for readers who already dismissed it on the previous build.
@@ -103,13 +108,18 @@ detailed_changelogs = [
     # This list is safe for packages that have no Unreleased section: the loop
     # below falls back to the generic entry when there is nothing to promote.
     'packages/tracelet_doctor/CHANGELOG.md',
-]
-
-# Packages that carry the new host-API plumbing but had no hand-written entry.
-plugin_changelogs = [
+    # The Pigeon host-API plumbing lives in these two, so config/transport work
+    # lands here with real hand-written `## Unreleased` entries (#320, #321).
+    # They used to sit on `plugin_changelogs`, which PREPENDS a fixed blurb
+    # instead of promoting: their genuine entries would have stayed stranded
+    # under "Unreleased" forever while a stale note shipped as the release
+    # description. Same failure the tracelet_doctor comment above describes.
     'packages/tracelet_android/CHANGELOG.md',
     'packages/tracelet_ios/CHANGELOG.md',
 ]
+
+# Packages with no hand-written entries of their own.
+plugin_changelogs = []
 
 generic_changelogs = [
     'packages/tracelet_sync/CHANGELOG.md',
@@ -128,6 +138,25 @@ generic_addition = f"""## {version_to}
 Version alignment with tracelet {version_to}.
 
 """
+
+def merge_unreleased_into(content, version):
+    """Fold an `## Unreleased` block into an existing `## <version>` section.
+
+    Returns the new content, or None when there is no Unreleased block to move.
+    Entries are placed at the top of the version's section, matching the
+    newest-first ordering used throughout these changelogs.
+    """
+    m = re.search(r'^## Unreleased[ \t]*\n', content, flags=re.M)
+    if not m:
+        return None
+    nxt = re.search(r'^## ', content[m.end():], flags=re.M)
+    body = content[m.end():m.end() + nxt.start()] if nxt else content[m.end():]
+    rest = content[:m.start()] + (content[m.end() + nxt.start():] if nxt else '')
+    vm = re.search(rf'^## {re.escape(version)}[ \t]*\n\n', rest, flags=re.M)
+    if not vm:
+        return None
+    return rest[:vm.end()] + body.strip('\n') + '\n\n' + rest[vm.end():]
+
 
 def has_version_heading(content, version):
     """Whether `content` already carries a `## <version>` heading.
@@ -148,7 +177,17 @@ for cl in detailed_changelogs:
     with open(cl, 'r', encoding='utf-8') as f:
         content = f.read()
     if has_version_heading(content, version_to):
-        print(f"Skipped {cl} (already at {version_to})")
+        # The heading already exists — but there may still be an `## Unreleased`
+        # block above it, written after the heading was created (a follow-up fix
+        # for a version that has not shipped yet). Skipping outright stranded
+        # those entries permanently, so fold them into the existing section.
+        merged = merge_unreleased_into(content, version_to)
+        if merged is None:
+            print(f"Skipped {cl} (already at {version_to}, nothing to promote)")
+            continue
+        with open(cl, 'w', encoding='utf-8') as f:
+            f.write(merged)
+        print(f"Merged Unreleased into the existing {version_to} section in {cl}")
         continue
     # `[ \t]*` not `\s*`: \s matches newlines, so the greedy form swallowed the
     # blank line after the heading and glued it to the first entry.

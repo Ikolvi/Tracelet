@@ -2,6 +2,11 @@
   "badgeTitle": "New in 3.8.0",
   "items": [
     {
+      "title": "setConfig() is now a partial update",
+      "description": "A setConfig() call that does not mention a field leaves the persisted value alone instead of resetting it to the default. Previously any partial update silently reverted everything it did not name — the foreground-service notification, the HTTP settings, and on iOS the keep-alive flags that background tracking depends on.",
+      "href": "/api-reference"
+    },
+    {
       "title": "Filter settings now apply without a restart",
       "description": "trackingAccuracyThreshold, odometerAccuracyThreshold, maxImpliedSpeed and useKalmanFilter used to be accepted and then ignored until the next cold start. They take effect on the next fix, and the odometer keeps its anchor.",
       "href": "/core/advanced-geo"
