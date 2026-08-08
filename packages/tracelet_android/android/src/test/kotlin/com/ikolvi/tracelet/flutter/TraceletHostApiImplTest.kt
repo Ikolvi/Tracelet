@@ -54,19 +54,28 @@ class TraceletHostApiImplTest {
 
         val mockConfig = mock(com.ikolvi.tracelet.TlConfig::class.java, org.mockito.Mockito.RETURNS_DEEP_STUBS)
         
-        // Just mock the 'raw' values so we don't need actual enum instances
-        org.mockito.Mockito.`when`(mockConfig.http.method.raw).thenReturn(0)
-        org.mockito.Mockito.`when`(mockConfig.http.locationsOrderDirection.raw).thenReturn(0)
-        org.mockito.Mockito.`when`(mockConfig.motion.motionDetectionMode.raw).thenReturn(0)
-        org.mockito.Mockito.`when`(mockConfig.motion.stationaryTrackingMode.raw).thenReturn(0)
-        org.mockito.Mockito.`when`(mockConfig.motion.stationaryPeriodicAccuracy.raw).thenReturn(0)
-        org.mockito.Mockito.`when`(mockConfig.geo.desiredAccuracy.raw).thenReturn(0)
-        org.mockito.Mockito.`when`(mockConfig.geo.periodicDesiredAccuracy.raw).thenReturn(0)
-        org.mockito.Mockito.`when`(mockConfig.geo.filter.policy.raw).thenReturn(0)
-        org.mockito.Mockito.`when`(mockConfig.android.foregroundService.notificationPriority.raw).thenReturn(0)
-        org.mockito.Mockito.`when`(mockConfig.logger.logLevel.raw).thenReturn(0)
-        org.mockito.Mockito.`when`(mockConfig.persistence.persistMode.raw).thenReturn(0)
-        org.mockito.Mockito.`when`(mockConfig.audit.hashAlgorithm.raw).thenReturn(0)
+        // Just mock the 'raw' values so we don't need actual enum instances.
+        //
+        // `!!` on every enum leaf and on the two nested sub-configs (#328): #321
+        // made each of them nullable in the generated Pigeon classes, because
+        // "not supplied" now has to be expressible on the wire for a partial
+        // setConfig() to leave the persisted value alone. RETURNS_DEEP_STUBS
+        // still hands back a stub for each one (Mockito 5 mocks final classes,
+        // so an enum is fine), so the assertion is only telling Kotlin what the
+        // deep stub already guarantees — it is not asserting anything about the
+        // production nullability, which is the whole point of #321.
+        org.mockito.Mockito.`when`(mockConfig.http.method!!.raw).thenReturn(0)
+        org.mockito.Mockito.`when`(mockConfig.http.locationsOrderDirection!!.raw).thenReturn(0)
+        org.mockito.Mockito.`when`(mockConfig.motion.motionDetectionMode!!.raw).thenReturn(0)
+        org.mockito.Mockito.`when`(mockConfig.motion.stationaryTrackingMode!!.raw).thenReturn(0)
+        org.mockito.Mockito.`when`(mockConfig.motion.stationaryPeriodicAccuracy!!.raw).thenReturn(0)
+        org.mockito.Mockito.`when`(mockConfig.geo.desiredAccuracy!!.raw).thenReturn(0)
+        org.mockito.Mockito.`when`(mockConfig.geo.periodicDesiredAccuracy!!.raw).thenReturn(0)
+        org.mockito.Mockito.`when`(mockConfig.geo.filter!!.policy!!.raw).thenReturn(0)
+        org.mockito.Mockito.`when`(mockConfig.android.foregroundService!!.notificationPriority!!.raw).thenReturn(0)
+        org.mockito.Mockito.`when`(mockConfig.logger.logLevel!!.raw).thenReturn(0)
+        org.mockito.Mockito.`when`(mockConfig.persistence.persistMode!!.raw).thenReturn(0)
+        org.mockito.Mockito.`when`(mockConfig.audit.hashAlgorithm!!.raw).thenReturn(0)
 
         @Suppress("UNCHECKED_CAST")
         val map = method.invoke(hostApi, mockConfig) as Map<String, Any?>
