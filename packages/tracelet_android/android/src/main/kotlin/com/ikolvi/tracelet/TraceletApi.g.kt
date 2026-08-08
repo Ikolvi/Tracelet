@@ -441,24 +441,24 @@ enum class TlSpeedMotionState(val raw: Int) {
 
 /** Generated class from Pigeon that represents data sent in messages. */
 data class TlLocationFilter (
-  val trackingAccuracyThreshold: Long,
-  val maxImpliedSpeed: Long,
-  val odometerAccuracyThreshold: Long,
-  val policy: TlLocationFilterPolicy,
-  val rejectMockLocations: Boolean,
-  val mockDetectionLevel: Long,
-  val useKalmanFilter: Boolean
+  val trackingAccuracyThreshold: Long? = null,
+  val maxImpliedSpeed: Long? = null,
+  val odometerAccuracyThreshold: Long? = null,
+  val policy: TlLocationFilterPolicy? = null,
+  val rejectMockLocations: Boolean? = null,
+  val mockDetectionLevel: Long? = null,
+  val useKalmanFilter: Boolean? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): TlLocationFilter {
-      val trackingAccuracyThreshold = pigeonVar_list[0] as Long
-      val maxImpliedSpeed = pigeonVar_list[1] as Long
-      val odometerAccuracyThreshold = pigeonVar_list[2] as Long
-      val policy = pigeonVar_list[3] as TlLocationFilterPolicy
-      val rejectMockLocations = pigeonVar_list[4] as Boolean
-      val mockDetectionLevel = pigeonVar_list[5] as Long
-      val useKalmanFilter = pigeonVar_list[6] as Boolean
+      val trackingAccuracyThreshold = pigeonVar_list[0] as Long?
+      val maxImpliedSpeed = pigeonVar_list[1] as Long?
+      val odometerAccuracyThreshold = pigeonVar_list[2] as Long?
+      val policy = pigeonVar_list[3] as TlLocationFilterPolicy?
+      val rejectMockLocations = pigeonVar_list[4] as Boolean?
+      val mockDetectionLevel = pigeonVar_list[5] as Long?
+      val useKalmanFilter = pigeonVar_list[6] as Boolean?
       return TlLocationFilter(trackingAccuracyThreshold, maxImpliedSpeed, odometerAccuracyThreshold, policy, rejectMockLocations, mockDetectionLevel, useKalmanFilter)
     }
   }
@@ -499,52 +499,52 @@ data class TlLocationFilter (
 
 /** Generated class from Pigeon that represents data sent in messages. */
 data class TlGeoConfig (
-  val desiredAccuracy: TlDesiredAccuracy,
-  val distanceFilter: Double,
-  val stationaryRadius: Double,
-  val locationTimeout: Long,
-  val disableElasticity: Boolean,
-  val elasticityMultiplier: Double,
-  val stopAfterElapsedMinutes: Long,
-  val maxMonitoredGeofences: Long,
-  val enableTimestampMeta: Boolean,
-  val enableAdaptiveMode: Boolean,
-  val periodicLocationInterval: Long,
-  val periodicDesiredAccuracy: TlDesiredAccuracy,
-  val enableSparseUpdates: Boolean,
-  val sparseDistanceThreshold: Double,
-  val sparseMaxIdleSeconds: Long,
-  val enableDeadReckoning: Boolean,
-  val deadReckoningActivationDelay: Long,
-  val deadReckoningMaxDuration: Long,
-  val batteryBudgetPerHour: Double,
-  val filter: TlLocationFilter,
-  val resolveAddress: Boolean
+  val desiredAccuracy: TlDesiredAccuracy? = null,
+  val distanceFilter: Double? = null,
+  val stationaryRadius: Double? = null,
+  val locationTimeout: Long? = null,
+  val disableElasticity: Boolean? = null,
+  val elasticityMultiplier: Double? = null,
+  val stopAfterElapsedMinutes: Long? = null,
+  val maxMonitoredGeofences: Long? = null,
+  val enableTimestampMeta: Boolean? = null,
+  val enableAdaptiveMode: Boolean? = null,
+  val periodicLocationInterval: Long? = null,
+  val periodicDesiredAccuracy: TlDesiredAccuracy? = null,
+  val enableSparseUpdates: Boolean? = null,
+  val sparseDistanceThreshold: Double? = null,
+  val sparseMaxIdleSeconds: Long? = null,
+  val enableDeadReckoning: Boolean? = null,
+  val deadReckoningActivationDelay: Long? = null,
+  val deadReckoningMaxDuration: Long? = null,
+  val batteryBudgetPerHour: Double? = null,
+  val filter: TlLocationFilter? = null,
+  val resolveAddress: Boolean? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): TlGeoConfig {
-      val desiredAccuracy = pigeonVar_list[0] as TlDesiredAccuracy
-      val distanceFilter = pigeonVar_list[1] as Double
-      val stationaryRadius = pigeonVar_list[2] as Double
-      val locationTimeout = pigeonVar_list[3] as Long
-      val disableElasticity = pigeonVar_list[4] as Boolean
-      val elasticityMultiplier = pigeonVar_list[5] as Double
-      val stopAfterElapsedMinutes = pigeonVar_list[6] as Long
-      val maxMonitoredGeofences = pigeonVar_list[7] as Long
-      val enableTimestampMeta = pigeonVar_list[8] as Boolean
-      val enableAdaptiveMode = pigeonVar_list[9] as Boolean
-      val periodicLocationInterval = pigeonVar_list[10] as Long
-      val periodicDesiredAccuracy = pigeonVar_list[11] as TlDesiredAccuracy
-      val enableSparseUpdates = pigeonVar_list[12] as Boolean
-      val sparseDistanceThreshold = pigeonVar_list[13] as Double
-      val sparseMaxIdleSeconds = pigeonVar_list[14] as Long
-      val enableDeadReckoning = pigeonVar_list[15] as Boolean
-      val deadReckoningActivationDelay = pigeonVar_list[16] as Long
-      val deadReckoningMaxDuration = pigeonVar_list[17] as Long
-      val batteryBudgetPerHour = pigeonVar_list[18] as Double
-      val filter = pigeonVar_list[19] as TlLocationFilter
-      val resolveAddress = pigeonVar_list[20] as Boolean
+      val desiredAccuracy = pigeonVar_list[0] as TlDesiredAccuracy?
+      val distanceFilter = pigeonVar_list[1] as Double?
+      val stationaryRadius = pigeonVar_list[2] as Double?
+      val locationTimeout = pigeonVar_list[3] as Long?
+      val disableElasticity = pigeonVar_list[4] as Boolean?
+      val elasticityMultiplier = pigeonVar_list[5] as Double?
+      val stopAfterElapsedMinutes = pigeonVar_list[6] as Long?
+      val maxMonitoredGeofences = pigeonVar_list[7] as Long?
+      val enableTimestampMeta = pigeonVar_list[8] as Boolean?
+      val enableAdaptiveMode = pigeonVar_list[9] as Boolean?
+      val periodicLocationInterval = pigeonVar_list[10] as Long?
+      val periodicDesiredAccuracy = pigeonVar_list[11] as TlDesiredAccuracy?
+      val enableSparseUpdates = pigeonVar_list[12] as Boolean?
+      val sparseDistanceThreshold = pigeonVar_list[13] as Double?
+      val sparseMaxIdleSeconds = pigeonVar_list[14] as Long?
+      val enableDeadReckoning = pigeonVar_list[15] as Boolean?
+      val deadReckoningActivationDelay = pigeonVar_list[16] as Long?
+      val deadReckoningMaxDuration = pigeonVar_list[17] as Long?
+      val batteryBudgetPerHour = pigeonVar_list[18] as Double?
+      val filter = pigeonVar_list[19] as TlLocationFilter?
+      val resolveAddress = pigeonVar_list[20] as Boolean?
       return TlGeoConfig(desiredAccuracy, distanceFilter, stationaryRadius, locationTimeout, disableElasticity, elasticityMultiplier, stopAfterElapsedMinutes, maxMonitoredGeofences, enableTimestampMeta, enableAdaptiveMode, periodicLocationInterval, periodicDesiredAccuracy, enableSparseUpdates, sparseDistanceThreshold, sparseMaxIdleSeconds, enableDeadReckoning, deadReckoningActivationDelay, deadReckoningMaxDuration, batteryBudgetPerHour, filter, resolveAddress)
     }
   }
@@ -613,26 +613,26 @@ data class TlGeoConfig (
 
 /** Generated class from Pigeon that represents data sent in messages. */
 data class TlAppConfig (
-  val stopOnTerminate: Boolean,
-  val startOnBoot: Boolean,
-  val heartbeatInterval: Long,
-  val schedule: List<String?>,
+  val stopOnTerminate: Boolean? = null,
+  val startOnBoot: Boolean? = null,
+  val heartbeatInterval: Long? = null,
+  val schedule: List<String?>? = null,
   val remoteConfigUrl: String? = null,
   val remoteConfigHeaders: Map<String?, String?>? = null,
-  val remoteConfigTimeout: Long,
-  val remoteConfigRefreshInterval: Long
+  val remoteConfigTimeout: Long? = null,
+  val remoteConfigRefreshInterval: Long? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): TlAppConfig {
-      val stopOnTerminate = pigeonVar_list[0] as Boolean
-      val startOnBoot = pigeonVar_list[1] as Boolean
-      val heartbeatInterval = pigeonVar_list[2] as Long
-      val schedule = pigeonVar_list[3] as List<String?>
+      val stopOnTerminate = pigeonVar_list[0] as Boolean?
+      val startOnBoot = pigeonVar_list[1] as Boolean?
+      val heartbeatInterval = pigeonVar_list[2] as Long?
+      val schedule = pigeonVar_list[3] as List<String?>?
       val remoteConfigUrl = pigeonVar_list[4] as String?
       val remoteConfigHeaders = pigeonVar_list[5] as Map<String?, String?>?
-      val remoteConfigTimeout = pigeonVar_list[6] as Long
-      val remoteConfigRefreshInterval = pigeonVar_list[7] as Long
+      val remoteConfigTimeout = pigeonVar_list[6] as Long?
+      val remoteConfigRefreshInterval = pigeonVar_list[7] as Long?
       return TlAppConfig(stopOnTerminate, startOnBoot, heartbeatInterval, schedule, remoteConfigUrl, remoteConfigHeaders, remoteConfigTimeout, remoteConfigRefreshInterval)
     }
   }
@@ -764,34 +764,34 @@ data class TlForegroundServiceConfig (
 
 /** Generated class from Pigeon that represents data sent in messages. */
 data class TlAndroidConfig (
-  val locationUpdateInterval: Long,
-  val fastestLocationUpdateInterval: Long,
-  val deferTime: Long,
-  val allowIdenticalLocations: Boolean,
-  val geofenceModeHighAccuracy: Boolean,
-  val periodicUseForegroundService: Boolean,
-  val periodicUseExactAlarms: Boolean,
-  val scheduleUseAlarmManager: Boolean,
-  val foregroundService: TlForegroundServiceConfig,
+  val locationUpdateInterval: Long? = null,
+  val fastestLocationUpdateInterval: Long? = null,
+  val deferTime: Long? = null,
+  val allowIdenticalLocations: Boolean? = null,
+  val geofenceModeHighAccuracy: Boolean? = null,
+  val periodicUseForegroundService: Boolean? = null,
+  val periodicUseExactAlarms: Boolean? = null,
+  val scheduleUseAlarmManager: Boolean? = null,
+  val foregroundService: TlForegroundServiceConfig? = null,
   /**
    * Drops the OEM Wakelock when the device enters a fully stationary state.
    * Resolves Issue #162.
    */
-  val releaseWakelockWhenStationary: Boolean
+  val releaseWakelockWhenStationary: Boolean? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): TlAndroidConfig {
-      val locationUpdateInterval = pigeonVar_list[0] as Long
-      val fastestLocationUpdateInterval = pigeonVar_list[1] as Long
-      val deferTime = pigeonVar_list[2] as Long
-      val allowIdenticalLocations = pigeonVar_list[3] as Boolean
-      val geofenceModeHighAccuracy = pigeonVar_list[4] as Boolean
-      val periodicUseForegroundService = pigeonVar_list[5] as Boolean
-      val periodicUseExactAlarms = pigeonVar_list[6] as Boolean
-      val scheduleUseAlarmManager = pigeonVar_list[7] as Boolean
-      val foregroundService = pigeonVar_list[8] as TlForegroundServiceConfig
-      val releaseWakelockWhenStationary = pigeonVar_list[9] as Boolean
+      val locationUpdateInterval = pigeonVar_list[0] as Long?
+      val fastestLocationUpdateInterval = pigeonVar_list[1] as Long?
+      val deferTime = pigeonVar_list[2] as Long?
+      val allowIdenticalLocations = pigeonVar_list[3] as Boolean?
+      val geofenceModeHighAccuracy = pigeonVar_list[4] as Boolean?
+      val periodicUseForegroundService = pigeonVar_list[5] as Boolean?
+      val periodicUseExactAlarms = pigeonVar_list[6] as Boolean?
+      val scheduleUseAlarmManager = pigeonVar_list[7] as Boolean?
+      val foregroundService = pigeonVar_list[8] as TlForegroundServiceConfig?
+      val releaseWakelockWhenStationary = pigeonVar_list[9] as Boolean?
       return TlAndroidConfig(locationUpdateInterval, fastestLocationUpdateInterval, deferTime, allowIdenticalLocations, geofenceModeHighAccuracy, periodicUseForegroundService, periodicUseExactAlarms, scheduleUseAlarmManager, foregroundService, releaseWakelockWhenStationary)
     }
   }
@@ -838,14 +838,14 @@ data class TlAndroidConfig (
 
 /** Generated class from Pigeon that represents data sent in messages. */
 data class TlLiveActivityConfig (
-  val title: String,
-  val body: String
+  val title: String? = null,
+  val body: String? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): TlLiveActivityConfig {
-      val title = pigeonVar_list[0] as String
-      val body = pigeonVar_list[1] as String
+      val title = pigeonVar_list[0] as String?
+      val body = pigeonVar_list[1] as String?
       return TlLiveActivityConfig(title, body)
     }
   }
@@ -876,27 +876,27 @@ data class TlLiveActivityConfig (
 
 /** Generated class from Pigeon that represents data sent in messages. */
 data class TlIosConfig (
-  val activityType: TlIosActivityType,
-  val useSignificantChangesOnly: Boolean,
-  val showsBackgroundLocationIndicator: Boolean,
-  val pausesLocationUpdatesAutomatically: Boolean,
-  val locationAuthorizationRequest: TlAuthorizationRequest,
-  val disableLocationAuthorizationAlert: Boolean,
-  val preventSuspend: Boolean,
-  val useBackgroundActivitySession: Boolean,
+  val activityType: TlIosActivityType? = null,
+  val useSignificantChangesOnly: Boolean? = null,
+  val showsBackgroundLocationIndicator: Boolean? = null,
+  val pausesLocationUpdatesAutomatically: Boolean? = null,
+  val locationAuthorizationRequest: TlAuthorizationRequest? = null,
+  val disableLocationAuthorizationAlert: Boolean? = null,
+  val preventSuspend: Boolean? = null,
+  val useBackgroundActivitySession: Boolean? = null,
   val liveActivityConfig: TlLiveActivityConfig? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): TlIosConfig {
-      val activityType = pigeonVar_list[0] as TlIosActivityType
-      val useSignificantChangesOnly = pigeonVar_list[1] as Boolean
-      val showsBackgroundLocationIndicator = pigeonVar_list[2] as Boolean
-      val pausesLocationUpdatesAutomatically = pigeonVar_list[3] as Boolean
-      val locationAuthorizationRequest = pigeonVar_list[4] as TlAuthorizationRequest
-      val disableLocationAuthorizationAlert = pigeonVar_list[5] as Boolean
-      val preventSuspend = pigeonVar_list[6] as Boolean
-      val useBackgroundActivitySession = pigeonVar_list[7] as Boolean
+      val activityType = pigeonVar_list[0] as TlIosActivityType?
+      val useSignificantChangesOnly = pigeonVar_list[1] as Boolean?
+      val showsBackgroundLocationIndicator = pigeonVar_list[2] as Boolean?
+      val pausesLocationUpdatesAutomatically = pigeonVar_list[3] as Boolean?
+      val locationAuthorizationRequest = pigeonVar_list[4] as TlAuthorizationRequest?
+      val disableLocationAuthorizationAlert = pigeonVar_list[5] as Boolean?
+      val preventSuspend = pigeonVar_list[6] as Boolean?
+      val useBackgroundActivitySession = pigeonVar_list[7] as Boolean?
       val liveActivityConfig = pigeonVar_list[8] as TlLiveActivityConfig?
       return TlIosConfig(activityType, useSignificantChangesOnly, showsBackgroundLocationIndicator, pausesLocationUpdatesAutomatically, locationAuthorizationRequest, disableLocationAuthorizationAlert, preventSuspend, useBackgroundActivitySession, liveActivityConfig)
     }
@@ -943,56 +943,56 @@ data class TlIosConfig (
 /** Generated class from Pigeon that represents data sent in messages. */
 data class TlHttpConfig (
   val url: String? = null,
-  val method: TlHttpMethod,
+  val method: TlHttpMethod? = null,
   val headers: Map<String?, String?>? = null,
   val params: Map<String?, Any?>? = null,
-  val autoSync: Boolean,
-  val batchSync: Boolean,
-  val maxBatchSize: Long,
+  val autoSync: Boolean? = null,
+  val batchSync: Boolean? = null,
+  val maxBatchSize: Long? = null,
   val sslPinningFingerprints: List<String?>? = null,
   val sslPinningCertificates: List<String?>? = null,
   val httpRootProperty: String? = null,
-  val autoSyncThreshold: Long,
+  val autoSyncThreshold: Long? = null,
   val autoSyncDelay: Long? = null,
-  val syncInterval: Long,
-  val httpTimeout: Long,
-  val locationsOrderDirection: TlLocationOrderDirection,
+  val syncInterval: Long? = null,
+  val httpTimeout: Long? = null,
+  val locationsOrderDirection: TlLocationOrderDirection? = null,
   val extras: Map<String?, Any?>? = null,
-  val disableAutoSyncOnCellular: Boolean,
-  val maxRetries: Long,
-  val retryBackoffBase: Long,
-  val retryBackoffCap: Long,
-  val enableDeltaCompression: Boolean,
-  val deltaCoordinatePrecision: Long,
-  val syncTelematics: Boolean,
+  val disableAutoSyncOnCellular: Boolean? = null,
+  val maxRetries: Long? = null,
+  val retryBackoffBase: Long? = null,
+  val retryBackoffCap: Long? = null,
+  val enableDeltaCompression: Boolean? = null,
+  val deltaCoordinatePrecision: Long? = null,
+  val syncTelematics: Boolean? = null,
   val telematicsUrl: String? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): TlHttpConfig {
       val url = pigeonVar_list[0] as String?
-      val method = pigeonVar_list[1] as TlHttpMethod
+      val method = pigeonVar_list[1] as TlHttpMethod?
       val headers = pigeonVar_list[2] as Map<String?, String?>?
       val params = pigeonVar_list[3] as Map<String?, Any?>?
-      val autoSync = pigeonVar_list[4] as Boolean
-      val batchSync = pigeonVar_list[5] as Boolean
-      val maxBatchSize = pigeonVar_list[6] as Long
+      val autoSync = pigeonVar_list[4] as Boolean?
+      val batchSync = pigeonVar_list[5] as Boolean?
+      val maxBatchSize = pigeonVar_list[6] as Long?
       val sslPinningFingerprints = pigeonVar_list[7] as List<String?>?
       val sslPinningCertificates = pigeonVar_list[8] as List<String?>?
       val httpRootProperty = pigeonVar_list[9] as String?
-      val autoSyncThreshold = pigeonVar_list[10] as Long
+      val autoSyncThreshold = pigeonVar_list[10] as Long?
       val autoSyncDelay = pigeonVar_list[11] as Long?
-      val syncInterval = pigeonVar_list[12] as Long
-      val httpTimeout = pigeonVar_list[13] as Long
-      val locationsOrderDirection = pigeonVar_list[14] as TlLocationOrderDirection
+      val syncInterval = pigeonVar_list[12] as Long?
+      val httpTimeout = pigeonVar_list[13] as Long?
+      val locationsOrderDirection = pigeonVar_list[14] as TlLocationOrderDirection?
       val extras = pigeonVar_list[15] as Map<String?, Any?>?
-      val disableAutoSyncOnCellular = pigeonVar_list[16] as Boolean
-      val maxRetries = pigeonVar_list[17] as Long
-      val retryBackoffBase = pigeonVar_list[18] as Long
-      val retryBackoffCap = pigeonVar_list[19] as Long
-      val enableDeltaCompression = pigeonVar_list[20] as Boolean
-      val deltaCoordinatePrecision = pigeonVar_list[21] as Long
-      val syncTelematics = pigeonVar_list[22] as Boolean
+      val disableAutoSyncOnCellular = pigeonVar_list[16] as Boolean?
+      val maxRetries = pigeonVar_list[17] as Long?
+      val retryBackoffBase = pigeonVar_list[18] as Long?
+      val retryBackoffCap = pigeonVar_list[19] as Long?
+      val enableDeltaCompression = pigeonVar_list[20] as Boolean?
+      val deltaCoordinatePrecision = pigeonVar_list[21] as Long?
+      val syncTelematics = pigeonVar_list[22] as Boolean?
       val telematicsUrl = pigeonVar_list[23] as String?
       return TlHttpConfig(url, method, headers, params, autoSync, batchSync, maxBatchSize, sslPinningFingerprints, sslPinningCertificates, httpRootProperty, autoSyncThreshold, autoSyncDelay, syncInterval, httpTimeout, locationsOrderDirection, extras, disableAutoSyncOnCellular, maxRetries, retryBackoffBase, retryBackoffCap, enableDeltaCompression, deltaCoordinatePrecision, syncTelematics, telematicsUrl)
     }
@@ -1162,16 +1162,16 @@ data class TlConfig (
 
 /** Generated class from Pigeon that represents data sent in messages. */
 data class TlLoggerConfig (
-  val logLevel: TlLogLevel,
-  val logMaxDays: Long,
-  val debug: Boolean
+  val logLevel: TlLogLevel? = null,
+  val logMaxDays: Long? = null,
+  val debug: Boolean? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): TlLoggerConfig {
-      val logLevel = pigeonVar_list[0] as TlLogLevel
-      val logMaxDays = pigeonVar_list[1] as Long
-      val debug = pigeonVar_list[2] as Boolean
+      val logLevel = pigeonVar_list[0] as TlLogLevel?
+      val logMaxDays = pigeonVar_list[1] as Long?
+      val debug = pigeonVar_list[2] as Boolean?
       return TlLoggerConfig(logLevel, logMaxDays, debug)
     }
   }
@@ -1204,54 +1204,54 @@ data class TlLoggerConfig (
 
 /** Generated class from Pigeon that represents data sent in messages. */
 data class TlMotionConfig (
-  val stopTimeout: Long,
-  val motionTriggerDelay: Long,
-  val disableMotionActivityUpdates: Boolean,
-  val isMoving: Boolean,
-  val activityRecognitionInterval: Long,
-  val minimumActivityRecognitionConfidence: Long,
-  val disableStopDetection: Boolean,
-  val stopDetectionDelay: Long,
-  val stopOnStationary: Boolean,
+  val stopTimeout: Long? = null,
+  val motionTriggerDelay: Long? = null,
+  val disableMotionActivityUpdates: Boolean? = null,
+  val isMoving: Boolean? = null,
+  val activityRecognitionInterval: Long? = null,
+  val minimumActivityRecognitionConfidence: Long? = null,
+  val disableStopDetection: Boolean? = null,
+  val stopDetectionDelay: Long? = null,
+  val stopOnStationary: Boolean? = null,
   val activityTypes: List<TlLocationActivityType?>? = null,
-  val stationaryRadius: Double,
-  val useSignificantChangesOnly: Boolean,
+  val stationaryRadius: Double? = null,
+  val useSignificantChangesOnly: Boolean? = null,
   val shakeThreshold: Double? = null,
   val stillThreshold: Double? = null,
   val stillSampleCount: Long? = null,
-  val motionDetectionMode: TlMotionDetectionMode,
-  val speedMovingThreshold: Double,
-  val speedStationaryDelay: Long,
-  val stationaryTrackingMode: TlStationaryTrackingMode,
-  val stationaryPeriodicInterval: Long,
-  val stationaryPeriodicAccuracy: TlDesiredAccuracy,
-  val speedWakeConfirmCount: Long
+  val motionDetectionMode: TlMotionDetectionMode? = null,
+  val speedMovingThreshold: Double? = null,
+  val speedStationaryDelay: Long? = null,
+  val stationaryTrackingMode: TlStationaryTrackingMode? = null,
+  val stationaryPeriodicInterval: Long? = null,
+  val stationaryPeriodicAccuracy: TlDesiredAccuracy? = null,
+  val speedWakeConfirmCount: Long? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): TlMotionConfig {
-      val stopTimeout = pigeonVar_list[0] as Long
-      val motionTriggerDelay = pigeonVar_list[1] as Long
-      val disableMotionActivityUpdates = pigeonVar_list[2] as Boolean
-      val isMoving = pigeonVar_list[3] as Boolean
-      val activityRecognitionInterval = pigeonVar_list[4] as Long
-      val minimumActivityRecognitionConfidence = pigeonVar_list[5] as Long
-      val disableStopDetection = pigeonVar_list[6] as Boolean
-      val stopDetectionDelay = pigeonVar_list[7] as Long
-      val stopOnStationary = pigeonVar_list[8] as Boolean
+      val stopTimeout = pigeonVar_list[0] as Long?
+      val motionTriggerDelay = pigeonVar_list[1] as Long?
+      val disableMotionActivityUpdates = pigeonVar_list[2] as Boolean?
+      val isMoving = pigeonVar_list[3] as Boolean?
+      val activityRecognitionInterval = pigeonVar_list[4] as Long?
+      val minimumActivityRecognitionConfidence = pigeonVar_list[5] as Long?
+      val disableStopDetection = pigeonVar_list[6] as Boolean?
+      val stopDetectionDelay = pigeonVar_list[7] as Long?
+      val stopOnStationary = pigeonVar_list[8] as Boolean?
       val activityTypes = pigeonVar_list[9] as List<TlLocationActivityType?>?
-      val stationaryRadius = pigeonVar_list[10] as Double
-      val useSignificantChangesOnly = pigeonVar_list[11] as Boolean
+      val stationaryRadius = pigeonVar_list[10] as Double?
+      val useSignificantChangesOnly = pigeonVar_list[11] as Boolean?
       val shakeThreshold = pigeonVar_list[12] as Double?
       val stillThreshold = pigeonVar_list[13] as Double?
       val stillSampleCount = pigeonVar_list[14] as Long?
-      val motionDetectionMode = pigeonVar_list[15] as TlMotionDetectionMode
-      val speedMovingThreshold = pigeonVar_list[16] as Double
-      val speedStationaryDelay = pigeonVar_list[17] as Long
-      val stationaryTrackingMode = pigeonVar_list[18] as TlStationaryTrackingMode
-      val stationaryPeriodicInterval = pigeonVar_list[19] as Long
-      val stationaryPeriodicAccuracy = pigeonVar_list[20] as TlDesiredAccuracy
-      val speedWakeConfirmCount = pigeonVar_list[21] as Long
+      val motionDetectionMode = pigeonVar_list[15] as TlMotionDetectionMode?
+      val speedMovingThreshold = pigeonVar_list[16] as Double?
+      val speedStationaryDelay = pigeonVar_list[17] as Long?
+      val stationaryTrackingMode = pigeonVar_list[18] as TlStationaryTrackingMode?
+      val stationaryPeriodicInterval = pigeonVar_list[19] as Long?
+      val stationaryPeriodicAccuracy = pigeonVar_list[20] as TlDesiredAccuracy?
+      val speedWakeConfirmCount = pigeonVar_list[21] as Long?
       return TlMotionConfig(stopTimeout, motionTriggerDelay, disableMotionActivityUpdates, isMoving, activityRecognitionInterval, minimumActivityRecognitionConfidence, disableStopDetection, stopDetectionDelay, stopOnStationary, activityTypes, stationaryRadius, useSignificantChangesOnly, shakeThreshold, stillThreshold, stillSampleCount, motionDetectionMode, speedMovingThreshold, speedStationaryDelay, stationaryTrackingMode, stationaryPeriodicInterval, stationaryPeriodicAccuracy, speedWakeConfirmCount)
     }
   }
@@ -1322,20 +1322,20 @@ data class TlMotionConfig (
 
 /** Generated class from Pigeon that represents data sent in messages. */
 data class TlGeofenceConfig (
-  val geofenceInitialTriggerEntry: Boolean,
-  val geofenceProximityRadius: Long,
-  val geofenceInitialTrigger: Boolean,
-  val geofenceModeHighAccuracy: Boolean,
-  val geofenceExitAccuracyMax: Long
+  val geofenceInitialTriggerEntry: Boolean? = null,
+  val geofenceProximityRadius: Long? = null,
+  val geofenceInitialTrigger: Boolean? = null,
+  val geofenceModeHighAccuracy: Boolean? = null,
+  val geofenceExitAccuracyMax: Long? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): TlGeofenceConfig {
-      val geofenceInitialTriggerEntry = pigeonVar_list[0] as Boolean
-      val geofenceProximityRadius = pigeonVar_list[1] as Long
-      val geofenceInitialTrigger = pigeonVar_list[2] as Boolean
-      val geofenceModeHighAccuracy = pigeonVar_list[3] as Boolean
-      val geofenceExitAccuracyMax = pigeonVar_list[4] as Long
+      val geofenceInitialTriggerEntry = pigeonVar_list[0] as Boolean?
+      val geofenceProximityRadius = pigeonVar_list[1] as Long?
+      val geofenceInitialTrigger = pigeonVar_list[2] as Boolean?
+      val geofenceModeHighAccuracy = pigeonVar_list[3] as Boolean?
+      val geofenceExitAccuracyMax = pigeonVar_list[4] as Long?
       return TlGeofenceConfig(geofenceInitialTriggerEntry, geofenceProximityRadius, geofenceInitialTrigger, geofenceModeHighAccuracy, geofenceExitAccuracyMax)
     }
   }
@@ -1372,18 +1372,18 @@ data class TlGeofenceConfig (
 
 /** Generated class from Pigeon that represents data sent in messages. */
 data class TlPersistenceConfig (
-  val persistMode: TlPersistMode,
-  val maxDaysToPersist: Long,
-  val maxRecordsToPersist: Long,
-  val disableProviderChangeRecord: Boolean
+  val persistMode: TlPersistMode? = null,
+  val maxDaysToPersist: Long? = null,
+  val maxRecordsToPersist: Long? = null,
+  val disableProviderChangeRecord: Boolean? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): TlPersistenceConfig {
-      val persistMode = pigeonVar_list[0] as TlPersistMode
-      val maxDaysToPersist = pigeonVar_list[1] as Long
-      val maxRecordsToPersist = pigeonVar_list[2] as Long
-      val disableProviderChangeRecord = pigeonVar_list[3] as Boolean
+      val persistMode = pigeonVar_list[0] as TlPersistMode?
+      val maxDaysToPersist = pigeonVar_list[1] as Long?
+      val maxRecordsToPersist = pigeonVar_list[2] as Long?
+      val disableProviderChangeRecord = pigeonVar_list[3] as Boolean?
       return TlPersistenceConfig(persistMode, maxDaysToPersist, maxRecordsToPersist, disableProviderChangeRecord)
     }
   }
@@ -1418,14 +1418,14 @@ data class TlPersistenceConfig (
 
 /** Generated class from Pigeon that represents data sent in messages. */
 data class TlAuditConfig (
-  val enabled: Boolean,
-  val hashAlgorithm: TlHashAlgorithm
+  val enabled: Boolean? = null,
+  val hashAlgorithm: TlHashAlgorithm? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): TlAuditConfig {
-      val enabled = pigeonVar_list[0] as Boolean
-      val hashAlgorithm = pigeonVar_list[1] as TlHashAlgorithm
+      val enabled = pigeonVar_list[0] as Boolean?
+      val hashAlgorithm = pigeonVar_list[1] as TlHashAlgorithm?
       return TlAuditConfig(enabled, hashAlgorithm)
     }
   }
@@ -1456,12 +1456,12 @@ data class TlAuditConfig (
 
 /** Generated class from Pigeon that represents data sent in messages. */
 data class TlPrivacyZoneConfig (
-  val enabled: Boolean
+  val enabled: Boolean? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): TlPrivacyZoneConfig {
-      val enabled = pigeonVar_list[0] as Boolean
+      val enabled = pigeonVar_list[0] as Boolean?
       return TlPrivacyZoneConfig(enabled)
     }
   }
@@ -1490,12 +1490,12 @@ data class TlPrivacyZoneConfig (
 
 /** Generated class from Pigeon that represents data sent in messages. */
 data class TlSecurityConfig (
-  val encryptDatabase: Boolean
+  val encryptDatabase: Boolean? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): TlSecurityConfig {
-      val encryptDatabase = pigeonVar_list[0] as Boolean
+      val encryptDatabase = pigeonVar_list[0] as Boolean?
       return TlSecurityConfig(encryptDatabase)
     }
   }
@@ -1524,14 +1524,14 @@ data class TlSecurityConfig (
 
 /** Generated class from Pigeon that represents data sent in messages. */
 data class TlAttestationConfig (
-  val enabled: Boolean,
-  val refreshInterval: Long
+  val enabled: Boolean? = null,
+  val refreshInterval: Long? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): TlAttestationConfig {
-      val enabled = pigeonVar_list[0] as Boolean
-      val refreshInterval = pigeonVar_list[1] as Long
+      val enabled = pigeonVar_list[0] as Boolean?
+      val refreshInterval = pigeonVar_list[1] as Long?
       return TlAttestationConfig(enabled, refreshInterval)
     }
   }
@@ -1566,28 +1566,28 @@ data class TlAttestationConfig (
  * Generated class from Pigeon that represents data sent in messages.
  */
 data class TlTelematicsConfig (
-  val enableDrivingEvents: Boolean,
-  val harshBrakingG: Double,
-  val harshAccelerationG: Double,
-  val harshCorneringG: Double,
-  val speedLimitKmh: Double,
-  val speedingToleranceKmh: Double,
-  val speedingMinDurationMs: Long,
-  val minSpeedForEventsKmh: Double,
-  val eventDebounceMs: Long
+  val enableDrivingEvents: Boolean? = null,
+  val harshBrakingG: Double? = null,
+  val harshAccelerationG: Double? = null,
+  val harshCorneringG: Double? = null,
+  val speedLimitKmh: Double? = null,
+  val speedingToleranceKmh: Double? = null,
+  val speedingMinDurationMs: Long? = null,
+  val minSpeedForEventsKmh: Double? = null,
+  val eventDebounceMs: Long? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): TlTelematicsConfig {
-      val enableDrivingEvents = pigeonVar_list[0] as Boolean
-      val harshBrakingG = pigeonVar_list[1] as Double
-      val harshAccelerationG = pigeonVar_list[2] as Double
-      val harshCorneringG = pigeonVar_list[3] as Double
-      val speedLimitKmh = pigeonVar_list[4] as Double
-      val speedingToleranceKmh = pigeonVar_list[5] as Double
-      val speedingMinDurationMs = pigeonVar_list[6] as Long
-      val minSpeedForEventsKmh = pigeonVar_list[7] as Double
-      val eventDebounceMs = pigeonVar_list[8] as Long
+      val enableDrivingEvents = pigeonVar_list[0] as Boolean?
+      val harshBrakingG = pigeonVar_list[1] as Double?
+      val harshAccelerationG = pigeonVar_list[2] as Double?
+      val harshCorneringG = pigeonVar_list[3] as Double?
+      val speedLimitKmh = pigeonVar_list[4] as Double?
+      val speedingToleranceKmh = pigeonVar_list[5] as Double?
+      val speedingMinDurationMs = pigeonVar_list[6] as Long?
+      val minSpeedForEventsKmh = pigeonVar_list[7] as Double?
+      val eventDebounceMs = pigeonVar_list[8] as Long?
       return TlTelematicsConfig(enableDrivingEvents, harshBrakingG, harshAccelerationG, harshCorneringG, speedLimitKmh, speedingToleranceKmh, speedingMinDurationMs, minSpeedForEventsKmh, eventDebounceMs)
     }
   }
@@ -1636,20 +1636,20 @@ data class TlTelematicsConfig (
  * Generated class from Pigeon that represents data sent in messages.
  */
 data class TlClassifierConfig (
-  val enableFusedClassifier: Boolean,
-  val fusedClassifierAuthoritative: Boolean,
-  val modeSwitchDwellMs: Long,
-  val minModeConfidence: Double,
-  val autoTuneFromTransportMode: Boolean
+  val enableFusedClassifier: Boolean? = null,
+  val fusedClassifierAuthoritative: Boolean? = null,
+  val modeSwitchDwellMs: Long? = null,
+  val minModeConfidence: Double? = null,
+  val autoTuneFromTransportMode: Boolean? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): TlClassifierConfig {
-      val enableFusedClassifier = pigeonVar_list[0] as Boolean
-      val fusedClassifierAuthoritative = pigeonVar_list[1] as Boolean
-      val modeSwitchDwellMs = pigeonVar_list[2] as Long
-      val minModeConfidence = pigeonVar_list[3] as Double
-      val autoTuneFromTransportMode = pigeonVar_list[4] as Boolean
+      val enableFusedClassifier = pigeonVar_list[0] as Boolean?
+      val fusedClassifierAuthoritative = pigeonVar_list[1] as Boolean?
+      val modeSwitchDwellMs = pigeonVar_list[2] as Long?
+      val minModeConfidence = pigeonVar_list[3] as Double?
+      val autoTuneFromTransportMode = pigeonVar_list[4] as Boolean?
       return TlClassifierConfig(enableFusedClassifier, fusedClassifierAuthoritative, modeSwitchDwellMs, minModeConfidence, autoTuneFromTransportMode)
     }
   }
@@ -1690,32 +1690,32 @@ data class TlClassifierConfig (
  * Generated class from Pigeon that represents data sent in messages.
  */
 data class TlImpactConfig (
-  val enableCrashDetection: Boolean,
-  val enableFallDetection: Boolean,
-  val crashGThreshold: Double,
-  val crashMinSpeedKmh: Double,
-  val fallGThreshold: Double,
-  val confirmWindowMs: Long,
-  val minImpactConfidence: Double,
+  val enableCrashDetection: Boolean? = null,
+  val enableFallDetection: Boolean? = null,
+  val crashGThreshold: Double? = null,
+  val crashMinSpeedKmh: Double? = null,
+  val fallGThreshold: Double? = null,
+  val confirmWindowMs: Long? = null,
+  val minImpactConfidence: Double? = null,
   val crashModelUrl: String? = null,
   val crashModelSha256: String? = null,
-  val crashModelThreshold: Double,
+  val crashModelThreshold: Double? = null,
   val crashModelUnlockUrl: String? = null,
   val crashModelLicenseKey: String? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): TlImpactConfig {
-      val enableCrashDetection = pigeonVar_list[0] as Boolean
-      val enableFallDetection = pigeonVar_list[1] as Boolean
-      val crashGThreshold = pigeonVar_list[2] as Double
-      val crashMinSpeedKmh = pigeonVar_list[3] as Double
-      val fallGThreshold = pigeonVar_list[4] as Double
-      val confirmWindowMs = pigeonVar_list[5] as Long
-      val minImpactConfidence = pigeonVar_list[6] as Double
+      val enableCrashDetection = pigeonVar_list[0] as Boolean?
+      val enableFallDetection = pigeonVar_list[1] as Boolean?
+      val crashGThreshold = pigeonVar_list[2] as Double?
+      val crashMinSpeedKmh = pigeonVar_list[3] as Double?
+      val fallGThreshold = pigeonVar_list[4] as Double?
+      val confirmWindowMs = pigeonVar_list[5] as Long?
+      val minImpactConfidence = pigeonVar_list[6] as Double?
       val crashModelUrl = pigeonVar_list[7] as String?
       val crashModelSha256 = pigeonVar_list[8] as String?
-      val crashModelThreshold = pigeonVar_list[9] as Double
+      val crashModelThreshold = pigeonVar_list[9] as Double?
       val crashModelUnlockUrl = pigeonVar_list[10] as String?
       val crashModelLicenseKey = pigeonVar_list[11] as String?
       return TlImpactConfig(enableCrashDetection, enableFallDetection, crashGThreshold, crashMinSpeedKmh, fallGThreshold, confirmWindowMs, minImpactConfidence, crashModelUrl, crashModelSha256, crashModelThreshold, crashModelUnlockUrl, crashModelLicenseKey)
