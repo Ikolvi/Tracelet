@@ -43,28 +43,44 @@ import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 @immutable
 class AttestationConfig {
   /// Creates a new [AttestationConfig].
+  /// Omitting a parameter leaves it *unset*: the getter reports the documented
+  /// default, and [toMap]/[toTlConfig] skip the field so a partial
+  /// `setConfig()` does not overwrite the persisted value (#321).
   const AttestationConfig({
-    this.enabled = false,
-    this.refreshInterval = 3600,
+    bool? enabled,
+    int? refreshInterval,
     @Deprecated(
       'Never implemented — no platform reads this value and the token is not '
       'sent anywhere for verification. Verify it on your backend instead. '
       'Will be removed in a future major version (#304).',
     )
     this.verificationUrl,
-  });
+  }) : _enabled = enabled,
+       _refreshInterval = refreshInterval;
 
   /// Creates an [AttestationConfig] from a map.
+  ///
+  /// An absent key stays unset, so a `toMap()`/`fromMap()` round trip preserves
+  /// which fields were supplied (#321).
   factory AttestationConfig.fromMap(Map<String, Object?> map) {
+    final hasEnabled =
+        map.containsKey('attestationEnabled') || map.containsKey('enabled');
+    final hasInterval =
+        map.containsKey('attestationRefreshInterval') ||
+        map.containsKey('refreshInterval');
     return AttestationConfig(
-      enabled: ensureBool(
-        map['attestationEnabled'] ?? map['enabled'],
-        fallback: false,
-      ),
-      refreshInterval: ensureInt(
-        map['attestationRefreshInterval'] ?? map['refreshInterval'],
-        fallback: 3600,
-      ),
+      enabled: hasEnabled
+          ? ensureBool(
+              map['attestationEnabled'] ?? map['enabled'],
+              fallback: false,
+            )
+          : null,
+      refreshInterval: hasInterval
+          ? ensureInt(
+              map['attestationRefreshInterval'] ?? map['refreshInterval'],
+              fallback: 3600,
+            )
+          : null,
       verificationUrl:
           map['attestationVerificationUrl'] as String? ??
           map['verificationUrl'] as String?,
@@ -77,13 +93,18 @@ class AttestationConfig {
   /// attached to HTTP sync payloads as the `X-Attestation-Token` header.
   ///
   /// Defaults to `false`.
-  final bool enabled;
+  bool get enabled => _enabled ?? false;
 
   /// How often to refresh the attestation token (seconds).
   ///
   /// Attestation API calls have rate limits — don't set below 60s.
   /// Defaults to `3600` (1 hour).
-  final int refreshInterval;
+  int get refreshInterval => _refreshInterval ?? 3600;
+
+  // Backing fields. `null` means "not supplied by the caller", which is what
+  // keeps the field out of the wire payload (#321).
+  final bool? _enabled;
+  final int? _refreshInterval;
 
   /// Server URL to verify the attestation token (optional).
   ///
@@ -101,18 +122,40 @@ class AttestationConfig {
   )
   final String? verificationUrl;
 
-  /// Serializes to a map.
+  /// Applies every field [other] explicitly supplied on top of this one (#321).
+  AttestationConfig mergedWith(AttestationConfig other) => AttestationConfig(
+    enabled: other._enabled ?? _enabled,
+    refreshInterval: other._refreshInterval ?? _refreshInterval,
+    // ignore: deprecated_member_use_from_same_package
+    verificationUrl: other.verificationUrl ?? verificationUrl,
+  );
+
+  /// Returns this config with every field pinned to its effective value, for
+  /// the complete baseline `ready()` sends (#321).
+  AttestationConfig resolved() => AttestationConfig(
+    enabled: enabled,
+    refreshInterval: refreshInterval,
+    // ignore: deprecated_member_use_from_same_package
+    verificationUrl: verificationUrl,
+  );
+
+  /// Serializes to a map, omitting fields that were never supplied (#321).
   Map<String, Object?> toMap() {
     return <String, Object?>{
-      'attestationEnabled': enabled,
-      'attestationRefreshInterval': refreshInterval,
-      'attestationVerificationUrl': verificationUrl,
+      if (_enabled != null) 'attestationEnabled': _enabled,
+      if (_refreshInterval != null)
+        'attestationRefreshInterval': _refreshInterval,
+      if (verificationUrl != null)
+        'attestationVerificationUrl': verificationUrl,
     };
   }
 
   /// Converts to Pigeon [TlAttestationConfig].
+  ///
+  /// Unset fields cross as `null` so the platform leaves the persisted value
+  /// alone (#321).
   TlAttestationConfig toTlConfig() =>
-      TlAttestationConfig(enabled: enabled, refreshInterval: refreshInterval);
+      TlAttestationConfig(enabled: _enabled, refreshInterval: _refreshInterval);
 
   @override
   String toString() =>
@@ -120,17 +163,20 @@ class AttestationConfig {
       'refreshInterval: $refreshInterval, '
       'verificationUrl: $verificationUrl)';
 
+  // Compares the backing fields so unset stays distinguishable from an
+  // explicit default (#321).
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is AttestationConfig &&
           runtimeType == other.runtimeType &&
-          enabled == other.enabled &&
-          refreshInterval == other.refreshInterval &&
+          _enabled == other._enabled &&
+          _refreshInterval == other._refreshInterval &&
           verificationUrl == other.verificationUrl;
 
   @override
-  int get hashCode => Object.hash(enabled, refreshInterval, verificationUrl);
+  int get hashCode =>
+      Object.hash(_enabled, _refreshInterval, verificationUrl);
 }
 
 /// Represents an attestation token from the device's integrity API.
