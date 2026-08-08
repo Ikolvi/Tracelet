@@ -23,9 +23,11 @@ void main() {
       expect(map.containsKey('shakeThreshold'), isFalse);
       expect(map.containsKey('stillThreshold'), isFalse);
       expect(map.containsKey('stillSampleCount'), isFalse);
-      // Other motion keys are always sent.
-      expect(map['stopTimeout'], 5);
-      expect(map['speedStationaryDelay'], 180);
+      // #321 generalised this: every unset field is omitted now, not just the
+      // three sensor thresholds this test was originally written for.
+      expect(map.containsKey('stopTimeout'), isFalse);
+      expect(map.containsKey('speedStationaryDelay'), isFalse);
+      expect(map, isEmpty);
     });
 
     test('setting an unrelated field still omits them', () {
@@ -56,7 +58,8 @@ void main() {
       expect(tl.shakeThreshold, isNull);
       expect(tl.stillThreshold, isNull);
       expect(tl.stillSampleCount, isNull);
-      expect(tl.stopTimeout, 5);
+      // #321: unset now means null for every field, not only these three.
+      expect(tl.stopTimeout, isNull);
     });
   });
 

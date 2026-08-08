@@ -70,92 +70,92 @@ enum TlLocationFilterPolicy { adjust, ignore, discard }
 
 class TlLocationFilter {
   TlLocationFilter({
-    required this.trackingAccuracyThreshold,
-    required this.maxImpliedSpeed,
-    required this.odometerAccuracyThreshold,
-    required this.policy,
-    required this.rejectMockLocations,
-    required this.mockDetectionLevel,
-    required this.useKalmanFilter,
+    this.trackingAccuracyThreshold,
+    this.maxImpliedSpeed,
+    this.odometerAccuracyThreshold,
+    this.policy,
+    this.rejectMockLocations,
+    this.mockDetectionLevel,
+    this.useKalmanFilter,
   });
 
-  final int trackingAccuracyThreshold;
-  final int maxImpliedSpeed;
-  final int odometerAccuracyThreshold;
-  final TlLocationFilterPolicy policy;
-  final bool rejectMockLocations;
-  final int mockDetectionLevel;
-  final bool useKalmanFilter;
+  final int? trackingAccuracyThreshold;
+  final int? maxImpliedSpeed;
+  final int? odometerAccuracyThreshold;
+  final TlLocationFilterPolicy? policy;
+  final bool? rejectMockLocations;
+  final int? mockDetectionLevel;
+  final bool? useKalmanFilter;
 }
 
 class TlGeoConfig {
   TlGeoConfig({
-    required this.desiredAccuracy,
-    required this.distanceFilter,
-    required this.stationaryRadius,
-    required this.locationTimeout,
-    required this.disableElasticity,
-    required this.elasticityMultiplier,
-    required this.stopAfterElapsedMinutes,
-    required this.maxMonitoredGeofences,
-    required this.enableTimestampMeta,
-    required this.enableAdaptiveMode,
-    required this.periodicLocationInterval,
-    required this.periodicDesiredAccuracy,
-    required this.enableSparseUpdates,
-    required this.sparseDistanceThreshold,
-    required this.sparseMaxIdleSeconds,
-    required this.enableDeadReckoning,
-    required this.deadReckoningActivationDelay,
-    required this.deadReckoningMaxDuration,
-    required this.batteryBudgetPerHour,
-    required this.filter,
-    required this.resolveAddress,
+    this.desiredAccuracy,
+    this.distanceFilter,
+    this.stationaryRadius,
+    this.locationTimeout,
+    this.disableElasticity,
+    this.elasticityMultiplier,
+    this.stopAfterElapsedMinutes,
+    this.maxMonitoredGeofences,
+    this.enableTimestampMeta,
+    this.enableAdaptiveMode,
+    this.periodicLocationInterval,
+    this.periodicDesiredAccuracy,
+    this.enableSparseUpdates,
+    this.sparseDistanceThreshold,
+    this.sparseMaxIdleSeconds,
+    this.enableDeadReckoning,
+    this.deadReckoningActivationDelay,
+    this.deadReckoningMaxDuration,
+    this.batteryBudgetPerHour,
+    this.filter,
+    this.resolveAddress,
   });
 
-  final TlDesiredAccuracy desiredAccuracy;
-  final double distanceFilter;
-  final double stationaryRadius;
-  final int locationTimeout;
-  final bool disableElasticity;
-  final double elasticityMultiplier;
-  final int stopAfterElapsedMinutes;
-  final int maxMonitoredGeofences;
-  final bool enableTimestampMeta;
-  final bool enableAdaptiveMode;
-  final int periodicLocationInterval;
-  final TlDesiredAccuracy periodicDesiredAccuracy;
-  final bool enableSparseUpdates;
-  final double sparseDistanceThreshold;
-  final int sparseMaxIdleSeconds;
-  final bool enableDeadReckoning;
-  final int deadReckoningActivationDelay;
-  final int deadReckoningMaxDuration;
-  final double batteryBudgetPerHour;
-  final TlLocationFilter filter;
-  final bool resolveAddress;
+  final TlDesiredAccuracy? desiredAccuracy;
+  final double? distanceFilter;
+  final double? stationaryRadius;
+  final int? locationTimeout;
+  final bool? disableElasticity;
+  final double? elasticityMultiplier;
+  final int? stopAfterElapsedMinutes;
+  final int? maxMonitoredGeofences;
+  final bool? enableTimestampMeta;
+  final bool? enableAdaptiveMode;
+  final int? periodicLocationInterval;
+  final TlDesiredAccuracy? periodicDesiredAccuracy;
+  final bool? enableSparseUpdates;
+  final double? sparseDistanceThreshold;
+  final int? sparseMaxIdleSeconds;
+  final bool? enableDeadReckoning;
+  final int? deadReckoningActivationDelay;
+  final int? deadReckoningMaxDuration;
+  final double? batteryBudgetPerHour;
+  final TlLocationFilter? filter;
+  final bool? resolveAddress;
 }
 
 class TlAppConfig {
   TlAppConfig({
-    required this.stopOnTerminate,
-    required this.startOnBoot,
-    required this.heartbeatInterval,
-    required this.schedule,
-    required this.remoteConfigTimeout,
-    required this.remoteConfigRefreshInterval,
+    this.stopOnTerminate,
+    this.startOnBoot,
+    this.heartbeatInterval,
+    this.schedule,
+    this.remoteConfigTimeout,
+    this.remoteConfigRefreshInterval,
     this.remoteConfigUrl,
     this.remoteConfigHeaders,
   });
 
-  final bool stopOnTerminate;
-  final bool startOnBoot;
-  final int heartbeatInterval;
-  final List<String?> schedule;
+  final bool? stopOnTerminate;
+  final bool? startOnBoot;
+  final int? heartbeatInterval;
+  final List<String?>? schedule;
   final String? remoteConfigUrl;
   final Map<String?, String?>? remoteConfigHeaders;
-  final int remoteConfigTimeout;
-  final int remoteConfigRefreshInterval;
+  final int? remoteConfigTimeout;
+  final int? remoteConfigRefreshInterval;
 }
 
 /// Foreground-service settings for a `setConfig()` call.
@@ -198,60 +198,60 @@ class TlForegroundServiceConfig {
 
 class TlAndroidConfig {
   TlAndroidConfig({
-    required this.locationUpdateInterval,
-    required this.fastestLocationUpdateInterval,
-    required this.deferTime,
-    required this.allowIdenticalLocations,
-    required this.geofenceModeHighAccuracy,
-    required this.periodicUseForegroundService,
-    required this.periodicUseExactAlarms,
-    required this.scheduleUseAlarmManager,
-    required this.foregroundService,
-    required this.releaseWakelockWhenStationary,
+    this.locationUpdateInterval,
+    this.fastestLocationUpdateInterval,
+    this.deferTime,
+    this.allowIdenticalLocations,
+    this.geofenceModeHighAccuracy,
+    this.periodicUseForegroundService,
+    this.periodicUseExactAlarms,
+    this.scheduleUseAlarmManager,
+    this.foregroundService,
+    this.releaseWakelockWhenStationary,
   });
 
-  final int locationUpdateInterval;
-  final int fastestLocationUpdateInterval;
-  final int deferTime;
-  final bool allowIdenticalLocations;
-  final bool geofenceModeHighAccuracy;
-  final bool periodicUseForegroundService;
-  final bool periodicUseExactAlarms;
-  final bool scheduleUseAlarmManager;
-  final TlForegroundServiceConfig foregroundService;
+  final int? locationUpdateInterval;
+  final int? fastestLocationUpdateInterval;
+  final int? deferTime;
+  final bool? allowIdenticalLocations;
+  final bool? geofenceModeHighAccuracy;
+  final bool? periodicUseForegroundService;
+  final bool? periodicUseExactAlarms;
+  final bool? scheduleUseAlarmManager;
+  final TlForegroundServiceConfig? foregroundService;
 
   /// Drops the OEM Wakelock when the device enters a fully stationary state.
   /// Resolves Issue #162.
-  final bool releaseWakelockWhenStationary;
+  final bool? releaseWakelockWhenStationary;
 }
 
 class TlLiveActivityConfig {
-  TlLiveActivityConfig({required this.title, required this.body});
-  final String title;
-  final String body;
+  TlLiveActivityConfig({this.title, this.body});
+  final String? title;
+  final String? body;
 }
 
 class TlIosConfig {
   TlIosConfig({
-    required this.activityType,
-    required this.useSignificantChangesOnly,
-    required this.showsBackgroundLocationIndicator,
-    required this.pausesLocationUpdatesAutomatically,
-    required this.locationAuthorizationRequest,
-    required this.disableLocationAuthorizationAlert,
-    required this.preventSuspend,
-    required this.useBackgroundActivitySession,
+    this.activityType,
+    this.useSignificantChangesOnly,
+    this.showsBackgroundLocationIndicator,
+    this.pausesLocationUpdatesAutomatically,
+    this.locationAuthorizationRequest,
+    this.disableLocationAuthorizationAlert,
+    this.preventSuspend,
+    this.useBackgroundActivitySession,
     this.liveActivityConfig,
   });
 
-  final TlIosActivityType activityType;
-  final bool useSignificantChangesOnly;
-  final bool showsBackgroundLocationIndicator;
-  final bool pausesLocationUpdatesAutomatically;
-  final TlAuthorizationRequest locationAuthorizationRequest;
-  final bool disableLocationAuthorizationAlert;
-  final bool preventSuspend;
-  final bool useBackgroundActivitySession;
+  final TlIosActivityType? activityType;
+  final bool? useSignificantChangesOnly;
+  final bool? showsBackgroundLocationIndicator;
+  final bool? pausesLocationUpdatesAutomatically;
+  final TlAuthorizationRequest? locationAuthorizationRequest;
+  final bool? disableLocationAuthorizationAlert;
+  final bool? preventSuspend;
+  final bool? useBackgroundActivitySession;
   final TlLiveActivityConfig? liveActivityConfig;
 }
 
@@ -259,21 +259,21 @@ enum TlLocationOrderDirection { ascending, descending }
 
 class TlHttpConfig {
   TlHttpConfig({
-    required this.method,
-    required this.autoSync,
-    required this.batchSync,
-    required this.maxBatchSize,
-    required this.autoSyncThreshold,
-    required this.syncInterval,
-    required this.httpTimeout,
-    required this.locationsOrderDirection,
-    required this.disableAutoSyncOnCellular,
-    required this.maxRetries,
-    required this.retryBackoffBase,
-    required this.retryBackoffCap,
-    required this.enableDeltaCompression,
-    required this.deltaCoordinatePrecision,
-    required this.syncTelematics,
+    this.method,
+    this.autoSync,
+    this.batchSync,
+    this.maxBatchSize,
+    this.autoSyncThreshold,
+    this.syncInterval,
+    this.httpTimeout,
+    this.locationsOrderDirection,
+    this.disableAutoSyncOnCellular,
+    this.maxRetries,
+    this.retryBackoffBase,
+    this.retryBackoffCap,
+    this.enableDeltaCompression,
+    this.deltaCoordinatePrecision,
+    this.syncTelematics,
     this.url,
     this.telematicsUrl,
     this.headers,
@@ -286,28 +286,28 @@ class TlHttpConfig {
   });
 
   final String? url;
-  final TlHttpMethod method;
+  final TlHttpMethod? method;
   final Map<String?, String?>? headers;
   final Map<String?, Object?>? params;
-  final bool autoSync;
-  final bool batchSync;
-  final int maxBatchSize;
+  final bool? autoSync;
+  final bool? batchSync;
+  final int? maxBatchSize;
   final List<String?>? sslPinningFingerprints;
   final List<String?>? sslPinningCertificates;
   final String? httpRootProperty;
-  final int autoSyncThreshold;
+  final int? autoSyncThreshold;
   final int? autoSyncDelay;
-  final int syncInterval;
-  final int httpTimeout;
-  final TlLocationOrderDirection locationsOrderDirection;
+  final int? syncInterval;
+  final int? httpTimeout;
+  final TlLocationOrderDirection? locationsOrderDirection;
   final Map<String?, Object?>? extras;
-  final bool disableAutoSyncOnCellular;
-  final int maxRetries;
-  final int retryBackoffBase;
-  final int retryBackoffCap;
-  final bool enableDeltaCompression;
-  final int deltaCoordinatePrecision;
-  final bool syncTelematics;
+  final bool? disableAutoSyncOnCellular;
+  final int? maxRetries;
+  final int? retryBackoffBase;
+  final int? retryBackoffCap;
+  final bool? enableDeltaCompression;
+  final int? deltaCoordinatePrecision;
+  final bool? syncTelematics;
   final String? telematicsUrl;
 }
 
@@ -351,13 +351,13 @@ class TlConfig {
 
 class TlLoggerConfig {
   TlLoggerConfig({
-    required this.logLevel,
-    required this.logMaxDays,
-    required this.debug,
+    this.logLevel,
+    this.logMaxDays,
+    this.debug,
   });
-  final TlLogLevel logLevel;
-  final int logMaxDays;
-  final bool debug;
+  final TlLogLevel? logLevel;
+  final int? logMaxDays;
+  final bool? debug;
 }
 
 enum TlLocationActivityType {
@@ -372,24 +372,24 @@ enum TlLocationActivityType {
 
 class TlMotionConfig {
   TlMotionConfig({
-    required this.stopTimeout,
-    required this.motionTriggerDelay,
-    required this.disableMotionActivityUpdates,
-    required this.isMoving,
-    required this.activityRecognitionInterval,
-    required this.minimumActivityRecognitionConfidence,
-    required this.disableStopDetection,
-    required this.stopDetectionDelay,
-    required this.stopOnStationary,
-    required this.stationaryRadius,
-    required this.useSignificantChangesOnly,
-    required this.motionDetectionMode,
-    required this.speedMovingThreshold,
-    required this.speedStationaryDelay,
-    required this.stationaryTrackingMode,
-    required this.stationaryPeriodicInterval,
-    required this.stationaryPeriodicAccuracy,
-    required this.speedWakeConfirmCount,
+    this.stopTimeout,
+    this.motionTriggerDelay,
+    this.disableMotionActivityUpdates,
+    this.isMoving,
+    this.activityRecognitionInterval,
+    this.minimumActivityRecognitionConfidence,
+    this.disableStopDetection,
+    this.stopDetectionDelay,
+    this.stopOnStationary,
+    this.stationaryRadius,
+    this.useSignificantChangesOnly,
+    this.motionDetectionMode,
+    this.speedMovingThreshold,
+    this.speedStationaryDelay,
+    this.stationaryTrackingMode,
+    this.stationaryPeriodicInterval,
+    this.stationaryPeriodicAccuracy,
+    this.speedWakeConfirmCount,
     this.activityTypes,
     // Sensor thresholds are optional: null means "use the platform's own tuned
     // default". A single cross-platform scalar cannot express both platforms'
@@ -401,146 +401,146 @@ class TlMotionConfig {
     this.stillThreshold,
     this.stillSampleCount,
   });
-  final int stopTimeout;
-  final int motionTriggerDelay;
-  final bool disableMotionActivityUpdates;
-  final bool isMoving;
-  final int activityRecognitionInterval;
-  final int minimumActivityRecognitionConfidence;
-  final bool disableStopDetection;
-  final int stopDetectionDelay;
-  final bool stopOnStationary;
+  final int? stopTimeout;
+  final int? motionTriggerDelay;
+  final bool? disableMotionActivityUpdates;
+  final bool? isMoving;
+  final int? activityRecognitionInterval;
+  final int? minimumActivityRecognitionConfidence;
+  final bool? disableStopDetection;
+  final int? stopDetectionDelay;
+  final bool? stopOnStationary;
   final List<TlLocationActivityType?>? activityTypes;
-  final double stationaryRadius;
-  final bool useSignificantChangesOnly;
+  final double? stationaryRadius;
+  final bool? useSignificantChangesOnly;
   final double? shakeThreshold;
   final double? stillThreshold;
   final int? stillSampleCount;
-  final TlMotionDetectionMode motionDetectionMode;
-  final double speedMovingThreshold;
-  final int speedStationaryDelay;
-  final TlStationaryTrackingMode stationaryTrackingMode;
-  final int stationaryPeriodicInterval;
-  final TlDesiredAccuracy stationaryPeriodicAccuracy;
-  final int speedWakeConfirmCount;
+  final TlMotionDetectionMode? motionDetectionMode;
+  final double? speedMovingThreshold;
+  final int? speedStationaryDelay;
+  final TlStationaryTrackingMode? stationaryTrackingMode;
+  final int? stationaryPeriodicInterval;
+  final TlDesiredAccuracy? stationaryPeriodicAccuracy;
+  final int? speedWakeConfirmCount;
 }
 
 class TlGeofenceConfig {
   TlGeofenceConfig({
-    required this.geofenceInitialTriggerEntry,
-    required this.geofenceProximityRadius,
-    required this.geofenceInitialTrigger,
-    required this.geofenceModeHighAccuracy,
-    required this.geofenceExitAccuracyMax,
+    this.geofenceInitialTriggerEntry,
+    this.geofenceProximityRadius,
+    this.geofenceInitialTrigger,
+    this.geofenceModeHighAccuracy,
+    this.geofenceExitAccuracyMax,
   });
-  final bool geofenceInitialTriggerEntry;
-  final int geofenceProximityRadius;
-  final bool geofenceInitialTrigger;
-  final bool geofenceModeHighAccuracy;
-  final int geofenceExitAccuracyMax;
+  final bool? geofenceInitialTriggerEntry;
+  final int? geofenceProximityRadius;
+  final bool? geofenceInitialTrigger;
+  final bool? geofenceModeHighAccuracy;
+  final int? geofenceExitAccuracyMax;
 }
 
 class TlPersistenceConfig {
   TlPersistenceConfig({
-    required this.persistMode,
-    required this.maxDaysToPersist,
-    required this.maxRecordsToPersist,
-    required this.disableProviderChangeRecord,
+    this.persistMode,
+    this.maxDaysToPersist,
+    this.maxRecordsToPersist,
+    this.disableProviderChangeRecord,
   });
-  final TlPersistMode persistMode;
-  final int maxDaysToPersist;
-  final int maxRecordsToPersist;
-  final bool disableProviderChangeRecord;
+  final TlPersistMode? persistMode;
+  final int? maxDaysToPersist;
+  final int? maxRecordsToPersist;
+  final bool? disableProviderChangeRecord;
 }
 
 class TlAuditConfig {
-  TlAuditConfig({required this.enabled, required this.hashAlgorithm});
-  final bool enabled;
-  final TlHashAlgorithm hashAlgorithm;
+  TlAuditConfig({this.enabled, this.hashAlgorithm});
+  final bool? enabled;
+  final TlHashAlgorithm? hashAlgorithm;
 }
 
 class TlPrivacyZoneConfig {
-  TlPrivacyZoneConfig({required this.enabled});
-  final bool enabled;
+  TlPrivacyZoneConfig({this.enabled});
+  final bool? enabled;
 }
 
 class TlSecurityConfig {
-  TlSecurityConfig({required this.encryptDatabase});
-  final bool encryptDatabase;
+  TlSecurityConfig({this.encryptDatabase});
+  final bool? encryptDatabase;
 }
 
 class TlAttestationConfig {
-  TlAttestationConfig({required this.enabled, required this.refreshInterval});
-  final bool enabled;
-  final int refreshInterval;
+  TlAttestationConfig({this.enabled, this.refreshInterval});
+  final bool? enabled;
+  final int? refreshInterval;
 }
 
 /// Driving-behavior (telematics) event detection config. See `TelematicsEngine`.
 class TlTelematicsConfig {
   TlTelematicsConfig({
-    required this.enableDrivingEvents,
-    required this.harshBrakingG,
-    required this.harshAccelerationG,
-    required this.harshCorneringG,
-    required this.speedLimitKmh,
-    required this.speedingToleranceKmh,
-    required this.speedingMinDurationMs,
-    required this.minSpeedForEventsKmh,
-    required this.eventDebounceMs,
+    this.enableDrivingEvents,
+    this.harshBrakingG,
+    this.harshAccelerationG,
+    this.harshCorneringG,
+    this.speedLimitKmh,
+    this.speedingToleranceKmh,
+    this.speedingMinDurationMs,
+    this.minSpeedForEventsKmh,
+    this.eventDebounceMs,
   });
-  final bool enableDrivingEvents;
-  final double harshBrakingG;
-  final double harshAccelerationG;
-  final double harshCorneringG;
-  final double speedLimitKmh;
-  final double speedingToleranceKmh;
-  final int speedingMinDurationMs;
-  final double minSpeedForEventsKmh;
-  final int eventDebounceMs;
+  final bool? enableDrivingEvents;
+  final double? harshBrakingG;
+  final double? harshAccelerationG;
+  final double? harshCorneringG;
+  final double? speedLimitKmh;
+  final double? speedingToleranceKmh;
+  final int? speedingMinDurationMs;
+  final double? minSpeedForEventsKmh;
+  final int? eventDebounceMs;
 }
 
 /// On-device transport-mode classifier config. See `TransportModeClassifier`.
 class TlClassifierConfig {
   TlClassifierConfig({
-    required this.enableFusedClassifier,
-    required this.fusedClassifierAuthoritative,
-    required this.modeSwitchDwellMs,
-    required this.minModeConfidence,
-    required this.autoTuneFromTransportMode,
+    this.enableFusedClassifier,
+    this.fusedClassifierAuthoritative,
+    this.modeSwitchDwellMs,
+    this.minModeConfidence,
+    this.autoTuneFromTransportMode,
   });
-  final bool enableFusedClassifier;
-  final bool fusedClassifierAuthoritative;
-  final int modeSwitchDwellMs;
-  final double minModeConfidence;
-  final bool autoTuneFromTransportMode;
+  final bool? enableFusedClassifier;
+  final bool? fusedClassifierAuthoritative;
+  final int? modeSwitchDwellMs;
+  final double? minModeConfidence;
+  final bool? autoTuneFromTransportMode;
 }
 
 /// Crash & fall detection config. See `ImpactDetector`.
 class TlImpactConfig {
   TlImpactConfig({
-    required this.enableCrashDetection,
-    required this.enableFallDetection,
-    required this.crashGThreshold,
-    required this.crashMinSpeedKmh,
-    required this.fallGThreshold,
-    required this.confirmWindowMs,
-    required this.minImpactConfidence,
-    required this.crashModelThreshold,
+    this.enableCrashDetection,
+    this.enableFallDetection,
+    this.crashGThreshold,
+    this.crashMinSpeedKmh,
+    this.fallGThreshold,
+    this.confirmWindowMs,
+    this.minImpactConfidence,
+    this.crashModelThreshold,
     this.crashModelUrl,
     this.crashModelSha256,
     this.crashModelUnlockUrl,
     this.crashModelLicenseKey,
   });
-  final bool enableCrashDetection;
-  final bool enableFallDetection;
-  final double crashGThreshold;
-  final double crashMinSpeedKmh;
-  final double fallGThreshold;
-  final int confirmWindowMs;
-  final double minImpactConfidence;
+  final bool? enableCrashDetection;
+  final bool? enableFallDetection;
+  final double? crashGThreshold;
+  final double? crashMinSpeedKmh;
+  final double? fallGThreshold;
+  final int? confirmWindowMs;
+  final double? minImpactConfidence;
   final String? crashModelUrl;
   final String? crashModelSha256;
-  final double crashModelThreshold;
+  final double? crashModelThreshold;
   final String? crashModelUnlockUrl;
   final String? crashModelLicenseKey;
 }

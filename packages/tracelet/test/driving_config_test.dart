@@ -148,7 +148,13 @@ void main() {
       const cfg = Config(impact: ImpactConfig(enableFallDetection: true));
       final tl = cfg.toTlConfig();
       expect(tl.impact.enableFallDetection, isTrue);
-      expect(tl.telematics.enableDrivingEvents, isFalse);
+      // #321: telematics was never mentioned, so it crosses as unset rather
+      // than as an explicit `false` that would overwrite the stored value.
+      expect(tl.telematics.enableDrivingEvents, isNull);
+      expect(
+        cfg.resolved().toTlConfig().telematics.enableDrivingEvents,
+        isFalse,
+      );
     });
   });
 }

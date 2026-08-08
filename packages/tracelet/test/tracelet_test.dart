@@ -113,7 +113,17 @@ void main() {
       await Tracelet.setConfig(configWithFilter);
       expect(Tracelet.isKalmanFilterEnabled, isTrue);
 
+      // #321: setConfig() is a partial update. An empty Config says nothing
+      // about the filter, so it must NOT switch it back off — that silent
+      // reset is the bug. Turning it off takes an explicit `false`.
       await Tracelet.setConfig(configWithoutFilter);
+      expect(Tracelet.isKalmanFilterEnabled, isTrue);
+
+      await Tracelet.setConfig(
+        const Config(
+          geo: GeoConfig(filter: LocationFilter(useKalmanFilter: false)),
+        ),
+      );
       expect(Tracelet.isKalmanFilterEnabled, isFalse);
     });
   });

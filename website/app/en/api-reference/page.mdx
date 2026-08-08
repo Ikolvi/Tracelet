@@ -6,6 +6,61 @@ For real-world architectural scenarios explaining *why* you would use these para
 
 ---
 
+## Updating configuration at runtime — `ready()` vs `setConfig()`
+
+There are two ways config reaches the plugin, and they mean different things.
+
+**`Tracelet.ready(config)`** establishes the **complete baseline**. Every field is
+sent, resolved to its effective value. Call it once at startup — or again when
+you want to replace the whole configuration. `Tracelet.reset(config)` behaves
+the same way.
+
+**`Tracelet.setConfig(config)`** is a **partial update**. Only the fields you
+actually set are transmitted; everything else keeps whatever the platform has
+persisted. This is what you want mid-session, when one thing needs to change:
+
+```dart
+// Changes one flag. The notification title from ready(), the HTTP URL,
+// distanceFilter, stopOnTerminate — all keep their configured values.
+await Tracelet.setConfig(const Config(
+  android: AndroidConfig(
+    foregroundService: ForegroundServiceConfig(
+      showNotificationOnPauseOnly: true,
+    ),
+  ),
+));
+
+// Changes nothing at all.
+await Tracelet.setConfig(const Config());
+```
+
+> ⚠️ **Changed in 3.8.0.** `setConfig()` previously replaced the entire
+> configuration, so any field you did not mention silently reverted to its
+> default — `setConfig(const Config())` reset *everything*, including
+> `stopOnTerminate`, the HTTP settings, the foreground-service notification and
+> the iOS keep-alive flags. If you relied on that to reset state, call
+> [`Tracelet.reset()`](#) or `ready()` instead
+> ([#320](https://github.com/Ikolvi/Tracelet/issues/320),
+> [#321](https://github.com/Ikolvi/Tracelet/issues/321)).
+
+**Setting a value back to its default still works.** "Unset" means *you did not
+provide the field*, never *the value equals the default* — so
+`ForegroundServiceConfig(showNotificationOnPauseOnly: false)` does turn the flag
+off. Only a field you omit entirely is left alone.
+
+`Tracelet.activeConfig` applies the same merge locally, so it always reflects
+what the platform actually holds rather than the defaults your last call left
+unset.
+
+For changes that should **not** persist or restart the pipeline, use the
+targeted runtime APIs instead:
+[`updateLocationProviderOptions()`](/en/core/advanced-geo#6-live-provider-options-runtime-overrides)
+for accuracy/distance, and
+[`updateNotification()`](/en/getting-started/platform-setup/android#refreshing-the-notification-while-tracking-updatenotification)
+to repost the live notification.
+
+---
+
 ## 🌍 GeoConfig (`config.geo`)
 Controls physical location, accuracy, and sampling logic. [See Geo Story 📖](/en/config/configuration#the-geoconfig-object-configgeo)
 

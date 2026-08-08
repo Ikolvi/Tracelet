@@ -179,28 +179,28 @@ enum TlSpeedMotionState { moving, slowing, stationary }
 
 class TlLocationFilter {
   TlLocationFilter({
-    required this.trackingAccuracyThreshold,
-    required this.maxImpliedSpeed,
-    required this.odometerAccuracyThreshold,
-    required this.policy,
-    required this.rejectMockLocations,
-    required this.mockDetectionLevel,
-    required this.useKalmanFilter,
+    this.trackingAccuracyThreshold,
+    this.maxImpliedSpeed,
+    this.odometerAccuracyThreshold,
+    this.policy,
+    this.rejectMockLocations,
+    this.mockDetectionLevel,
+    this.useKalmanFilter,
   });
 
-  int trackingAccuracyThreshold;
+  int? trackingAccuracyThreshold;
 
-  int maxImpliedSpeed;
+  int? maxImpliedSpeed;
 
-  int odometerAccuracyThreshold;
+  int? odometerAccuracyThreshold;
 
-  TlLocationFilterPolicy policy;
+  TlLocationFilterPolicy? policy;
 
-  bool rejectMockLocations;
+  bool? rejectMockLocations;
 
-  int mockDetectionLevel;
+  int? mockDetectionLevel;
 
-  bool useKalmanFilter;
+  bool? useKalmanFilter;
 
   List<Object?> _toList() {
     return <Object?>[
@@ -221,13 +221,13 @@ class TlLocationFilter {
   static TlLocationFilter decode(Object result) {
     result as List<Object?>;
     return TlLocationFilter(
-      trackingAccuracyThreshold: result[0]! as int,
-      maxImpliedSpeed: result[1]! as int,
-      odometerAccuracyThreshold: result[2]! as int,
-      policy: result[3]! as TlLocationFilterPolicy,
-      rejectMockLocations: result[4]! as bool,
-      mockDetectionLevel: result[5]! as int,
-      useKalmanFilter: result[6]! as bool,
+      trackingAccuracyThreshold: result[0] as int?,
+      maxImpliedSpeed: result[1] as int?,
+      odometerAccuracyThreshold: result[2] as int?,
+      policy: result[3] as TlLocationFilterPolicy?,
+      rejectMockLocations: result[4] as bool?,
+      mockDetectionLevel: result[5] as int?,
+      useKalmanFilter: result[6] as bool?,
     );
   }
 
@@ -262,70 +262,70 @@ class TlLocationFilter {
 
 class TlGeoConfig {
   TlGeoConfig({
-    required this.desiredAccuracy,
-    required this.distanceFilter,
-    required this.stationaryRadius,
-    required this.locationTimeout,
-    required this.disableElasticity,
-    required this.elasticityMultiplier,
-    required this.stopAfterElapsedMinutes,
-    required this.maxMonitoredGeofences,
-    required this.enableTimestampMeta,
-    required this.enableAdaptiveMode,
-    required this.periodicLocationInterval,
-    required this.periodicDesiredAccuracy,
-    required this.enableSparseUpdates,
-    required this.sparseDistanceThreshold,
-    required this.sparseMaxIdleSeconds,
-    required this.enableDeadReckoning,
-    required this.deadReckoningActivationDelay,
-    required this.deadReckoningMaxDuration,
-    required this.batteryBudgetPerHour,
-    required this.filter,
-    required this.resolveAddress,
+    this.desiredAccuracy,
+    this.distanceFilter,
+    this.stationaryRadius,
+    this.locationTimeout,
+    this.disableElasticity,
+    this.elasticityMultiplier,
+    this.stopAfterElapsedMinutes,
+    this.maxMonitoredGeofences,
+    this.enableTimestampMeta,
+    this.enableAdaptiveMode,
+    this.periodicLocationInterval,
+    this.periodicDesiredAccuracy,
+    this.enableSparseUpdates,
+    this.sparseDistanceThreshold,
+    this.sparseMaxIdleSeconds,
+    this.enableDeadReckoning,
+    this.deadReckoningActivationDelay,
+    this.deadReckoningMaxDuration,
+    this.batteryBudgetPerHour,
+    this.filter,
+    this.resolveAddress,
   });
 
-  TlDesiredAccuracy desiredAccuracy;
+  TlDesiredAccuracy? desiredAccuracy;
 
-  double distanceFilter;
+  double? distanceFilter;
 
-  double stationaryRadius;
+  double? stationaryRadius;
 
-  int locationTimeout;
+  int? locationTimeout;
 
-  bool disableElasticity;
+  bool? disableElasticity;
 
-  double elasticityMultiplier;
+  double? elasticityMultiplier;
 
-  int stopAfterElapsedMinutes;
+  int? stopAfterElapsedMinutes;
 
-  int maxMonitoredGeofences;
+  int? maxMonitoredGeofences;
 
-  bool enableTimestampMeta;
+  bool? enableTimestampMeta;
 
-  bool enableAdaptiveMode;
+  bool? enableAdaptiveMode;
 
-  int periodicLocationInterval;
+  int? periodicLocationInterval;
 
-  TlDesiredAccuracy periodicDesiredAccuracy;
+  TlDesiredAccuracy? periodicDesiredAccuracy;
 
-  bool enableSparseUpdates;
+  bool? enableSparseUpdates;
 
-  double sparseDistanceThreshold;
+  double? sparseDistanceThreshold;
 
-  int sparseMaxIdleSeconds;
+  int? sparseMaxIdleSeconds;
 
-  bool enableDeadReckoning;
+  bool? enableDeadReckoning;
 
-  int deadReckoningActivationDelay;
+  int? deadReckoningActivationDelay;
 
-  int deadReckoningMaxDuration;
+  int? deadReckoningMaxDuration;
 
-  double batteryBudgetPerHour;
+  double? batteryBudgetPerHour;
 
-  TlLocationFilter filter;
+  TlLocationFilter? filter;
 
-  bool resolveAddress;
+  bool? resolveAddress;
 
   List<Object?> _toList() {
     return <Object?>[
@@ -360,27 +360,27 @@ class TlGeoConfig {
   static TlGeoConfig decode(Object result) {
     result as List<Object?>;
     return TlGeoConfig(
-      desiredAccuracy: result[0]! as TlDesiredAccuracy,
-      distanceFilter: result[1]! as double,
-      stationaryRadius: result[2]! as double,
-      locationTimeout: result[3]! as int,
-      disableElasticity: result[4]! as bool,
-      elasticityMultiplier: result[5]! as double,
-      stopAfterElapsedMinutes: result[6]! as int,
-      maxMonitoredGeofences: result[7]! as int,
-      enableTimestampMeta: result[8]! as bool,
-      enableAdaptiveMode: result[9]! as bool,
-      periodicLocationInterval: result[10]! as int,
-      periodicDesiredAccuracy: result[11]! as TlDesiredAccuracy,
-      enableSparseUpdates: result[12]! as bool,
-      sparseDistanceThreshold: result[13]! as double,
-      sparseMaxIdleSeconds: result[14]! as int,
-      enableDeadReckoning: result[15]! as bool,
-      deadReckoningActivationDelay: result[16]! as int,
-      deadReckoningMaxDuration: result[17]! as int,
-      batteryBudgetPerHour: result[18]! as double,
-      filter: result[19]! as TlLocationFilter,
-      resolveAddress: result[20]! as bool,
+      desiredAccuracy: result[0] as TlDesiredAccuracy?,
+      distanceFilter: result[1] as double?,
+      stationaryRadius: result[2] as double?,
+      locationTimeout: result[3] as int?,
+      disableElasticity: result[4] as bool?,
+      elasticityMultiplier: result[5] as double?,
+      stopAfterElapsedMinutes: result[6] as int?,
+      maxMonitoredGeofences: result[7] as int?,
+      enableTimestampMeta: result[8] as bool?,
+      enableAdaptiveMode: result[9] as bool?,
+      periodicLocationInterval: result[10] as int?,
+      periodicDesiredAccuracy: result[11] as TlDesiredAccuracy?,
+      enableSparseUpdates: result[12] as bool?,
+      sparseDistanceThreshold: result[13] as double?,
+      sparseMaxIdleSeconds: result[14] as int?,
+      enableDeadReckoning: result[15] as bool?,
+      deadReckoningActivationDelay: result[16] as int?,
+      deadReckoningMaxDuration: result[17] as int?,
+      batteryBudgetPerHour: result[18] as double?,
+      filter: result[19] as TlLocationFilter?,
+      resolveAddress: result[20] as bool?,
     );
   }
 
@@ -426,31 +426,31 @@ class TlGeoConfig {
 
 class TlAppConfig {
   TlAppConfig({
-    required this.stopOnTerminate,
-    required this.startOnBoot,
-    required this.heartbeatInterval,
-    required this.schedule,
+    this.stopOnTerminate,
+    this.startOnBoot,
+    this.heartbeatInterval,
+    this.schedule,
     this.remoteConfigUrl,
     this.remoteConfigHeaders,
-    required this.remoteConfigTimeout,
-    required this.remoteConfigRefreshInterval,
+    this.remoteConfigTimeout,
+    this.remoteConfigRefreshInterval,
   });
 
-  bool stopOnTerminate;
+  bool? stopOnTerminate;
 
-  bool startOnBoot;
+  bool? startOnBoot;
 
-  int heartbeatInterval;
+  int? heartbeatInterval;
 
-  List<String?> schedule;
+  List<String?>? schedule;
 
   String? remoteConfigUrl;
 
   Map<String?, String?>? remoteConfigHeaders;
 
-  int remoteConfigTimeout;
+  int? remoteConfigTimeout;
 
-  int remoteConfigRefreshInterval;
+  int? remoteConfigRefreshInterval;
 
   List<Object?> _toList() {
     return <Object?>[
@@ -472,15 +472,15 @@ class TlAppConfig {
   static TlAppConfig decode(Object result) {
     result as List<Object?>;
     return TlAppConfig(
-      stopOnTerminate: result[0]! as bool,
-      startOnBoot: result[1]! as bool,
-      heartbeatInterval: result[2]! as int,
-      schedule: (result[3]! as List<Object?>).cast<String?>(),
+      stopOnTerminate: result[0] as bool?,
+      startOnBoot: result[1] as bool?,
+      heartbeatInterval: result[2] as int?,
+      schedule: (result[3] as List<Object?>?)?.cast<String?>(),
       remoteConfigUrl: result[4] as String?,
       remoteConfigHeaders: (result[5] as Map<Object?, Object?>?)
           ?.cast<String?, String?>(),
-      remoteConfigTimeout: result[6]! as int,
-      remoteConfigRefreshInterval: result[7]! as int,
+      remoteConfigTimeout: result[6] as int?,
+      remoteConfigRefreshInterval: result[7] as int?,
     );
   }
 
@@ -632,39 +632,39 @@ class TlForegroundServiceConfig {
 
 class TlAndroidConfig {
   TlAndroidConfig({
-    required this.locationUpdateInterval,
-    required this.fastestLocationUpdateInterval,
-    required this.deferTime,
-    required this.allowIdenticalLocations,
-    required this.geofenceModeHighAccuracy,
-    required this.periodicUseForegroundService,
-    required this.periodicUseExactAlarms,
-    required this.scheduleUseAlarmManager,
-    required this.foregroundService,
-    required this.releaseWakelockWhenStationary,
+    this.locationUpdateInterval,
+    this.fastestLocationUpdateInterval,
+    this.deferTime,
+    this.allowIdenticalLocations,
+    this.geofenceModeHighAccuracy,
+    this.periodicUseForegroundService,
+    this.periodicUseExactAlarms,
+    this.scheduleUseAlarmManager,
+    this.foregroundService,
+    this.releaseWakelockWhenStationary,
   });
 
-  int locationUpdateInterval;
+  int? locationUpdateInterval;
 
-  int fastestLocationUpdateInterval;
+  int? fastestLocationUpdateInterval;
 
-  int deferTime;
+  int? deferTime;
 
-  bool allowIdenticalLocations;
+  bool? allowIdenticalLocations;
 
-  bool geofenceModeHighAccuracy;
+  bool? geofenceModeHighAccuracy;
 
-  bool periodicUseForegroundService;
+  bool? periodicUseForegroundService;
 
-  bool periodicUseExactAlarms;
+  bool? periodicUseExactAlarms;
 
-  bool scheduleUseAlarmManager;
+  bool? scheduleUseAlarmManager;
 
-  TlForegroundServiceConfig foregroundService;
+  TlForegroundServiceConfig? foregroundService;
 
   /// Drops the OEM Wakelock when the device enters a fully stationary state.
   /// Resolves Issue #162.
-  bool releaseWakelockWhenStationary;
+  bool? releaseWakelockWhenStationary;
 
   List<Object?> _toList() {
     return <Object?>[
@@ -688,16 +688,16 @@ class TlAndroidConfig {
   static TlAndroidConfig decode(Object result) {
     result as List<Object?>;
     return TlAndroidConfig(
-      locationUpdateInterval: result[0]! as int,
-      fastestLocationUpdateInterval: result[1]! as int,
-      deferTime: result[2]! as int,
-      allowIdenticalLocations: result[3]! as bool,
-      geofenceModeHighAccuracy: result[4]! as bool,
-      periodicUseForegroundService: result[5]! as bool,
-      periodicUseExactAlarms: result[6]! as bool,
-      scheduleUseAlarmManager: result[7]! as bool,
-      foregroundService: result[8]! as TlForegroundServiceConfig,
-      releaseWakelockWhenStationary: result[9]! as bool,
+      locationUpdateInterval: result[0] as int?,
+      fastestLocationUpdateInterval: result[1] as int?,
+      deferTime: result[2] as int?,
+      allowIdenticalLocations: result[3] as bool?,
+      geofenceModeHighAccuracy: result[4] as bool?,
+      periodicUseForegroundService: result[5] as bool?,
+      periodicUseExactAlarms: result[6] as bool?,
+      scheduleUseAlarmManager: result[7] as bool?,
+      foregroundService: result[8] as TlForegroundServiceConfig?,
+      releaseWakelockWhenStationary: result[9] as bool?,
     );
   }
 
@@ -737,11 +737,11 @@ class TlAndroidConfig {
 }
 
 class TlLiveActivityConfig {
-  TlLiveActivityConfig({required this.title, required this.body});
+  TlLiveActivityConfig({this.title, this.body});
 
-  String title;
+  String? title;
 
-  String body;
+  String? body;
 
   List<Object?> _toList() {
     return <Object?>[title, body];
@@ -754,8 +754,8 @@ class TlLiveActivityConfig {
   static TlLiveActivityConfig decode(Object result) {
     result as List<Object?>;
     return TlLiveActivityConfig(
-      title: result[0]! as String,
-      body: result[1]! as String,
+      title: result[0] as String?,
+      body: result[1] as String?,
     );
   }
 
@@ -778,32 +778,32 @@ class TlLiveActivityConfig {
 
 class TlIosConfig {
   TlIosConfig({
-    required this.activityType,
-    required this.useSignificantChangesOnly,
-    required this.showsBackgroundLocationIndicator,
-    required this.pausesLocationUpdatesAutomatically,
-    required this.locationAuthorizationRequest,
-    required this.disableLocationAuthorizationAlert,
-    required this.preventSuspend,
-    required this.useBackgroundActivitySession,
+    this.activityType,
+    this.useSignificantChangesOnly,
+    this.showsBackgroundLocationIndicator,
+    this.pausesLocationUpdatesAutomatically,
+    this.locationAuthorizationRequest,
+    this.disableLocationAuthorizationAlert,
+    this.preventSuspend,
+    this.useBackgroundActivitySession,
     this.liveActivityConfig,
   });
 
-  TlIosActivityType activityType;
+  TlIosActivityType? activityType;
 
-  bool useSignificantChangesOnly;
+  bool? useSignificantChangesOnly;
 
-  bool showsBackgroundLocationIndicator;
+  bool? showsBackgroundLocationIndicator;
 
-  bool pausesLocationUpdatesAutomatically;
+  bool? pausesLocationUpdatesAutomatically;
 
-  TlAuthorizationRequest locationAuthorizationRequest;
+  TlAuthorizationRequest? locationAuthorizationRequest;
 
-  bool disableLocationAuthorizationAlert;
+  bool? disableLocationAuthorizationAlert;
 
-  bool preventSuspend;
+  bool? preventSuspend;
 
-  bool useBackgroundActivitySession;
+  bool? useBackgroundActivitySession;
 
   TlLiveActivityConfig? liveActivityConfig;
 
@@ -828,14 +828,14 @@ class TlIosConfig {
   static TlIosConfig decode(Object result) {
     result as List<Object?>;
     return TlIosConfig(
-      activityType: result[0]! as TlIosActivityType,
-      useSignificantChangesOnly: result[1]! as bool,
-      showsBackgroundLocationIndicator: result[2]! as bool,
-      pausesLocationUpdatesAutomatically: result[3]! as bool,
-      locationAuthorizationRequest: result[4]! as TlAuthorizationRequest,
-      disableLocationAuthorizationAlert: result[5]! as bool,
-      preventSuspend: result[6]! as bool,
-      useBackgroundActivitySession: result[7]! as bool,
+      activityType: result[0] as TlIosActivityType?,
+      useSignificantChangesOnly: result[1] as bool?,
+      showsBackgroundLocationIndicator: result[2] as bool?,
+      pausesLocationUpdatesAutomatically: result[3] as bool?,
+      locationAuthorizationRequest: result[4] as TlAuthorizationRequest?,
+      disableLocationAuthorizationAlert: result[5] as bool?,
+      preventSuspend: result[6] as bool?,
+      useBackgroundActivitySession: result[7] as bool?,
       liveActivityConfig: result[8] as TlLiveActivityConfig?,
     );
   }
@@ -886,44 +886,44 @@ class TlIosConfig {
 class TlHttpConfig {
   TlHttpConfig({
     this.url,
-    required this.method,
+    this.method,
     this.headers,
     this.params,
-    required this.autoSync,
-    required this.batchSync,
-    required this.maxBatchSize,
+    this.autoSync,
+    this.batchSync,
+    this.maxBatchSize,
     this.sslPinningFingerprints,
     this.sslPinningCertificates,
     this.httpRootProperty,
-    required this.autoSyncThreshold,
+    this.autoSyncThreshold,
     this.autoSyncDelay,
-    required this.syncInterval,
-    required this.httpTimeout,
-    required this.locationsOrderDirection,
+    this.syncInterval,
+    this.httpTimeout,
+    this.locationsOrderDirection,
     this.extras,
-    required this.disableAutoSyncOnCellular,
-    required this.maxRetries,
-    required this.retryBackoffBase,
-    required this.retryBackoffCap,
-    required this.enableDeltaCompression,
-    required this.deltaCoordinatePrecision,
-    required this.syncTelematics,
+    this.disableAutoSyncOnCellular,
+    this.maxRetries,
+    this.retryBackoffBase,
+    this.retryBackoffCap,
+    this.enableDeltaCompression,
+    this.deltaCoordinatePrecision,
+    this.syncTelematics,
     this.telematicsUrl,
   });
 
   String? url;
 
-  TlHttpMethod method;
+  TlHttpMethod? method;
 
   Map<String?, String?>? headers;
 
   Map<String?, Object?>? params;
 
-  bool autoSync;
+  bool? autoSync;
 
-  bool batchSync;
+  bool? batchSync;
 
-  int maxBatchSize;
+  int? maxBatchSize;
 
   List<String?>? sslPinningFingerprints;
 
@@ -931,31 +931,31 @@ class TlHttpConfig {
 
   String? httpRootProperty;
 
-  int autoSyncThreshold;
+  int? autoSyncThreshold;
 
   int? autoSyncDelay;
 
-  int syncInterval;
+  int? syncInterval;
 
-  int httpTimeout;
+  int? httpTimeout;
 
-  TlLocationOrderDirection locationsOrderDirection;
+  TlLocationOrderDirection? locationsOrderDirection;
 
   Map<String?, Object?>? extras;
 
-  bool disableAutoSyncOnCellular;
+  bool? disableAutoSyncOnCellular;
 
-  int maxRetries;
+  int? maxRetries;
 
-  int retryBackoffBase;
+  int? retryBackoffBase;
 
-  int retryBackoffCap;
+  int? retryBackoffCap;
 
-  bool enableDeltaCompression;
+  bool? enableDeltaCompression;
 
-  int deltaCoordinatePrecision;
+  int? deltaCoordinatePrecision;
 
-  bool syncTelematics;
+  bool? syncTelematics;
 
   String? telematicsUrl;
 
@@ -996,28 +996,28 @@ class TlHttpConfig {
     result as List<Object?>;
     return TlHttpConfig(
       url: result[0] as String?,
-      method: result[1]! as TlHttpMethod,
+      method: result[1] as TlHttpMethod?,
       headers: (result[2] as Map<Object?, Object?>?)?.cast<String?, String?>(),
       params: (result[3] as Map<Object?, Object?>?)?.cast<String?, Object?>(),
-      autoSync: result[4]! as bool,
-      batchSync: result[5]! as bool,
-      maxBatchSize: result[6]! as int,
+      autoSync: result[4] as bool?,
+      batchSync: result[5] as bool?,
+      maxBatchSize: result[6] as int?,
       sslPinningFingerprints: (result[7] as List<Object?>?)?.cast<String?>(),
       sslPinningCertificates: (result[8] as List<Object?>?)?.cast<String?>(),
       httpRootProperty: result[9] as String?,
-      autoSyncThreshold: result[10]! as int,
+      autoSyncThreshold: result[10] as int?,
       autoSyncDelay: result[11] as int?,
-      syncInterval: result[12]! as int,
-      httpTimeout: result[13]! as int,
-      locationsOrderDirection: result[14]! as TlLocationOrderDirection,
+      syncInterval: result[12] as int?,
+      httpTimeout: result[13] as int?,
+      locationsOrderDirection: result[14] as TlLocationOrderDirection?,
       extras: (result[15] as Map<Object?, Object?>?)?.cast<String?, Object?>(),
-      disableAutoSyncOnCellular: result[16]! as bool,
-      maxRetries: result[17]! as int,
-      retryBackoffBase: result[18]! as int,
-      retryBackoffCap: result[19]! as int,
-      enableDeltaCompression: result[20]! as bool,
-      deltaCoordinatePrecision: result[21]! as int,
-      syncTelematics: result[22]! as bool,
+      disableAutoSyncOnCellular: result[16] as bool?,
+      maxRetries: result[17] as int?,
+      retryBackoffBase: result[18] as int?,
+      retryBackoffCap: result[19] as int?,
+      enableDeltaCompression: result[20] as bool?,
+      deltaCoordinatePrecision: result[21] as int?,
+      syncTelematics: result[22] as bool?,
       telematicsUrl: result[23] as String?,
     );
   }
@@ -1197,17 +1197,13 @@ class TlConfig {
 }
 
 class TlLoggerConfig {
-  TlLoggerConfig({
-    required this.logLevel,
-    required this.logMaxDays,
-    required this.debug,
-  });
+  TlLoggerConfig({this.logLevel, this.logMaxDays, this.debug});
 
-  TlLogLevel logLevel;
+  TlLogLevel? logLevel;
 
-  int logMaxDays;
+  int? logMaxDays;
 
-  bool debug;
+  bool? debug;
 
   List<Object?> _toList() {
     return <Object?>[logLevel, logMaxDays, debug];
@@ -1220,9 +1216,9 @@ class TlLoggerConfig {
   static TlLoggerConfig decode(Object result) {
     result as List<Object?>;
     return TlLoggerConfig(
-      logLevel: result[0]! as TlLogLevel,
-      logMaxDays: result[1]! as int,
-      debug: result[2]! as bool,
+      logLevel: result[0] as TlLogLevel?,
+      logMaxDays: result[1] as int?,
+      debug: result[2] as bool?,
     );
   }
 
@@ -1247,53 +1243,53 @@ class TlLoggerConfig {
 
 class TlMotionConfig {
   TlMotionConfig({
-    required this.stopTimeout,
-    required this.motionTriggerDelay,
-    required this.disableMotionActivityUpdates,
-    required this.isMoving,
-    required this.activityRecognitionInterval,
-    required this.minimumActivityRecognitionConfidence,
-    required this.disableStopDetection,
-    required this.stopDetectionDelay,
-    required this.stopOnStationary,
+    this.stopTimeout,
+    this.motionTriggerDelay,
+    this.disableMotionActivityUpdates,
+    this.isMoving,
+    this.activityRecognitionInterval,
+    this.minimumActivityRecognitionConfidence,
+    this.disableStopDetection,
+    this.stopDetectionDelay,
+    this.stopOnStationary,
     this.activityTypes,
-    required this.stationaryRadius,
-    required this.useSignificantChangesOnly,
+    this.stationaryRadius,
+    this.useSignificantChangesOnly,
     this.shakeThreshold,
     this.stillThreshold,
     this.stillSampleCount,
-    required this.motionDetectionMode,
-    required this.speedMovingThreshold,
-    required this.speedStationaryDelay,
-    required this.stationaryTrackingMode,
-    required this.stationaryPeriodicInterval,
-    required this.stationaryPeriodicAccuracy,
-    required this.speedWakeConfirmCount,
+    this.motionDetectionMode,
+    this.speedMovingThreshold,
+    this.speedStationaryDelay,
+    this.stationaryTrackingMode,
+    this.stationaryPeriodicInterval,
+    this.stationaryPeriodicAccuracy,
+    this.speedWakeConfirmCount,
   });
 
-  int stopTimeout;
+  int? stopTimeout;
 
-  int motionTriggerDelay;
+  int? motionTriggerDelay;
 
-  bool disableMotionActivityUpdates;
+  bool? disableMotionActivityUpdates;
 
-  bool isMoving;
+  bool? isMoving;
 
-  int activityRecognitionInterval;
+  int? activityRecognitionInterval;
 
-  int minimumActivityRecognitionConfidence;
+  int? minimumActivityRecognitionConfidence;
 
-  bool disableStopDetection;
+  bool? disableStopDetection;
 
-  int stopDetectionDelay;
+  int? stopDetectionDelay;
 
-  bool stopOnStationary;
+  bool? stopOnStationary;
 
   List<TlLocationActivityType?>? activityTypes;
 
-  double stationaryRadius;
+  double? stationaryRadius;
 
-  bool useSignificantChangesOnly;
+  bool? useSignificantChangesOnly;
 
   double? shakeThreshold;
 
@@ -1301,19 +1297,19 @@ class TlMotionConfig {
 
   int? stillSampleCount;
 
-  TlMotionDetectionMode motionDetectionMode;
+  TlMotionDetectionMode? motionDetectionMode;
 
-  double speedMovingThreshold;
+  double? speedMovingThreshold;
 
-  int speedStationaryDelay;
+  int? speedStationaryDelay;
 
-  TlStationaryTrackingMode stationaryTrackingMode;
+  TlStationaryTrackingMode? stationaryTrackingMode;
 
-  int stationaryPeriodicInterval;
+  int? stationaryPeriodicInterval;
 
-  TlDesiredAccuracy stationaryPeriodicAccuracy;
+  TlDesiredAccuracy? stationaryPeriodicAccuracy;
 
-  int speedWakeConfirmCount;
+  int? speedWakeConfirmCount;
 
   List<Object?> _toList() {
     return <Object?>[
@@ -1349,29 +1345,29 @@ class TlMotionConfig {
   static TlMotionConfig decode(Object result) {
     result as List<Object?>;
     return TlMotionConfig(
-      stopTimeout: result[0]! as int,
-      motionTriggerDelay: result[1]! as int,
-      disableMotionActivityUpdates: result[2]! as bool,
-      isMoving: result[3]! as bool,
-      activityRecognitionInterval: result[4]! as int,
-      minimumActivityRecognitionConfidence: result[5]! as int,
-      disableStopDetection: result[6]! as bool,
-      stopDetectionDelay: result[7]! as int,
-      stopOnStationary: result[8]! as bool,
+      stopTimeout: result[0] as int?,
+      motionTriggerDelay: result[1] as int?,
+      disableMotionActivityUpdates: result[2] as bool?,
+      isMoving: result[3] as bool?,
+      activityRecognitionInterval: result[4] as int?,
+      minimumActivityRecognitionConfidence: result[5] as int?,
+      disableStopDetection: result[6] as bool?,
+      stopDetectionDelay: result[7] as int?,
+      stopOnStationary: result[8] as bool?,
       activityTypes: (result[9] as List<Object?>?)
           ?.cast<TlLocationActivityType?>(),
-      stationaryRadius: result[10]! as double,
-      useSignificantChangesOnly: result[11]! as bool,
+      stationaryRadius: result[10] as double?,
+      useSignificantChangesOnly: result[11] as bool?,
       shakeThreshold: result[12] as double?,
       stillThreshold: result[13] as double?,
       stillSampleCount: result[14] as int?,
-      motionDetectionMode: result[15]! as TlMotionDetectionMode,
-      speedMovingThreshold: result[16]! as double,
-      speedStationaryDelay: result[17]! as int,
-      stationaryTrackingMode: result[18]! as TlStationaryTrackingMode,
-      stationaryPeriodicInterval: result[19]! as int,
-      stationaryPeriodicAccuracy: result[20]! as TlDesiredAccuracy,
-      speedWakeConfirmCount: result[21]! as int,
+      motionDetectionMode: result[15] as TlMotionDetectionMode?,
+      speedMovingThreshold: result[16] as double?,
+      speedStationaryDelay: result[17] as int?,
+      stationaryTrackingMode: result[18] as TlStationaryTrackingMode?,
+      stationaryPeriodicInterval: result[19] as int?,
+      stationaryPeriodicAccuracy: result[20] as TlDesiredAccuracy?,
+      speedWakeConfirmCount: result[21] as int?,
     );
   }
 
@@ -1433,22 +1429,22 @@ class TlMotionConfig {
 
 class TlGeofenceConfig {
   TlGeofenceConfig({
-    required this.geofenceInitialTriggerEntry,
-    required this.geofenceProximityRadius,
-    required this.geofenceInitialTrigger,
-    required this.geofenceModeHighAccuracy,
-    required this.geofenceExitAccuracyMax,
+    this.geofenceInitialTriggerEntry,
+    this.geofenceProximityRadius,
+    this.geofenceInitialTrigger,
+    this.geofenceModeHighAccuracy,
+    this.geofenceExitAccuracyMax,
   });
 
-  bool geofenceInitialTriggerEntry;
+  bool? geofenceInitialTriggerEntry;
 
-  int geofenceProximityRadius;
+  int? geofenceProximityRadius;
 
-  bool geofenceInitialTrigger;
+  bool? geofenceInitialTrigger;
 
-  bool geofenceModeHighAccuracy;
+  bool? geofenceModeHighAccuracy;
 
-  int geofenceExitAccuracyMax;
+  int? geofenceExitAccuracyMax;
 
   List<Object?> _toList() {
     return <Object?>[
@@ -1467,11 +1463,11 @@ class TlGeofenceConfig {
   static TlGeofenceConfig decode(Object result) {
     result as List<Object?>;
     return TlGeofenceConfig(
-      geofenceInitialTriggerEntry: result[0]! as bool,
-      geofenceProximityRadius: result[1]! as int,
-      geofenceInitialTrigger: result[2]! as bool,
-      geofenceModeHighAccuracy: result[3]! as bool,
-      geofenceExitAccuracyMax: result[4]! as int,
+      geofenceInitialTriggerEntry: result[0] as bool?,
+      geofenceProximityRadius: result[1] as int?,
+      geofenceInitialTrigger: result[2] as bool?,
+      geofenceModeHighAccuracy: result[3] as bool?,
+      geofenceExitAccuracyMax: result[4] as int?,
     );
   }
 
@@ -1501,19 +1497,19 @@ class TlGeofenceConfig {
 
 class TlPersistenceConfig {
   TlPersistenceConfig({
-    required this.persistMode,
-    required this.maxDaysToPersist,
-    required this.maxRecordsToPersist,
-    required this.disableProviderChangeRecord,
+    this.persistMode,
+    this.maxDaysToPersist,
+    this.maxRecordsToPersist,
+    this.disableProviderChangeRecord,
   });
 
-  TlPersistMode persistMode;
+  TlPersistMode? persistMode;
 
-  int maxDaysToPersist;
+  int? maxDaysToPersist;
 
-  int maxRecordsToPersist;
+  int? maxRecordsToPersist;
 
-  bool disableProviderChangeRecord;
+  bool? disableProviderChangeRecord;
 
   List<Object?> _toList() {
     return <Object?>[
@@ -1531,10 +1527,10 @@ class TlPersistenceConfig {
   static TlPersistenceConfig decode(Object result) {
     result as List<Object?>;
     return TlPersistenceConfig(
-      persistMode: result[0]! as TlPersistMode,
-      maxDaysToPersist: result[1]! as int,
-      maxRecordsToPersist: result[2]! as int,
-      disableProviderChangeRecord: result[3]! as bool,
+      persistMode: result[0] as TlPersistMode?,
+      maxDaysToPersist: result[1] as int?,
+      maxRecordsToPersist: result[2] as int?,
+      disableProviderChangeRecord: result[3] as bool?,
     );
   }
 
@@ -1562,11 +1558,11 @@ class TlPersistenceConfig {
 }
 
 class TlAuditConfig {
-  TlAuditConfig({required this.enabled, required this.hashAlgorithm});
+  TlAuditConfig({this.enabled, this.hashAlgorithm});
 
-  bool enabled;
+  bool? enabled;
 
-  TlHashAlgorithm hashAlgorithm;
+  TlHashAlgorithm? hashAlgorithm;
 
   List<Object?> _toList() {
     return <Object?>[enabled, hashAlgorithm];
@@ -1579,8 +1575,8 @@ class TlAuditConfig {
   static TlAuditConfig decode(Object result) {
     result as List<Object?>;
     return TlAuditConfig(
-      enabled: result[0]! as bool,
-      hashAlgorithm: result[1]! as TlHashAlgorithm,
+      enabled: result[0] as bool?,
+      hashAlgorithm: result[1] as TlHashAlgorithm?,
     );
   }
 
@@ -1603,9 +1599,9 @@ class TlAuditConfig {
 }
 
 class TlPrivacyZoneConfig {
-  TlPrivacyZoneConfig({required this.enabled});
+  TlPrivacyZoneConfig({this.enabled});
 
-  bool enabled;
+  bool? enabled;
 
   List<Object?> _toList() {
     return <Object?>[enabled];
@@ -1617,7 +1613,7 @@ class TlPrivacyZoneConfig {
 
   static TlPrivacyZoneConfig decode(Object result) {
     result as List<Object?>;
-    return TlPrivacyZoneConfig(enabled: result[0]! as bool);
+    return TlPrivacyZoneConfig(enabled: result[0] as bool?);
   }
 
   @override
@@ -1638,9 +1634,9 @@ class TlPrivacyZoneConfig {
 }
 
 class TlSecurityConfig {
-  TlSecurityConfig({required this.encryptDatabase});
+  TlSecurityConfig({this.encryptDatabase});
 
-  bool encryptDatabase;
+  bool? encryptDatabase;
 
   List<Object?> _toList() {
     return <Object?>[encryptDatabase];
@@ -1652,7 +1648,7 @@ class TlSecurityConfig {
 
   static TlSecurityConfig decode(Object result) {
     result as List<Object?>;
-    return TlSecurityConfig(encryptDatabase: result[0]! as bool);
+    return TlSecurityConfig(encryptDatabase: result[0] as bool?);
   }
 
   @override
@@ -1673,11 +1669,11 @@ class TlSecurityConfig {
 }
 
 class TlAttestationConfig {
-  TlAttestationConfig({required this.enabled, required this.refreshInterval});
+  TlAttestationConfig({this.enabled, this.refreshInterval});
 
-  bool enabled;
+  bool? enabled;
 
-  int refreshInterval;
+  int? refreshInterval;
 
   List<Object?> _toList() {
     return <Object?>[enabled, refreshInterval];
@@ -1690,8 +1686,8 @@ class TlAttestationConfig {
   static TlAttestationConfig decode(Object result) {
     result as List<Object?>;
     return TlAttestationConfig(
-      enabled: result[0]! as bool,
-      refreshInterval: result[1]! as int,
+      enabled: result[0] as bool?,
+      refreshInterval: result[1] as int?,
     );
   }
 
@@ -1716,34 +1712,34 @@ class TlAttestationConfig {
 /// Driving-behavior (telematics) event detection config. See `TelematicsEngine`.
 class TlTelematicsConfig {
   TlTelematicsConfig({
-    required this.enableDrivingEvents,
-    required this.harshBrakingG,
-    required this.harshAccelerationG,
-    required this.harshCorneringG,
-    required this.speedLimitKmh,
-    required this.speedingToleranceKmh,
-    required this.speedingMinDurationMs,
-    required this.minSpeedForEventsKmh,
-    required this.eventDebounceMs,
+    this.enableDrivingEvents,
+    this.harshBrakingG,
+    this.harshAccelerationG,
+    this.harshCorneringG,
+    this.speedLimitKmh,
+    this.speedingToleranceKmh,
+    this.speedingMinDurationMs,
+    this.minSpeedForEventsKmh,
+    this.eventDebounceMs,
   });
 
-  bool enableDrivingEvents;
+  bool? enableDrivingEvents;
 
-  double harshBrakingG;
+  double? harshBrakingG;
 
-  double harshAccelerationG;
+  double? harshAccelerationG;
 
-  double harshCorneringG;
+  double? harshCorneringG;
 
-  double speedLimitKmh;
+  double? speedLimitKmh;
 
-  double speedingToleranceKmh;
+  double? speedingToleranceKmh;
 
-  int speedingMinDurationMs;
+  int? speedingMinDurationMs;
 
-  double minSpeedForEventsKmh;
+  double? minSpeedForEventsKmh;
 
-  int eventDebounceMs;
+  int? eventDebounceMs;
 
   List<Object?> _toList() {
     return <Object?>[
@@ -1766,15 +1762,15 @@ class TlTelematicsConfig {
   static TlTelematicsConfig decode(Object result) {
     result as List<Object?>;
     return TlTelematicsConfig(
-      enableDrivingEvents: result[0]! as bool,
-      harshBrakingG: result[1]! as double,
-      harshAccelerationG: result[2]! as double,
-      harshCorneringG: result[3]! as double,
-      speedLimitKmh: result[4]! as double,
-      speedingToleranceKmh: result[5]! as double,
-      speedingMinDurationMs: result[6]! as int,
-      minSpeedForEventsKmh: result[7]! as double,
-      eventDebounceMs: result[8]! as int,
+      enableDrivingEvents: result[0] as bool?,
+      harshBrakingG: result[1] as double?,
+      harshAccelerationG: result[2] as double?,
+      harshCorneringG: result[3] as double?,
+      speedLimitKmh: result[4] as double?,
+      speedingToleranceKmh: result[5] as double?,
+      speedingMinDurationMs: result[6] as int?,
+      minSpeedForEventsKmh: result[7] as double?,
+      eventDebounceMs: result[8] as int?,
     );
   }
 
@@ -1806,22 +1802,22 @@ class TlTelematicsConfig {
 /// On-device transport-mode classifier config. See `TransportModeClassifier`.
 class TlClassifierConfig {
   TlClassifierConfig({
-    required this.enableFusedClassifier,
-    required this.fusedClassifierAuthoritative,
-    required this.modeSwitchDwellMs,
-    required this.minModeConfidence,
-    required this.autoTuneFromTransportMode,
+    this.enableFusedClassifier,
+    this.fusedClassifierAuthoritative,
+    this.modeSwitchDwellMs,
+    this.minModeConfidence,
+    this.autoTuneFromTransportMode,
   });
 
-  bool enableFusedClassifier;
+  bool? enableFusedClassifier;
 
-  bool fusedClassifierAuthoritative;
+  bool? fusedClassifierAuthoritative;
 
-  int modeSwitchDwellMs;
+  int? modeSwitchDwellMs;
 
-  double minModeConfidence;
+  double? minModeConfidence;
 
-  bool autoTuneFromTransportMode;
+  bool? autoTuneFromTransportMode;
 
   List<Object?> _toList() {
     return <Object?>[
@@ -1840,11 +1836,11 @@ class TlClassifierConfig {
   static TlClassifierConfig decode(Object result) {
     result as List<Object?>;
     return TlClassifierConfig(
-      enableFusedClassifier: result[0]! as bool,
-      fusedClassifierAuthoritative: result[1]! as bool,
-      modeSwitchDwellMs: result[2]! as int,
-      minModeConfidence: result[3]! as double,
-      autoTuneFromTransportMode: result[4]! as bool,
+      enableFusedClassifier: result[0] as bool?,
+      fusedClassifierAuthoritative: result[1] as bool?,
+      modeSwitchDwellMs: result[2] as int?,
+      minModeConfidence: result[3] as double?,
+      autoTuneFromTransportMode: result[4] as bool?,
     );
   }
 
@@ -1875,39 +1871,39 @@ class TlClassifierConfig {
 /// Crash & fall detection config. See `ImpactDetector`.
 class TlImpactConfig {
   TlImpactConfig({
-    required this.enableCrashDetection,
-    required this.enableFallDetection,
-    required this.crashGThreshold,
-    required this.crashMinSpeedKmh,
-    required this.fallGThreshold,
-    required this.confirmWindowMs,
-    required this.minImpactConfidence,
+    this.enableCrashDetection,
+    this.enableFallDetection,
+    this.crashGThreshold,
+    this.crashMinSpeedKmh,
+    this.fallGThreshold,
+    this.confirmWindowMs,
+    this.minImpactConfidence,
     this.crashModelUrl,
     this.crashModelSha256,
-    required this.crashModelThreshold,
+    this.crashModelThreshold,
     this.crashModelUnlockUrl,
     this.crashModelLicenseKey,
   });
 
-  bool enableCrashDetection;
+  bool? enableCrashDetection;
 
-  bool enableFallDetection;
+  bool? enableFallDetection;
 
-  double crashGThreshold;
+  double? crashGThreshold;
 
-  double crashMinSpeedKmh;
+  double? crashMinSpeedKmh;
 
-  double fallGThreshold;
+  double? fallGThreshold;
 
-  int confirmWindowMs;
+  int? confirmWindowMs;
 
-  double minImpactConfidence;
+  double? minImpactConfidence;
 
   String? crashModelUrl;
 
   String? crashModelSha256;
 
-  double crashModelThreshold;
+  double? crashModelThreshold;
 
   String? crashModelUnlockUrl;
 
@@ -1937,16 +1933,16 @@ class TlImpactConfig {
   static TlImpactConfig decode(Object result) {
     result as List<Object?>;
     return TlImpactConfig(
-      enableCrashDetection: result[0]! as bool,
-      enableFallDetection: result[1]! as bool,
-      crashGThreshold: result[2]! as double,
-      crashMinSpeedKmh: result[3]! as double,
-      fallGThreshold: result[4]! as double,
-      confirmWindowMs: result[5]! as int,
-      minImpactConfidence: result[6]! as double,
+      enableCrashDetection: result[0] as bool?,
+      enableFallDetection: result[1] as bool?,
+      crashGThreshold: result[2] as double?,
+      crashMinSpeedKmh: result[3] as double?,
+      fallGThreshold: result[4] as double?,
+      confirmWindowMs: result[5] as int?,
+      minImpactConfidence: result[6] as double?,
       crashModelUrl: result[7] as String?,
       crashModelSha256: result[8] as String?,
-      crashModelThreshold: result[9]! as double,
+      crashModelThreshold: result[9] as double?,
       crashModelUnlockUrl: result[10] as String?,
       crashModelLicenseKey: result[11] as String?,
     );

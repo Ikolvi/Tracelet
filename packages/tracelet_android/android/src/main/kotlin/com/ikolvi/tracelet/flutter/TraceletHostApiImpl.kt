@@ -170,7 +170,7 @@ class TraceletHostApiImpl(
 
     private fun tlConfigToSdkMap(c: TlConfig): Map<String, Any?> = buildMap {
         put("geo", buildMap {
-            put("desiredAccuracy", c.geo.desiredAccuracy.raw)
+            put("desiredAccuracy", c.geo.desiredAccuracy?.raw)
             put("distanceFilter", c.geo.distanceFilter)
             put("stationaryRadius", c.geo.stationaryRadius)
             put("locationTimeout", c.geo.locationTimeout)
@@ -181,7 +181,7 @@ class TraceletHostApiImpl(
             put("enableTimestampMeta", c.geo.enableTimestampMeta)
             put("enableAdaptiveMode", c.geo.enableAdaptiveMode)
             put("periodicLocationInterval", c.geo.periodicLocationInterval)
-            put("periodicDesiredAccuracy", c.geo.periodicDesiredAccuracy.raw)
+            put("periodicDesiredAccuracy", c.geo.periodicDesiredAccuracy?.raw)
             put("enableSparseUpdates", c.geo.enableSparseUpdates)
             put("sparseDistanceThreshold", c.geo.sparseDistanceThreshold)
             put("sparseMaxIdleSeconds", c.geo.sparseMaxIdleSeconds)
@@ -191,13 +191,13 @@ class TraceletHostApiImpl(
             put("batteryBudgetPerHour", c.geo.batteryBudgetPerHour)
             put("resolveAddress", c.geo.resolveAddress)
             put("filter", buildMap {
-                put("trackingAccuracyThreshold", c.geo.filter.trackingAccuracyThreshold)
-                put("maxImpliedSpeed", c.geo.filter.maxImpliedSpeed)
-                put("odometerAccuracyThreshold", c.geo.filter.odometerAccuracyThreshold)
-                put("policy", c.geo.filter.policy.raw)
-                put("rejectMockLocations", c.geo.filter.rejectMockLocations)
-                put("mockDetectionLevel", c.geo.filter.mockDetectionLevel)
-                put("useKalmanFilter", c.geo.filter.useKalmanFilter)
+                put("trackingAccuracyThreshold", c.geo.filter?.trackingAccuracyThreshold)
+                put("maxImpliedSpeed", c.geo.filter?.maxImpliedSpeed)
+                put("odometerAccuracyThreshold", c.geo.filter?.odometerAccuracyThreshold)
+                put("policy", c.geo.filter?.policy?.raw)
+                put("rejectMockLocations", c.geo.filter?.rejectMockLocations)
+                put("mockDetectionLevel", c.geo.filter?.mockDetectionLevel)
+                put("useKalmanFilter", c.geo.filter?.useKalmanFilter)
             })
         })
         put("app", buildMap {
@@ -220,7 +220,7 @@ class TraceletHostApiImpl(
             // compatibility (set further below in the Geofence section too).
             put(
                 "geofenceModeHighAccuracy",
-                c.geofence.geofenceModeHighAccuracy || c.android.geofenceModeHighAccuracy,
+                (c.geofence.geofenceModeHighAccuracy ?: false) || (c.android.geofenceModeHighAccuracy ?: false),
             )
             put("periodicUseForegroundService", c.android.periodicUseForegroundService)
             put("periodicUseExactAlarms", c.android.periodicUseExactAlarms)
@@ -235,23 +235,23 @@ class TraceletHostApiImpl(
             // showNotificationOnPauseOnly with defaults.
             put("foregroundService", buildMap {
                 val fg = c.android.foregroundService
-                put("enabled", fg.enabled)
-                put("channelId", fg.channelId)
-                put("channelName", fg.channelName)
-                put("notificationTitle", fg.notificationTitle)
-                put("notificationText", fg.notificationText)
-                put("notificationColor", fg.notificationColor)
-                put("notificationSmallIcon", fg.notificationSmallIcon)
-                put("notificationLargeIcon", fg.notificationLargeIcon)
-                put("notificationPriority", fg.notificationPriority?.let { it.raw - 2 })
-                put("notificationOngoing", fg.notificationOngoing)
-                put("showNotificationOnPauseOnly", fg.showNotificationOnPauseOnly)
-                put("actions", fg.actions)
+                put("enabled", fg?.enabled)
+                put("channelId", fg?.channelId)
+                put("channelName", fg?.channelName)
+                put("notificationTitle", fg?.notificationTitle)
+                put("notificationText", fg?.notificationText)
+                put("notificationColor", fg?.notificationColor)
+                put("notificationSmallIcon", fg?.notificationSmallIcon)
+                put("notificationLargeIcon", fg?.notificationLargeIcon)
+                put("notificationPriority", fg?.notificationPriority?.let { it.raw - 2 })
+                put("notificationOngoing", fg?.notificationOngoing)
+                put("showNotificationOnPauseOnly", fg?.showNotificationOnPauseOnly)
+                put("actions", fg?.actions)
             })
         })
         put("http", buildMap {
             put("url", c.http.url)
-            put("method", c.http.method.raw)
+            put("method", c.http.method?.raw)
             put("headers", c.http.headers)
             put("params", c.http.params)
             put("extras", c.http.extras)
@@ -265,7 +265,7 @@ class TraceletHostApiImpl(
             put("autoSyncDelay", c.http.autoSyncDelay)
             put("syncInterval", c.http.syncInterval)
             put("httpTimeout", c.http.httpTimeout)
-            put("locationsOrderDirection", c.http.locationsOrderDirection.raw)
+            put("locationsOrderDirection", c.http.locationsOrderDirection?.raw)
             put("disableAutoSyncOnCellular", c.http.disableAutoSyncOnCellular)
             put("maxRetries", c.http.maxRetries)
             put("retryBackoffBase", c.http.retryBackoffBase)
@@ -276,7 +276,7 @@ class TraceletHostApiImpl(
             put("telematicsUrl", c.http.telematicsUrl)
         })
         put("logger", buildMap {
-            put("logLevel", c.logger.logLevel.raw)
+            put("logLevel", c.logger.logLevel?.raw)
             put("logMaxDays", c.logger.logMaxDays)
             put("debug", c.logger.debug)
         })
@@ -301,12 +301,12 @@ class TraceletHostApiImpl(
             c.motion.shakeThreshold?.let { put("shakeThreshold", it) }
             c.motion.stillThreshold?.let { put("stillThreshold", it) }
             c.motion.stillSampleCount?.let { put("stillSampleCount", it) }
-            put("motionDetectionMode", c.motion.motionDetectionMode.raw)
+            put("motionDetectionMode", c.motion.motionDetectionMode?.raw)
             put("speedMovingThreshold", c.motion.speedMovingThreshold)
             put("speedStationaryDelay", c.motion.speedStationaryDelay)
-            put("stationaryTrackingMode", c.motion.stationaryTrackingMode.raw)
+            put("stationaryTrackingMode", c.motion.stationaryTrackingMode?.raw)
             put("stationaryPeriodicInterval", c.motion.stationaryPeriodicInterval)
-            put("stationaryPeriodicAccuracy", c.motion.stationaryPeriodicAccuracy.raw)
+            put("stationaryPeriodicAccuracy", c.motion.stationaryPeriodicAccuracy?.raw)
             put("speedWakeConfirmCount", c.motion.speedWakeConfirmCount)
         })
         put("geofence", buildMap {
@@ -316,7 +316,7 @@ class TraceletHostApiImpl(
             put("geofenceExitAccuracyMax", c.geofence.geofenceExitAccuracyMax)
         })
         put("persistence", buildMap {
-            put("persistMode", c.persistence.persistMode.raw)
+            put("persistMode", c.persistence.persistMode?.raw)
             put("maxDaysToPersist", c.persistence.maxDaysToPersist)
             put("maxRecordsToPersist", c.persistence.maxRecordsToPersist)
             put("disableProviderChangeRecord", c.persistence.disableProviderChangeRecord)
@@ -324,7 +324,7 @@ class TraceletHostApiImpl(
         put("auditEnabled", c.audit.enabled)
         put("audit", buildMap {
             put("enabled", c.audit.enabled)
-            put("hashAlgorithm", c.audit.hashAlgorithm.raw)
+            put("hashAlgorithm", c.audit.hashAlgorithm?.raw)
         })
         put("privacyZoneEnabled", c.privacyZone.enabled)
         put("privacyZone", buildMap {

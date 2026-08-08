@@ -310,24 +310,24 @@ enum TlSpeedMotionState: Int {
 
 /// Generated class from Pigeon that represents data sent in messages.
 struct TlLocationFilter: Hashable {
-  var trackingAccuracyThreshold: Int64
-  var maxImpliedSpeed: Int64
-  var odometerAccuracyThreshold: Int64
-  var policy: TlLocationFilterPolicy
-  var rejectMockLocations: Bool
-  var mockDetectionLevel: Int64
-  var useKalmanFilter: Bool
+  var trackingAccuracyThreshold: Int64? = nil
+  var maxImpliedSpeed: Int64? = nil
+  var odometerAccuracyThreshold: Int64? = nil
+  var policy: TlLocationFilterPolicy? = nil
+  var rejectMockLocations: Bool? = nil
+  var mockDetectionLevel: Int64? = nil
+  var useKalmanFilter: Bool? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> TlLocationFilter? {
-    let trackingAccuracyThreshold = pigeonVar_list[0] as! Int64
-    let maxImpliedSpeed = pigeonVar_list[1] as! Int64
-    let odometerAccuracyThreshold = pigeonVar_list[2] as! Int64
-    let policy = pigeonVar_list[3] as! TlLocationFilterPolicy
-    let rejectMockLocations = pigeonVar_list[4] as! Bool
-    let mockDetectionLevel = pigeonVar_list[5] as! Int64
-    let useKalmanFilter = pigeonVar_list[6] as! Bool
+    let trackingAccuracyThreshold: Int64? = nilOrValue(pigeonVar_list[0])
+    let maxImpliedSpeed: Int64? = nilOrValue(pigeonVar_list[1])
+    let odometerAccuracyThreshold: Int64? = nilOrValue(pigeonVar_list[2])
+    let policy: TlLocationFilterPolicy? = nilOrValue(pigeonVar_list[3])
+    let rejectMockLocations: Bool? = nilOrValue(pigeonVar_list[4])
+    let mockDetectionLevel: Int64? = nilOrValue(pigeonVar_list[5])
+    let useKalmanFilter: Bool? = nilOrValue(pigeonVar_list[6])
 
     return TlLocationFilter(
       trackingAccuracyThreshold: trackingAccuracyThreshold,
@@ -371,52 +371,52 @@ struct TlLocationFilter: Hashable {
 
 /// Generated class from Pigeon that represents data sent in messages.
 struct TlGeoConfig: Hashable {
-  var desiredAccuracy: TlDesiredAccuracy
-  var distanceFilter: Double
-  var stationaryRadius: Double
-  var locationTimeout: Int64
-  var disableElasticity: Bool
-  var elasticityMultiplier: Double
-  var stopAfterElapsedMinutes: Int64
-  var maxMonitoredGeofences: Int64
-  var enableTimestampMeta: Bool
-  var enableAdaptiveMode: Bool
-  var periodicLocationInterval: Int64
-  var periodicDesiredAccuracy: TlDesiredAccuracy
-  var enableSparseUpdates: Bool
-  var sparseDistanceThreshold: Double
-  var sparseMaxIdleSeconds: Int64
-  var enableDeadReckoning: Bool
-  var deadReckoningActivationDelay: Int64
-  var deadReckoningMaxDuration: Int64
-  var batteryBudgetPerHour: Double
-  var filter: TlLocationFilter
-  var resolveAddress: Bool
+  var desiredAccuracy: TlDesiredAccuracy? = nil
+  var distanceFilter: Double? = nil
+  var stationaryRadius: Double? = nil
+  var locationTimeout: Int64? = nil
+  var disableElasticity: Bool? = nil
+  var elasticityMultiplier: Double? = nil
+  var stopAfterElapsedMinutes: Int64? = nil
+  var maxMonitoredGeofences: Int64? = nil
+  var enableTimestampMeta: Bool? = nil
+  var enableAdaptiveMode: Bool? = nil
+  var periodicLocationInterval: Int64? = nil
+  var periodicDesiredAccuracy: TlDesiredAccuracy? = nil
+  var enableSparseUpdates: Bool? = nil
+  var sparseDistanceThreshold: Double? = nil
+  var sparseMaxIdleSeconds: Int64? = nil
+  var enableDeadReckoning: Bool? = nil
+  var deadReckoningActivationDelay: Int64? = nil
+  var deadReckoningMaxDuration: Int64? = nil
+  var batteryBudgetPerHour: Double? = nil
+  var filter: TlLocationFilter? = nil
+  var resolveAddress: Bool? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> TlGeoConfig? {
-    let desiredAccuracy = pigeonVar_list[0] as! TlDesiredAccuracy
-    let distanceFilter = pigeonVar_list[1] as! Double
-    let stationaryRadius = pigeonVar_list[2] as! Double
-    let locationTimeout = pigeonVar_list[3] as! Int64
-    let disableElasticity = pigeonVar_list[4] as! Bool
-    let elasticityMultiplier = pigeonVar_list[5] as! Double
-    let stopAfterElapsedMinutes = pigeonVar_list[6] as! Int64
-    let maxMonitoredGeofences = pigeonVar_list[7] as! Int64
-    let enableTimestampMeta = pigeonVar_list[8] as! Bool
-    let enableAdaptiveMode = pigeonVar_list[9] as! Bool
-    let periodicLocationInterval = pigeonVar_list[10] as! Int64
-    let periodicDesiredAccuracy = pigeonVar_list[11] as! TlDesiredAccuracy
-    let enableSparseUpdates = pigeonVar_list[12] as! Bool
-    let sparseDistanceThreshold = pigeonVar_list[13] as! Double
-    let sparseMaxIdleSeconds = pigeonVar_list[14] as! Int64
-    let enableDeadReckoning = pigeonVar_list[15] as! Bool
-    let deadReckoningActivationDelay = pigeonVar_list[16] as! Int64
-    let deadReckoningMaxDuration = pigeonVar_list[17] as! Int64
-    let batteryBudgetPerHour = pigeonVar_list[18] as! Double
-    let filter = pigeonVar_list[19] as! TlLocationFilter
-    let resolveAddress = pigeonVar_list[20] as! Bool
+    let desiredAccuracy: TlDesiredAccuracy? = nilOrValue(pigeonVar_list[0])
+    let distanceFilter: Double? = nilOrValue(pigeonVar_list[1])
+    let stationaryRadius: Double? = nilOrValue(pigeonVar_list[2])
+    let locationTimeout: Int64? = nilOrValue(pigeonVar_list[3])
+    let disableElasticity: Bool? = nilOrValue(pigeonVar_list[4])
+    let elasticityMultiplier: Double? = nilOrValue(pigeonVar_list[5])
+    let stopAfterElapsedMinutes: Int64? = nilOrValue(pigeonVar_list[6])
+    let maxMonitoredGeofences: Int64? = nilOrValue(pigeonVar_list[7])
+    let enableTimestampMeta: Bool? = nilOrValue(pigeonVar_list[8])
+    let enableAdaptiveMode: Bool? = nilOrValue(pigeonVar_list[9])
+    let periodicLocationInterval: Int64? = nilOrValue(pigeonVar_list[10])
+    let periodicDesiredAccuracy: TlDesiredAccuracy? = nilOrValue(pigeonVar_list[11])
+    let enableSparseUpdates: Bool? = nilOrValue(pigeonVar_list[12])
+    let sparseDistanceThreshold: Double? = nilOrValue(pigeonVar_list[13])
+    let sparseMaxIdleSeconds: Int64? = nilOrValue(pigeonVar_list[14])
+    let enableDeadReckoning: Bool? = nilOrValue(pigeonVar_list[15])
+    let deadReckoningActivationDelay: Int64? = nilOrValue(pigeonVar_list[16])
+    let deadReckoningMaxDuration: Int64? = nilOrValue(pigeonVar_list[17])
+    let batteryBudgetPerHour: Double? = nilOrValue(pigeonVar_list[18])
+    let filter: TlLocationFilter? = nilOrValue(pigeonVar_list[19])
+    let resolveAddress: Bool? = nilOrValue(pigeonVar_list[20])
 
     return TlGeoConfig(
       desiredAccuracy: desiredAccuracy,
@@ -502,26 +502,26 @@ struct TlGeoConfig: Hashable {
 
 /// Generated class from Pigeon that represents data sent in messages.
 struct TlAppConfig: Hashable {
-  var stopOnTerminate: Bool
-  var startOnBoot: Bool
-  var heartbeatInterval: Int64
-  var schedule: [String?]
+  var stopOnTerminate: Bool? = nil
+  var startOnBoot: Bool? = nil
+  var heartbeatInterval: Int64? = nil
+  var schedule: [String?]? = nil
   var remoteConfigUrl: String? = nil
   var remoteConfigHeaders: [String?: String?]? = nil
-  var remoteConfigTimeout: Int64
-  var remoteConfigRefreshInterval: Int64
+  var remoteConfigTimeout: Int64? = nil
+  var remoteConfigRefreshInterval: Int64? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> TlAppConfig? {
-    let stopOnTerminate = pigeonVar_list[0] as! Bool
-    let startOnBoot = pigeonVar_list[1] as! Bool
-    let heartbeatInterval = pigeonVar_list[2] as! Int64
-    let schedule = pigeonVar_list[3] as! [String?]
+    let stopOnTerminate: Bool? = nilOrValue(pigeonVar_list[0])
+    let startOnBoot: Bool? = nilOrValue(pigeonVar_list[1])
+    let heartbeatInterval: Int64? = nilOrValue(pigeonVar_list[2])
+    let schedule: [String?]? = nilOrValue(pigeonVar_list[3])
     let remoteConfigUrl: String? = nilOrValue(pigeonVar_list[4])
     let remoteConfigHeaders: [String?: String?]? = nilOrValue(pigeonVar_list[5])
-    let remoteConfigTimeout = pigeonVar_list[6] as! Int64
-    let remoteConfigRefreshInterval = pigeonVar_list[7] as! Int64
+    let remoteConfigTimeout: Int64? = nilOrValue(pigeonVar_list[6])
+    let remoteConfigRefreshInterval: Int64? = nilOrValue(pigeonVar_list[7])
 
     return TlAppConfig(
       stopOnTerminate: stopOnTerminate,
@@ -663,32 +663,32 @@ struct TlForegroundServiceConfig: Hashable {
 
 /// Generated class from Pigeon that represents data sent in messages.
 struct TlAndroidConfig: Hashable {
-  var locationUpdateInterval: Int64
-  var fastestLocationUpdateInterval: Int64
-  var deferTime: Int64
-  var allowIdenticalLocations: Bool
-  var geofenceModeHighAccuracy: Bool
-  var periodicUseForegroundService: Bool
-  var periodicUseExactAlarms: Bool
-  var scheduleUseAlarmManager: Bool
-  var foregroundService: TlForegroundServiceConfig
+  var locationUpdateInterval: Int64? = nil
+  var fastestLocationUpdateInterval: Int64? = nil
+  var deferTime: Int64? = nil
+  var allowIdenticalLocations: Bool? = nil
+  var geofenceModeHighAccuracy: Bool? = nil
+  var periodicUseForegroundService: Bool? = nil
+  var periodicUseExactAlarms: Bool? = nil
+  var scheduleUseAlarmManager: Bool? = nil
+  var foregroundService: TlForegroundServiceConfig? = nil
   /// Drops the OEM Wakelock when the device enters a fully stationary state.
   /// Resolves Issue #162.
-  var releaseWakelockWhenStationary: Bool
+  var releaseWakelockWhenStationary: Bool? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> TlAndroidConfig? {
-    let locationUpdateInterval = pigeonVar_list[0] as! Int64
-    let fastestLocationUpdateInterval = pigeonVar_list[1] as! Int64
-    let deferTime = pigeonVar_list[2] as! Int64
-    let allowIdenticalLocations = pigeonVar_list[3] as! Bool
-    let geofenceModeHighAccuracy = pigeonVar_list[4] as! Bool
-    let periodicUseForegroundService = pigeonVar_list[5] as! Bool
-    let periodicUseExactAlarms = pigeonVar_list[6] as! Bool
-    let scheduleUseAlarmManager = pigeonVar_list[7] as! Bool
-    let foregroundService = pigeonVar_list[8] as! TlForegroundServiceConfig
-    let releaseWakelockWhenStationary = pigeonVar_list[9] as! Bool
+    let locationUpdateInterval: Int64? = nilOrValue(pigeonVar_list[0])
+    let fastestLocationUpdateInterval: Int64? = nilOrValue(pigeonVar_list[1])
+    let deferTime: Int64? = nilOrValue(pigeonVar_list[2])
+    let allowIdenticalLocations: Bool? = nilOrValue(pigeonVar_list[3])
+    let geofenceModeHighAccuracy: Bool? = nilOrValue(pigeonVar_list[4])
+    let periodicUseForegroundService: Bool? = nilOrValue(pigeonVar_list[5])
+    let periodicUseExactAlarms: Bool? = nilOrValue(pigeonVar_list[6])
+    let scheduleUseAlarmManager: Bool? = nilOrValue(pigeonVar_list[7])
+    let foregroundService: TlForegroundServiceConfig? = nilOrValue(pigeonVar_list[8])
+    let releaseWakelockWhenStationary: Bool? = nilOrValue(pigeonVar_list[9])
 
     return TlAndroidConfig(
       locationUpdateInterval: locationUpdateInterval,
@@ -741,14 +741,14 @@ struct TlAndroidConfig: Hashable {
 
 /// Generated class from Pigeon that represents data sent in messages.
 struct TlLiveActivityConfig: Hashable {
-  var title: String
-  var body: String
+  var title: String? = nil
+  var body: String? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> TlLiveActivityConfig? {
-    let title = pigeonVar_list[0] as! String
-    let body = pigeonVar_list[1] as! String
+    let title: String? = nilOrValue(pigeonVar_list[0])
+    let body: String? = nilOrValue(pigeonVar_list[1])
 
     return TlLiveActivityConfig(
       title: title,
@@ -777,27 +777,27 @@ struct TlLiveActivityConfig: Hashable {
 
 /// Generated class from Pigeon that represents data sent in messages.
 struct TlIosConfig: Hashable {
-  var activityType: TlIosActivityType
-  var useSignificantChangesOnly: Bool
-  var showsBackgroundLocationIndicator: Bool
-  var pausesLocationUpdatesAutomatically: Bool
-  var locationAuthorizationRequest: TlAuthorizationRequest
-  var disableLocationAuthorizationAlert: Bool
-  var preventSuspend: Bool
-  var useBackgroundActivitySession: Bool
+  var activityType: TlIosActivityType? = nil
+  var useSignificantChangesOnly: Bool? = nil
+  var showsBackgroundLocationIndicator: Bool? = nil
+  var pausesLocationUpdatesAutomatically: Bool? = nil
+  var locationAuthorizationRequest: TlAuthorizationRequest? = nil
+  var disableLocationAuthorizationAlert: Bool? = nil
+  var preventSuspend: Bool? = nil
+  var useBackgroundActivitySession: Bool? = nil
   var liveActivityConfig: TlLiveActivityConfig? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> TlIosConfig? {
-    let activityType = pigeonVar_list[0] as! TlIosActivityType
-    let useSignificantChangesOnly = pigeonVar_list[1] as! Bool
-    let showsBackgroundLocationIndicator = pigeonVar_list[2] as! Bool
-    let pausesLocationUpdatesAutomatically = pigeonVar_list[3] as! Bool
-    let locationAuthorizationRequest = pigeonVar_list[4] as! TlAuthorizationRequest
-    let disableLocationAuthorizationAlert = pigeonVar_list[5] as! Bool
-    let preventSuspend = pigeonVar_list[6] as! Bool
-    let useBackgroundActivitySession = pigeonVar_list[7] as! Bool
+    let activityType: TlIosActivityType? = nilOrValue(pigeonVar_list[0])
+    let useSignificantChangesOnly: Bool? = nilOrValue(pigeonVar_list[1])
+    let showsBackgroundLocationIndicator: Bool? = nilOrValue(pigeonVar_list[2])
+    let pausesLocationUpdatesAutomatically: Bool? = nilOrValue(pigeonVar_list[3])
+    let locationAuthorizationRequest: TlAuthorizationRequest? = nilOrValue(pigeonVar_list[4])
+    let disableLocationAuthorizationAlert: Bool? = nilOrValue(pigeonVar_list[5])
+    let preventSuspend: Bool? = nilOrValue(pigeonVar_list[6])
+    let useBackgroundActivitySession: Bool? = nilOrValue(pigeonVar_list[7])
     let liveActivityConfig: TlLiveActivityConfig? = nilOrValue(pigeonVar_list[8])
 
     return TlIosConfig(
@@ -849,56 +849,56 @@ struct TlIosConfig: Hashable {
 /// Generated class from Pigeon that represents data sent in messages.
 struct TlHttpConfig: Hashable {
   var url: String? = nil
-  var method: TlHttpMethod
+  var method: TlHttpMethod? = nil
   var headers: [String?: String?]? = nil
   var params: [String?: Any?]? = nil
-  var autoSync: Bool
-  var batchSync: Bool
-  var maxBatchSize: Int64
+  var autoSync: Bool? = nil
+  var batchSync: Bool? = nil
+  var maxBatchSize: Int64? = nil
   var sslPinningFingerprints: [String?]? = nil
   var sslPinningCertificates: [String?]? = nil
   var httpRootProperty: String? = nil
-  var autoSyncThreshold: Int64
+  var autoSyncThreshold: Int64? = nil
   var autoSyncDelay: Int64? = nil
-  var syncInterval: Int64
-  var httpTimeout: Int64
-  var locationsOrderDirection: TlLocationOrderDirection
+  var syncInterval: Int64? = nil
+  var httpTimeout: Int64? = nil
+  var locationsOrderDirection: TlLocationOrderDirection? = nil
   var extras: [String?: Any?]? = nil
-  var disableAutoSyncOnCellular: Bool
-  var maxRetries: Int64
-  var retryBackoffBase: Int64
-  var retryBackoffCap: Int64
-  var enableDeltaCompression: Bool
-  var deltaCoordinatePrecision: Int64
-  var syncTelematics: Bool
+  var disableAutoSyncOnCellular: Bool? = nil
+  var maxRetries: Int64? = nil
+  var retryBackoffBase: Int64? = nil
+  var retryBackoffCap: Int64? = nil
+  var enableDeltaCompression: Bool? = nil
+  var deltaCoordinatePrecision: Int64? = nil
+  var syncTelematics: Bool? = nil
   var telematicsUrl: String? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> TlHttpConfig? {
     let url: String? = nilOrValue(pigeonVar_list[0])
-    let method = pigeonVar_list[1] as! TlHttpMethod
+    let method: TlHttpMethod? = nilOrValue(pigeonVar_list[1])
     let headers: [String?: String?]? = nilOrValue(pigeonVar_list[2])
     let params: [String?: Any?]? = nilOrValue(pigeonVar_list[3])
-    let autoSync = pigeonVar_list[4] as! Bool
-    let batchSync = pigeonVar_list[5] as! Bool
-    let maxBatchSize = pigeonVar_list[6] as! Int64
+    let autoSync: Bool? = nilOrValue(pigeonVar_list[4])
+    let batchSync: Bool? = nilOrValue(pigeonVar_list[5])
+    let maxBatchSize: Int64? = nilOrValue(pigeonVar_list[6])
     let sslPinningFingerprints: [String?]? = nilOrValue(pigeonVar_list[7])
     let sslPinningCertificates: [String?]? = nilOrValue(pigeonVar_list[8])
     let httpRootProperty: String? = nilOrValue(pigeonVar_list[9])
-    let autoSyncThreshold = pigeonVar_list[10] as! Int64
+    let autoSyncThreshold: Int64? = nilOrValue(pigeonVar_list[10])
     let autoSyncDelay: Int64? = nilOrValue(pigeonVar_list[11])
-    let syncInterval = pigeonVar_list[12] as! Int64
-    let httpTimeout = pigeonVar_list[13] as! Int64
-    let locationsOrderDirection = pigeonVar_list[14] as! TlLocationOrderDirection
+    let syncInterval: Int64? = nilOrValue(pigeonVar_list[12])
+    let httpTimeout: Int64? = nilOrValue(pigeonVar_list[13])
+    let locationsOrderDirection: TlLocationOrderDirection? = nilOrValue(pigeonVar_list[14])
     let extras: [String?: Any?]? = nilOrValue(pigeonVar_list[15])
-    let disableAutoSyncOnCellular = pigeonVar_list[16] as! Bool
-    let maxRetries = pigeonVar_list[17] as! Int64
-    let retryBackoffBase = pigeonVar_list[18] as! Int64
-    let retryBackoffCap = pigeonVar_list[19] as! Int64
-    let enableDeltaCompression = pigeonVar_list[20] as! Bool
-    let deltaCoordinatePrecision = pigeonVar_list[21] as! Int64
-    let syncTelematics = pigeonVar_list[22] as! Bool
+    let disableAutoSyncOnCellular: Bool? = nilOrValue(pigeonVar_list[16])
+    let maxRetries: Int64? = nilOrValue(pigeonVar_list[17])
+    let retryBackoffBase: Int64? = nilOrValue(pigeonVar_list[18])
+    let retryBackoffCap: Int64? = nilOrValue(pigeonVar_list[19])
+    let enableDeltaCompression: Bool? = nilOrValue(pigeonVar_list[20])
+    let deltaCoordinatePrecision: Int64? = nilOrValue(pigeonVar_list[21])
+    let syncTelematics: Bool? = nilOrValue(pigeonVar_list[22])
     let telematicsUrl: String? = nilOrValue(pigeonVar_list[23])
 
     return TlHttpConfig(
@@ -1100,16 +1100,16 @@ struct TlConfig: Hashable {
 
 /// Generated class from Pigeon that represents data sent in messages.
 struct TlLoggerConfig: Hashable {
-  var logLevel: TlLogLevel
-  var logMaxDays: Int64
-  var debug: Bool
+  var logLevel: TlLogLevel? = nil
+  var logMaxDays: Int64? = nil
+  var debug: Bool? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> TlLoggerConfig? {
-    let logLevel = pigeonVar_list[0] as! TlLogLevel
-    let logMaxDays = pigeonVar_list[1] as! Int64
-    let debug = pigeonVar_list[2] as! Bool
+    let logLevel: TlLogLevel? = nilOrValue(pigeonVar_list[0])
+    let logMaxDays: Int64? = nilOrValue(pigeonVar_list[1])
+    let debug: Bool? = nilOrValue(pigeonVar_list[2])
 
     return TlLoggerConfig(
       logLevel: logLevel,
@@ -1141,54 +1141,54 @@ struct TlLoggerConfig: Hashable {
 
 /// Generated class from Pigeon that represents data sent in messages.
 struct TlMotionConfig: Hashable {
-  var stopTimeout: Int64
-  var motionTriggerDelay: Int64
-  var disableMotionActivityUpdates: Bool
-  var isMoving: Bool
-  var activityRecognitionInterval: Int64
-  var minimumActivityRecognitionConfidence: Int64
-  var disableStopDetection: Bool
-  var stopDetectionDelay: Int64
-  var stopOnStationary: Bool
+  var stopTimeout: Int64? = nil
+  var motionTriggerDelay: Int64? = nil
+  var disableMotionActivityUpdates: Bool? = nil
+  var isMoving: Bool? = nil
+  var activityRecognitionInterval: Int64? = nil
+  var minimumActivityRecognitionConfidence: Int64? = nil
+  var disableStopDetection: Bool? = nil
+  var stopDetectionDelay: Int64? = nil
+  var stopOnStationary: Bool? = nil
   var activityTypes: [TlLocationActivityType?]? = nil
-  var stationaryRadius: Double
-  var useSignificantChangesOnly: Bool
+  var stationaryRadius: Double? = nil
+  var useSignificantChangesOnly: Bool? = nil
   var shakeThreshold: Double? = nil
   var stillThreshold: Double? = nil
   var stillSampleCount: Int64? = nil
-  var motionDetectionMode: TlMotionDetectionMode
-  var speedMovingThreshold: Double
-  var speedStationaryDelay: Int64
-  var stationaryTrackingMode: TlStationaryTrackingMode
-  var stationaryPeriodicInterval: Int64
-  var stationaryPeriodicAccuracy: TlDesiredAccuracy
-  var speedWakeConfirmCount: Int64
+  var motionDetectionMode: TlMotionDetectionMode? = nil
+  var speedMovingThreshold: Double? = nil
+  var speedStationaryDelay: Int64? = nil
+  var stationaryTrackingMode: TlStationaryTrackingMode? = nil
+  var stationaryPeriodicInterval: Int64? = nil
+  var stationaryPeriodicAccuracy: TlDesiredAccuracy? = nil
+  var speedWakeConfirmCount: Int64? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> TlMotionConfig? {
-    let stopTimeout = pigeonVar_list[0] as! Int64
-    let motionTriggerDelay = pigeonVar_list[1] as! Int64
-    let disableMotionActivityUpdates = pigeonVar_list[2] as! Bool
-    let isMoving = pigeonVar_list[3] as! Bool
-    let activityRecognitionInterval = pigeonVar_list[4] as! Int64
-    let minimumActivityRecognitionConfidence = pigeonVar_list[5] as! Int64
-    let disableStopDetection = pigeonVar_list[6] as! Bool
-    let stopDetectionDelay = pigeonVar_list[7] as! Int64
-    let stopOnStationary = pigeonVar_list[8] as! Bool
+    let stopTimeout: Int64? = nilOrValue(pigeonVar_list[0])
+    let motionTriggerDelay: Int64? = nilOrValue(pigeonVar_list[1])
+    let disableMotionActivityUpdates: Bool? = nilOrValue(pigeonVar_list[2])
+    let isMoving: Bool? = nilOrValue(pigeonVar_list[3])
+    let activityRecognitionInterval: Int64? = nilOrValue(pigeonVar_list[4])
+    let minimumActivityRecognitionConfidence: Int64? = nilOrValue(pigeonVar_list[5])
+    let disableStopDetection: Bool? = nilOrValue(pigeonVar_list[6])
+    let stopDetectionDelay: Int64? = nilOrValue(pigeonVar_list[7])
+    let stopOnStationary: Bool? = nilOrValue(pigeonVar_list[8])
     let activityTypes: [TlLocationActivityType?]? = nilOrValue(pigeonVar_list[9])
-    let stationaryRadius = pigeonVar_list[10] as! Double
-    let useSignificantChangesOnly = pigeonVar_list[11] as! Bool
+    let stationaryRadius: Double? = nilOrValue(pigeonVar_list[10])
+    let useSignificantChangesOnly: Bool? = nilOrValue(pigeonVar_list[11])
     let shakeThreshold: Double? = nilOrValue(pigeonVar_list[12])
     let stillThreshold: Double? = nilOrValue(pigeonVar_list[13])
     let stillSampleCount: Int64? = nilOrValue(pigeonVar_list[14])
-    let motionDetectionMode = pigeonVar_list[15] as! TlMotionDetectionMode
-    let speedMovingThreshold = pigeonVar_list[16] as! Double
-    let speedStationaryDelay = pigeonVar_list[17] as! Int64
-    let stationaryTrackingMode = pigeonVar_list[18] as! TlStationaryTrackingMode
-    let stationaryPeriodicInterval = pigeonVar_list[19] as! Int64
-    let stationaryPeriodicAccuracy = pigeonVar_list[20] as! TlDesiredAccuracy
-    let speedWakeConfirmCount = pigeonVar_list[21] as! Int64
+    let motionDetectionMode: TlMotionDetectionMode? = nilOrValue(pigeonVar_list[15])
+    let speedMovingThreshold: Double? = nilOrValue(pigeonVar_list[16])
+    let speedStationaryDelay: Int64? = nilOrValue(pigeonVar_list[17])
+    let stationaryTrackingMode: TlStationaryTrackingMode? = nilOrValue(pigeonVar_list[18])
+    let stationaryPeriodicInterval: Int64? = nilOrValue(pigeonVar_list[19])
+    let stationaryPeriodicAccuracy: TlDesiredAccuracy? = nilOrValue(pigeonVar_list[20])
+    let speedWakeConfirmCount: Int64? = nilOrValue(pigeonVar_list[21])
 
     return TlMotionConfig(
       stopTimeout: stopTimeout,
@@ -1277,20 +1277,20 @@ struct TlMotionConfig: Hashable {
 
 /// Generated class from Pigeon that represents data sent in messages.
 struct TlGeofenceConfig: Hashable {
-  var geofenceInitialTriggerEntry: Bool
-  var geofenceProximityRadius: Int64
-  var geofenceInitialTrigger: Bool
-  var geofenceModeHighAccuracy: Bool
-  var geofenceExitAccuracyMax: Int64
+  var geofenceInitialTriggerEntry: Bool? = nil
+  var geofenceProximityRadius: Int64? = nil
+  var geofenceInitialTrigger: Bool? = nil
+  var geofenceModeHighAccuracy: Bool? = nil
+  var geofenceExitAccuracyMax: Int64? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> TlGeofenceConfig? {
-    let geofenceInitialTriggerEntry = pigeonVar_list[0] as! Bool
-    let geofenceProximityRadius = pigeonVar_list[1] as! Int64
-    let geofenceInitialTrigger = pigeonVar_list[2] as! Bool
-    let geofenceModeHighAccuracy = pigeonVar_list[3] as! Bool
-    let geofenceExitAccuracyMax = pigeonVar_list[4] as! Int64
+    let geofenceInitialTriggerEntry: Bool? = nilOrValue(pigeonVar_list[0])
+    let geofenceProximityRadius: Int64? = nilOrValue(pigeonVar_list[1])
+    let geofenceInitialTrigger: Bool? = nilOrValue(pigeonVar_list[2])
+    let geofenceModeHighAccuracy: Bool? = nilOrValue(pigeonVar_list[3])
+    let geofenceExitAccuracyMax: Int64? = nilOrValue(pigeonVar_list[4])
 
     return TlGeofenceConfig(
       geofenceInitialTriggerEntry: geofenceInitialTriggerEntry,
@@ -1328,18 +1328,18 @@ struct TlGeofenceConfig: Hashable {
 
 /// Generated class from Pigeon that represents data sent in messages.
 struct TlPersistenceConfig: Hashable {
-  var persistMode: TlPersistMode
-  var maxDaysToPersist: Int64
-  var maxRecordsToPersist: Int64
-  var disableProviderChangeRecord: Bool
+  var persistMode: TlPersistMode? = nil
+  var maxDaysToPersist: Int64? = nil
+  var maxRecordsToPersist: Int64? = nil
+  var disableProviderChangeRecord: Bool? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> TlPersistenceConfig? {
-    let persistMode = pigeonVar_list[0] as! TlPersistMode
-    let maxDaysToPersist = pigeonVar_list[1] as! Int64
-    let maxRecordsToPersist = pigeonVar_list[2] as! Int64
-    let disableProviderChangeRecord = pigeonVar_list[3] as! Bool
+    let persistMode: TlPersistMode? = nilOrValue(pigeonVar_list[0])
+    let maxDaysToPersist: Int64? = nilOrValue(pigeonVar_list[1])
+    let maxRecordsToPersist: Int64? = nilOrValue(pigeonVar_list[2])
+    let disableProviderChangeRecord: Bool? = nilOrValue(pigeonVar_list[3])
 
     return TlPersistenceConfig(
       persistMode: persistMode,
@@ -1374,14 +1374,14 @@ struct TlPersistenceConfig: Hashable {
 
 /// Generated class from Pigeon that represents data sent in messages.
 struct TlAuditConfig: Hashable {
-  var enabled: Bool
-  var hashAlgorithm: TlHashAlgorithm
+  var enabled: Bool? = nil
+  var hashAlgorithm: TlHashAlgorithm? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> TlAuditConfig? {
-    let enabled = pigeonVar_list[0] as! Bool
-    let hashAlgorithm = pigeonVar_list[1] as! TlHashAlgorithm
+    let enabled: Bool? = nilOrValue(pigeonVar_list[0])
+    let hashAlgorithm: TlHashAlgorithm? = nilOrValue(pigeonVar_list[1])
 
     return TlAuditConfig(
       enabled: enabled,
@@ -1410,12 +1410,12 @@ struct TlAuditConfig: Hashable {
 
 /// Generated class from Pigeon that represents data sent in messages.
 struct TlPrivacyZoneConfig: Hashable {
-  var enabled: Bool
+  var enabled: Bool? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> TlPrivacyZoneConfig? {
-    let enabled = pigeonVar_list[0] as! Bool
+    let enabled: Bool? = nilOrValue(pigeonVar_list[0])
 
     return TlPrivacyZoneConfig(
       enabled: enabled
@@ -1441,12 +1441,12 @@ struct TlPrivacyZoneConfig: Hashable {
 
 /// Generated class from Pigeon that represents data sent in messages.
 struct TlSecurityConfig: Hashable {
-  var encryptDatabase: Bool
+  var encryptDatabase: Bool? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> TlSecurityConfig? {
-    let encryptDatabase = pigeonVar_list[0] as! Bool
+    let encryptDatabase: Bool? = nilOrValue(pigeonVar_list[0])
 
     return TlSecurityConfig(
       encryptDatabase: encryptDatabase
@@ -1472,14 +1472,14 @@ struct TlSecurityConfig: Hashable {
 
 /// Generated class from Pigeon that represents data sent in messages.
 struct TlAttestationConfig: Hashable {
-  var enabled: Bool
-  var refreshInterval: Int64
+  var enabled: Bool? = nil
+  var refreshInterval: Int64? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> TlAttestationConfig? {
-    let enabled = pigeonVar_list[0] as! Bool
-    let refreshInterval = pigeonVar_list[1] as! Int64
+    let enabled: Bool? = nilOrValue(pigeonVar_list[0])
+    let refreshInterval: Int64? = nilOrValue(pigeonVar_list[1])
 
     return TlAttestationConfig(
       enabled: enabled,
@@ -1510,28 +1510,28 @@ struct TlAttestationConfig: Hashable {
 ///
 /// Generated class from Pigeon that represents data sent in messages.
 struct TlTelematicsConfig: Hashable {
-  var enableDrivingEvents: Bool
-  var harshBrakingG: Double
-  var harshAccelerationG: Double
-  var harshCorneringG: Double
-  var speedLimitKmh: Double
-  var speedingToleranceKmh: Double
-  var speedingMinDurationMs: Int64
-  var minSpeedForEventsKmh: Double
-  var eventDebounceMs: Int64
+  var enableDrivingEvents: Bool? = nil
+  var harshBrakingG: Double? = nil
+  var harshAccelerationG: Double? = nil
+  var harshCorneringG: Double? = nil
+  var speedLimitKmh: Double? = nil
+  var speedingToleranceKmh: Double? = nil
+  var speedingMinDurationMs: Int64? = nil
+  var minSpeedForEventsKmh: Double? = nil
+  var eventDebounceMs: Int64? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> TlTelematicsConfig? {
-    let enableDrivingEvents = pigeonVar_list[0] as! Bool
-    let harshBrakingG = pigeonVar_list[1] as! Double
-    let harshAccelerationG = pigeonVar_list[2] as! Double
-    let harshCorneringG = pigeonVar_list[3] as! Double
-    let speedLimitKmh = pigeonVar_list[4] as! Double
-    let speedingToleranceKmh = pigeonVar_list[5] as! Double
-    let speedingMinDurationMs = pigeonVar_list[6] as! Int64
-    let minSpeedForEventsKmh = pigeonVar_list[7] as! Double
-    let eventDebounceMs = pigeonVar_list[8] as! Int64
+    let enableDrivingEvents: Bool? = nilOrValue(pigeonVar_list[0])
+    let harshBrakingG: Double? = nilOrValue(pigeonVar_list[1])
+    let harshAccelerationG: Double? = nilOrValue(pigeonVar_list[2])
+    let harshCorneringG: Double? = nilOrValue(pigeonVar_list[3])
+    let speedLimitKmh: Double? = nilOrValue(pigeonVar_list[4])
+    let speedingToleranceKmh: Double? = nilOrValue(pigeonVar_list[5])
+    let speedingMinDurationMs: Int64? = nilOrValue(pigeonVar_list[6])
+    let minSpeedForEventsKmh: Double? = nilOrValue(pigeonVar_list[7])
+    let eventDebounceMs: Int64? = nilOrValue(pigeonVar_list[8])
 
     return TlTelematicsConfig(
       enableDrivingEvents: enableDrivingEvents,
@@ -1583,20 +1583,20 @@ struct TlTelematicsConfig: Hashable {
 ///
 /// Generated class from Pigeon that represents data sent in messages.
 struct TlClassifierConfig: Hashable {
-  var enableFusedClassifier: Bool
-  var fusedClassifierAuthoritative: Bool
-  var modeSwitchDwellMs: Int64
-  var minModeConfidence: Double
-  var autoTuneFromTransportMode: Bool
+  var enableFusedClassifier: Bool? = nil
+  var fusedClassifierAuthoritative: Bool? = nil
+  var modeSwitchDwellMs: Int64? = nil
+  var minModeConfidence: Double? = nil
+  var autoTuneFromTransportMode: Bool? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> TlClassifierConfig? {
-    let enableFusedClassifier = pigeonVar_list[0] as! Bool
-    let fusedClassifierAuthoritative = pigeonVar_list[1] as! Bool
-    let modeSwitchDwellMs = pigeonVar_list[2] as! Int64
-    let minModeConfidence = pigeonVar_list[3] as! Double
-    let autoTuneFromTransportMode = pigeonVar_list[4] as! Bool
+    let enableFusedClassifier: Bool? = nilOrValue(pigeonVar_list[0])
+    let fusedClassifierAuthoritative: Bool? = nilOrValue(pigeonVar_list[1])
+    let modeSwitchDwellMs: Int64? = nilOrValue(pigeonVar_list[2])
+    let minModeConfidence: Double? = nilOrValue(pigeonVar_list[3])
+    let autoTuneFromTransportMode: Bool? = nilOrValue(pigeonVar_list[4])
 
     return TlClassifierConfig(
       enableFusedClassifier: enableFusedClassifier,
@@ -1636,32 +1636,32 @@ struct TlClassifierConfig: Hashable {
 ///
 /// Generated class from Pigeon that represents data sent in messages.
 struct TlImpactConfig: Hashable {
-  var enableCrashDetection: Bool
-  var enableFallDetection: Bool
-  var crashGThreshold: Double
-  var crashMinSpeedKmh: Double
-  var fallGThreshold: Double
-  var confirmWindowMs: Int64
-  var minImpactConfidence: Double
+  var enableCrashDetection: Bool? = nil
+  var enableFallDetection: Bool? = nil
+  var crashGThreshold: Double? = nil
+  var crashMinSpeedKmh: Double? = nil
+  var fallGThreshold: Double? = nil
+  var confirmWindowMs: Int64? = nil
+  var minImpactConfidence: Double? = nil
   var crashModelUrl: String? = nil
   var crashModelSha256: String? = nil
-  var crashModelThreshold: Double
+  var crashModelThreshold: Double? = nil
   var crashModelUnlockUrl: String? = nil
   var crashModelLicenseKey: String? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> TlImpactConfig? {
-    let enableCrashDetection = pigeonVar_list[0] as! Bool
-    let enableFallDetection = pigeonVar_list[1] as! Bool
-    let crashGThreshold = pigeonVar_list[2] as! Double
-    let crashMinSpeedKmh = pigeonVar_list[3] as! Double
-    let fallGThreshold = pigeonVar_list[4] as! Double
-    let confirmWindowMs = pigeonVar_list[5] as! Int64
-    let minImpactConfidence = pigeonVar_list[6] as! Double
+    let enableCrashDetection: Bool? = nilOrValue(pigeonVar_list[0])
+    let enableFallDetection: Bool? = nilOrValue(pigeonVar_list[1])
+    let crashGThreshold: Double? = nilOrValue(pigeonVar_list[2])
+    let crashMinSpeedKmh: Double? = nilOrValue(pigeonVar_list[3])
+    let fallGThreshold: Double? = nilOrValue(pigeonVar_list[4])
+    let confirmWindowMs: Int64? = nilOrValue(pigeonVar_list[5])
+    let minImpactConfidence: Double? = nilOrValue(pigeonVar_list[6])
     let crashModelUrl: String? = nilOrValue(pigeonVar_list[7])
     let crashModelSha256: String? = nilOrValue(pigeonVar_list[8])
-    let crashModelThreshold = pigeonVar_list[9] as! Double
+    let crashModelThreshold: Double? = nilOrValue(pigeonVar_list[9])
     let crashModelUnlockUrl: String? = nilOrValue(pigeonVar_list[10])
     let crashModelLicenseKey: String? = nilOrValue(pigeonVar_list[11])
 

@@ -890,7 +890,7 @@ class TraceletWebPlugin extends TraceletPlatform {
   Map<String, Object?> _tlConfigToMap(TlConfig c) {
     return {
       'geo': {
-        'desiredAccuracy': c.geo.desiredAccuracy.index,
+        'desiredAccuracy': c.geo.desiredAccuracy?.index,
         'distanceFilter': c.geo.distanceFilter,
         'stationaryRadius': c.geo.stationaryRadius,
         'locationTimeout': c.geo.locationTimeout,
@@ -901,7 +901,7 @@ class TraceletWebPlugin extends TraceletPlatform {
         'enableTimestampMeta': c.geo.enableTimestampMeta,
         'enableAdaptiveMode': c.geo.enableAdaptiveMode,
         'periodicLocationInterval': c.geo.periodicLocationInterval,
-        'periodicDesiredAccuracy': c.geo.periodicDesiredAccuracy.index,
+        'periodicDesiredAccuracy': c.geo.periodicDesiredAccuracy?.index,
         'enableSparseUpdates': c.geo.enableSparseUpdates,
         'sparseDistanceThreshold': c.geo.sparseDistanceThreshold,
         'sparseMaxIdleSeconds': c.geo.sparseMaxIdleSeconds,
@@ -922,7 +922,7 @@ class TraceletWebPlugin extends TraceletPlatform {
       },
       'http': {
         'url': c.http.url,
-        'method': c.http.method.index,
+        'method': c.http.method?.index,
         'headers': c.http.headers,
         'params': c.http.params,
         'autoSync': c.http.autoSync,
@@ -930,7 +930,7 @@ class TraceletWebPlugin extends TraceletPlatform {
         'maxBatchSize': c.http.maxBatchSize,
         'autoSyncThreshold': c.http.autoSyncThreshold,
         'httpTimeout': c.http.httpTimeout,
-        'locationsOrderDirection': c.http.locationsOrderDirection.index,
+        'locationsOrderDirection': c.http.locationsOrderDirection?.index,
         'disableAutoSyncOnCellular': c.http.disableAutoSyncOnCellular,
         'maxRetries': c.http.maxRetries,
         'retryBackoffBase': c.http.retryBackoffBase,
@@ -939,7 +939,7 @@ class TraceletWebPlugin extends TraceletPlatform {
         'deltaCoordinatePrecision': c.http.deltaCoordinatePrecision,
       },
       'logger': {
-        'logLevel': c.logger.logLevel.index,
+        'logLevel': c.logger.logLevel?.index,
         'logMaxDays': c.logger.logMaxDays,
         'debug': c.logger.debug,
       },
@@ -964,15 +964,15 @@ class TraceletWebPlugin extends TraceletPlatform {
         // deprecated flag, so setting the documented cross-platform one had no
         // effect here.
         'geofenceModeHighAccuracy':
-            c.geofence.geofenceModeHighAccuracy ||
-            c.android.geofenceModeHighAccuracy,
+            (c.geofence.geofenceModeHighAccuracy ?? false) ||
+            (c.android.geofenceModeHighAccuracy ?? false),
         'geofenceInitialTriggerEntry': c.geofence.geofenceInitialTriggerEntry,
         'geofenceProximityRadius': c.geofence.geofenceProximityRadius,
         'geofenceInitialTrigger': c.geofence.geofenceInitialTrigger,
         'geofenceExitAccuracyMax': c.geofence.geofenceExitAccuracyMax,
       },
       'persistence': {
-        'persistMode': c.persistence.persistMode.index,
+        'persistMode': c.persistence.persistMode?.index,
         'maxDaysToPersist': c.persistence.maxDaysToPersist,
         'maxRecordsToPersist': c.persistence.maxRecordsToPersist,
         'disableProviderChangeRecord':
@@ -980,7 +980,7 @@ class TraceletWebPlugin extends TraceletPlatform {
       },
       'audit': {
         'enabled': c.audit.enabled,
-        'hashAlgorithm': c.audit.hashAlgorithm.index,
+        'hashAlgorithm': c.audit.hashAlgorithm?.index,
       },
       'privacyZone': {'enabled': c.privacyZone.enabled},
       'security': {'encryptDatabase': c.security.encryptDatabase},

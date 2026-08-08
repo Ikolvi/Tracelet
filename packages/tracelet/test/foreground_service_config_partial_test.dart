@@ -23,12 +23,17 @@ void main() {
     });
 
     test('const Config() emits no foreground-service keys', () {
-      final fg = const Config().toMap()['android'] as Map<String, Object?>?;
-      final fgMap = fg?['foregroundService'] as Map<String, Object?>?;
+      final fg = const Config().toMap()['android']! as Map<String, Object?>;
+      final fgMap = fg['foregroundService'] as Map<String, Object?>?;
 
       // This is the payload that used to overwrite the persisted notification
       // settings on every partial setConfig().
-      expect(fgMap, isEmpty);
+      //
+      // #321 went one step further than #320 and drops the sub-map altogether
+      // rather than sending an empty `{}`, so the key is now absent. Either
+      // shape satisfies what this test is about: nothing concerning the
+      // foreground service is transmitted.
+      expect(fgMap ?? const <String, Object?>{}, isEmpty);
     });
 
     test('only the supplied field is serialized', () {

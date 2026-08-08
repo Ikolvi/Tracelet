@@ -7,61 +7,70 @@ import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 /// These settings are ignored on iOS and Web.
 @immutable
 class AndroidConfig {
-  /// Creates a new [AndroidConfig] with optional overrides.
+  /// Creates a new [AndroidConfig].
+  ///
+  /// Omitting a parameter leaves it *unset*: the getter reports the documented
+  /// default, and [toMap]/[toTlConfig] skip the field so a partial
+  /// `setConfig()` does not overwrite the persisted value (#321).
   const AndroidConfig({
-    this.locationUpdateInterval = 1000,
-    this.fastestLocationUpdateInterval = 500,
-    this.deferTime = 0,
-    this.allowIdenticalLocations = false,
+    int? locationUpdateInterval,
+    int? fastestLocationUpdateInterval,
+    int? deferTime,
+    bool? allowIdenticalLocations,
     @Deprecated(
       'Use GeofenceConfig.geofenceModeHighAccuracy (cross-platform) instead. '
       'Still honored for now; will be removed in a future major version.',
     )
-    this.geofenceModeHighAccuracy = false,
-    this.periodicUseForegroundService = false,
-    this.periodicUseExactAlarms = false,
-    this.scheduleUseAlarmManager = false,
-    this.releaseWakelockWhenStationary = false,
+    bool? geofenceModeHighAccuracy,
+    bool? periodicUseForegroundService,
+    bool? periodicUseExactAlarms,
+    bool? scheduleUseAlarmManager,
+    bool? releaseWakelockWhenStationary,
     this.foregroundService = const ForegroundServiceConfig(),
-  });
+  }) : _locationUpdateInterval = locationUpdateInterval,
+       _fastestLocationUpdateInterval = fastestLocationUpdateInterval,
+       _deferTime = deferTime,
+       _allowIdenticalLocations = allowIdenticalLocations,
+       _geofenceModeHighAccuracy = geofenceModeHighAccuracy,
+       _periodicUseForegroundService = periodicUseForegroundService,
+       _periodicUseExactAlarms = periodicUseExactAlarms,
+       _scheduleUseAlarmManager = scheduleUseAlarmManager,
+       _releaseWakelockWhenStationary = releaseWakelockWhenStationary;
 
   /// Creates an [AndroidConfig] from a map.
   factory AndroidConfig.fromMap(Map<String, Object?> map) {
     final fgMap = safeMap(map['foregroundService']);
     return AndroidConfig(
-      locationUpdateInterval: ensureInt(
-        map['locationUpdateInterval'],
-        fallback: 1000,
-      ),
-      fastestLocationUpdateInterval: ensureInt(
-        map['fastestLocationUpdateInterval'],
-        fallback: 500,
-      ),
-      deferTime: ensureInt(map['deferTime'], fallback: 0),
-      allowIdenticalLocations: ensureBool(
-        map['allowIdenticalLocations'],
-        fallback: false,
-      ),
-      geofenceModeHighAccuracy: ensureBool(
-        map['geofenceModeHighAccuracy'],
-        fallback: false,
-      ),
-      periodicUseForegroundService: ensureBool(
-        map['periodicUseForegroundService'],
-        fallback: false,
-      ),
-      periodicUseExactAlarms: ensureBool(
-        map['periodicUseExactAlarms'],
-        fallback: false,
-      ),
-      scheduleUseAlarmManager: ensureBool(
-        map['scheduleUseAlarmManager'],
-        fallback: false,
-      ),
-      releaseWakelockWhenStationary: ensureBool(
-        map['releaseWakelockWhenStationary'],
-        fallback: false,
-      ),
+      locationUpdateInterval: map.containsKey('locationUpdateInterval')
+          ? ensureInt(map['locationUpdateInterval'], fallback: 1000)
+          : null,
+      fastestLocationUpdateInterval:
+          map.containsKey('fastestLocationUpdateInterval')
+          ? ensureInt(map['fastestLocationUpdateInterval'], fallback: 500)
+          : null,
+      deferTime: map.containsKey('deferTime')
+          ? ensureInt(map['deferTime'], fallback: 0)
+          : null,
+      allowIdenticalLocations: map.containsKey('allowIdenticalLocations')
+          ? ensureBool(map['allowIdenticalLocations'], fallback: false)
+          : null,
+      geofenceModeHighAccuracy: map.containsKey('geofenceModeHighAccuracy')
+          ? ensureBool(map['geofenceModeHighAccuracy'], fallback: false)
+          : null,
+      periodicUseForegroundService:
+          map.containsKey('periodicUseForegroundService')
+          ? ensureBool(map['periodicUseForegroundService'], fallback: false)
+          : null,
+      periodicUseExactAlarms: map.containsKey('periodicUseExactAlarms')
+          ? ensureBool(map['periodicUseExactAlarms'], fallback: false)
+          : null,
+      scheduleUseAlarmManager: map.containsKey('scheduleUseAlarmManager')
+          ? ensureBool(map['scheduleUseAlarmManager'], fallback: false)
+          : null,
+      releaseWakelockWhenStationary:
+          map.containsKey('releaseWakelockWhenStationary')
+          ? ensureBool(map['releaseWakelockWhenStationary'], fallback: false)
+          : null,
       foregroundService: fgMap != null
           ? ForegroundServiceConfig.fromMap(fgMap)
           : const ForegroundServiceConfig(),
@@ -85,41 +94,94 @@ class AndroidConfig {
     bool? releaseWakelockWhenStationary,
     ForegroundServiceConfig? foregroundService,
   }) {
+    // A parameter left null keeps this config's field *as it is* — including
+    // keeping it unset — rather than resolving it to a default (#321).
     return AndroidConfig(
-      locationUpdateInterval:
-          locationUpdateInterval ?? this.locationUpdateInterval,
+      locationUpdateInterval: locationUpdateInterval ?? _locationUpdateInterval,
       fastestLocationUpdateInterval:
-          fastestLocationUpdateInterval ?? this.fastestLocationUpdateInterval,
-      deferTime: deferTime ?? this.deferTime,
+          fastestLocationUpdateInterval ?? _fastestLocationUpdateInterval,
+      deferTime: deferTime ?? _deferTime,
       allowIdenticalLocations:
-          allowIdenticalLocations ?? this.allowIdenticalLocations,
+          allowIdenticalLocations ?? _allowIdenticalLocations,
       geofenceModeHighAccuracy:
-          geofenceModeHighAccuracy ?? this.geofenceModeHighAccuracy,
+          geofenceModeHighAccuracy ?? _geofenceModeHighAccuracy,
       periodicUseForegroundService:
-          periodicUseForegroundService ?? this.periodicUseForegroundService,
-      periodicUseExactAlarms:
-          periodicUseExactAlarms ?? this.periodicUseExactAlarms,
+          periodicUseForegroundService ?? _periodicUseForegroundService,
+      periodicUseExactAlarms: periodicUseExactAlarms ?? _periodicUseExactAlarms,
       scheduleUseAlarmManager:
-          scheduleUseAlarmManager ?? this.scheduleUseAlarmManager,
+          scheduleUseAlarmManager ?? _scheduleUseAlarmManager,
       releaseWakelockWhenStationary:
-          releaseWakelockWhenStationary ?? this.releaseWakelockWhenStationary,
+          releaseWakelockWhenStationary ?? _releaseWakelockWhenStationary,
       foregroundService: foregroundService ?? this.foregroundService,
     );
   }
 
+  /// Applies every field [other] explicitly supplied on top of this config,
+  /// leaving fields [other] left unset as they are here (#321).
+  AndroidConfig mergedWith(AndroidConfig other) => AndroidConfig(
+    locationUpdateInterval:
+        other._locationUpdateInterval ?? _locationUpdateInterval,
+    fastestLocationUpdateInterval:
+        other._fastestLocationUpdateInterval ?? _fastestLocationUpdateInterval,
+    deferTime: other._deferTime ?? _deferTime,
+    allowIdenticalLocations:
+        other._allowIdenticalLocations ?? _allowIdenticalLocations,
+    geofenceModeHighAccuracy:
+        other._geofenceModeHighAccuracy ?? _geofenceModeHighAccuracy,
+    periodicUseForegroundService:
+        other._periodicUseForegroundService ?? _periodicUseForegroundService,
+    periodicUseExactAlarms:
+        other._periodicUseExactAlarms ?? _periodicUseExactAlarms,
+    scheduleUseAlarmManager:
+        other._scheduleUseAlarmManager ?? _scheduleUseAlarmManager,
+    releaseWakelockWhenStationary:
+        other._releaseWakelockWhenStationary ?? _releaseWakelockWhenStationary,
+    foregroundService: foregroundService.mergedWith(other.foregroundService),
+  );
+
+  /// Returns this config with every field pinned to its effective value, for
+  /// the complete baseline `ready()` sends (#321).
+  AndroidConfig resolved() => AndroidConfig(
+    locationUpdateInterval: locationUpdateInterval,
+    fastestLocationUpdateInterval: fastestLocationUpdateInterval,
+    deferTime: deferTime,
+    allowIdenticalLocations: allowIdenticalLocations,
+    // ignore: deprecated_member_use_from_same_package
+    geofenceModeHighAccuracy: geofenceModeHighAccuracy,
+    periodicUseForegroundService: periodicUseForegroundService,
+    periodicUseExactAlarms: periodicUseExactAlarms,
+    scheduleUseAlarmManager: scheduleUseAlarmManager,
+    releaseWakelockWhenStationary: releaseWakelockWhenStationary,
+    foregroundService: foregroundService.resolved(),
+  );
+
+  // Backing fields. `null` means "the caller did not provide this", which is
+  // what keeps the field out of the wire payload (#321). The public getters
+  // below resolve each one to its documented default.
+  final int? _locationUpdateInterval;
+  final int? _fastestLocationUpdateInterval;
+  final int? _deferTime;
+  final bool? _allowIdenticalLocations;
+  final bool? _geofenceModeHighAccuracy;
+  final bool? _periodicUseForegroundService;
+  final bool? _periodicUseExactAlarms;
+  final bool? _scheduleUseAlarmManager;
+  final bool? _releaseWakelockWhenStationary;
+
   /// The desired interval (in milliseconds) between location updates.
   /// Defaults to `1000`.
-  final int locationUpdateInterval;
+  int get locationUpdateInterval => _locationUpdateInterval ?? 1000;
 
   /// The fastest interval (in milliseconds) the app is able to receive
   /// location updates. Defaults to `500`.
-  final int fastestLocationUpdateInterval;
+  int get fastestLocationUpdateInterval =>
+      _fastestLocationUpdateInterval ?? 500;
 
   /// Maximum wait time (ms) for location updates. Defaults to `0`.
-  final int deferTime;
+  int get deferTime => _deferTime ?? 0;
 
   /// Allow recording identical consecutive locations. Defaults to `false`.
-  final bool allowIdenticalLocations;
+  bool get allowIdenticalLocations => _allowIdenticalLocations ?? false;
 
   /// Enable high-accuracy geofence monitoring during geofence-only mode.
   /// Defaults to `false`.
@@ -133,57 +195,77 @@ class AndroidConfig {
     'Use GeofenceConfig.geofenceModeHighAccuracy (cross-platform) instead. '
     'Still honored for now; will be removed in a future major version.',
   )
-  final bool geofenceModeHighAccuracy;
+  bool get geofenceModeHighAccuracy => _geofenceModeHighAccuracy ?? false;
 
   /// Whether to use a foreground service for periodic mode.
   /// Defaults to `false` (uses WorkManager).
-  final bool periodicUseForegroundService;
+  bool get periodicUseForegroundService =>
+      _periodicUseForegroundService ?? false;
 
   /// Use exact alarms instead of WorkManager for periodic scheduling.
   /// Requires `SCHEDULE_EXACT_ALARM` permission on API 31+.
   /// Defaults to `false`.
-  final bool periodicUseExactAlarms;
+  bool get periodicUseExactAlarms => _periodicUseExactAlarms ?? false;
 
   /// Use `AlarmManager` for precise schedule execution.
   /// Defaults to `false` (uses WorkManager).
-  final bool scheduleUseAlarmManager;
+  bool get scheduleUseAlarmManager => _scheduleUseAlarmManager ?? false;
 
   /// Drops the OEM Wakelock when the device enters a fully stationary state.
   /// Only applies when using `MotionDetectionMode.smart`.
   /// Resolves Issue #162.
   /// Defaults to `false`.
-  final bool releaseWakelockWhenStationary;
+  bool get releaseWakelockWhenStationary =>
+      _releaseWakelockWhenStationary ?? false;
 
   /// Foreground service notification configuration.
   final ForegroundServiceConfig foregroundService;
 
   /// Converts to Pigeon [TlAndroidConfig].
+  ///
+  /// Unset fields cross as `null` so the platform leaves the persisted value
+  /// alone (#321).
   TlAndroidConfig toTlConfig() => TlAndroidConfig(
-    locationUpdateInterval: locationUpdateInterval,
-    fastestLocationUpdateInterval: fastestLocationUpdateInterval,
-    deferTime: deferTime,
-    allowIdenticalLocations: allowIdenticalLocations,
-    geofenceModeHighAccuracy: geofenceModeHighAccuracy,
-    periodicUseForegroundService: periodicUseForegroundService,
-    periodicUseExactAlarms: periodicUseExactAlarms,
-    scheduleUseAlarmManager: scheduleUseAlarmManager,
-    releaseWakelockWhenStationary: releaseWakelockWhenStationary,
+    locationUpdateInterval: _locationUpdateInterval,
+    fastestLocationUpdateInterval: _fastestLocationUpdateInterval,
+    deferTime: _deferTime,
+    allowIdenticalLocations: _allowIdenticalLocations,
+    geofenceModeHighAccuracy: _geofenceModeHighAccuracy,
+    periodicUseForegroundService: _periodicUseForegroundService,
+    periodicUseExactAlarms: _periodicUseExactAlarms,
+    scheduleUseAlarmManager: _scheduleUseAlarmManager,
+    releaseWakelockWhenStationary: _releaseWakelockWhenStationary,
     foregroundService: foregroundService.toTlConfig(),
   );
 
-  /// Serializes to a map.
+  /// Serializes to a map, omitting fields that were never supplied (#321).
   Map<String, Object?> toMap() {
+    // A nested sub-config is emitted only when it carries something.
+    // `filter`/`foregroundService` resolve to a non-null object even when
+    // unset, so guarding on the object was dead code and every payload
+    // carried an empty `{}`. That contributes nothing to the platform
+    // merge, but it makes a partial update that changes nothing look like
+    // it touched the section, and it is not a minimal payload (#321).
+    final fgMap = foregroundService.toMap();
     return <String, Object?>{
-      'locationUpdateInterval': locationUpdateInterval,
-      'fastestLocationUpdateInterval': fastestLocationUpdateInterval,
-      'deferTime': deferTime,
-      'allowIdenticalLocations': allowIdenticalLocations,
-      'geofenceModeHighAccuracy': geofenceModeHighAccuracy,
-      'periodicUseForegroundService': periodicUseForegroundService,
-      'periodicUseExactAlarms': periodicUseExactAlarms,
-      'scheduleUseAlarmManager': scheduleUseAlarmManager,
-      'releaseWakelockWhenStationary': releaseWakelockWhenStationary,
-      'foregroundService': foregroundService.toMap(),
+      if (_locationUpdateInterval != null)
+        'locationUpdateInterval': _locationUpdateInterval,
+      if (_fastestLocationUpdateInterval != null)
+        'fastestLocationUpdateInterval': _fastestLocationUpdateInterval,
+      if (_deferTime != null) 'deferTime': _deferTime,
+      if (_allowIdenticalLocations != null)
+        'allowIdenticalLocations': _allowIdenticalLocations,
+      if (_geofenceModeHighAccuracy != null)
+        'geofenceModeHighAccuracy': _geofenceModeHighAccuracy,
+      if (_periodicUseForegroundService != null)
+        'periodicUseForegroundService': _periodicUseForegroundService,
+      if (_periodicUseExactAlarms != null)
+        'periodicUseExactAlarms': _periodicUseExactAlarms,
+      if (_scheduleUseAlarmManager != null)
+        'scheduleUseAlarmManager': _scheduleUseAlarmManager,
+      if (_releaseWakelockWhenStationary != null)
+        'releaseWakelockWhenStationary': _releaseWakelockWhenStationary,
+      if (fgMap.isNotEmpty) 'foregroundService': fgMap,
     };
   }
 
@@ -192,35 +274,38 @@ class AndroidConfig {
       'AndroidConfig(locationUpdateInterval: $locationUpdateInterval, '
       'foregroundService: $foregroundService)';
 
+  // Compares the backing fields so unset stays distinguishable from an
+  // explicit default (#321).
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is AndroidConfig &&
           runtimeType == other.runtimeType &&
-          locationUpdateInterval == other.locationUpdateInterval &&
-          fastestLocationUpdateInterval ==
-              other.fastestLocationUpdateInterval &&
-          deferTime == other.deferTime &&
-          allowIdenticalLocations == other.allowIdenticalLocations &&
-          geofenceModeHighAccuracy == other.geofenceModeHighAccuracy &&
-          periodicUseForegroundService == other.periodicUseForegroundService &&
-          periodicUseExactAlarms == other.periodicUseExactAlarms &&
-          scheduleUseAlarmManager == other.scheduleUseAlarmManager &&
-          releaseWakelockWhenStationary ==
-              other.releaseWakelockWhenStationary &&
+          _locationUpdateInterval == other._locationUpdateInterval &&
+          _fastestLocationUpdateInterval ==
+              other._fastestLocationUpdateInterval &&
+          _deferTime == other._deferTime &&
+          _allowIdenticalLocations == other._allowIdenticalLocations &&
+          _geofenceModeHighAccuracy == other._geofenceModeHighAccuracy &&
+          _periodicUseForegroundService ==
+              other._periodicUseForegroundService &&
+          _periodicUseExactAlarms == other._periodicUseExactAlarms &&
+          _scheduleUseAlarmManager == other._scheduleUseAlarmManager &&
+          _releaseWakelockWhenStationary ==
+              other._releaseWakelockWhenStationary &&
           foregroundService == other.foregroundService;
 
   @override
   int get hashCode => Object.hash(
-    locationUpdateInterval,
-    fastestLocationUpdateInterval,
-    deferTime,
-    allowIdenticalLocations,
-    geofenceModeHighAccuracy,
-    periodicUseForegroundService,
-    periodicUseExactAlarms,
-    scheduleUseAlarmManager,
-    releaseWakelockWhenStationary,
+    _locationUpdateInterval,
+    _fastestLocationUpdateInterval,
+    _deferTime,
+    _allowIdenticalLocations,
+    _geofenceModeHighAccuracy,
+    _periodicUseForegroundService,
+    _periodicUseExactAlarms,
+    _scheduleUseAlarmManager,
+    _releaseWakelockWhenStationary,
     foregroundService,
   );
 }
@@ -474,6 +559,26 @@ class ForegroundServiceConfig {
     showNotificationOnPauseOnly:
         other._showNotificationOnPauseOnly ?? _showNotificationOnPauseOnly,
     actions: other._actions ?? _actions,
+  );
+
+  /// Returns this config with every field pinned to its effective value.
+  ///
+  /// Used by `ready()`, which establishes a complete native baseline rather
+  /// than a partial update — so the platform's own defaults never have to match
+  /// Dart's for correctness (#321).
+  ForegroundServiceConfig resolved() => ForegroundServiceConfig(
+    enabled: enabled,
+    channelId: channelId,
+    channelName: channelName,
+    notificationTitle: notificationTitle,
+    notificationText: notificationText,
+    notificationColor: notificationColor,
+    notificationSmallIcon: notificationSmallIcon,
+    notificationLargeIcon: notificationLargeIcon,
+    notificationPriority: notificationPriority,
+    notificationOngoing: notificationOngoing,
+    showNotificationOnPauseOnly: showNotificationOnPauseOnly,
+    actions: actions,
   );
 
   /// Converts to Pigeon [TlForegroundServiceConfig].

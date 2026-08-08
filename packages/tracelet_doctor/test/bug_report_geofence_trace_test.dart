@@ -106,14 +106,20 @@ void main() {
       final platform = _LogOnlyPlatform(sampleLogs());
       TraceletPlatform.instance = platform;
 
+      // The session lifecycle trace (#318) scans on the same principle and is
+      // pinned here too, so this asserts the geofence trace's depth rather than
+      // happening to be the deepest scan in the report.
       await TraceletBugReport.build(
         includeConfig: false,
         logLimit: 100,
         geofenceTraceLimit: 400,
+        lifecycleTraceLimit: 200,
       );
 
       expect(platform.requestedLimits, contains(400));
       expect(platform.requestedLimits, contains(100));
+      expect(platform.requestedLimits, contains(200));
+      // Deeper than the ## Logs window, which is the whole point.
       expect(platform.requestedLimits.reduce((a, b) => a > b ? a : b), 400);
     });
 

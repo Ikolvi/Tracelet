@@ -327,7 +327,9 @@ void main() {
       await Tracelet.ready(config);
 
       final configArg = mock.calls.first.args! as TlConfig;
-      expect(configArg.android.foregroundService.enabled, false);
+      // ready() sends a fully resolved baseline, so the section and the flag
+      // are both present rather than omitted as unset (#321).
+      expect(configArg.android.foregroundService!.enabled, false);
     });
   });
 

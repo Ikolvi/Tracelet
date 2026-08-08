@@ -1,10 +1,10 @@
-## Unreleased
+## 3.8.0
+
+**FIX**: every leaf `Tl*Config` field is nullable, so "the caller did not set this" survives the channel and the platform can leave the persisted value alone instead of overwriting it with a default. The method-channel and web transports omit unset fields rather than sending them as explicit nulls or resolved defaults ([#321](https://github.com/Ikolvi/Tracelet/issues/321)).
 
 **FIX**: `TlForegroundServiceConfig` fields are nullable, so "the caller did not set this" survives the channel and the platform can leave the persisted value alone instead of overwriting it with a default ([#320](https://github.com/Ikolvi/Tracelet/issues/320)).
 
 **FIX**: the method-channel path serialised no `showNotificationOnPauseOnly` at all, so the flag never reached the platform over that transport however it was configured — the same class of silent drop as the geofence flag in [#305](https://github.com/Ikolvi/Tracelet/issues/305). It is now sent, and the whole foreground-service map omits fields the caller left unset ([#320](https://github.com/Ikolvi/Tracelet/issues/320)).
-
-## 3.8.0
 
 Version alignment with tracelet 3.8.0.
 

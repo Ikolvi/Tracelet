@@ -1,5 +1,7 @@
 ## 3.8.0
 
+**FIX**: a partial `setConfig()` no longer resets the persisted iOS configuration. `ConfigManager.setConfig` already skipped `NSNull` and absent keys, but the bridge built a flat dictionary of resolved defaults and so never sent one — `showsBackgroundLocationIndicator`, `preventSuspend` and `useBackgroundActivitySession` all silently reverted to `false`, degrading background tracking with no signal. The bridge now forwards unset fields as absent ([#321](https://github.com/Ikolvi/Tracelet/issues/321)).
+
 **FEAT**: implements the `getCurrentLocationTuning` host API, which reports the location-filter thresholds actually in force in the native processor rather than echoing the configured values ([#303](https://github.com/Ikolvi/Tracelet/issues/303)).
 
 ## 3.8.0-beta.2
