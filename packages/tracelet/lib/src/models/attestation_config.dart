@@ -225,10 +225,15 @@ class AttestationToken {
 
   /// Serializes to a map.
   Map<String, Object?> toMap() {
+    // A token is a *result*, not a partial configuration: #321's omit-unset
+    // rule does not apply here, and `token`/`timestamp`/`provider` are
+    // non-nullable, so guarding them was dead code (the analyzer said so) that
+    // implied a token could arrive without one. Only `verified` is genuinely
+    // absent until a server verifies it (#326).
     return <String, Object?>{
-      if (token != null) 'token': token,
-      if (timestamp != null) 'timestamp': timestamp.millisecondsSinceEpoch,
-      if (provider != null) 'provider': provider,
+      'token': token,
+      'timestamp': timestamp.millisecondsSinceEpoch,
+      'provider': provider,
       if (verified != null) 'verified': verified,
     };
   }

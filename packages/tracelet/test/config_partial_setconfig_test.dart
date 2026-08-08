@@ -28,33 +28,46 @@ Map<String, Map<String, Object?>> _sections(Config c) {
 
 void main() {
   group('#321 an unset Config serializes to nothing', () {
-    test('every section of const Config() is empty', () {
-      final sections = _sections(const Config());
+    test('const Config() emits no payload at all', () {
+      // Asserted strictly, with no tolerance for empty maps at any depth. Each
+      // allowance in turn was where something hid: stripping empty nested maps
+      // hid `geo` emitting `'filter': {}` and `android` emitting
+      // `'foregroundService': {}`, and accepting present-but-empty sections hid
+      // all sixteen of them emitting `{}`. None of it reaches the platform
+      // merge, but a setConfig() that configures nothing must send nothing.
+      final leaked = _sections(
+        const Config(),
+      ).entries.map((e) => '${e.key} (${e.value.keys.join(', ')})').join('; ');
+      expect(
+        const Config().toMap(),
+        isEmpty,
+        reason: 'the payload still carries ${leaked.isEmpty ? '—' : leaked}',
+      );
+    });
 
-      expect(sections, isNotEmpty, reason: 'sanity: sections were found');
-      sections.forEach((name, body) {
-        // Asserted strictly, with no tolerance for empty nested maps. An
-        // earlier version of this test stripped them first, which hid `geo`
-        // emitting `'filter': {}` and `android` emitting
-        // `'foregroundService': {}` on a config that set nothing — harmless to
-        // the platform merge, but not a minimal payload, and the #321 example
-        // card caught it precisely because it did not make that allowance.
-        expect(
-          body,
-          isEmpty,
-          reason:
-              'section "$name" still emits ${body.keys.join(', ')} — '
-              'a setConfig() that configures nothing must send nothing',
-        );
+    test('a section appears as soon as it carries a field', () {
+      // The counterpart to the test above: the payload must be empty because
+      // nothing was supplied, not because toMap() stopped emitting. Without
+      // this, a serializer returning {} unconditionally would pass.
+      expect(const Config(app: AppConfig(heartbeatInterval: 30)).toMap(), {
+        'app': {'heartbeatInterval': 30},
       });
     });
 
     test('nested sub-config maps are omitted entirely when unset', () {
+      // A sibling field keeps the section itself in the payload, so this
+      // asserts the sub-map rule rather than re-asserting that an untouched
+      // section is dropped whole.
       final android =
-          const Config().toMap()['android']! as Map<String, Object?>;
+          const Config(
+                android: AndroidConfig(locationUpdateInterval: 5000),
+              ).toMap()['android']!
+              as Map<String, Object?>;
       expect(android.containsKey('foregroundService'), isFalse);
 
-      final geo = const Config().toMap()['geo']! as Map<String, Object?>;
+      final geo =
+          const Config(geo: GeoConfig(distanceFilter: 25)).toMap()['geo']!
+              as Map<String, Object?>;
       expect(geo.containsKey('filter'), isFalse);
     });
 
