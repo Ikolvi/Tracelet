@@ -870,6 +870,14 @@ class TraceletSdk private constructor(private val context: Context) {
             stateManager.enabled = true
             stateManager.trackingMode = TrackingMode.CONTINUOUS
             logger.debug("start() — already tracking; ignoring redundant start (no pace reset)")
+            // #318/#324: recorded even though nothing changed, because "I called
+            // start() and nothing happened" is a real report and this is its
+            // answer — the session was already live, so no fresh session
+            // boundary follows and the pace was deliberately left alone.
+            TraceletLog.lifecycle(
+                "session: start ignored — already tracking continuously " +
+                    "(isMoving=${stateManager.isMoving})"
+            )
             return null
         }
 
@@ -1013,6 +1021,18 @@ class TraceletSdk private constructor(private val context: Context) {
 
         eventSender.sendEnabledChange(true)
         logger.info("start() — tracking started")
+        // #318/#324: the session boundary itself. Every killed-state investigation
+        // starts by asking when the session began and in which mode, and the
+        // most common answer to "it stopped tracking" is a `session: stop` with
+        // no start after it. `resume=true` marks the SDK's own takeover on
+        // ready() rather than a call from the app, which distinguishes "the app
+        // restarted us" from "the app asked for a fresh session".
+        TraceletLog.lifecycle(
+            "session: start — mode=continuous resume=$isResume " +
+                "isMoving=${stateManager.isMoving} " +
+                "motionMode=${configManager.getMotionDetectionMode()} " +
+                "fgs=${configManager.isForegroundServiceEnabled()}"
+        )
         return null // success
     }
 
@@ -1032,6 +1052,12 @@ class TraceletSdk private constructor(private val context: Context) {
      * here cleanly (no immediately-following start ⇒ no race).
      */
     fun stop(preserveForegroundService: Boolean = false) {
+        // #318/#324: read before the state is cleared, so the entry says what was
+        // torn down rather than the zeroed state that follows.
+        val wasTracking = stateManager.enabled
+        val wasMode = stateManager.trackingMode
+        val wasMoving = stateManager.isMoving
+
         stateManager.enabled = false
         stateManager.isMoving = false
 
@@ -1081,6 +1107,15 @@ class TraceletSdk private constructor(private val context: Context) {
         logger.info(
             "stop() — tracking stopped" +
                 if (preserveForegroundService) " (foreground service preserved for restart)" else ""
+        )
+        // #318/#324: the counterpart to `session: start`, and on its own the answer
+        // to most "it stopped tracking" reports — tracking was stopped, and the
+        // trail says when. `restart=true` marks setConfig()'s in-place restart,
+        // which is immediately followed by a start and is NOT the session
+        // ending; without it every config change would read as a stop.
+        TraceletLog.lifecycle(
+            "session: stop — was mode=$wasMode enabled=$wasTracking " +
+                "isMoving=$wasMoving restart=$preserveForegroundService"
         )
     }
 
@@ -1177,6 +1212,14 @@ class TraceletSdk private constructor(private val context: Context) {
         logger.info(
             "startGeofences() — geofence-only mode " +
                 "(highAccuracy=${configManager.getGeofenceModeHighAccuracy()})"
+        )
+        // #318/#324: see start(). Recorded per mode because a geofence-only session
+        // that never fires looks identical to no session at all in a report,
+        // and low-accuracy mode deliberately runs with no foreground service —
+        // so "no service entries" is expected here and a finding elsewhere.
+        TraceletLog.lifecycle(
+            "session: start — mode=geofences resume=$treatAsResume " +
+                "highAccuracy=$highAccuracy fences=${geofenceManager.getGeofences().size}"
         )
         return null
     }
@@ -1278,6 +1321,12 @@ class TraceletSdk private constructor(private val context: Context) {
         logger.info(
             "startPeriodic() — periodic tracking started " +
                 "(interval=${interval}s, strategy=$strategy)"
+        )
+        // #318/#324: see start(). The strategy is the whole diagnosis for "periodic
+        // stopped firing overnight" — WorkManager is throttled in Doze, exact
+        // alarms are not, and the foreground-service strategy is neither.
+        TraceletLog.lifecycle(
+            "session: start — mode=periodic interval=${interval}s strategy=$strategy"
         )
         return null
     }

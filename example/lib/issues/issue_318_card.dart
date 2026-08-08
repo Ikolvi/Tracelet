@@ -17,20 +17,31 @@ import 'package:tracelet_example/issues/issue_card_shell.dart';
 /// with no UI and no attached logcat — left nothing usable behind.
 ///
 /// A curated **lifecycle** channel now bypasses the level gate on both
-/// platforms. Android records its separate background pipeline — service start /
-/// stop / sticky restarts, boot and task-removal bootstrap outcomes, and
-/// motion-state transitions on the in-app and killed-state paths. iOS has no
-/// separate pipeline (a relaunched process runs the same handlers), so it
-/// records the relaunch and termination boundaries instead, including which
-/// precondition made a relaunch decline to resume. These are low-frequency,
-/// which is what makes always-on affordable, and they share the existing
-/// retention caps — a row cap by level (500–2000) plus `logMaxDays` (3 by
-/// default) — so worst-case database size is unchanged.
+/// platforms. Both record the tracking-session boundaries themselves —
+/// `session: start` / `session: stop`, with the mode, the motion state and the
+/// strategy the session actually ran with — because "tracking was stopped" is
+/// the single most common answer to "it stopped tracking", and every other
+/// entry is read against them. On top of that, Android records its separate
+/// background pipeline — service create / destroy / sticky restarts, boot and
+/// task-removal bootstrap outcomes, and motion-state transitions on the in-app
+/// and killed-state paths. iOS has no separate pipeline (a relaunched process
+/// runs the same handlers), so it records the relaunch and termination
+/// boundaries instead, including which precondition made a relaunch decline to
+/// resume. These are low-frequency, which is what makes always-on affordable,
+/// and they share the existing retention caps — a row cap by level (500–2000)
+/// plus `logMaxDays` (3 by default) — so worst-case database size is unchanged.
 ///
 /// The card pins `logLevel` to `error`, stricter than either platform default,
 /// so anything that survives did so by bypassing the gate. That is the whole
 /// point: it must work for a developer who never asked for logs, on the run that
 /// actually failed.
+///
+/// The session boundaries are also what make this card honest on a **repeat**
+/// run. It clears the log first, so it can only see what the run itself
+/// produces — and until #324 every emitter reachable from a foreground
+/// start/stop was either a one-shot per process or fired only on a real motion
+/// change. The card passed once after a fresh launch and reported a regression
+/// on every run after it, with nothing wrong in the SDK.
 class Issue318Card extends StatefulWidget {
   const Issue318Card({super.key});
 
@@ -90,6 +101,15 @@ class _Issue318CardState extends State<Issue318Card> {
 
       // Starting and stopping drives real service lifecycle + motion wiring,
       // which is what the channel records.
+      //
+      // The start/stop pair is deliberately the assertion's only source of
+      // entries. Everything else on the channel is either a one-shot per process
+      // (Android's "service: onCreate", iOS's "relaunch:"/"termination:") or
+      // fires only on a real change (motion transitions), so a card that cleared
+      // the log and then leaned on those passed on the first run of a process
+      // and failed on every run after it — with nothing wrong in the SDK
+      // (#324). The session boundaries fire on every run, which is what makes
+      // this re-runnable.
       await Tracelet.start();
       await Future<void>.delayed(const Duration(seconds: 4));
       await Tracelet.stop();
@@ -122,12 +142,16 @@ class _Issue318CardState extends State<Issue318Card> {
                   'works, so the always-on channel is what is not reaching it.',
       );
 
-      // The two platforms have different killed-state machinery, so they emit
-      // different anchors: Android runs a separate foreground-service pipeline
-      // ("service:", "boot-tracking:"), while on iOS a relaunched process runs
-      // the same handlers as a foreground one ("relaunch:", "termination:",
-      // "motion:"). Accept either shape rather than asserting Android's.
+      // "session:" is the one anchor both platforms always emit, because the
+      // start/stop above is itself a session boundary. The rest are the
+      // platform-specific killed-state machinery — Android runs a separate
+      // foreground-service pipeline ("service:", "boot-tracking:"), while on
+      // iOS a relaunched process runs the same handlers as a foreground one
+      // ("relaunch:", "termination:", "motion:") — and appear only when that
+      // machinery actually ran, which a foreground run like this one cannot
+      // force. Accept any of the shapes rather than asserting one platform's.
       const anchors = <String>[
+        'session:',
         'service:',
         'boot-tracking:',
         'relaunch:',
@@ -181,6 +205,11 @@ class _Issue318CardState extends State<Issue318Card> {
         'away, leave the device idle, then move), reopen the app and read the '
         'log — or paste TraceletBugReport, which includes it.\n\n'
         'What the absence of an entry tells you:\n'
+        '• Both — a "session: stop" with nothing after it: tracking was '
+        'stopped and never restarted. Rule this out first; it is the ordinary '
+        'explanation. On Android "restart=true" marks setConfig()\'s in-place '
+        'restart, which is always followed by a start and is not the session '
+        'ending.\n'
         '• Android — "motion (foreground)" present but no "motion '
         '(killed-state, …)": the background detector never ran. No '
         '"boot-tracking: bootstrapping": the pipeline never came up at all.\n'
@@ -203,7 +232,8 @@ class _Issue318CardState extends State<Issue318Card> {
       keywords:
           'logs logging logLevel off diagnostics lifecycle killed state '
           'background motion pace transition boot bootstrap sticky restart '
-          'retention logMaxDays prune bug report evidence 318',
+          'session start stop boundary retention logMaxDays prune bug report '
+          'evidence 318 324',
       title: '#318: killed-state diagnostics survive the log level',
       description:
           'Verifies that the curated lifecycle channel (motion transitions, '
