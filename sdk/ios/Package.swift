@@ -39,6 +39,10 @@ let package = Package(
             // Only the actively-maintained suite is wired up; the other files in
             // this directory are stale against the current SDK API.
             sources: [
+                // Shared, not a suite: the one liveness bound every
+                // `wait(for:timeout:)` below uses. A 1 s bound flaked Build iOS
+                // on a loaded runner (#329).
+                "AsyncWaitTimeout.swift",
                 "LocationEngineRuntimeProviderOptionsTests.swift",
                 "MotionDetectorTests.swift",
                 "BatteryBudgetRemoteConfigTests.swift",
