@@ -33,30 +33,51 @@ void main() {
 
       expect(sections, isNotEmpty, reason: 'sanity: sections were found');
       sections.forEach((name, body) {
-        // `android` carries a nested foregroundService map, which is itself
-        // empty; everything else must be flat-empty.
-        final leftover = Map<String, Object?>.from(body)
-          ..removeWhere((k, v) => v is Map && v.isEmpty);
+        // Asserted strictly, with no tolerance for empty nested maps. An
+        // earlier version of this test stripped them first, which hid `geo`
+        // emitting `'filter': {}` and `android` emitting
+        // `'foregroundService': {}` on a config that set nothing — harmless to
+        // the platform merge, but not a minimal payload, and the #321 example
+        // card caught it precisely because it did not make that allowance.
         expect(
-          leftover,
+          body,
           isEmpty,
           reason:
-              'section "$name" still emits ${leftover.keys.join(', ')} — '
-              'a partial setConfig() would overwrite those persisted values',
+              'section "$name" still emits ${body.keys.join(', ')} — '
+              'a setConfig() that configures nothing must send nothing',
         );
       });
     });
 
-    test('the nested foregroundService and filter maps are empty too', () {
+    test('nested sub-config maps are omitted entirely when unset', () {
       final android =
           const Config().toMap()['android']! as Map<String, Object?>;
-      expect(android['foregroundService'], isEmpty);
+      expect(android.containsKey('foregroundService'), isFalse);
 
       final geo = const Config().toMap()['geo']! as Map<String, Object?>;
-      expect(
-        geo.containsKey('filter') ? geo['filter'] : <String, Object?>{},
-        isEmpty,
-      );
+      expect(geo.containsKey('filter'), isFalse);
+    });
+
+    test('a nested sub-config is emitted as soon as it carries a field', () {
+      final android =
+          const Config(
+                android: AndroidConfig(
+                  foregroundService: ForegroundServiceConfig(
+                    showNotificationOnPauseOnly: true,
+                  ),
+                ),
+              ).toMap()['android']!
+              as Map<String, Object?>;
+      expect(android['foregroundService'], {
+        'showNotificationOnPauseOnly': true,
+      });
+
+      final geo =
+          const Config(
+                geo: GeoConfig(filter: LocationFilter(useKalmanFilter: true)),
+              ).toMap()['geo']!
+              as Map<String, Object?>;
+      expect(geo['filter'], {'useKalmanFilter': true});
     });
   });
 

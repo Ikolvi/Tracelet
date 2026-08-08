@@ -65,13 +65,15 @@ class _Issue321CardState extends State<Issue321Card> {
       // ---------------------------------------------------------------------
       // The serialization contract — platform-independent, so it runs on web.
       // ---------------------------------------------------------------------
+      // Checked strictly: a section must be empty, not "empty apart from an
+      // empty nested map". That allowance is what let `geo` ship `filter: {}`
+      // and `android` ship `foregroundService: {}` on a config that set
+      // nothing — harmless to the merge, but not a minimal payload.
       final emptyPayload = const Config().toMap();
       final nonEmpty = <String>[];
       emptyPayload.forEach((section, body) {
-        if (body is Map<String, Object?>) {
-          final leftover = Map<String, Object?>.from(body)
-            ..removeWhere((k, v) => v is Map && v.isEmpty);
-          if (leftover.isNotEmpty) nonEmpty.add(section);
+        if (body is Map<String, Object?> && body.isNotEmpty) {
+          nonEmpty.add('$section (${body.keys.join(', ')})');
         }
       });
       check(

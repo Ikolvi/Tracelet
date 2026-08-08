@@ -240,6 +240,13 @@ class AndroidConfig {
 
   /// Serializes to a map, omitting fields that were never supplied (#321).
   Map<String, Object?> toMap() {
+    // A nested sub-config is emitted only when it carries something.
+    // `filter`/`foregroundService` resolve to a non-null object even when
+    // unset, so guarding on the object was dead code and every payload
+    // carried an empty `{}`. That contributes nothing to the platform
+    // merge, but it makes a partial update that changes nothing look like
+    // it touched the section, and it is not a minimal payload (#321).
+    final fgMap = foregroundService.toMap();
     return <String, Object?>{
       if (_locationUpdateInterval != null)
         'locationUpdateInterval': _locationUpdateInterval,
@@ -258,8 +265,7 @@ class AndroidConfig {
         'scheduleUseAlarmManager': _scheduleUseAlarmManager,
       if (_releaseWakelockWhenStationary != null)
         'releaseWakelockWhenStationary': _releaseWakelockWhenStationary,
-      if (foregroundService != null)
-        'foregroundService': foregroundService.toMap(),
+      if (fgMap.isNotEmpty) 'foregroundService': fgMap,
     };
   }
 

@@ -933,6 +933,13 @@ class GeoConfig {
 
   /// Serializes to a map.
   Map<String, Object?> toMap() {
+    // A nested sub-config is emitted only when it carries something.
+    // `filter`/`foregroundService` resolve to a non-null object even when
+    // unset, so guarding on the object was dead code and every payload
+    // carried an empty `{}`. That contributes nothing to the platform
+    // merge, but it makes a partial update that changes nothing look like
+    // it touched the section, and it is not a minimal payload (#321).
+    final filterMap = filter.toMap();
     return <String, Object?>{
       if (_desiredAccuracy != null) 'desiredAccuracy': _desiredAccuracy.index,
       if (_distanceFilter != null) 'distanceFilter': _distanceFilter,
@@ -967,7 +974,7 @@ class GeoConfig {
         'deadReckoningActivationDelay': _deadReckoningActivationDelay,
       if (_deadReckoningMaxDuration != null)
         'deadReckoningMaxDuration': _deadReckoningMaxDuration,
-      if (filter != null) 'filter': filter.toMap(),
+      if (filterMap.isNotEmpty) 'filter': filterMap,
       if (_resolveAddress != null) 'resolveAddress': _resolveAddress,
     };
   }
