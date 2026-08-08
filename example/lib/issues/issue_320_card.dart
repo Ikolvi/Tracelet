@@ -84,17 +84,28 @@ class _Issue320CardState extends State<Issue320Card> {
                   'platform will write over the persisted values',
       );
 
+      // #321 went one step further than #320: rather than sending an empty
+      // `'foregroundService': {}`, it drops the sub-map altogether, so the key
+      // is now absent. Both shapes satisfy the claim this row actually makes —
+      // nothing about the foreground service is transmitted — so it asserts on
+      // the keys, not on which of the two shapes carries none of them. Pinned
+      // to "present and empty", it failed against the stronger payload while
+      // printing the passing text, because the predicate and the message
+      // disagreed about whether absent counted.
       final fgSection =
           (const Config().toMap()['android']
                   as Map<String, Object?>?)?['foregroundService']
               as Map<String, Object?>?;
+      final fgKeys = fgSection?.keys.toList() ?? const <String>[];
       check(
         'const Config() carries no foreground-service keys',
-        fgSection != null && fgSection.isEmpty,
-        fgSection == null || fgSection.isEmpty
-            ? 'this is the exact payload the Low-Accuracy GF button sends'
-            : 'REGRESSED — still carries ${fgSection.keys.length} default '
-                  'field(s): ${fgSection.keys.join(', ')}',
+        fgKeys.isEmpty,
+        fgKeys.isEmpty
+            ? 'the section is '
+                  '${fgSection == null ? 'absent entirely' : 'present but empty'}'
+                  ' — this is the exact payload the Low-Accuracy GF button sends'
+            : 'REGRESSED — still carries ${fgKeys.length} default '
+                  'field(s): ${fgKeys.join(', ')}',
       );
 
       // "Unset" must mean *not provided*, never *equal to the default* —
