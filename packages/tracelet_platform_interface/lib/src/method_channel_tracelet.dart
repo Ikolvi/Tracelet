@@ -712,18 +712,35 @@ class MethodChannelTracelet extends TraceletPlatform {
     'foregroundService': _fgToMap(c.foregroundService),
   };
 
+  /// Serializes the foreground-service section, omitting fields the caller
+  /// never supplied.
+  ///
+  /// Every field is nullable and `null` means "not provided". The native merge
+  /// skips absent keys, so a partial `setConfig()` leaves the persisted
+  /// notification settings intact instead of overwriting them with defaults
+  /// (#320).
+  ///
+  /// `showNotificationOnPauseOnly` was missing from this map altogether, so the
+  /// flag never reached the platform over the method channel however it was
+  /// configured — the same class of silent drop as the geofence flag in #305.
   Map<String, Object?> _fgToMap(TlForegroundServiceConfig c) => {
-    'enabled': c.enabled,
-    'channelId': c.channelId,
-    'channelName': c.channelName,
-    'notificationTitle': c.notificationTitle,
-    'notificationText': c.notificationText,
-    'notificationColor': c.notificationColor,
-    'notificationSmallIcon': c.notificationSmallIcon,
-    'notificationLargeIcon': c.notificationLargeIcon,
-    'notificationPriority': c.notificationPriority.index - 2,
-    'notificationOngoing': c.notificationOngoing,
-    'actions': c.actions,
+    if (c.enabled != null) 'enabled': c.enabled,
+    if (c.channelId != null) 'channelId': c.channelId,
+    if (c.channelName != null) 'channelName': c.channelName,
+    if (c.notificationTitle != null) 'notificationTitle': c.notificationTitle,
+    if (c.notificationText != null) 'notificationText': c.notificationText,
+    if (c.notificationColor != null) 'notificationColor': c.notificationColor,
+    if (c.notificationSmallIcon != null)
+      'notificationSmallIcon': c.notificationSmallIcon,
+    if (c.notificationLargeIcon != null)
+      'notificationLargeIcon': c.notificationLargeIcon,
+    if (c.notificationPriority != null)
+      'notificationPriority': c.notificationPriority!.index - 2,
+    if (c.notificationOngoing != null)
+      'notificationOngoing': c.notificationOngoing,
+    if (c.showNotificationOnPauseOnly != null)
+      'showNotificationOnPauseOnly': c.showNotificationOnPauseOnly,
+    if (c.actions != null) 'actions': c.actions,
   };
 
   Map<String, Object?> _iosToMap(TlIosConfig c) => {

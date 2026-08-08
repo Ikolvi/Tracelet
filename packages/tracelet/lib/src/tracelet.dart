@@ -448,17 +448,47 @@ class Tracelet {
 
   /// Update the plugin configuration.
   ///
+  /// The platform merges this into the configuration it already persisted, so
+  /// a [ForegroundServiceConfig] field you do not set keeps the value
+  /// configured earlier rather than reverting to its default (#320):
+  ///
+  /// ```dart
+  /// // The notification title and channel configured in ready() survive.
+  /// await Tracelet.setConfig(const Config(
+  ///   android: AndroidConfig(
+  ///     foregroundService: ForegroundServiceConfig(
+  ///       showNotificationOnPauseOnly: true,
+  ///     ),
+  ///   ),
+  /// ));
+  /// ```
+  ///
+  /// Every other section is still replaced wholesale — see #321.
+  ///
   /// Returns the updated [State].
   static Future<State> setConfig(Config config) async {
-    _currentConfig = config;
+    // Mirror the platform's merge for the foreground service, so
+    // [activeConfig] keeps reporting the values actually persisted natively
+    // instead of the defaults this call left unset (#320).
+    final merged = config.copyWith(
+      android: config.android.copyWith(
+        foregroundService: _currentConfig.android.foregroundService.mergedWith(
+          config.android.foregroundService,
+        ),
+      ),
+    );
+    _currentConfig = merged;
 
     // Update battery budget engine from config.
-    _initBatteryBudget(config);
+    _initBatteryBudget(merged);
     // Invalidate cached stream pipeline so it rebuilds with new settings (D-M8).
     _processedLocationStream = null;
 
-    _checkSyncProvider(config);
+    _checkSyncProvider(merged);
 
+    // Deliberately sends `config`, not `merged`: the payload must carry only
+    // the fields this call actually set, so the platform can leave everything
+    // else at its persisted value.
     final s = await _platform.setConfig(config.toTlConfig());
     return _stateFromMap(s);
   }

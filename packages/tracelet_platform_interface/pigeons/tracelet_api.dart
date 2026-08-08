@@ -158,34 +158,42 @@ class TlAppConfig {
   final int remoteConfigRefreshInterval;
 }
 
+/// Foreground-service settings for a `setConfig()` call.
+///
+/// Every field is nullable, and `null` means "not supplied by the caller" —
+/// never "reset to the default". The platform merges this into the
+/// configuration it already persisted and skips nulls, so a `setConfig()` that
+/// does not mention the foreground service leaves the stored notification
+/// settings untouched (#320). Sending a non-null value that happens to equal
+/// the default is still an explicit write.
 class TlForegroundServiceConfig {
   TlForegroundServiceConfig({
-    required this.enabled,
-    required this.channelId,
-    required this.channelName,
-    required this.notificationTitle,
-    required this.notificationText,
-    required this.notificationPriority,
-    required this.notificationOngoing,
-    required this.showNotificationOnPauseOnly,
-    required this.actions,
+    this.enabled,
+    this.channelId,
+    this.channelName,
+    this.notificationTitle,
+    this.notificationText,
+    this.notificationPriority,
+    this.notificationOngoing,
+    this.showNotificationOnPauseOnly,
+    this.actions,
     this.notificationColor,
     this.notificationSmallIcon,
     this.notificationLargeIcon,
   });
 
-  final bool enabled;
-  final String channelId;
-  final String channelName;
-  final String notificationTitle;
-  final String notificationText;
+  final bool? enabled;
+  final String? channelId;
+  final String? channelName;
+  final String? notificationTitle;
+  final String? notificationText;
   final String? notificationColor;
   final String? notificationSmallIcon;
   final String? notificationLargeIcon;
-  final TlNotificationPriority notificationPriority;
-  final bool notificationOngoing;
-  final bool showNotificationOnPauseOnly;
-  final List<String?> actions;
+  final TlNotificationPriority? notificationPriority;
+  final bool? notificationOngoing;
+  final bool? showNotificationOnPauseOnly;
+  final List<String?>? actions;
 }
 
 class TlAndroidConfig {

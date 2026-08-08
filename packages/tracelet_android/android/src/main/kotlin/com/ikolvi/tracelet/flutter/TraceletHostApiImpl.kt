@@ -226,19 +226,27 @@ class TraceletHostApiImpl(
             put("periodicUseExactAlarms", c.android.periodicUseExactAlarms)
             put("scheduleUseAlarmManager", c.android.scheduleUseAlarmManager)
             put("releaseWakelockWhenStationary", c.android.releaseWakelockWhenStationary)
+            // Foreground-service fields are nullable end to end: null means the
+            // caller never mentioned the field, and ConfigManager.setConfig()
+            // skips nulls so the persisted notification settings survive a
+            // partial setConfig(). Do not substitute defaults for null here —
+            // that reintroduces #320, where any setConfig() omitting this
+            // section silently rewrote the stored title, channel and
+            // showNotificationOnPauseOnly with defaults.
             put("foregroundService", buildMap {
-                put("enabled", c.android.foregroundService.enabled)
-                put("channelId", c.android.foregroundService.channelId)
-                put("channelName", c.android.foregroundService.channelName)
-                put("notificationTitle", c.android.foregroundService.notificationTitle)
-                put("notificationText", c.android.foregroundService.notificationText)
-                put("notificationColor", c.android.foregroundService.notificationColor)
-                put("notificationSmallIcon", c.android.foregroundService.notificationSmallIcon)
-                put("notificationLargeIcon", c.android.foregroundService.notificationLargeIcon)
-                put("notificationPriority", c.android.foregroundService.notificationPriority.raw - 2)
-                put("notificationOngoing", c.android.foregroundService.notificationOngoing)
-                put("showNotificationOnPauseOnly", c.android.foregroundService.showNotificationOnPauseOnly)
-                put("actions", c.android.foregroundService.actions)
+                val fg = c.android.foregroundService
+                put("enabled", fg.enabled)
+                put("channelId", fg.channelId)
+                put("channelName", fg.channelName)
+                put("notificationTitle", fg.notificationTitle)
+                put("notificationText", fg.notificationText)
+                put("notificationColor", fg.notificationColor)
+                put("notificationSmallIcon", fg.notificationSmallIcon)
+                put("notificationLargeIcon", fg.notificationLargeIcon)
+                put("notificationPriority", fg.notificationPriority?.let { it.raw - 2 })
+                put("notificationOngoing", fg.notificationOngoing)
+                put("showNotificationOnPauseOnly", fg.showNotificationOnPauseOnly)
+                put("actions", fg.actions)
             })
         })
         put("http", buildMap {
