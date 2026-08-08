@@ -242,7 +242,7 @@ final class TraceletSdkTests: XCTestCase {
         }
 
         sender.sendLocation(["latitude": 37.7749, "longitude": -122.4194])
-        wait(for: [expectation], timeout: 1.0)
+        wait(for: [expectation], timeout: asyncWaitTimeout)
     }
 
     func testDelegateEventSenderForwardsPowerSave() {
@@ -259,7 +259,7 @@ final class TraceletSdkTests: XCTestCase {
         }
 
         sender.sendPowerSaveChange(true)
-        wait(for: [expectation], timeout: 1.0)
+        wait(for: [expectation], timeout: asyncWaitTimeout)
     }
 
     func testDelegateEventSenderForwardsEnabledChange() {
@@ -276,7 +276,7 @@ final class TraceletSdkTests: XCTestCase {
         }
 
         sender.sendEnabledChange(false)
-        wait(for: [expectation], timeout: 1.0)
+        wait(for: [expectation], timeout: asyncWaitTimeout)
     }
 
     // MARK: - Database (in-memory)
@@ -607,7 +607,7 @@ final class TraceletSdkTests: XCTestCase {
             XCTAssertNil(location)
             expectation.fulfill()
         }
-        wait(for: [expectation], timeout: 1.0)
+        wait(for: [expectation], timeout: asyncWaitTimeout)
     }
 
     func testGetLastKnownLocationBeforeReadyReturnsNil() {
@@ -658,7 +658,7 @@ final class TraceletSdkTests: XCTestCase {
             XCTAssertTrue(locations.isEmpty)
             expectation.fulfill()
         }
-        wait(for: [expectation], timeout: 1.0)
+        wait(for: [expectation], timeout: asyncWaitTimeout)
     }
 
     func testLoggingMethodsBeforeReadyDoNotCrash() {
@@ -703,7 +703,7 @@ final class TraceletSdkTests: XCTestCase {
             XCTAssertNil(token)
             expectation.fulfill()
         }
-        wait(for: [expectation], timeout: 1.0)
+        wait(for: [expectation], timeout: asyncWaitTimeout)
     }
 
     func testRouteContextMethodsBeforeReadyDoNotCrash() {

@@ -597,7 +597,7 @@ final class DelegateEventSenderExtendedTests: XCTestCase {
         delegate.onMotionChange = { exp.fulfill() }
 
         sender.sendMotionChange(["isMoving": true])
-        wait(for: [exp], timeout: 1.0)
+        wait(for: [exp], timeout: asyncWaitTimeout)
         XCTAssertTrue(delegate.motionChangeCalled)
     }
 
@@ -610,7 +610,7 @@ final class DelegateEventSenderExtendedTests: XCTestCase {
         delegate.onActivityChange = { exp.fulfill() }
 
         sender.sendActivityChange(["type": "walking", "confidence": 100])
-        wait(for: [exp], timeout: 1.0)
+        wait(for: [exp], timeout: asyncWaitTimeout)
         XCTAssertTrue(delegate.activityChangeCalled)
     }
 
@@ -623,7 +623,7 @@ final class DelegateEventSenderExtendedTests: XCTestCase {
         delegate.onGeofence = { exp.fulfill() }
 
         sender.sendGeofence(["identifier": "office", "action": "ENTER"])
-        wait(for: [exp], timeout: 1.0)
+        wait(for: [exp], timeout: asyncWaitTimeout)
         XCTAssertTrue(delegate.geofenceCalled)
     }
 
@@ -636,7 +636,7 @@ final class DelegateEventSenderExtendedTests: XCTestCase {
         delegate.onHeartbeat = { exp.fulfill() }
 
         sender.sendHeartbeat(["location": [:]])
-        wait(for: [exp], timeout: 1.0)
+        wait(for: [exp], timeout: asyncWaitTimeout)
         XCTAssertTrue(delegate.heartbeatCalled)
     }
 
@@ -649,7 +649,7 @@ final class DelegateEventSenderExtendedTests: XCTestCase {
         delegate.onHttp = { exp.fulfill() }
 
         sender.sendHttp(["status": 200])
-        wait(for: [exp], timeout: 1.0)
+        wait(for: [exp], timeout: asyncWaitTimeout)
         XCTAssertTrue(delegate.httpCalled)
     }
 
@@ -662,7 +662,7 @@ final class DelegateEventSenderExtendedTests: XCTestCase {
         delegate.onSchedule = { exp.fulfill() }
 
         sender.sendSchedule(["enabled": true])
-        wait(for: [exp], timeout: 1.0)
+        wait(for: [exp], timeout: asyncWaitTimeout)
         XCTAssertTrue(delegate.scheduleCalled)
     }
 
@@ -675,7 +675,7 @@ final class DelegateEventSenderExtendedTests: XCTestCase {
         delegate.onProviderChange = { exp.fulfill() }
 
         sender.sendProviderChange(["provider": "gps"])
-        wait(for: [exp], timeout: 1.0)
+        wait(for: [exp], timeout: asyncWaitTimeout)
         XCTAssertTrue(delegate.providerChangeCalled)
     }
 
@@ -688,7 +688,7 @@ final class DelegateEventSenderExtendedTests: XCTestCase {
         delegate.onConnectivityChange = { exp.fulfill() }
 
         sender.sendConnectivityChange(["connected": true])
-        wait(for: [exp], timeout: 1.0)
+        wait(for: [exp], timeout: asyncWaitTimeout)
         XCTAssertTrue(delegate.connectivityChangeCalled)
     }
 
@@ -708,7 +708,7 @@ final class DelegateEventSenderExtendedTests: XCTestCase {
         delegate.onGeofence = { exp.fulfill() }
         sender.delegate = delegate
 
-        wait(for: [exp], timeout: 1.0)
+        wait(for: [exp], timeout: asyncWaitTimeout)
         XCTAssertTrue(delegate.geofenceCalled)
     }
 
@@ -750,7 +750,7 @@ final class DelegateEventSenderExtendedTests: XCTestCase {
         delegate.onHeartbeat = { exp.fulfill() }
 
         sender.sendHeartbeat(["location": [:]])
-        wait(for: [exp], timeout: 1.0)
+        wait(for: [exp], timeout: asyncWaitTimeout)
         XCTAssertTrue(delegate.heartbeatCalled)
     }
 }

@@ -73,7 +73,7 @@ final class MotionDetectorTests: XCTestCase {
             XCTAssertTrue(timeoutStarted, "Stop timeout should be started")
             expectation.fulfill()
         }
-        wait(for: [expectation], timeout: 1.0)
+        wait(for: [expectation], timeout: asyncWaitTimeout)
     }
 
     func testSustainedMotionDuringStopTimeoutAbortsStopTransition() {
@@ -95,7 +95,7 @@ final class MotionDetectorTests: XCTestCase {
             XCTAssertTrue(timeoutStarted, "Stop timeout should be started")
             startExpectation.fulfill()
         }
-        wait(for: [startExpectation], timeout: 1.0)
+        wait(for: [startExpectation], timeout: asyncWaitTimeout)
 
         // Simulate SUSTAINED motion: motionAbortCount (5) consecutive bumps
         // (magnitude 0.5 > 0.15 threshold). Only sustained motion may abort.
@@ -110,7 +110,7 @@ final class MotionDetectorTests: XCTestCase {
             XCTAssertTrue(self.stateManager.isMoving, "State should remain moving")
             cancelExpectation.fulfill()
         }
-        wait(for: [cancelExpectation], timeout: 1.0)
+        wait(for: [cancelExpectation], timeout: asyncWaitTimeout)
     }
 
     /// A single above-threshold sample (sensor noise / a stray bump) during the
@@ -126,7 +126,7 @@ final class MotionDetectorTests: XCTestCase {
 
         let startExpectation = XCTestExpectation(description: "Timeout started")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { startExpectation.fulfill() }
-        wait(for: [startExpectation], timeout: 1.0)
+        wait(for: [startExpectation], timeout: asyncWaitTimeout)
 
         // Four bumps — below motionAbortCount (5) — must not cancel.
         let bumpAcc = CMAcceleration(x: 0, y: 0, z: 1.5)
@@ -137,7 +137,7 @@ final class MotionDetectorTests: XCTestCase {
             XCTAssertFalse(timeoutCancelled, "A few stray bumps must not cancel the stop timeout")
             exp.fulfill()
         }
-        wait(for: [exp], timeout: 1.0)
+        wait(for: [exp], timeout: asyncWaitTimeout)
     }
 
     /// A still sample arriving between stray bumps resets the motion streak, so
@@ -151,7 +151,7 @@ final class MotionDetectorTests: XCTestCase {
 
         let startExpectation = XCTestExpectation(description: "Timeout started")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { startExpectation.fulfill() }
-        wait(for: [startExpectation], timeout: 1.0)
+        wait(for: [startExpectation], timeout: asyncWaitTimeout)
 
         // Alternate bumps and still samples: the motion streak never reaches 5.
         let bumpAcc = CMAcceleration(x: 0, y: 0, z: 1.5)
@@ -166,7 +166,7 @@ final class MotionDetectorTests: XCTestCase {
             XCTAssertFalse(timeoutCancelled, "Intermittent noise must not cancel the stop timeout")
             exp.fulfill()
         }
-        wait(for: [exp], timeout: 1.0)
+        wait(for: [exp], timeout: asyncWaitTimeout)
     }
 
     /// Issue #130: while stationary, a shake-magnitude sample must declare
@@ -185,7 +185,7 @@ final class MotionDetectorTests: XCTestCase {
                           "A shake while stationary should declare moving")
             exp.fulfill()
         }
-        wait(for: [exp], timeout: 1.0)
+        wait(for: [exp], timeout: asyncWaitTimeout)
     }
 
     /// Issue #130: a still sample below the shake threshold while stationary
@@ -203,7 +203,7 @@ final class MotionDetectorTests: XCTestCase {
                            "Sub-threshold noise must not wake the detector")
             exp.fulfill()
         }
-        wait(for: [exp], timeout: 1.0)
+        wait(for: [exp], timeout: asyncWaitTimeout)
     }
 }
 
