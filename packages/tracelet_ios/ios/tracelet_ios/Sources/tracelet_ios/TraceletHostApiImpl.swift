@@ -24,7 +24,7 @@ class TraceletHostApiImpl: TraceletHostApi {
         var dict: [String: Any] = [:]
 
         // Geo
-        dict["desiredAccuracy"] = c.geo.desiredAccuracy.rawValue
+        dict["desiredAccuracy"] = c.geo.desiredAccuracy?.rawValue
         dict["distanceFilter"] = c.geo.distanceFilter
         dict["stationaryRadius"] = c.geo.stationaryRadius
         dict["locationTimeout"] = c.geo.locationTimeout
@@ -35,7 +35,7 @@ class TraceletHostApiImpl: TraceletHostApi {
         dict["enableTimestampMeta"] = c.geo.enableTimestampMeta
         dict["enableAdaptiveMode"] = c.geo.enableAdaptiveMode
         dict["periodicLocationInterval"] = c.geo.periodicLocationInterval
-        dict["periodicDesiredAccuracy"] = c.geo.periodicDesiredAccuracy.rawValue
+        dict["periodicDesiredAccuracy"] = c.geo.periodicDesiredAccuracy?.rawValue
         dict["enableSparseUpdates"] = c.geo.enableSparseUpdates
         dict["sparseDistanceThreshold"] = c.geo.sparseDistanceThreshold
         dict["sparseMaxIdleSeconds"] = c.geo.sparseMaxIdleSeconds
@@ -46,13 +46,13 @@ class TraceletHostApiImpl: TraceletHostApi {
         dict["resolveAddress"] = c.geo.resolveAddress
 
         var filterDict = [String: Any]()
-        filterDict["trackingAccuracyThreshold"] = c.geo.filter.trackingAccuracyThreshold
-        filterDict["maxImpliedSpeed"] = c.geo.filter.maxImpliedSpeed
-        filterDict["odometerAccuracyThreshold"] = c.geo.filter.odometerAccuracyThreshold
-        filterDict["policy"] = c.geo.filter.policy.rawValue
-        filterDict["rejectMockLocations"] = c.geo.filter.rejectMockLocations
-        filterDict["mockDetectionLevel"] = c.geo.filter.mockDetectionLevel
-        filterDict["useKalmanFilter"] = c.geo.filter.useKalmanFilter
+        filterDict["trackingAccuracyThreshold"] = c.geo.filter?.trackingAccuracyThreshold
+        filterDict["maxImpliedSpeed"] = c.geo.filter?.maxImpliedSpeed
+        filterDict["odometerAccuracyThreshold"] = c.geo.filter?.odometerAccuracyThreshold
+        filterDict["policy"] = c.geo.filter?.policy?.rawValue
+        filterDict["rejectMockLocations"] = c.geo.filter?.rejectMockLocations
+        filterDict["mockDetectionLevel"] = c.geo.filter?.mockDetectionLevel
+        filterDict["useKalmanFilter"] = c.geo.filter?.useKalmanFilter
         dict["filter"] = filterDict
 
         // App
@@ -79,11 +79,14 @@ class TraceletHostApiImpl: TraceletHostApi {
         dict["scheduleUseAlarmManager"] = c.android.scheduleUseAlarmManager
 
         // iOS
-        dict["activityType"] = c.ios.activityType.rawValue
+        dict["activityType"] = c.ios.activityType?.rawValue
         dict["useSignificantChangesOnly"] = c.ios.useSignificantChangesOnly
         dict["showsBackgroundLocationIndicator"] = c.ios.showsBackgroundLocationIndicator
         dict["pausesLocationUpdatesAutomatically"] = c.ios.pausesLocationUpdatesAutomatically
-        dict["locationAuthorizationRequest"] = c.ios.locationAuthorizationRequest == .always ? "Always" : "WhenInUse"
+        // nil means the caller never set it, so the key is omitted and the
+        // persisted value survives the merge (#321).
+        dict["locationAuthorizationRequest"] = c.ios.locationAuthorizationRequest
+            .map { $0 == .always ? "Always" : "WhenInUse" }
         dict["disableLocationAuthorizationAlert"] = c.ios.disableLocationAuthorizationAlert
         dict["preventSuspend"] = c.ios.preventSuspend
         dict["useBackgroundActivitySession"] = c.ios.useBackgroundActivitySession
@@ -96,7 +99,7 @@ class TraceletHostApiImpl: TraceletHostApi {
 
         // HTTP
         if let url = c.http.url { dict["url"] = url }
-        dict["method"] = c.http.method.rawValue
+        dict["method"] = c.http.method?.rawValue
         if let headers = c.http.headers { dict["headers"] = headers.compactMapValues { $0 } }
         if let params = c.http.params { dict["params"] = params.compactMapValues { $0 } }
         if let extras = c.http.extras { dict["extras"] = extras.compactMapValues { $0 } }
@@ -110,7 +113,7 @@ class TraceletHostApiImpl: TraceletHostApi {
         if let autoSyncDelay = c.http.autoSyncDelay { dict["autoSyncDelay"] = autoSyncDelay }
         dict["syncInterval"] = c.http.syncInterval
         dict["httpTimeout"] = c.http.httpTimeout
-        dict["locationsOrderDirection"] = c.http.locationsOrderDirection.rawValue
+        dict["locationsOrderDirection"] = c.http.locationsOrderDirection?.rawValue
         dict["disableAutoSyncOnCellular"] = c.http.disableAutoSyncOnCellular
         dict["maxRetries"] = c.http.maxRetries
         dict["retryBackoffBase"] = c.http.retryBackoffBase
@@ -121,7 +124,7 @@ class TraceletHostApiImpl: TraceletHostApi {
         if let telematicsUrl = c.http.telematicsUrl { dict["telematicsUrl"] = telematicsUrl }
 
         // Logger
-        dict["logLevel"] = c.logger.logLevel.rawValue
+        dict["logLevel"] = c.logger.logLevel?.rawValue
         dict["logMaxDays"] = c.logger.logMaxDays
         dict["debug"] = c.logger.debug
 
@@ -144,8 +147,13 @@ class TraceletHostApiImpl: TraceletHostApi {
         // `ios: IosConfig(useSignificantChangesOnly: true)` was overwritten by a
         // default-false MotionConfig. Combine them so a `true` from either
         // source is honored (the native SDK exposes a single flag).
-        dict["useSignificantChangesOnly"] =
-            c.ios.useSignificantChangesOnly || c.motion.useSignificantChangesOnly
+        // #321: emit only when at least one side was actually supplied, so an
+        // untouched flag is not rewritten with a default-derived `false`.
+        if c.ios.useSignificantChangesOnly != nil || c.motion.useSignificantChangesOnly != nil {
+            dict["useSignificantChangesOnly"] =
+                (c.ios.useSignificantChangesOnly ?? false)
+                    || (c.motion.useSignificantChangesOnly ?? false)
+        }
         // Sensor thresholds are only forwarded when the app set them. Sending them
         // unconditionally overrode the iOS-tuned defaults with Dart's (Android)
         // values: 0.4 m/s² became 0.04 g, roughly four times stricter than the
@@ -159,12 +167,12 @@ class TraceletHostApiImpl: TraceletHostApi {
         if let stillSampleCount = c.motion.stillSampleCount {
             dict["stillSampleCount"] = stillSampleCount
         }
-        dict["motionDetectionMode"] = c.motion.motionDetectionMode.rawValue
+        dict["motionDetectionMode"] = c.motion.motionDetectionMode?.rawValue
         dict["speedMovingThreshold"] = c.motion.speedMovingThreshold
         dict["speedStationaryDelay"] = c.motion.speedStationaryDelay
-        dict["stationaryTrackingMode"] = c.motion.stationaryTrackingMode.rawValue
+        dict["stationaryTrackingMode"] = c.motion.stationaryTrackingMode?.rawValue
         dict["stationaryPeriodicInterval"] = c.motion.stationaryPeriodicInterval
-        dict["stationaryPeriodicAccuracy"] = c.motion.stationaryPeriodicAccuracy.rawValue
+        dict["stationaryPeriodicAccuracy"] = c.motion.stationaryPeriodicAccuracy?.rawValue
         dict["speedWakeConfirmCount"] = c.motion.speedWakeConfirmCount
 
         // Geofence
@@ -179,10 +187,10 @@ class TraceletHostApiImpl: TraceletHostApi {
         // iOS evaluates transitions from continuous GPS (reliable tight radii /
         // EXIT) and the system location indicator is expected (Issue #210).
         dict["geofenceModeHighAccuracy"] =
-            c.geofence.geofenceModeHighAccuracy || c.android.geofenceModeHighAccuracy
+            (c.geofence.geofenceModeHighAccuracy ?? false) || (c.android.geofenceModeHighAccuracy ?? false)
 
         // Persistence
-        dict["persistMode"] = c.persistence.persistMode.rawValue
+        dict["persistMode"] = c.persistence.persistMode?.rawValue
         dict["maxDaysToPersist"] = c.persistence.maxDaysToPersist
         dict["maxRecordsToPersist"] = c.persistence.maxRecordsToPersist
         dict["disableProviderChangeRecord"] = c.persistence.disableProviderChangeRecord
@@ -192,7 +200,7 @@ class TraceletHostApiImpl: TraceletHostApi {
 
         // Audit
         dict["auditEnabled"] = c.audit.enabled
-        dict["auditHashAlgorithm"] = c.audit.hashAlgorithm.rawValue
+        dict["auditHashAlgorithm"] = c.audit.hashAlgorithm?.rawValue
 
         // Privacy Zone
         dict["privacyZoneEnabled"] = c.privacyZone.enabled

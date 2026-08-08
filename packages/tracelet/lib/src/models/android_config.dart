@@ -107,8 +107,7 @@ class AndroidConfig {
           geofenceModeHighAccuracy ?? _geofenceModeHighAccuracy,
       periodicUseForegroundService:
           periodicUseForegroundService ?? _periodicUseForegroundService,
-      periodicUseExactAlarms:
-          periodicUseExactAlarms ?? _periodicUseExactAlarms,
+      periodicUseExactAlarms: periodicUseExactAlarms ?? _periodicUseExactAlarms,
       scheduleUseAlarmManager:
           scheduleUseAlarmManager ?? _scheduleUseAlarmManager,
       releaseWakelockWhenStationary:
@@ -259,7 +258,8 @@ class AndroidConfig {
         'scheduleUseAlarmManager': _scheduleUseAlarmManager,
       if (_releaseWakelockWhenStationary != null)
         'releaseWakelockWhenStationary': _releaseWakelockWhenStationary,
-      'foregroundService': foregroundService.toMap(),
+      if (foregroundService != null)
+        'foregroundService': foregroundService.toMap(),
     };
   }
 

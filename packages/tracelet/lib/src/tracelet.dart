@@ -272,8 +272,14 @@ class Tracelet {
   /// ));
   /// print('Enabled: ${state.enabled}');
   /// ```
-  static Future<State> ready(Config config) async {
+  static Future<State> ready(Config rawConfig) async {
     await _ensureRustLibInitialized();
+    // [ready] establishes the complete baseline, so every field is pinned to
+    // its effective value before it crosses the channel. [setConfig] is the
+    // partial one and sends only what the caller set; keeping the two apart is
+    // what lets an unset field be omitted without the platforms' own defaults
+    // having to match Dart's (#321).
+    final config = rawConfig.resolved();
     _currentConfig = config;
 
     // Initialize battery budget engine from config.
@@ -448,12 +454,13 @@ class Tracelet {
 
   /// Update the plugin configuration.
   ///
-  /// The platform merges this into the configuration it already persisted, so
-  /// a [ForegroundServiceConfig] field you do not set keeps the value
-  /// configured earlier rather than reverting to its default (#320):
+  /// This is a **partial update**. Only the fields you actually set are sent;
+  /// everything else keeps the value the platform already persisted, in every
+  /// section (#320, #321):
   ///
   /// ```dart
-  /// // The notification title and channel configured in ready() survive.
+  /// // Changes one flag. The notification title and channel from ready(),
+  /// // the HTTP URL, distanceFilter, stopOnTerminate — all survive.
   /// await Tracelet.setConfig(const Config(
   ///   android: AndroidConfig(
   ///     foregroundService: ForegroundServiceConfig(
@@ -461,22 +468,21 @@ class Tracelet {
   ///     ),
   ///   ),
   /// ));
+  ///
+  /// // Changes nothing at all.
+  /// await Tracelet.setConfig(const Config());
   /// ```
   ///
-  /// Every other section is still replaced wholesale — see #321.
+  /// Passing a value equal to its default is still an explicit write, so a
+  /// flag can always be set back — "unset" means *not provided*, never *equal
+  /// to the default*. Use [ready] to establish or replace the full baseline.
   ///
   /// Returns the updated [State].
   static Future<State> setConfig(Config config) async {
-    // Mirror the platform's merge for the foreground service, so
-    // [activeConfig] keeps reporting the values actually persisted natively
-    // instead of the defaults this call left unset (#320).
-    final merged = config.copyWith(
-      android: config.android.copyWith(
-        foregroundService: _currentConfig.android.foregroundService.mergedWith(
-          config.android.foregroundService,
-        ),
-      ),
-    );
+    // Mirror the platform's merge across every section, so [activeConfig]
+    // keeps reporting the values actually persisted natively instead of the
+    // defaults this call left unset (#320, #321).
+    final merged = _currentConfig.mergedWith(config);
     _currentConfig = merged;
 
     // Update battery budget engine from config.
@@ -543,9 +549,12 @@ class Tracelet {
 
   /// Reset to default configuration, optionally applying a new [config].
   ///
+  /// Like [ready] and unlike [setConfig], this replaces the whole baseline, so
+  /// [config] is sent with every field resolved to its effective value (#321).
+  ///
   /// Returns the updated [State].
   static Future<State> reset([Config? config]) async {
-    final result = await _platform.reset(config?.toTlConfig());
+    final result = await _platform.reset(config?.resolved().toTlConfig());
     return _stateFromMap(result);
   }
 

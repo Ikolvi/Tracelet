@@ -175,8 +175,7 @@ class AttestationConfig {
           verificationUrl == other.verificationUrl;
 
   @override
-  int get hashCode =>
-      Object.hash(_enabled, _refreshInterval, verificationUrl);
+  int get hashCode => Object.hash(_enabled, _refreshInterval, verificationUrl);
 }
 
 /// Represents an attestation token from the device's integrity API.
@@ -227,10 +226,10 @@ class AttestationToken {
   /// Serializes to a map.
   Map<String, Object?> toMap() {
     return <String, Object?>{
-      'token': token,
-      'timestamp': timestamp.millisecondsSinceEpoch,
-      'provider': provider,
-      'verified': verified,
+      if (token != null) 'token': token,
+      if (timestamp != null) 'timestamp': timestamp.millisecondsSinceEpoch,
+      if (provider != null) 'provider': provider,
+      if (verified != null) 'verified': verified,
     };
   }
 

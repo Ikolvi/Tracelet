@@ -46,9 +46,14 @@ void main() {
       const config = AuditConfig(enabled: true);
       final map = config.toMap();
       expect(map.containsKey('auditEnabled'), true);
-      expect(map.containsKey('hashAlgorithm'), true);
-      expect(map.containsKey('includeExtrasInHash'), true);
       expect(map['auditEnabled'], true);
+      // #321: only what the caller set is serialized, so the fields this
+      // config never mentioned are absent rather than sent as defaults.
+      expect(map.containsKey('hashAlgorithm'), false);
+      expect(map.containsKey('includeExtrasInHash'), false);
+      final resolved = config.resolved().toMap();
+      expect(resolved.containsKey('hashAlgorithm'), true);
+      expect(resolved.containsKey('includeExtrasInHash'), true);
     });
 
     test('equality', () {

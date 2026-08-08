@@ -114,10 +114,7 @@ class IosConfig {
           : null,
       showsBackgroundLocationIndicator:
           map.containsKey('showsBackgroundLocationIndicator')
-          ? ensureBool(
-              map['showsBackgroundLocationIndicator'],
-              fallback: false,
-            )
+          ? ensureBool(map['showsBackgroundLocationIndicator'], fallback: false)
           : null,
       pausesLocationUpdatesAutomatically:
           map.containsKey('pausesLocationUpdatesAutomatically')

@@ -176,10 +176,13 @@ void main() {
     });
 
     test('HttpConfig.toMap serializes method as int index', () {
-      const postConfig = HttpConfig();
+      // #321: an unset field is omitted. Set it explicitly to assert the
+      // encoding — passing the default value is still an explicit write.
+      const postConfig = HttpConfig(method: HttpMethod.post);
       const putConfig = HttpConfig(method: HttpMethod.put);
       expect(postConfig.toMap()['method'], 0);
       expect(putConfig.toMap()['method'], 1);
+      expect(const HttpConfig().toMap().containsKey('method'), isFalse);
     });
 
     test('HttpConfig.fromMap restores method from int index', () {
@@ -366,8 +369,16 @@ void main() {
     });
 
     test('default activity type is other', () {
+      // #321: unset crosses as null; the resolved baseline carries the value.
+      expect(const IosConfig().toTlConfig().activityType, isNull);
       expect(
-        const IosConfig().toTlConfig().activityType,
+        const IosConfig().resolved().toTlConfig().activityType,
+        TlIosActivityType.other,
+      );
+      expect(
+        const IosConfig(
+          activityType: LocationActivityType.other,
+        ).toTlConfig().activityType,
         TlIosActivityType.other,
       );
     });
@@ -1592,8 +1603,10 @@ void main() {
     });
 
     test('toMap serializes to standard string format', () {
-      const config = AuditConfig();
+      // #321: an unset field is omitted; set it explicitly to assert encoding.
+      const config = AuditConfig(hashAlgorithm: HashAlgorithm.sha256);
       expect(config.toMap()['hashAlgorithm'], 'SHA-256');
+      expect(const AuditConfig().toMap().containsKey('hashAlgorithm'), isFalse);
 
       const config384 = AuditConfig(hashAlgorithm: HashAlgorithm.sha384);
       expect(config384.toMap()['hashAlgorithm'], 'SHA-384');

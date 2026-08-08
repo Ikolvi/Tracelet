@@ -61,7 +61,8 @@ class SecurityConfig {
   /// preserves which fields were supplied (#321).
   factory SecurityConfig.fromMap(Map<String, Object?> map) {
     final hasEncrypt =
-        map.containsKey('encryptDatabase') || map.containsKey('encrypt_database');
+        map.containsKey('encryptDatabase') ||
+        map.containsKey('encrypt_database');
     return SecurityConfig(
       encryptDatabase: hasEncrypt
           ? ensureBool(
