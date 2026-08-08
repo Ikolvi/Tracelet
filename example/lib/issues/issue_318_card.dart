@@ -100,6 +100,11 @@ class _Issue318CardState extends State<Issue318Card> {
           .where((e) => e.level.toUpperCase() == 'LIFECYCLE')
           .toList();
 
+      // Report the total too. Without it a failure cannot distinguish "the
+      // lifecycle channel is broken" from "nothing is being logged at all",
+      // which are different bugs in different layers.
+      final levels = logs.map((e) => e.level.toUpperCase()).toSet().toList()
+        ..sort();
       check(
         '#318 lifecycle entries are persisted despite logLevel=error',
         lifecycle.isNotEmpty,
@@ -107,8 +112,14 @@ class _Issue318CardState extends State<Issue318Card> {
             ? '${lifecycle.length} lifecycle entr'
                   '${lifecycle.length == 1 ? 'y' : 'ies'} recorded — a killed-state '
                   'report now arrives with a trail attached'
-            : 'REGRESSED — none recorded. A user reporting a background failure '
-                  'would still have nothing to send.',
+            : logs.isEmpty
+            ? 'REGRESSED — the log table is empty entirely. Nothing is being '
+                  'persisted, so this is the log store, not the lifecycle '
+                  'channel. Check that ready() completed and the database '
+                  'opened.'
+            : 'REGRESSED — ${logs.length} log entries exist but none are '
+                  'LIFECYCLE (levels seen: ${levels.join(', ')}). The store '
+                  'works, so the always-on channel is what is not reaching it.',
       );
 
       // The two platforms have different killed-state machinery, so they emit
@@ -123,16 +134,29 @@ class _Issue318CardState extends State<Issue318Card> {
         'termination:',
         'motion',
       ];
-      final sawAnchor = lifecycle.any((e) => anchors.any(e.message.contains));
-      check(
-        '#318 killed-state anchors are recorded',
-        sawAnchor,
-        sawAnchor
-            ? 'session lifecycle captured — a report now says which pipeline ran '
-                  'and what it decided'
-            : 'entries exist but none of the killed-state anchors '
-                  '(${anchors.join(', ')}) are present',
-      );
+      // Only meaningful once there is something to inspect. Reported as a
+      // skip rather than a failure otherwise: with no entries at all this
+      // check has nothing to say, and asserting it anyway produced a second
+      // red row whose text claimed "entries exist" when none did.
+      if (lifecycle.isEmpty) {
+        results.add(
+          '⏭️ #318 killed-state anchors — skipped, no lifecycle entries to '
+          'inspect. Fix the row above first; this one cannot fail '
+          'independently of it.',
+        );
+      } else {
+        final sawAnchor = lifecycle.any((e) => anchors.any(e.message.contains));
+        check(
+          '#318 killed-state anchors are recorded',
+          sawAnchor,
+          sawAnchor
+              ? 'session lifecycle captured — a report now says which pipeline '
+                    'ran and what it decided'
+              : '${lifecycle.length} lifecycle entries exist but none carry a '
+                    'killed-state anchor (${anchors.join(', ')}). Sample: '
+                    '${lifecycle.take(3).map((e) => e.message).join(' | ')}',
+        );
+      }
 
       if (lifecycle.isNotEmpty) {
         final sample = lifecycle

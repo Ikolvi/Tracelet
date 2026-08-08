@@ -2291,9 +2291,20 @@ class MotionConfig {
     activityTypes: activityTypes,
     stationaryRadius: stationaryRadius,
     useSignificantChangesOnly: useSignificantChangesOnly,
-    shakeThreshold: shakeThreshold,
-    stillThreshold: stillThreshold,
-    stillSampleCount: stillSampleCount,
+    // Deliberately NOT resolved. `resolved()` exists so `ready()` can pin every
+    // field and stop depending on the platforms agreeing with Dart's defaults —
+    // but for these three the platforms deliberately DISAGREE, and unset is the
+    // signal that each should keep its own tuned value: 2.5 m/s² vs 0.35 g,
+    // 0.4 m/s² vs 0.15 g, 25 samples at ~5 Hz vs 50 at 10 Hz.
+    //
+    // Pinning them sends Dart's Android-shaped numbers to iOS, where they are
+    // read as g and divided by 9.81 — 0.4 becomes 0.04 g, roughly four times
+    // stricter than the iOS default, so a device would struggle to ever be
+    // counted as still. Resolving here silently undid the whole point of the
+    // `hasExplicit*` flags.
+    shakeThreshold: _shakeThreshold,
+    stillThreshold: _stillThreshold,
+    stillSampleCount: _stillSampleCount,
     motionDetectionMode: motionDetectionMode,
     speedMovingThreshold: speedMovingThreshold,
     speedStationaryDelay: speedStationaryDelay,

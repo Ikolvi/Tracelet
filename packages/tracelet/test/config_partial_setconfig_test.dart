@@ -230,6 +230,33 @@ void main() {
       expect(resolved.motion.stopTimeout, const MotionConfig().stopTimeout);
     });
 
+    test('the per-platform motion thresholds are NOT resolved', () {
+      // These three are the exception to `resolved()`. Every other field has
+      // one default that all platforms agree on, so pinning it is free. These
+      // deliberately differ — 2.5 m/s² vs 0.35 g, 0.4 m/s² vs 0.15 g, 25
+      // samples at ~5 Hz vs 50 at 10 Hz — and unset is the signal that each
+      // platform should keep its own. iOS reads them as g and divides by 9.81,
+      // so pinning Dart's Android numbers makes 0.4 arrive as 0.04 g, about
+      // four times stricter than the iOS default.
+      final tl = const Config().resolved().toTlConfig().motion;
+
+      expect(tl.shakeThreshold, isNull);
+      expect(tl.stillThreshold, isNull);
+      expect(tl.stillSampleCount, isNull);
+      // Everything else in the same section is still pinned.
+      expect(tl.stopTimeout, isNotNull);
+      expect(tl.motionDetectionMode, isNotNull);
+    });
+
+    test('an explicitly set motion threshold survives resolving', () {
+      final tl = const Config(
+        motion: MotionConfig(shakeThreshold: 3),
+      ).resolved().toTlConfig().motion;
+
+      expect(tl.shakeThreshold, 3);
+      expect(tl.stillThreshold, isNull);
+    });
+
     test('resolving does not change any effective value', () {
       const configured = Config(
         geo: GeoConfig(distanceFilter: 25),
