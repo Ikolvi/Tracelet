@@ -57,29 +57,40 @@ import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 @immutable
 class AuditConfig {
   /// Creates a new [AuditConfig].
+  ///
+  /// Omitting a parameter leaves it *unset*: the getter reports the documented
+  /// default, and [toMap]/[toTlConfig] skip the field so a partial
+  /// `setConfig()` does not overwrite the persisted value (#321).
   const AuditConfig({
-    this.enabled = false,
-    this.hashAlgorithm = HashAlgorithm.sha256,
+    bool? enabled,
+    HashAlgorithm? hashAlgorithm,
     @Deprecated(
       'Never implemented — the audit chain always hashes core location fields '
       'only, so this flag changes nothing. Enabling it needs a versioned chain '
       'migration. Will be removed in a future major version (#304).',
     )
-    this.includeExtrasInHash = false,
-  });
+    bool? includeExtrasInHash,
+  }) : _enabled = enabled,
+       _hashAlgorithm = hashAlgorithm,
+       _includeExtrasInHash = includeExtrasInHash;
 
   /// Creates an [AuditConfig] from a map.
+  ///
+  /// An absent key stays unset, so a `toMap()`/`fromMap()` round trip preserves
+  /// which fields were supplied (#321).
   factory AuditConfig.fromMap(Map<String, Object?> map) {
+    final hasEnabled =
+        map.containsKey('auditEnabled') || map.containsKey('enabled');
     return AuditConfig(
-      enabled: ensureBool(
-        map['auditEnabled'] ?? map['enabled'],
-        fallback: false,
-      ),
-      hashAlgorithm: _parseHashAlgorithm(map['hashAlgorithm']),
-      includeExtrasInHash: ensureBool(
-        map['includeExtrasInHash'],
-        fallback: false,
-      ),
+      enabled: hasEnabled
+          ? ensureBool(map['auditEnabled'] ?? map['enabled'], fallback: false)
+          : null,
+      hashAlgorithm: map.containsKey('hashAlgorithm')
+          ? _parseHashAlgorithm(map['hashAlgorithm'])
+          : null,
+      includeExtrasInHash: map.containsKey('includeExtrasInHash')
+          ? ensureBool(map['includeExtrasInHash'], fallback: false)
+          : null,
     );
   }
 
@@ -87,7 +98,13 @@ class AuditConfig {
   ///
   /// When `true`, every persisted location is hashed and chained.
   /// Defaults to `false`.
-  final bool enabled;
+  bool get enabled => _enabled ?? false;
+
+  // Backing fields. `null` means "not supplied by the caller", which is what
+  // keeps the field out of the wire payload (#321).
+  final bool? _enabled;
+  final HashAlgorithm? _hashAlgorithm;
+  final bool? _includeExtrasInHash;
 
   /// The hash algorithm used for the audit chain.
   ///
@@ -95,7 +112,7 @@ class AuditConfig {
   /// for future extensibility (SHA-384, SHA-512).
   ///
   /// Defaults to [HashAlgorithm.sha256].
-  final HashAlgorithm hashAlgorithm;
+  HashAlgorithm get hashAlgorithm => _hashAlgorithm ?? HashAlgorithm.sha256;
 
   /// Whether to include the `extras` map in the hash computation.
   ///
@@ -112,27 +129,51 @@ class AuditConfig {
     'only, so this flag changes nothing. Enabling it needs a versioned chain '
     'migration. Will be removed in a future major version (#304).',
   )
-  final bool includeExtrasInHash;
+  bool get includeExtrasInHash => _includeExtrasInHash ?? false;
 
-  /// Serializes to a map.
+  /// Applies every field [other] explicitly supplied on top of this one (#321).
+  AuditConfig mergedWith(AuditConfig other) => AuditConfig(
+    enabled: other._enabled ?? _enabled,
+    hashAlgorithm: other._hashAlgorithm ?? _hashAlgorithm,
+    // ignore: deprecated_member_use_from_same_package
+    includeExtrasInHash: other._includeExtrasInHash ?? _includeExtrasInHash,
+  );
+
+  /// Returns this config with every field pinned to its effective value, for
+  /// the complete baseline `ready()` sends (#321).
+  AuditConfig resolved() => AuditConfig(
+    enabled: enabled,
+    hashAlgorithm: hashAlgorithm,
+    // ignore: deprecated_member_use_from_same_package
+    includeExtrasInHash: includeExtrasInHash,
+  );
+
+  /// Serializes to a map, omitting fields that were never supplied (#321).
   Map<String, Object?> toMap() {
     return <String, Object?>{
-      'auditEnabled': enabled,
-      'hashAlgorithm': _hashAlgorithmToString(hashAlgorithm),
-      'includeExtrasInHash': includeExtrasInHash,
+      if (_enabled != null) 'auditEnabled': _enabled,
+      if (_hashAlgorithm != null)
+        'hashAlgorithm': _hashAlgorithmToString(_hashAlgorithm),
+      if (_includeExtrasInHash != null)
+        'includeExtrasInHash': _includeExtrasInHash,
     };
   }
 
   /// Converts to Pigeon [TlAuditConfig].
+  ///
+  /// Unset fields cross as `null` so the platform leaves the persisted value
+  /// alone (#321).
   TlAuditConfig toTlConfig() => TlAuditConfig(
-    enabled: enabled,
+    enabled: _enabled,
     // The public [HashAlgorithm] enum has more variants (sha256/sha384/sha512)
     // than the Pigeon [TlHashAlgorithm] currently carries, so indexing it
     // directly threw a fatal RangeError on sha384/sha512 during ready() (#150).
     // Guard the index; unsupported variants fall back to sha256.
-    hashAlgorithm: hashAlgorithm.index < TlHashAlgorithm.values.length
-        ? TlHashAlgorithm.values[hashAlgorithm.index]
-        : TlHashAlgorithm.sha256,
+    hashAlgorithm: _hashAlgorithm == null
+        ? null
+        : (_hashAlgorithm.index < TlHashAlgorithm.values.length
+              ? TlHashAlgorithm.values[_hashAlgorithm.index]
+              : TlHashAlgorithm.sha256),
   );
 
   @override
@@ -140,17 +181,20 @@ class AuditConfig {
       'AuditConfig(enabled: $enabled, hashAlgorithm: $hashAlgorithm, '
       'includeExtrasInHash: $includeExtrasInHash)';
 
+  // Compares the backing fields so unset stays distinguishable from an
+  // explicit default (#321).
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is AuditConfig &&
           runtimeType == other.runtimeType &&
-          enabled == other.enabled &&
-          hashAlgorithm == other.hashAlgorithm &&
-          includeExtrasInHash == other.includeExtrasInHash;
+          _enabled == other._enabled &&
+          _hashAlgorithm == other._hashAlgorithm &&
+          _includeExtrasInHash == other._includeExtrasInHash;
 
   @override
-  int get hashCode => Object.hash(enabled, hashAlgorithm, includeExtrasInHash);
+  int get hashCode =>
+      Object.hash(_enabled, _hashAlgorithm, _includeExtrasInHash);
 }
 
 /// Parse a hash algorithm value from a native map.
