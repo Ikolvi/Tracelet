@@ -452,6 +452,13 @@ public final class TraceletSdk {
         if !isResume && wasTracking {
             stateManager.enabled = true
             stateManager.trackingMode = .continuous
+            // #318/#324: recorded even though nothing changed, because "I called
+            // start() and nothing happened" is a real report and this is its
+            // answer — the session was already live, so no fresh session
+            // boundary follows and the pace was deliberately left alone.
+            TraceletLog.lifecycle(
+                "session: start ignored — already tracking continuously "
+                    + "(isMoving=\(stateManager.isMoving))")
             return stateManager.toMap(configManager.getConfig())
         }
 
@@ -508,6 +515,17 @@ public final class TraceletSdk {
 
         eventSender.sendEnabledChange(true)
         logger.info("start() — tracking started")
+        // #318/#324: the session boundary itself. iOS has no separate killed-state
+        // pipeline to anchor a trace to — a relaunched process runs this very
+        // method — so this entry is what a `relaunch:` line is read against, and
+        // the most common answer to "it stopped tracking" is a `session: stop`
+        // with no start after it. `resume=true` marks the SDK's own takeover
+        // (ready(), auto-resume) rather than a call from the app.
+        TraceletLog.lifecycle(
+            "session: start — mode=continuous resume=\(isResume) "
+                + "isMoving=\(stateManager.isMoving) "
+                + "motionMode=\(configManager.getMotionDetectionMode()) "
+                + "launchedInBackground=\(stateManager.didLaunchInBackground)")
 
         return stateManager.toMap(configManager.getConfig())
     }
@@ -555,6 +573,12 @@ public final class TraceletSdk {
     @discardableResult
     public func stop() -> [String: Any] {
         BackgroundTaskHelper.shared.run("stop") { [self] in
+            // #318/#324: read before the state is cleared, so the entry says what was
+            // torn down rather than the zeroed state that follows.
+            let wasTracking = stateManager.enabled
+            let wasMode = stateManager.trackingMode
+            let wasMoving = stateManager.isMoving
+
             stateManager.enabled = false
             stateManager.isMoving = false
 
@@ -586,6 +610,14 @@ public final class TraceletSdk {
             telematicsEngine?.reset()
             eventSender.sendEnabledChange(false)
             logger.info("stop() — tracking stopped")
+            // #318/#324: the counterpart to `session: start`, and on its own the
+            // answer to most "it stopped tracking" reports. It is also the entry
+            // `relaunch: declined to resume — tracking was stopped before
+            // termination` points back at: that line says the session was
+            // already over, and this one says when it ended.
+            TraceletLog.lifecycle(
+                "session: stop — was mode=\(wasMode) enabled=\(wasTracking) "
+                    + "isMoving=\(wasMoving)")
         }
 
         return stateManager.toMap(configManager.getConfig())
@@ -668,6 +700,14 @@ public final class TraceletSdk {
 
         eventSender.sendEnabledChange(true)
         logger.info("startGeofences() — geofence-only mode")
+        // #318/#324: see start(). Recorded per mode because a geofence-only session
+        // that never fires looks identical to no session at all in a report,
+        // and standard mode deliberately runs with no continuous GPS — so the
+        // absence of motion entries is expected here and a finding elsewhere.
+        TraceletLog.lifecycle(
+            "session: start — mode=geofences resume=\(treatAsResume) "
+                + "highAccuracy=\(configManager.getGeofenceModeHighAccuracy()) "
+                + "fences=\(geofenceManager.getGeofences().count)")
 
         return stateManager.toMap(configManager.getConfig())
     }
@@ -725,6 +765,12 @@ public final class TraceletSdk {
 
         eventSender.sendEnabledChange(true)
         logger.info("startPeriodic() — periodic tracking started")
+        // #318/#324: see start(). Periodic mode on iOS depends on wake-ups the OS is
+        // free to withhold, so "it stopped firing overnight" is diagnosed by the
+        // interval this session actually ran at against the gaps in the fixes.
+        TraceletLog.lifecycle(
+            "session: start — mode=periodic interval=\(Int(interval))s "
+                + "preventSuspend=\(configManager.getPreventSuspend())")
 
         return stateManager.toMap(configManager.getConfig())
     }

@@ -805,7 +805,12 @@ class LocationService : Service(), DefaultLifecycleObserver {
     }
 
     override fun onDestroy() {
-        TraceletLog.debug("onDestroy")
+        // #318/#324: the pair to "service: onCreate", and at debug it was dropped at
+        // every default log level. `stopRequested` is the finding: every path
+        // that stands the service down deliberately clears `isRunning` first, so
+        // a destroy with `stopRequested=false` is the OS reclaiming a service
+        // nobody asked to stop — the shape of "tracking died while idle".
+        TraceletLog.lifecycle("service: onDestroy — stopRequested=${!isRunning}")
         cancelBootTrackingRetry()
         stopBootTrackingInternal()
         releaseOemWakelock()
