@@ -297,23 +297,37 @@ class Config {
 
   /// Serializes to a nested map suitable for platform channel transmission.
   Map<String, Object?> toMap() {
+    // A section is emitted only when it carries something (#326) — the same
+    // rule #321 already applies one level down to `geo.filter` and
+    // `android.foregroundService`, for the same reason and after the same
+    // mistake. Every section field resolves to a non-null object even when
+    // unset, so `if (geo != null)` was dead code (the analyzer said so) and
+    // `const Config().toMap()` shipped sixteen empty `{}` maps. Nothing
+    // downstream reads them — `Config.fromMap` falls back through a missing
+    // section, and the wire format is `toTlConfig()`, not this — but a
+    // partial update that changes nothing should not look like it touched
+    // every section, least of all in a pasted bug report (#326).
+    final sections = <String, Map<String, Object?>>{
+      'geo': geo.toMap(),
+      'app': app.toMap(),
+      'android': android.toMap(),
+      'ios': ios.toMap(),
+      'http': http.toMap(),
+      'logger': logger.toMap(),
+      'motion': motion.toMap(),
+      'geofence': geofence.toMap(),
+      'persistence': persistence.toMap(),
+      'audit': audit.toMap(),
+      'privacyZone': privacyZone.toMap(),
+      'security': security.toMap(),
+      'attestation': attestation.toMap(),
+      'telematics': telematics.toMap(),
+      'classifier': classifier.toMap(),
+      'impact': impact.toMap(),
+    };
     return <String, Object?>{
-      if (geo != null) 'geo': geo.toMap(),
-      if (app != null) 'app': app.toMap(),
-      if (android != null) 'android': android.toMap(),
-      if (ios != null) 'ios': ios.toMap(),
-      if (http != null) 'http': http.toMap(),
-      if (logger != null) 'logger': logger.toMap(),
-      if (motion != null) 'motion': motion.toMap(),
-      if (geofence != null) 'geofence': geofence.toMap(),
-      if (persistence != null) 'persistence': persistence.toMap(),
-      if (audit != null) 'audit': audit.toMap(),
-      if (privacyZone != null) 'privacyZone': privacyZone.toMap(),
-      if (security != null) 'security': security.toMap(),
-      if (attestation != null) 'attestation': attestation.toMap(),
-      if (telematics != null) 'telematics': telematics.toMap(),
-      if (classifier != null) 'classifier': classifier.toMap(),
-      if (impact != null) 'impact': impact.toMap(),
+      for (final section in sections.entries)
+        if (section.value.isNotEmpty) section.key: section.value,
     };
   }
 

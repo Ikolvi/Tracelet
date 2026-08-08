@@ -65,25 +65,47 @@ class _Issue321CardState extends State<Issue321Card> {
       // ---------------------------------------------------------------------
       // The serialization contract — platform-independent, so it runs on web.
       // ---------------------------------------------------------------------
-      // Checked strictly: a section must be empty, not "empty apart from an
-      // empty nested map". That allowance is what let `geo` ship `filter: {}`
-      // and `android` ship `foregroundService: {}` on a config that set
-      // nothing — harmless to the merge, but not a minimal payload.
+      // Checked strictly: the payload must be empty, not "every section
+      // present and empty", and not "empty apart from an empty nested map".
+      // Each allowance in turn was where something hid — first `geo` shipping
+      // `filter: {}` and `android` shipping `foregroundService: {}`, then all
+      // sixteen sections shipping `{}` themselves. None of it reaches the
+      // merge, but a partial update that changes nothing should not look like
+      // it touched anything.
       final emptyPayload = const Config().toMap();
-      final nonEmpty = <String>[];
-      emptyPayload.forEach((section, body) {
-        if (body is Map<String, Object?> && body.isNotEmpty) {
-          nonEmpty.add('$section (${body.keys.join(', ')})');
-        }
-      });
+      final leftover = emptyPayload.entries
+          .map(
+            (e) => e.value is Map<String, Object?>
+                ? '${e.key} (${(e.value! as Map<String, Object?>).keys.join(', ')})'
+                : e.key,
+          )
+          .toList();
       check(
         'const Config() serializes to nothing at all',
-        nonEmpty.isEmpty,
-        nonEmpty.isEmpty
-            ? 'every section is empty — a setConfig() that configures nothing '
-                  'now changes nothing'
-            : 'REGRESSED — ${nonEmpty.join(', ')} still emit defaults that '
-                  'would overwrite the persisted values',
+        emptyPayload.isEmpty,
+        emptyPayload.isEmpty
+            ? 'the payload is empty — a setConfig() that configures nothing '
+                  'now sends nothing at all'
+            : 'REGRESSED — still emits ${leftover.join(', ')}',
+      );
+
+      // The counterpart: empty because nothing was supplied, not because
+      // toMap() stopped emitting. Without this the row above passes on a
+      // serializer that returns {} unconditionally.
+      final appOnly = const Config(
+        app: AppConfig(heartbeatInterval: 30),
+      ).toMap();
+      final onlyAppSection =
+          appOnly.length == 1 &&
+          (appOnly['app'] as Map<String, Object?>?)?['heartbeatInterval'] == 30;
+      check(
+        'a section appears as soon as it carries a field',
+        onlyAppSection,
+        onlyAppSection
+            ? 'setting one field emits exactly one section carrying exactly '
+                  'that field'
+            : 'REGRESSED — emits ${appOnly.keys.join(', ')}; the empty payload '
+                  'above may just be a serializer that emits nothing',
       );
 
       final geoOnly =
