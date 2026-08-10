@@ -342,8 +342,28 @@ impl LocationProcessor {
     /// rebuilding the processor to change thresholds would drop the anchor point
     /// and silently forfeit one inter-fix delta from the odometer every time the
     /// transport mode changed.
+    /// A configured `distance_filter` of 0 survives the swap (#346).
+    ///
+    /// Zero is not "unset" — the hosts default it to 10 m, so reaching 0 takes a
+    /// deliberate "record every fix", the same opt-out the sibling thresholds
+    /// document as `<= 0 disables`. Auto-tuning used to overwrite it like any
+    /// other value, and `Still` carries the widest non-vehicle gate in the table
+    /// at 25 m. A parked device never travels 25 m, so every fix came back
+    /// `DISTANCE_FILTER`, nothing was persisted, and the host saw it as sync
+    /// having stopped — while the pace machine, which has its own idea of when a
+    /// device is parked, was meanwhile holding continuous GPS open and throwing
+    /// away roughly two fixes a second.
+    ///
+    /// Only the distance gate is preserved. The accuracy and implied-speed
+    /// thresholds are about whether a fix is *trustworthy*, which the mode
+    /// genuinely knows better than a static config, so those still tune.
     pub fn retune(&self, tuning: LocationTuning) {
-        self.state.lock().unwrap().tuning = tuning;
+        let mut state = self.state.lock().unwrap();
+        let mut tuning = tuning;
+        if state.base_tuning.distance_filter == 0.0 {
+            tuning.distance_filter = 0.0;
+        }
+        state.tuning = tuning;
     }
 
     /// Restores the thresholds the processor was constructed with, undoing any
@@ -691,6 +711,95 @@ mod tests {
         // realistic 1 m/s so they clear walking's own implied-speed ceiling.
         assert!(fix_at(&p, 0.0, 5.0, 1_000).accepted);
         assert!(fix_at(&p, 10.0, 5.0, 11_000).accepted, "10 m clears walking's 8 m filter");
+    }
+
+    /// A host that switched distance filtering off entirely.
+    fn no_distance_filter() -> LocationTuning {
+        LocationTuning {
+            distance_filter: 0.0,
+            tracking_accuracy_threshold: 100,
+            odometer_accuracy_threshold: 50,
+            max_implied_speed: 80,
+        }
+    }
+
+    /// `TransportMode::Still` — the widest non-vehicle distance gate in the
+    /// table, and the one that produced #346 in the field.
+    fn still() -> LocationTuning {
+        LocationTuning {
+            distance_filter: 25.0,
+            tracking_accuracy_threshold: 15,
+            odometer_accuracy_threshold: 10,
+            max_implied_speed: 3,
+        }
+    }
+
+    /// #346: auto-tuning must not impose a distance gate on a host that
+    /// deliberately switched distance filtering off.
+    ///
+    /// The failure was total rather than partial: `Still` commits on a parked
+    /// device, a parked device never travels 25 m, so *every* fix came back
+    /// DISTANCE_FILTER and nothing was ever persisted or synced.
+    #[test]
+    fn retune_preserves_a_configured_zero_distance_filter() {
+        let p = processor(no_distance_filter());
+        p.retune(still());
+
+        assert_eq!(
+            p.current_tuning().distance_filter,
+            0.0,
+            "the host asked for every fix; the mode may not overrule that"
+        );
+    }
+
+    /// The other three thresholds are about whether a fix is *trustworthy*,
+    /// which the committed mode does know better — they must still tune.
+    #[test]
+    fn retune_still_applies_the_other_thresholds_when_distance_filtering_is_off() {
+        let p = processor(no_distance_filter());
+        p.retune(still());
+
+        let t = p.current_tuning();
+        assert_eq!(t.tracking_accuracy_threshold, 15);
+        assert_eq!(t.odometer_accuracy_threshold, 10);
+        assert_eq!(t.max_implied_speed, 3);
+    }
+
+    /// The behaviour that actually matters: consecutive fixes from a parked
+    /// device keep being accepted instead of vanishing.
+    #[test]
+    fn a_parked_device_still_records_fixes_when_distance_filtering_is_off() {
+        let p = processor(no_distance_filter());
+        p.retune(still());
+
+        assert!(fix_at(&p, 0.0, 2.6, 1_000).accepted);
+        // Jitter-sized moves, nothing close to Still's 25 m gate.
+        assert!(fix_at(&p, 1.0, 2.6, 11_000).accepted, "1 m must still be recorded");
+        assert!(fix_at(&p, 1.5, 2.6, 21_000).accepted, "0.5 m must still be recorded");
+    }
+
+    /// The guard keys off the *configured* value, so a host that did ask for a
+    /// distance filter still gets the mode's.
+    #[test]
+    fn retune_still_overrides_a_nonzero_configured_distance_filter() {
+        let p = processor(walking());
+        p.retune(still());
+
+        assert_eq!(p.current_tuning().distance_filter, 25.0);
+    }
+
+    /// Reconfiguring *to* zero must take effect on the next retune too — the
+    /// guard reads `base_tuning`, which `set_base_tuning` owns (#303).
+    #[test]
+    fn reconfiguring_to_zero_disables_the_gate_for_later_retunes() {
+        let p = processor(walking());
+        p.retune(still());
+        assert_eq!(p.current_tuning().distance_filter, 25.0);
+
+        p.set_base_tuning(no_distance_filter());
+        p.retune(still());
+
+        assert_eq!(p.current_tuning().distance_filter, 0.0);
     }
 
     /// #303: a host reconfiguration must reach the live thresholds when nothing
