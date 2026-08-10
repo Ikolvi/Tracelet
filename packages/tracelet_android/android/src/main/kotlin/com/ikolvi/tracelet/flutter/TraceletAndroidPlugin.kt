@@ -332,8 +332,17 @@ class TraceletAndroidPlugin :
     override fun requestSyncBody(locations: List<Map<String, Any?>>): String? {
         if (!hasCustomSyncBodyBuilder) {
             // No foreground builder registered in Dart. Return the sentinel
-            // immediately to bypass the 10-second channel timeout and ensure 
+            // immediately to bypass the 10-second channel timeout and ensure
             // the sync falls back to the default payload without aborting.
+            //
+            // #340: the `requestSyncBody called with N locations` line below
+            // sits after this check, so this branch returned in silence and a
+            // device posting the default payload gave no clue why. Kept in step
+            // with the iOS log of the same name.
+            sdk.logger.debug(
+                "requestSyncBody: no custom sync body builder registered " +
+                    "(setSyncBodyBuilder never reached native) — using the default payload",
+            )
             return NO_SYNC_BODY_BUILDER_SENTINEL
         }
 
