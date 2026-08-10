@@ -28,6 +28,10 @@ dependencies:
   flutter_map: ^8.2.2
   latlong2: ^0.9.1
   mobile_scanner: ^7.2.0
+  # Pure-Dart QR encoder. Already present transitively via qr_flutter, but
+  # test_server.dart is a plain `dart` script rather than a Flutter app, so it
+  # needs the direct dependency to import it.
+  qr: ^3.0.2
   qr_flutter: ^4.1.0
 
 dev_dependencies:
