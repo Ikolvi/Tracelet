@@ -25,21 +25,54 @@ public class TraceletSmartMotionCoordinator {
     }
     
     /// Synchronize the Rust core mode with the native StateManager on startup or mode change.
+    ///
+    /// `stateManager.trackingMode` and the coordinator's `currentMode` measure
+    /// different things, and conflating them wedged the coordinator (#344):
+    ///
+    /// * `trackingMode` is the **session** mode — which start API was called. It
+    ///   is set to `.continuous` by `start()` and stays there for the whole
+    ///   session; `switchToStationaryPeriodicForce()` deliberately leaves it
+    ///   alone and records the pace in `stateManager.isMoving` instead.
+    /// * `currentMode` is the **posture** — whether the engine is running
+    ///   continuous GPS right now or is parked in a stationary schedule.
+    ///
+    /// `start()` sets `isMoving` from `motion.isMoving` (false by default) and
+    /// then calls this, so mapping `.continuous -> .continuous` wrote
+    /// `Continuous` into a coordinator whose inputs both said stationary. The
+    /// core's `evaluate_state` emits no action for that pair in either
+    /// direction: a moving accelerometer sees `currentMode == .continuous` and
+    /// returns `.none`, so `switchToContinuousForce()` never ran and the session
+    /// stayed parked — no fixes recorded, nothing to sync — until the process
+    /// was killed. Reading the posture off `isMoving` keeps the two in step, and
+    /// the first real accel or speed event produces the wake-up.
     public func syncCurrentMode() {
         guard let stateManager = sdk?.stateManager else { return }
-        
-        let mode: TrackingMode
-        switch stateManager.trackingMode {
+
+        let useGeofences = sdk?.configManager?.getStationaryTrackingMode() == .geofences
+        coreCoordinator?.setCurrentMode(
+            mode: TraceletSmartMotionCoordinator.coordinatorMode(
+                sessionMode: stateManager.trackingMode,
+                isMoving: stateManager.isMoving,
+                useGeofencesWhenStationary: useGeofences))
+        coreCoordinator?.setUseGeofencesWhenStationary(useGeofences: useGeofences)
+    }
+
+    /// The posture the coordinator should be holding, given the session mode and
+    /// the committed pace. Pure so the mapping in #344 can be pinned directly.
+    static func coordinatorMode(
+        sessionMode: TraceletTrackingMode,
+        isMoving: Bool,
+        useGeofencesWhenStationary: Bool
+    ) -> TrackingMode {
+        let stationary: TrackingMode = useGeofencesWhenStationary ? .stationaryGeofences : .stationaryPeriodic
+        switch sessionMode {
         case .continuous:
-            mode = .continuous
+            return isMoving ? .continuous : stationary
         case .geofences:
-            mode = .stationaryGeofences
+            return .stationaryGeofences
         case .periodic:
-            mode = .stationaryPeriodic
+            return .stationaryPeriodic
         }
-        
-        coreCoordinator?.setCurrentMode(mode: mode)
-        coreCoordinator?.setUseGeofencesWhenStationary(useGeofences: sdk?.configManager?.getStationaryTrackingMode() == .geofences)
     }
     
     /// Called when the accelerometer/activity recognition state changes.

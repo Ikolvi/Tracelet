@@ -275,3 +275,93 @@ class SmartMotionCoordinatorAccelSeedTest {
         assertFalse(state.isMoving)
     }
 }
+
+/**
+ * #344: a `start()` whose committed pace is stationary must not leave the SMART
+ * coordinator deaf to the accelerometer.
+ *
+ * `syncCurrentMode()` used to map the *session* mode (`stateManager.trackingMode`,
+ * which `start()` pins to CONTINUOUS for the whole session) straight onto the
+ * coordinator's *posture*. On a start with `isMoving == false` that wrote
+ * CONTINUOUS into a coordinator whose accel and speed inputs both said stationary
+ * — a pair the core emits no action for in either direction. Every subsequent
+ * shake returned NONE, the engine was never switched to continuous, no fixes were
+ * recorded and nothing synced, for the rest of the process.
+ */
+@RunWith(RobolectricTestRunner::class)
+class SmartMotionCoordinatorStationaryStartTest {
+    private lateinit var state: StateManager
+    private lateinit var locationEngine: LocationEngine
+    private lateinit var coordinator: SmartMotionCoordinator
+
+    @Before
+    fun setUp() {
+        val context = RuntimeEnvironment.getApplication()
+        state = StateManager(context)
+        locationEngine = mock(LocationEngine::class.java)
+        coordinator = SmartMotionCoordinator(
+            context,
+            ConfigManager(context),
+            state,
+            mock(TraceletEventSender::class.java),
+            locationEngine,
+            mock(MotionDetector::class.java),
+            mock(com.ikolvi.tracelet.sdk.util.TraceletLogger::class.java),
+        )
+        // A previous session in the same process settled to stationary. The speed
+        // flag defaults to true, so this is the flip the *next* session then
+        // dedupes away — which is why the usual self-correction in start() cannot
+        // rescue the mapping on its own.
+        coordinator.onSpeedStateChange(false)
+        assertFalse(coordinator.isSpeedMoving)
+        assertFalse(coordinator.isAccelMoving)
+    }
+
+    /** start(): CONTINUOUS session, pace committed as stationary. */
+    private fun startStationary() {
+        state.trackingMode = TrackingMode.CONTINUOUS
+        state.isMoving = false
+        coordinator.syncCurrentMode()
+    }
+
+    @Test
+    fun `a shake after a stationary start wakes the session`() {
+        startStationary()
+
+        // A restored-stationary speed machine re-asserting itself stays a no-op.
+        coordinator.onSpeedStateChange(false)
+        assertFalse(state.isMoving)
+
+        assertEquals(
+            uniffi.tracelet_core.CoordinatorAction.SWITCH_TO_CONTINUOUS,
+            coordinator.onAccelStateChange(true),
+        )
+        assertTrue(state.isMoving)
+        assertEquals(TrackingMode.CONTINUOUS, state.trackingMode)
+    }
+
+    @Test
+    fun `gps speed after a stationary start also wakes the session`() {
+        startStationary()
+
+        coordinator.onSpeedStateChange(true)
+
+        assertTrue(state.isMoving)
+        assertEquals(TrackingMode.CONTINUOUS, state.trackingMode)
+        verify(locationEngine).start()
+    }
+
+    @Test
+    fun `a moving start still holds the continuous posture`() {
+        state.trackingMode = TrackingMode.CONTINUOUS
+        state.isMoving = true
+        coordinator.syncCurrentMode()
+
+        // Already continuous — a wake-up has nothing to do.
+        assertEquals(
+            uniffi.tracelet_core.CoordinatorAction.NONE,
+            coordinator.onAccelStateChange(true),
+        )
+        assertTrue(state.isMoving)
+    }
+}
