@@ -82,6 +82,7 @@ let package = Package(
                 // after that returned `none` — the device could not leave the
                 // stationary state for the rest of the process.
                 "SmartMotionCoordinatorSyncModeTests.swift",
+                "SmartMotionCoordinatorTests.swift",
             ]
         ),
     ]

@@ -101,7 +101,12 @@ public class TraceletSmartMotionCoordinator {
         return engine.lastEffectiveSpeed
     }
 
-    public func onSpeedStateChange(isMoving: Bool) {
+    /// Returns the action taken, mirroring ``onAccelStateChange(isMoving:)``.
+    /// Discardable — every existing caller ignores it — but it is the only
+    /// externally visible product of this call, so a test has nothing else to
+    /// assert the speed wake-up on.
+    @discardableResult
+    public func onSpeedStateChange(isMoving: Bool) -> CoordinatorAction {
         if !isMoving && isAccelMoving {
             // The speed machine says stationary and the accelerometer disagrees.
             // Two situations look like this:
@@ -131,9 +136,10 @@ public class TraceletSmartMotionCoordinator {
                                          speed, TraceletSmartMotionCoordinator.tremorSpeedThreshold))
             }
         }
-        guard let action = coreCoordinator?.onSpeedStateChange(isMoving: isMoving) else { return }
+        guard let action = coreCoordinator?.onSpeedStateChange(isMoving: isMoving) else { return .none }
         TraceletLog.debug("[Tracelet] SmartMotionCoordinator: onSpeedStateChange -> isMoving=\(isMoving), action=\(action)")
         handleAction(action)
+        return action
     }
     
     /// Called when the user manually forces the pace via changePace().
