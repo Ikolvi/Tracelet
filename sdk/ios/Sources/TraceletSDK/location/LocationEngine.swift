@@ -1244,10 +1244,19 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         // MOVING → SLOWING → STATIONARY. Without this, a stationary device
         // whose locations are filtered (e.g. same lat/lng, no distance change)
         // will never transition out of MOVING state.
+        //
+        // `result.effectiveSpeed` is the speed the processor resolved for this
+        // fix whether or not it accepted it — it used to be hardcoded to 0 on
+        // every rejection, which fed the machine a fabricated "stopped" for
+        // most of every drive (#332).
         speedSink?(result.effectiveSpeed)
 
         if !result.accepted {
-            TraceletLog.debug(String(format: "[Tracelet] Location filtered by Rust processor: %@", result.reason ?? "unknown"))
+            // #334: the speed handed to the motion machine belongs on this line.
+            // Without it, a rejected fix's contribution to a stationary decision
+            // can only be inferred by cross-reading the [SpeedMotion] entries.
+            TraceletLog.debug(String(format: "[Tracelet] Location filtered by Rust processor: %@ (speed=%.2f m/s fed to speed motion)",
+                                     result.reason ?? "unknown", result.effectiveSpeed))
             if result.odometerDelta > 0 {
                 stateManager.addOdometer(distance: result.odometerDelta)
             }

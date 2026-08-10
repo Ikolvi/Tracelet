@@ -141,7 +141,13 @@ class SpeedMotionManager(
             state.isMoving = true
             TraceletLog.debug("start() — forced to MOVING state")
         } else {
-            TraceletLog.debug("start() — restored state=$currentState, lowCount=$lowSpeedCount, wakeCount=$wakeCount")
+            // #334: a relaunched process inherits this state, and inheriting
+            // STATIONARY is indistinguishable from "tracking silently stopped"
+            // unless the trace says so. Once per session, so it belongs on the
+            // always-on channel.
+            TraceletLog.lifecycle(
+                "speed-motion: restored $currentState (lowSpeedCount=$lowSpeedCount, wakeCount=$wakeCount)"
+            )
 
             if (currentState == SpeedMotionState.STATIONARY) {
                 switchToStationary()
@@ -170,14 +176,14 @@ class SpeedMotionManager(
             wakeCount = 0
             highSpeedCount = 0
             stopSlowingTimer()
-            transitionTo(SpeedMotionState.MOVING)
+            transitionTo(SpeedMotionState.MOVING, "manual pace change")
             callback.switchToContinuous()
         } else {
             lowSpeedCount = 0
             wakeCount = 0
             highSpeedCount = 0
             stopSlowingTimer()
-            transitionTo(SpeedMotionState.STATIONARY)
+            transitionTo(SpeedMotionState.STATIONARY, "manual pace change")
             switchToStationary()
         }
     }
@@ -229,7 +235,10 @@ class SpeedMotionManager(
             lowSpeedCount = 1
             highSpeedCount = 0
             slowingStartTimeMs = SystemClock.elapsedRealtime()
-            transitionTo(SpeedMotionState.SLOWING)
+            transitionTo(
+                SpeedMotionState.SLOWING,
+                "speed=${formatSpeed(speed)} < threshold=$speedMovingThreshold",
+            )
             startSlowingTimer()
         }
     }
@@ -246,7 +255,10 @@ class SpeedMotionManager(
                 TraceletLog.debug("SLOWING timer expired -> STATIONARY")
                 lowSpeedCount = 0
                 wakeCount = 0
-                transitionTo(SpeedMotionState.STATIONARY)
+                transitionTo(
+                    SpeedMotionState.STATIONARY,
+                    "SLOWING countdown of ${speedStationaryDelay}s expired",
+                )
                 switchToStationary()
             }
         }
@@ -292,7 +304,11 @@ class SpeedMotionManager(
             lowSpeedCount = 0
             highSpeedCount = 0
             stopSlowingTimer()
-            transitionTo(SpeedMotionState.MOVING)
+            transitionTo(
+                SpeedMotionState.MOVING,
+                "sustained speed=${formatSpeed(speed)} >= threshold=$speedMovingThreshold " +
+                    "for $SPEED_ABORT_FIX_COUNT fixes",
+            )
             return
         }
 
@@ -311,7 +327,10 @@ class SpeedMotionManager(
             lowSpeedCount = 0
             wakeCount = 0
             stopSlowingTimer()
-            transitionTo(SpeedMotionState.STATIONARY)
+            transitionTo(
+                SpeedMotionState.STATIONARY,
+                "speed=${formatSpeed(speed)}, elapsed=${elapsedMs}ms >= delay=${delayMs}ms",
+            )
             switchToStationary()
         }
     }
@@ -325,7 +344,11 @@ class SpeedMotionManager(
             if (wakeCount >= speedWakeConfirmCount) {
                 TraceletLog.debug("STATIONARY -> MOVING (wakeCount=$wakeCount >= confirm=$speedWakeConfirmCount)")
                 wakeCount = 0
-                transitionTo(SpeedMotionState.MOVING)
+                transitionTo(
+                    SpeedMotionState.MOVING,
+                    "woke on speed=${formatSpeed(speed)} >= threshold=$speedMovingThreshold " +
+                        "($speedWakeConfirmCount confirming fixes)",
+                )
                 callback.switchToContinuous()
             }
         } else {
@@ -342,7 +365,20 @@ class SpeedMotionManager(
     // State transition + persistence + event emission
     // =========================================================================
 
-    private fun transitionTo(newState: SpeedMotionState) {
+    /**
+     * Commits a state change: persists it, emits the event, and records it on
+     * the always-on lifecycle channel.
+     *
+     * #334: this machine decides whether a moving vehicle keeps continuous
+     * tracking, and at the shipped log levels (`info` for Flutter, `off` for a
+     * direct SDK consumer) its reasoning left no trace at all — a bug report
+     * showed the downgrade with nothing to say why. [reason] carries the speed
+     * the decision was made on, which is the whole story in the case that
+     * motivated it: a fabricated `speed=0.00` while the car was doing 10 m/s
+     * (#332). Transitions fire a handful of times per trip, not per fix, which
+     * is the bar [TraceletLogger.lifecycle] sets for the channel.
+     */
+    private fun transitionTo(newState: SpeedMotionState, reason: String) {
         val previousState = currentState
         currentState = newState
 
@@ -352,8 +388,22 @@ class SpeedMotionManager(
         state.speedWakeCount = wakeCount
         state.speedLastTransition = SystemClock.elapsedRealtime()
 
-        // Update isMoving for compatibility with existing consumers
+        // Update isMoving for compatibility with existing consumers.
+        //
+        // Deliberately outside the no-op guard below: this is also where
+        // isMoving is re-synced, and SmartMotionCoordinator.handleAction writes
+        // the same field directly, so a changePace() that agrees with the
+        // current state is a legitimate re-assertion of it.
         state.isMoving = newState != SpeedMotionState.STATIONARY
+
+        // #337: a "transition" that changes nothing is not a transition. An
+        // event whose previousState equals its state tells a consumer nothing
+        // while still driving every listener that reacts to one, and
+        // `speed-motion: STATIONARY -> STATIONARY` is a fabricated edge in the
+        // one trace meant to settle what actually happened during a trip
+        // (#334). iOS's `commitTransition` has always guarded this; Android had
+        // no equivalent, so the two platforms disagreed on the same call.
+        if (newState == previousState) return
 
         // Emit speed motion change event
         val eventData = mapOf<String, Any>(
@@ -366,7 +416,7 @@ class SpeedMotionManager(
         )
         events.sendSpeedMotionChange(eventData)
 
-        TraceletLog.debug("State transition: ${previousState.name} -> ${newState.name}")
+        TraceletLog.lifecycle("speed-motion: ${previousState.name} -> ${newState.name} — $reason")
     }
 
     private fun formatSpeed(speed: Double): String = "%.2f m/s".format(speed)

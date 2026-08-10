@@ -16,6 +16,8 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:qr/qr.dart';
+
 Future<void> main(List<String> args) async {
   final port = args.isNotEmpty ? int.tryParse(args.first) ?? 8099 : 8099;
 
@@ -31,18 +33,26 @@ Future<void> main(List<String> args) async {
   stdout.writeln('╚══════════════════════════════════════════════════════╝');
   stdout.writeln();
 
+  final url = 'http://$localIp:$port/locations';
+
+  // The QR code is rendered here, in process. It used to be fetched by shelling
+  // out to `curl qrenco.de/<url>`, which had two problems. The obvious one is
+  // that it stopped working the moment that third-party service became
+  // unreachable. The worse one is that every failure was swallowed — the call
+  // was wrapped in `catch (_) {}` and only printed when stdout was non-empty —
+  // so a machine with no route to it simply showed no QR code and no reason.
+  //
+  // Needing the public internet for this was backwards regardless: the URL
+  // encodes a LAN address, so the phone and the Mac are already on the same
+  // network, and that is the only network the pairing requires.
   try {
-    // Automatically generate a scannable QR code right in the terminal!
-    final result = await Process.run('curl', [
-      '-s',
-      'qrenco.de/http://$localIp:$port/locations',
-    ]);
-    if (result.stdout.toString().isNotEmpty) {
-      stdout.writeln(result.stdout);
-      stdout.writeln('^ Scan the QR Code above with the Example app! ^');
-    }
-  } catch (_) {
-    // Ignore if curl fails
+    stdout.writeln(_renderQr(url));
+    stdout.writeln('^ Scan the QR code above with the Example app ^');
+  } catch (e) {
+    // Loud, not silent: the URL above is still usable by hand, and a failure
+    // here should say so rather than leaving a blank space where a QR was.
+    stdout.writeln('⚠️  Could not render the QR code: $e');
+    stdout.writeln('    Enter the URL above manually instead: $url');
   }
 
   stdout.writeln();
@@ -190,6 +200,53 @@ void _printLocation(Map<dynamic, dynamic> loc, int reqNum, {int? index}) {
 
   stdout.writeln();
   if (ts != '') stdout.writeln('$prefix  ts=$ts');
+}
+
+/// Renders [data] as a QR code made of Unicode half-block characters.
+///
+/// Two modules are packed into each character cell — `▀` is a dark upper half
+/// over a light lower half, and so on — so the code comes out roughly square in
+/// a terminal, whose cells are about twice as tall as they are wide. Rendering
+/// one module per line would make it twice as tall as the window.
+///
+/// Colours are set explicitly (black on white) rather than relying on the
+/// terminal's own palette. Scanners need dark modules on a light field, and a
+/// developer with a dark theme would otherwise get black-on-black.
+String _renderQr(String data) {
+  final image = QrImage(
+    QrCode.fromData(data: data, errorCorrectLevel: QrErrorCorrectLevel.M),
+  );
+  final size = image.moduleCount;
+
+  // The quiet zone is part of the spec, not padding for looks: without ~4
+  // modules of clear margin many scanners will not lock on at all.
+  const quiet = 4;
+  const black = '\x1b[30;47m';
+  const reset = '\x1b[0m';
+
+  bool dark(int x, int y) =>
+      x >= 0 && y >= 0 && x < size && y < size && image.isDark(y, x);
+
+  final buffer = StringBuffer();
+  for (var y = -quiet; y < size + quiet; y += 2) {
+    buffer.write(black);
+    for (var x = -quiet; x < size + quiet; x++) {
+      final top = dark(x, y);
+      // The last row of an odd-height code has no lower half to pair with.
+      final bottom = dark(x, y + 1);
+      if (top && bottom) {
+        buffer.write('█');
+      } else if (top) {
+        buffer.write('▀');
+      } else if (bottom) {
+        buffer.write('▄');
+      } else {
+        buffer.write(' ');
+      }
+    }
+    buffer.writeln(reset);
+  }
+  return buffer.toString();
 }
 
 Future<String> _getLocalIp() async {
