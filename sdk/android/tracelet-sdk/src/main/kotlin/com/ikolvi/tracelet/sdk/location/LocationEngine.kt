@@ -1144,6 +1144,11 @@ class LocationEngine(
         // MOVING → SLOWING → STATIONARY. Without this, a stationary device
         // whose locations are filtered (e.g. same lat/lng, no distance change)
         // will never transition out of MOVING state.
+        //
+        // `result.effectiveSpeed` is the speed the processor resolved for this
+        // fix whether or not it accepted it — it used to be hardcoded to 0 on
+        // every rejection, which fed the machine a fabricated "stopped" for
+        // most of every drive (#332).
         speedMotionSpeedSink?.invoke(result.effectiveSpeed)
 
         var isForcedAccept = false
@@ -1153,7 +1158,14 @@ class LocationEngine(
                 isForcedAccept = true
                 forcePersistNextFilteredLocation = false
             } else {
-                TraceletLog.debug("Location filtered by Rust processor: ${result.reason}")
+                // #334: the speed handed to the motion machine belongs on this
+                // line. Without it, a rejected fix's contribution to a
+                // stationary decision can only be inferred by cross-reading the
+                // speed-motion entries.
+                TraceletLog.debug(
+                    "Location filtered by Rust processor: ${result.reason} " +
+                        "(speed=${result.effectiveSpeed} m/s fed to speed motion)",
+                )
                 // Still update odometer if the processor computed a delta
                 if (result.odometerDelta > 0) {
                     state.addOdometer(result.odometerDelta)

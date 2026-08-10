@@ -221,17 +221,108 @@ final class SpeedMotionManagerTests: XCTestCase {
         XCTAssertEqual(manager.state, .slowing)
     }
 
+    // MARK: - A moving vehicle stays MOVING (#332)
+
+    /// The failure this guards: `LocationProcessorResult::filtered` reported a
+    /// hardcoded `effective_speed: 0.0`, and both hosts feed *every* fix —
+    /// accepted or not — into this machine. At a 30 m vehicle distance filter
+    /// and ~1 Hz fixes, most of a 10 m/s drive is rejected, so the machine saw
+    /// a stream of zeros on a motorway and ran its SLOWING countdown to
+    /// completion. Given truthful speeds it must never leave MOVING.
+    func testSustainedVehicleSpeedNeverLeavesMoving() {
+        makeManager(stationaryDelaySeconds: 0)
+
+        for _ in 0..<30 {
+            manager.onLocation(speed: 10.0)
+        }
+
+        XCTAssertEqual(manager.state, .moving)
+        XCTAssertTrue(delegate.speedMotionEvents.isEmpty, "a steady drive is not a state change")
+        XCTAssertFalse(delegate.switchedToStationaryPeriodic)
+    }
+
+    /// The shape the bug actually took on the wire: real fixes at vehicle speed
+    /// interleaved with the fabricated zeros the rejected ones contributed. Two
+    /// filtered fixes per accepted one is the ratio a 30 m filter produces at
+    /// 10 m/s. Each zero reset the high-speed streak, so the abort counter never
+    /// reached `speedAbortFixCount` and the countdown expired mid-drive.
+    ///
+    /// Kept as a characterisation of the *input* contract: if anything ever
+    /// feeds this machine a zero per rejected fix again, this fails.
+    func testInterleavedFabricatedZerosWouldStrandTheMachineInSlowing() {
+        makeManager(stationaryDelaySeconds: 60)
+
+        manager.onLocation(speed: 10.0)
+        manager.onLocation(speed: 0.0)   // the first fabricated zero: MOVING -> SLOWING
+        XCTAssertEqual(manager.state, .slowing)
+
+        for _ in 0..<10 {
+            manager.onLocation(speed: 10.0)  // accepted fix, genuinely driving
+            manager.onLocation(speed: 0.0)   // rejected fix, fabricated
+            manager.onLocation(speed: 0.0)   // rejected fix, fabricated
+        }
+
+        XCTAssertEqual(
+            manager.state, .slowing,
+            "10 fixes at 10 m/s could not rescue the machine — which is why the "
+                + "fabricated zeros had to stop at the source (#332)")
+    }
+
+    // MARK: - One event per transition (#335)
+
+    /// Every edge used to hand-roll persist+emit and `onLocation` re-ran it
+    /// afterwards, so most transitions emitted twice while `STATIONARY -> MOVING`
+    /// emitted once.
+    func testEachTransitionEmitsExactlyOneEvent() {
+        makeManager(stationaryDelaySeconds: 0)
+
+        manager.onLocation(speed: 5.0)
+        XCTAssertEqual(delegate.speedMotionEvents.count, 0, "no transition, no event")
+
+        manager.onLocation(speed: 0.1)   // MOVING -> SLOWING
+        XCTAssertEqual(delegate.speedMotionEvents.count, 1)
+
+        manager.onLocation(speed: 0.1)   // SLOWING -> STATIONARY
+        XCTAssertEqual(delegate.speedMotionEvents.count, 2)
+
+        manager.onLocation(speed: 5.0)   // STATIONARY -> MOVING
+        XCTAssertEqual(delegate.speedMotionEvents.count, 3)
+
+        XCTAssertEqual(
+            delegate.speedMotionEvents.map { $0["previousState"]! + "->" + $0["state"]! },
+            ["0->1", "1->2", "2->0"])
+    }
+
+    func testSlowingBackToMovingEmitsExactlyOneEvent() {
+        makeManager(stationaryDelaySeconds: 60)
+
+        manager.onLocation(speed: 5.0)
+        manager.onLocation(speed: 0.5)   // MOVING -> SLOWING
+        for _ in 0..<SpeedMotionManager.speedAbortFixCount {
+            manager.onLocation(speed: 3.0)
+        }
+
+        XCTAssertEqual(manager.state, .moving)
+        XCTAssertEqual(delegate.speedMotionEvents.count, 2, "one in, one out")
+        XCTAssertEqual(delegate.speedMotionEvents.last?["previousState"], "1")
+        XCTAssertEqual(delegate.speedMotionEvents.last?["state"], "0")
+    }
+
     // MARK: - Recording doubles
 
     private final class RecordingDelegate: SpeedMotionDelegate {
         var switchedToContinuous = false
         var switchedToStationaryPeriodic = false
         var switchedToStationaryGeofences = false
+        var slowingStartedCount = 0
+        var slowingCancelledCount = 0
         var speedMotionEvents: [[String: String]] = []
 
         func switchToContinuous() { switchedToContinuous = true }
         func switchToStationaryPeriodic() { switchedToStationaryPeriodic = true }
         func switchToStationaryGeofences() { switchedToStationaryGeofences = true }
+        func speedMotionDidStartSlowing() { slowingStartedCount += 1 }
+        func speedMotionDidCancelSlowing() { slowingCancelledCount += 1 }
         func emitSpeedMotionEvent(state: Int, previousState: Int, trackingMode: Int) {
             speedMotionEvents.append([
                 "state": String(state),

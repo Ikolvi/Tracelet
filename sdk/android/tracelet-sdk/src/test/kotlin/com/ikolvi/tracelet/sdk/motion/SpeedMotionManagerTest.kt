@@ -291,6 +291,61 @@ class SpeedMotionManagerTest {
     }
 
     // =========================================================================
+    // A moving vehicle stays MOVING (#332)
+    // =========================================================================
+
+    /**
+     * The failure this guards: `LocationProcessorResult::filtered` reported a
+     * hardcoded `effective_speed = 0.0`, and [LocationEngine] feeds *every* fix
+     * — accepted or not — into this machine. At a 30 m vehicle distance filter
+     * and ~1 Hz fixes, most of a 10 m/s drive is rejected, so the machine saw a
+     * stream of zeros on a motorway and ran its SLOWING countdown to completion.
+     * Given truthful speeds it must never leave MOVING.
+     */
+    @Test
+    fun `sustained vehicle speed never leaves MOVING`() {
+        configure(stationaryDelaySeconds = 0)
+
+        repeat(30) { manager.onLocation(10.0) }
+
+        assertEquals("moving", manager.getCurrentState())
+        assertTrue(events.speedMotionEvents.isEmpty(), "a steady drive is not a state change")
+        assertFalse(callback.switchedToStationaryPeriodic)
+    }
+
+    /**
+     * The shape the bug took on the wire: real fixes at vehicle speed
+     * interleaved with the fabricated zeros the rejected ones contributed. Two
+     * filtered fixes per accepted one is the ratio a 30 m filter produces at
+     * 10 m/s. Each zero reset the high-speed streak, so the abort counter never
+     * reached `SPEED_ABORT_FIX_COUNT` and the countdown expired mid-drive.
+     *
+     * Kept as a characterisation of the *input* contract: if anything ever feeds
+     * this machine a zero per rejected fix again, this fails.
+     */
+    @Test
+    fun `interleaved fabricated zeros would strand the machine in SLOWING`() {
+        configure(stationaryDelaySeconds = 600)
+
+        manager.onLocation(10.0)
+        manager.onLocation(0.0) // the first fabricated zero: MOVING -> SLOWING
+        assertEquals("slowing", manager.getCurrentState())
+
+        repeat(10) {
+            manager.onLocation(10.0) // accepted fix, genuinely driving
+            manager.onLocation(0.0) // rejected fix, fabricated
+            manager.onLocation(0.0) // rejected fix, fabricated
+        }
+
+        assertEquals(
+            "slowing",
+            manager.getCurrentState(),
+            "10 fixes at 10 m/s could not rescue the machine — which is why the " +
+                "fabricated zeros had to stop at the source (#332)",
+        )
+    }
+
+    // =========================================================================
     // Helpers
     // =========================================================================
 

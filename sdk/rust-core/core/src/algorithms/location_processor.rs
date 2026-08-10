@@ -184,10 +184,26 @@ impl LocationProcessorResult {
         }
     }
 
-    fn filtered(reason: &str) -> Self {
+    /// A fix we decline to store still answers "how fast is this device?", and
+    /// `effective_speed` is the only channel that answer travels on (#332).
+    ///
+    /// Both hosts feed *every* fix into the GPS-speed motion state machine,
+    /// accepted or not — deliberately, because a parked device's fixes are all
+    /// distance-filtered and the machine would otherwise never leave MOVING.
+    /// Hardcoding `0.0` here therefore reported "stopped" once per rejected fix.
+    /// That is the common case in a vehicle, not a corner case: at a 30 m
+    /// distance filter and ~1 Hz fixes, most of a 10 m/s drive is rejected, so
+    /// the machine saw a stream of zeros on a motorway, ran its SLOWING
+    /// countdown to completion and downgraded the host to periodic tracking
+    /// mid-trip.
+    ///
+    /// Callers pass the speed they still trust from the fix. Rejections that
+    /// impugn the fix itself — a spoofed location, a teleport — pass `0.0`
+    /// rather than lending credibility to a reading they just refused.
+    fn filtered(reason: &str, effective_speed: f64) -> Self {
         Self {
             accepted: false,
-            effective_speed: 0.0,
+            effective_speed,
             odometer_delta: 0.0,
             distance: 0.0,
             reason: Some(reason.to_string()),
@@ -196,10 +212,11 @@ impl LocationProcessorResult {
         }
     }
 
-    fn error(reason: &str, message: &str) -> Self {
+    /// As [`Self::filtered`], for rejections the host surfaces as errors.
+    fn error(reason: &str, message: &str, effective_speed: f64) -> Self {
         Self {
             accepted: false,
-            effective_speed: 0.0,
+            effective_speed,
             odometer_delta: 0.0,
             distance: 0.0,
             reason: Some(reason.to_string()),
@@ -383,14 +400,18 @@ impl LocationProcessor {
         let mut state = self.state.lock().unwrap();
         let tuning = state.tuning;
 
+        // Mock rejections report 0.0: a fix the platform flagged as spoofed is
+        // untrusted in full, and its speed must not be able to hold the motion
+        // state machine awake (#332).
         if self.reject_mock_locations && is_mock {
             return if self.filter_policy == 2 {
                 LocationProcessorResult::error(
                     "MOCK_LOCATION",
                     "Location rejected: flagged as mock/spoofed by the platform",
+                    0.0,
                 )
             } else {
-                LocationProcessorResult::filtered("MOCK_LOCATION")
+                LocationProcessorResult::filtered("MOCK_LOCATION", 0.0)
             };
         }
 
@@ -406,9 +427,10 @@ impl LocationProcessor {
                         "Location rejected: timestamp {} is before previous {} (non-monotonic)",
                         timestamp_ms, state.last_timestamp_ms
                     ),
+                    0.0,
                 )
             } else {
-                LocationProcessorResult::filtered("MOCK_LOCATION_TIMESTAMP")
+                LocationProcessorResult::filtered("MOCK_LOCATION_TIMESTAMP", 0.0)
             };
         }
 
@@ -441,8 +463,10 @@ impl LocationProcessor {
             effective_distance = tuning.distance_filter * speed_factor * multiplier;
         }
 
+        // The fix is merely too close to the last one to be worth storing —
+        // nothing about it makes its speed less true (#332).
         if state.last_latitude.is_some() && distance < effective_distance {
-            return LocationProcessorResult::filtered("DISTANCE_FILTER");
+            return LocationProcessorResult::filtered("DISTANCE_FILTER", effective_speed);
         }
 
         if tuning.tracking_accuracy_threshold > 0
@@ -456,12 +480,19 @@ impl LocationProcessor {
                             "Location accuracy {}m exceeds threshold {}m",
                             accuracy, tuning.tracking_accuracy_threshold
                         ),
+                        effective_speed,
                     )
                 }
-                1 => return LocationProcessorResult::filtered("ACCURACY_FILTER"),
+                // A coarse fix is a poor position but not a poor speedometer:
+                // the platform's reading is Doppler-derived, independent of
+                // horizontal accuracy (#332).
+                1 => return LocationProcessorResult::filtered("ACCURACY_FILTER", effective_speed),
                 _ => {
                     if state.last_latitude.is_some() {
-                        return LocationProcessorResult::filtered("ACCURACY_FILTER");
+                        return LocationProcessorResult::filtered(
+                            "ACCURACY_FILTER",
+                            effective_speed,
+                        );
                     }
                 }
             }
@@ -470,6 +501,12 @@ impl LocationProcessor {
         if tuning.max_implied_speed > 0 && state.last_latitude.is_some() && time_delta > 0.0 {
             let implied_speed = distance / time_delta;
             if implied_speed > tuning.max_implied_speed as f64 {
+                // The jump between the two positions is what failed, so the
+                // position-derived fallback in `effective_speed` *is* the
+                // rejected quantity and must not be reported onward. The
+                // platform's own reading is unaffected by the teleport, so pass
+                // it when there is one and 0.0 when there is not (#332).
+                let reported_speed = if speed > 0.0 { speed } else { 0.0 };
                 return if self.filter_policy == 2 {
                     LocationProcessorResult::error(
                         "SPEED_FILTER",
@@ -477,9 +514,10 @@ impl LocationProcessor {
                             "Implied speed {:.1}m/s exceeds max {}m/s",
                             implied_speed, tuning.max_implied_speed
                         ),
+                        reported_speed,
                     )
                 } else {
-                    LocationProcessorResult::filtered("SPEED_FILTER")
+                    LocationProcessorResult::filtered("SPEED_FILTER", reported_speed)
                 };
             }
         }
@@ -522,7 +560,10 @@ impl LocationProcessor {
                     state.last_longitude = Some(longitude);
                     state.last_timestamp_ms = timestamp_ms;
                     state.last_effective_speed = effective_speed;
-                    return LocationProcessorResult::filtered("SPARSE_FILTER");
+                    // This fix passed every quality gate and advanced the
+                    // anchor; it is suppressed only to thin the stream, so its
+                    // speed is as good as an accepted one's (#332).
+                    return LocationProcessorResult::filtered("SPARSE_FILTER", effective_speed);
                 }
             }
             state.sparse_last_lat = Some(latitude);
@@ -820,5 +861,133 @@ mod tests {
 
         assert!(!p.has_last_location());
         assert_eq!(p.current_tuning(), vehicle(), "reset forgets where, not which mode");
+    }
+
+    // -- #332: a rejected fix must still report the speed it was travelling at --
+    //
+    // Both hosts feed `effective_speed` into the GPS-speed motion state machine
+    // on every fix, accepted or not. A hardcoded 0.0 on the reject paths meant
+    // most of a drive was reported to that machine as "stopped".
+
+    /// A fix `metres` north of the base point, carrying a platform speed.
+    fn fix_at_speed(
+        p: &LocationProcessor,
+        metres: f64,
+        accuracy: f64,
+        speed: f64,
+        ts_ms: i64,
+    ) -> LocationProcessorResult {
+        p.process(
+            BASE_LAT + metres / M_PER_DEG_LAT,
+            BASE_LNG,
+            accuracy,
+            speed,
+            ts_ms,
+            false,
+            None,
+        )
+    }
+
+    #[test]
+    fn distance_filtered_fix_reports_the_speed_it_was_travelling_at() {
+        let p = processor(vehicle());
+        assert!(fix_at_speed(&p, 0.0, 5.0, 10.0, 1_000).accepted);
+
+        // 10 m of travel is inside the 30 m vehicle filter, so this is rejected
+        // for storage — but the car is still doing 10 m/s.
+        let r = fix_at_speed(&p, 10.0, 5.0, 10.0, 2_000);
+
+        assert!(!r.accepted);
+        assert_eq!(r.reason.as_deref(), Some("DISTANCE_FILTER"));
+        assert_eq!(
+            r.effective_speed, 10.0,
+            "a fix too close to store is not a fix that stopped moving",
+        );
+    }
+
+    #[test]
+    fn a_drive_never_reports_a_fabricated_zero_speed() {
+        // The reported failure: 30 m filter, ~1 Hz fixes at 10 m/s. Two of every
+        // three fixes are distance-filtered, and each used to hand the motion
+        // machine a 0.00 while the car was on a motorway.
+        let p = processor(vehicle());
+        assert!(fix_at_speed(&p, 0.0, 5.0, 10.0, 0).accepted);
+
+        let mut rejected = 0;
+        for second in 1..=30_i64 {
+            let r = fix_at_speed(&p, 10.0 * second as f64, 5.0, 10.0, second * 1_000);
+            if !r.accepted {
+                rejected += 1;
+            }
+            assert_eq!(
+                r.effective_speed, 10.0,
+                "fix at t={second}s reported {} m/s while driving at 10 m/s",
+                r.effective_speed,
+            );
+        }
+        assert!(
+            rejected > 0,
+            "the scenario is only meaningful if fixes are actually being rejected",
+        );
+    }
+
+    #[test]
+    fn accuracy_filtered_fix_reports_the_speed_it_was_travelling_at() {
+        let p = processor(vehicle());
+        assert!(fix_at_speed(&p, 0.0, 5.0, 10.0, 1_000).accepted);
+
+        // Past the distance filter but too coarse to store. A poor position is
+        // not a poor speedometer — the platform reading is Doppler-derived.
+        let r = fix_at_speed(&p, 100.0, 80.0, 10.0, 2_000);
+
+        assert!(!r.accepted);
+        assert_eq!(r.reason.as_deref(), Some("ACCURACY_FILTER"));
+        assert_eq!(r.effective_speed, 10.0);
+    }
+
+    #[test]
+    fn mock_rejection_reports_no_speed() {
+        let p = LocationProcessor::new(
+            30.0, true, 1.0, false, 50, 0, 60, 30, /* reject_mock */ true, 1, false, 0.0, 0,
+        );
+
+        let r = p.process(BASE_LAT, BASE_LNG, 5.0, 30.0, 1_000, true, None);
+
+        assert!(!r.accepted);
+        assert_eq!(r.reason.as_deref(), Some("MOCK_LOCATION"));
+        assert_eq!(
+            r.effective_speed, 0.0,
+            "a spoofed fix is untrusted in full — its speed must not hold the \
+             motion machine awake",
+        );
+    }
+
+    #[test]
+    fn speed_filter_does_not_propagate_the_rejected_implied_speed() {
+        let p = processor(vehicle());
+        assert!(fix_at_speed(&p, 0.0, 5.0, 10.0, 1_000).accepted);
+
+        // A 5 km jump in one second: ~5000 m/s implied, far past the 60 m/s cap.
+        // With no platform speed to fall back on, `effective_speed` *is* the
+        // absurd derived value, which must not travel onward.
+        let r = fix_at_speed(&p, 5_000.0, 5.0, 0.0, 2_000);
+
+        assert!(!r.accepted);
+        assert_eq!(r.reason.as_deref(), Some("SPEED_FILTER"));
+        assert_eq!(r.effective_speed, 0.0);
+    }
+
+    #[test]
+    fn speed_filter_keeps_a_valid_platform_reading() {
+        let p = processor(vehicle());
+        assert!(fix_at_speed(&p, 0.0, 5.0, 10.0, 1_000).accepted);
+
+        // Same teleport, but the chip reported a plausible speed of its own.
+        // The jump is what failed, not the speedometer.
+        let r = fix_at_speed(&p, 5_000.0, 5.0, 12.0, 2_000);
+
+        assert!(!r.accepted);
+        assert_eq!(r.reason.as_deref(), Some("SPEED_FILTER"));
+        assert_eq!(r.effective_speed, 12.0);
     }
 }
