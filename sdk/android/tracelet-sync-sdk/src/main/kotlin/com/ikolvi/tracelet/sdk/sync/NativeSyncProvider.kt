@@ -24,6 +24,41 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
     private var syncJob: kotlinx.coroutines.Job? = null
     private val DEBOUNCE_MS = 10_000L
 
+    @Volatile
+    private var lastSyncBodySource: String? = null
+
+    /**
+     * Records which body the sync is posting — but only when the answer
+     * changes (#340).
+     *
+     * The per-sync lines around the call sites are `debug`, so on a release
+     * build at the shipped log levels they are dropped and a device posting the
+     * default payload when the app registered a custom builder leaves no trace
+     * of it. The lifecycle channel is never level-gated, which is exactly what
+     * a release build needs.
+     *
+     * It cannot simply be written per sync, though: syncs fire every few
+     * seconds while tracking, and [TraceletLogger.lifecycle] is explicitly
+     * reserved for events that fire a handful of times per session because its
+     * rows share a bounded cap with the killed-state trail. One entry per sync
+     * would evict the trail it exists to preserve.
+     *
+     * Reporting only transitions costs a handful of rows per session and still
+     * answers the whole question: which body is this app sending, and did that
+     * ever change mid-session?
+     */
+    private fun reportSyncBodySource(source: String, detail: String) {
+        val changed = synchronized(this) {
+            if (lastSyncBodySource == source) {
+                false
+            } else {
+                lastSyncBodySource = source
+                true
+            }
+        }
+        if (changed) sdk.logger.lifecycle("sync-body: $detail")
+    }
+
     override fun insertLocation(location: Map<String, Any?>) {
         val delayMs = sdk.rustEngineState?.getConfig()?.http?.autoSyncDelay?.toLong() ?: 10_000L
         if (syncJob?.isActive == true) return
@@ -111,7 +146,20 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
                     return
                 }
 
+                if (customBody == null || customBody == NO_SYNC_BODY_BUILDER_SENTINEL) {
+                    reportSyncBodySource(
+                        if (interceptor == null) "no-interceptor" else "no-builder",
+                        if (interceptor == null) {
+                            "posting the DEFAULT payload — no dartSyncInterceptor attached to the SDK"
+                        } else {
+                            "posting the DEFAULT payload — no custom sync body builder reached " +
+                                "native (setSyncBodyBuilder registered in Dart?)"
+                        },
+                    )
+                }
+
                 if (customBody != null && customBody != NO_SYNC_BODY_BUILDER_SENTINEL) {
+                    reportSyncBodySource("custom", "posting the app's custom sync body")
                     val result = executeFallbackHttpSync(coreHttp, customBody, interceptor)
                     if (result.success) {
                         records.lastOrNull()?.id?.let { lastId ->

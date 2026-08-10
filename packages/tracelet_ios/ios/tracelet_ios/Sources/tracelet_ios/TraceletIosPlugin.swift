@@ -224,8 +224,16 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin, DartSyncInterceptor {
     public func requestSyncBody(locations: [[String: Any]]) -> String? {
         if !TraceletIosPlugin.hasCustomSyncBodyBuilder {
             // No foreground builder registered in Dart. Return the sentinel
-            // immediately to bypass the 10-second channel timeout and ensure 
+            // immediately to bypass the 10-second channel timeout and ensure
             // the sync falls back to the default payload without aborting.
+            //
+            // #340: this used to return in silence, so a device posting the
+            // default payload when the app had registered a builder left no
+            // trace of which link had failed — this branch and a nil
+            // `dartSyncInterceptor` produced byte-identical evidence.
+            TraceletSdk.shared.logger.debug(
+                "requestSyncBody: no custom sync body builder registered "
+                    + "(setSyncBodyBuilder never reached native) — using the default payload")
             return traceletNoSyncBodyBuilderSentinel
         }
         
