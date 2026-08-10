@@ -25,21 +25,54 @@ public class TraceletSmartMotionCoordinator {
     }
     
     /// Synchronize the Rust core mode with the native StateManager on startup or mode change.
+    ///
+    /// `stateManager.trackingMode` and the coordinator's `currentMode` measure
+    /// different things, and conflating them wedged the coordinator (#344):
+    ///
+    /// * `trackingMode` is the **session** mode — which start API was called. It
+    ///   is set to `.continuous` by `start()` and stays there for the whole
+    ///   session; `switchToStationaryPeriodicForce()` deliberately leaves it
+    ///   alone and records the pace in `stateManager.isMoving` instead.
+    /// * `currentMode` is the **posture** — whether the engine is running
+    ///   continuous GPS right now or is parked in a stationary schedule.
+    ///
+    /// `start()` sets `isMoving` from `motion.isMoving` (false by default) and
+    /// then calls this, so mapping `.continuous -> .continuous` wrote
+    /// `Continuous` into a coordinator whose inputs both said stationary. The
+    /// core's `evaluate_state` emits no action for that pair in either
+    /// direction: a moving accelerometer sees `currentMode == .continuous` and
+    /// returns `.none`, so `switchToContinuousForce()` never ran and the session
+    /// stayed parked — no fixes recorded, nothing to sync — until the process
+    /// was killed. Reading the posture off `isMoving` keeps the two in step, and
+    /// the first real accel or speed event produces the wake-up.
     public func syncCurrentMode() {
         guard let stateManager = sdk?.stateManager else { return }
-        
-        let mode: TrackingMode
-        switch stateManager.trackingMode {
+
+        let useGeofences = sdk?.configManager?.getStationaryTrackingMode() == .geofences
+        coreCoordinator?.setCurrentMode(
+            mode: TraceletSmartMotionCoordinator.coordinatorMode(
+                sessionMode: stateManager.trackingMode,
+                isMoving: stateManager.isMoving,
+                useGeofencesWhenStationary: useGeofences))
+        coreCoordinator?.setUseGeofencesWhenStationary(useGeofences: useGeofences)
+    }
+
+    /// The posture the coordinator should be holding, given the session mode and
+    /// the committed pace. Pure so the mapping in #344 can be pinned directly.
+    static func coordinatorMode(
+        sessionMode: TraceletTrackingMode,
+        isMoving: Bool,
+        useGeofencesWhenStationary: Bool
+    ) -> TrackingMode {
+        let stationary: TrackingMode = useGeofencesWhenStationary ? .stationaryGeofences : .stationaryPeriodic
+        switch sessionMode {
         case .continuous:
-            mode = .continuous
+            return isMoving ? .continuous : stationary
         case .geofences:
-            mode = .stationaryGeofences
+            return .stationaryGeofences
         case .periodic:
-            mode = .stationaryPeriodic
+            return .stationaryPeriodic
         }
-        
-        coreCoordinator?.setCurrentMode(mode: mode)
-        coreCoordinator?.setUseGeofencesWhenStationary(useGeofences: sdk?.configManager?.getStationaryTrackingMode() == .geofences)
     }
     
     /// Called when the accelerometer/activity recognition state changes.
@@ -68,7 +101,12 @@ public class TraceletSmartMotionCoordinator {
         return engine.lastEffectiveSpeed
     }
 
-    public func onSpeedStateChange(isMoving: Bool) {
+    /// Returns the action taken, mirroring ``onAccelStateChange(isMoving:)``.
+    /// Discardable — every existing caller ignores it — but it is the only
+    /// externally visible product of this call, so a test has nothing else to
+    /// assert the speed wake-up on.
+    @discardableResult
+    public func onSpeedStateChange(isMoving: Bool) -> CoordinatorAction {
         if !isMoving && isAccelMoving {
             // The speed machine says stationary and the accelerometer disagrees.
             // Two situations look like this:
@@ -98,9 +136,10 @@ public class TraceletSmartMotionCoordinator {
                                          speed, TraceletSmartMotionCoordinator.tremorSpeedThreshold))
             }
         }
-        guard let action = coreCoordinator?.onSpeedStateChange(isMoving: isMoving) else { return }
+        guard let action = coreCoordinator?.onSpeedStateChange(isMoving: isMoving) else { return .none }
         TraceletLog.debug("[Tracelet] SmartMotionCoordinator: onSpeedStateChange -> isMoving=\(isMoving), action=\(action)")
         handleAction(action)
+        return action
     }
     
     /// Called when the user manually forces the pace via changePace().

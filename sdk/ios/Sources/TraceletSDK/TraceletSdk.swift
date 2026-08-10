@@ -780,6 +780,13 @@ public final class TraceletSdk {
     /// - Returns: State as a dictionary. Returns a default disabled state if
     ///   ``ready(config:)`` has not been called yet.
     public func getState() -> [String: Any] {
+        // `stateManager`/`configManager` are built by `initialize()`, so before
+        // `ready()` they are still nil and the implicit unwrap trapped — despite
+        // the contract above, and despite `reset()` routing its own not-ready
+        // path straight here (#344).
+        guard isReady, let stateManager = stateManager, let configManager = configManager else {
+            return StateManager.disabledStateMap()
+        }
         return stateManager.toMap(configManager.getConfig())
     }
 

@@ -76,6 +76,13 @@ let package = Package(
                 // every transition twice, and nothing pinned the behaviour that
                 // a drive at vehicle speed must stay MOVING.
                 "SpeedMotionManagerTests.swift",
+                // #344: the SMART coordinator's posture sync. Mapping the
+                // session mode straight onto the posture wrote CONTINUOUS into a
+                // coordinator whose inputs both said stationary, and every shake
+                // after that returned `none` — the device could not leave the
+                // stationary state for the rest of the process.
+                "SmartMotionCoordinatorSyncModeTests.swift",
+                "SmartMotionCoordinatorTests.swift",
             ]
         ),
     ]
