@@ -1431,7 +1431,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_restore_base_tuning() != 17132.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_retune() != 24775.toShort()) {
+    if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_retune() != 24226.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_set_base_tuning() != 15053.toShort()) {
@@ -6331,6 +6331,21 @@ public interface LocationProcessorInterface {
      * rebuilding the processor to change thresholds would drop the anchor point
      * and silently forfeit one inter-fix delta from the odometer every time the
      * transport mode changed.
+     * A configured `distance_filter` of 0 survives the swap (#346).
+     *
+     * Zero is not "unset" — the hosts default it to 10 m, so reaching 0 takes a
+     * deliberate "record every fix", the same opt-out the sibling thresholds
+     * document as `<= 0 disables`. Auto-tuning used to overwrite it like any
+     * other value, and `Still` carries the widest non-vehicle gate in the table
+     * at 25 m. A parked device never travels 25 m, so every fix came back
+     * `DISTANCE_FILTER`, nothing was persisted, and the host saw it as sync
+     * having stopped — while the pace machine, which has its own idea of when a
+     * device is parked, was meanwhile holding continuous GPS open and throwing
+     * away roughly two fixes a second.
+     *
+     * Only the distance gate is preserved. The accuracy and implied-speed
+     * thresholds are about whether a fix is *trustworthy*, which the mode
+     * genuinely knows better than a static config, so those still tune.
      */
     fun `retune`(`tuning`: LocationTuning)
     
@@ -6563,6 +6578,21 @@ open class LocationProcessor: Disposable, AutoCloseable, LocationProcessorInterf
      * rebuilding the processor to change thresholds would drop the anchor point
      * and silently forfeit one inter-fix delta from the odometer every time the
      * transport mode changed.
+     * A configured `distance_filter` of 0 survives the swap (#346).
+     *
+     * Zero is not "unset" — the hosts default it to 10 m, so reaching 0 takes a
+     * deliberate "record every fix", the same opt-out the sibling thresholds
+     * document as `<= 0 disables`. Auto-tuning used to overwrite it like any
+     * other value, and `Still` carries the widest non-vehicle gate in the table
+     * at 25 m. A parked device never travels 25 m, so every fix came back
+     * `DISTANCE_FILTER`, nothing was persisted, and the host saw it as sync
+     * having stopped — while the pace machine, which has its own idea of when a
+     * device is parked, was meanwhile holding continuous GPS open and throwing
+     * away roughly two fixes a second.
+     *
+     * Only the distance gate is preserved. The accuracy and implied-speed
+     * thresholds are about whether a fix is *trustworthy*, which the mode
+     * genuinely knows better than a static config, so those still tune.
      */override fun `retune`(`tuning`: LocationTuning)
         = 
     callWithHandle {
