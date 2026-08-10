@@ -1078,7 +1078,32 @@ class LocationEngine(
         } else {
             0.0
         }
-        val computedSpeed = if (distance > 0 && timeDelta > 0) distance / timeDelta else 0.0
+        val rawComputedSpeed = if (distance > 0 && timeDelta > 0) distance / timeDelta else 0.0
+
+        // A derived speed is only as good as its time base, and `timeDelta > 0` is
+        // satisfied by one millisecond. Two fixes delivered back to back — routine
+        // when a session starts and a cached fix arrives alongside a fresh one —
+        // divide a real distance by an almost-zero interval, which produced
+        // thousands of m/s from a stationary device, enough to wake the speed
+        // motion machine out of STATIONARY since speedWakeConfirmCount is 1 by
+        // default (#342).
+        //
+        // `maxImpliedSpeed` already encodes what counts as credible movement; above
+        // it this is an artefact, not a measurement. Report *no* speed rather than a
+        // fabricated one. That is not #332 in reverse: this branch is only reached
+        // when the platform supplied no speed at all, so 0 is the pre-existing
+        // meaning of "unknown" rather than a value invented in place of a real
+        // reading. A genuinely moving device has a Doppler speed and never gets here.
+        val maxImplied = config.getMaxImpliedSpeed().toDouble()
+        val computedSpeed = if (maxImplied > 0 && rawComputedSpeed > maxImplied) {
+            TraceletLog.debug(
+                "Discarding implausible derived speed $rawComputedSpeed m/s " +
+                    "(${distance}m over ${timeDelta}s, max $maxImplied m/s) — reporting no speed",
+            )
+            0.0
+        } else {
+            rawComputedSpeed
+        }
 
         // Use platform speed if available, otherwise use computed speed
         val effectiveSpeed = if (location.hasSpeed() && location.speed > 0) {
@@ -1144,6 +1169,11 @@ class LocationEngine(
         // MOVING → SLOWING → STATIONARY. Without this, a stationary device
         // whose locations are filtered (e.g. same lat/lng, no distance change)
         // will never transition out of MOVING state.
+        //
+        // `result.effectiveSpeed` is the speed the processor resolved for this
+        // fix whether or not it accepted it — it used to be hardcoded to 0 on
+        // every rejection, which fed the machine a fabricated "stopped" for
+        // most of every drive (#332).
         speedMotionSpeedSink?.invoke(result.effectiveSpeed)
 
         var isForcedAccept = false
@@ -1153,7 +1183,14 @@ class LocationEngine(
                 isForcedAccept = true
                 forcePersistNextFilteredLocation = false
             } else {
-                TraceletLog.debug("Location filtered by Rust processor: ${result.reason}")
+                // #334: the speed handed to the motion machine belongs on this
+                // line. Without it, a rejected fix's contribution to a
+                // stationary decision can only be inferred by cross-reading the
+                // speed-motion entries.
+                TraceletLog.debug(
+                    "Location filtered by Rust processor: ${result.reason} " +
+                        "(speed=${result.effectiveSpeed} m/s fed to speed motion)",
+                )
                 // Still update odometer if the processor computed a delta
                 if (result.odometerDelta > 0) {
                     state.addOdometer(result.odometerDelta)
