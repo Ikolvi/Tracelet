@@ -61,6 +61,7 @@ import 'package:tracelet_example/issues/issue_320_card.dart';
 import 'package:tracelet_example/issues/issue_321_card.dart';
 import 'package:tracelet_example/issues/issue_324_card.dart';
 import 'package:tracelet_example/issues/issue_326_card.dart';
+import 'package:tracelet_example/issues/issue_331_card.dart';
 import 'package:tracelet_example/issues/issue_332_card.dart';
 import 'package:tracelet_example/issues/issue_333_card.dart';
 import 'package:tracelet_example/issues/issue_334_card.dart';
@@ -1745,6 +1746,7 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
                   const Issue334Card(),
                   const Issue333Card(),
                   const Issue332Card(),
+                  const Issue331Card(),
                   const Issue326Card(),
                   const Issue324Card(),
                   const Issue321Card(),
