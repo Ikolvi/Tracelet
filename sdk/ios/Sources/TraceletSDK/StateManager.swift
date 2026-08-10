@@ -139,4 +139,22 @@ public final class StateManager {
             "config": config as Any,
         ]
     }
+
+    /// The shape `toMap` produces for an SDK that has not been made ready yet.
+    ///
+    /// Same keys, so a caller reading the map before `ready()` sees a disabled
+    /// state rather than a missing key (or, as it used to be, a trap — see
+    /// `TraceletSdk.getState()`).
+    public static func disabledStateMap() -> [String: Any] {
+        return [
+            "enabled": false,
+            "trackingMode": TraceletTrackingMode.continuous.rawValue,
+            "schedulerEnabled": false,
+            "isMoving": false,
+            "odometer": 0.0,
+            "didLaunchInBackground": false,
+            "lastLocationTime": 0.0,
+            "config": [String: Any]() as Any,
+        ]
+    }
 }

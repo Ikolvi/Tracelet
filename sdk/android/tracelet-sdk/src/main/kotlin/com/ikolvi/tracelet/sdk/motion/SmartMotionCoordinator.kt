@@ -110,18 +110,43 @@ class SmartMotionCoordinator(
     
     /**
      * Synchronize the Rust core mode with the native StateManager on startup or mode change.
+     *
+     * `stateManager.trackingMode` and the coordinator's `currentMode` measure
+     * different things, and conflating them wedged the coordinator (#344):
+     *
+     * * `trackingMode` is the **session** mode — which start API was called. It
+     *   is set to CONTINUOUS by `start()` and stays there for the whole session;
+     *   the stationary switch records the pace in `stateManager.isMoving`.
+     * * `currentMode` is the **posture** — whether the engine is running
+     *   continuous location updates right now or is parked in a stationary
+     *   schedule.
+     *
+     * `start()` sets `isMoving` from `motion.isMoving` (false by default) and
+     * then calls this, so mapping CONTINUOUS -> CONTINUOUS wrote CONTINUOUS into
+     * a coordinator whose inputs both said stationary. The core's
+     * `evaluate_state` emits no action for that pair in either direction: a
+     * moving accelerometer sees `currentMode == CONTINUOUS` and returns None, so
+     * the session stayed parked — no fixes recorded, nothing to sync — until the
+     * process was killed. Reading the posture off `isMoving` keeps the two in
+     * step, and the first real accel or speed event produces the wake-up.
      */
     fun syncCurrentMode() {
+        val useGeofences = configManager.getStationaryTrackingMode() ==
+            com.ikolvi.tracelet.sdk.model.StationaryTrackingMode.GEOFENCES
+        val stationaryMode = if (useGeofences) {
+            uniffi.tracelet_core.TrackingMode.STATIONARY_GEOFENCES
+        } else {
+            uniffi.tracelet_core.TrackingMode.STATIONARY_PERIODIC
+        }
         val mode = when (stateManager.trackingMode) {
-            TrackingMode.CONTINUOUS -> uniffi.tracelet_core.TrackingMode.CONTINUOUS
+            TrackingMode.CONTINUOUS ->
+                if (stateManager.isMoving) uniffi.tracelet_core.TrackingMode.CONTINUOUS else stationaryMode
             TrackingMode.GEOFENCES -> uniffi.tracelet_core.TrackingMode.STATIONARY_GEOFENCES
             TrackingMode.PERIODIC -> uniffi.tracelet_core.TrackingMode.STATIONARY_PERIODIC
             else -> uniffi.tracelet_core.TrackingMode.CONTINUOUS
         }
         coreCoordinator.setCurrentMode(mode)
-        coreCoordinator.setUseGeofencesWhenStationary(
-            configManager.getStationaryTrackingMode() == com.ikolvi.tracelet.sdk.model.StationaryTrackingMode.GEOFENCES
-        )
+        coreCoordinator.setUseGeofencesWhenStationary(useGeofences)
     }
 
     /**
