@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:tracelet_example/issues/issue_run_harness.dart';
 
 /// Propagates the current issue-search query down to every [IssueCardShell] so
 /// each card can filter itself against its own on-screen text (title +
@@ -37,6 +38,11 @@ class IssueSearchScope extends InheritedWidget {
 /// and its query matches neither the [title], [description], nor [keywords],
 /// the card hides itself. This makes free-text search work against the real
 /// text shown on the card, with no per-card wiring.
+///
+/// Tapping Run calls [prepareIssueRun] before [onRun] (unless [prepare] is
+/// false), which is what makes a card runnable straight from a cold start
+/// instead of only after the home page's Initialize, and pins the config every
+/// card begins from. See that function for what each of those was costing.
 class IssueCardShell extends StatelessWidget {
   const IssueCardShell({
     required this.title,
@@ -47,6 +53,7 @@ class IssueCardShell extends StatelessWidget {
     super.key,
     this.runLabel = 'Run Test',
     this.keywords = '',
+    this.prepare = true,
   });
 
   final String title;
@@ -63,6 +70,12 @@ class IssueCardShell extends StatelessWidget {
   /// (e.g. API names or symptoms a user might search for). Matched in addition
   /// to the visible text.
   final String keywords;
+
+  /// Whether to run [prepareIssueRun] before [onRun] — `ready()` plus the demo
+  /// baseline config, so the card does not depend on the home page having been
+  /// initialized, nor on whichever card ran before it. Set false only for a
+  /// card that must observe an unconfigured SDK.
+  final bool prepare;
 
   @override
   Widget build(BuildContext context) {
@@ -110,7 +123,21 @@ class IssueCardShell extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             FilledButton.icon(
-              onPressed: running ? null : onRun,
+              onPressed: running
+                  ? null
+                  : () async {
+                      if (prepare) {
+                        try {
+                          await prepareIssueRun();
+                        } catch (e) {
+                          // Best effort: run the card anyway so it reports the
+                          // failure in its own status box, where it is visible,
+                          // rather than the tap doing nothing at all.
+                          debugPrint('prepareIssueRun failed: $e');
+                        }
+                      }
+                      onRun();
+                    },
               icon: const Icon(Icons.play_arrow),
               label: Text(runLabel),
             ),
