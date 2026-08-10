@@ -100,27 +100,47 @@ class _Issue335CardState extends State<Issue335Card> {
       await Future<void>.delayed(const Duration(seconds: 2));
       final afterRepeat = events.length - afterStationary.length;
 
+      final repeatWindow = events.sublist(afterStationary.length);
+
       // Back the other way: another real edge.
       await Tracelet.changePace(true);
       await Future<void>.delayed(const Duration(seconds: 2));
-      final afterMoving = events.length - afterStationary.length - afterRepeat;
+      final movingWindow = events.sublist(afterStationary.length + afterRepeat);
 
+      // Counting *everything* that lands in the window is wrong, and produced a
+      // false red on the first device run of this card. The machine is fed real
+      // fixes throughout: once changePace(true) puts it in MOVING, a stationary
+      // device's next fix reports ~0 m/s and legitimately slides it
+      // MOVING → SLOWING within a second. That is a second event, and a
+      // perfectly genuine one.
+      //
+      // The forced edge is identified by its destination instead. Within a 2 s
+      // window only the slide to SLOWING can happen spontaneously — reaching
+      // STATIONARY on its own needs the whole speedStationaryDelay (180 s by
+      // default) — so exactly one event may name each forced destination, and a
+      // true duplicate (the same payload twice, which is what #335 was) still
+      // fails this.
+      int arrivingAt(List<SpeedMotionEvent> evs, SpeedMotionState to) =>
+          evs.where((e) => e.state == to).length;
+      String describe(List<SpeedMotionEvent> evs) => evs.isEmpty
+          ? 'none'
+          : evs
+                .map((e) => '${e.previousState.name}→${e.state.name}')
+                .join(', ');
+
+      final stops = arrivingAt(afterStationary, SpeedMotionState.stationary);
       check(
         '#335 a forced stop emits one event, not two',
-        afterStationary.length == 1 &&
-            afterStationary.first.previousState != afterStationary.first.state,
-        afterStationary.length == 1 &&
-                afterStationary.first.previousState !=
-                    afterStationary.first.state
-            ? 'changePace(false) from MOVING produced exactly one '
-                  '${afterStationary.first.previousState.name} → '
-                  '${afterStationary.first.state.name} event'
-            : afterStationary.isEmpty
-            ? 'no event at all — the seeding changePace(true) above did not '
-                  'take, or the event stream is not wired. Nothing can be '
-                  'concluded from the rows below.'
-            : 'REGRESSED — ${afterStationary.length} event(s): '
-                  '${afterStationary.map((e) => '${e.previousState.name}→${e.state.name}').join(', ')}',
+        stops == 1,
+        stops == 1
+            ? 'changePace(false) produced exactly one event arriving at '
+                  'STATIONARY — observed: ${describe(afterStationary)}'
+            : stops == 0
+            ? 'no event arrived at STATIONARY — observed: '
+                  '${describe(afterStationary)}. Nothing can be concluded from '
+                  'the rows below.'
+            : 'REGRESSED — $stops events arrived at STATIONARY for one '
+                  'changePace(false) — observed: ${describe(afterStationary)}',
       );
 
       check(
@@ -130,20 +150,40 @@ class _Issue335CardState extends State<Issue335Card> {
             ? 'the second changePace(false) agreed with the current state, so '
                   'no edge was reported'
             : 'REGRESSED — $afterRepeat event(s) for a transition that changed '
-                  'nothing. Android used to emit these; iOS always suppressed '
-                  'them.',
+                  'nothing — observed: ${describe(repeatWindow)}. Android used '
+                  'to emit these; iOS always suppressed them.',
       );
 
+      final resumes = arrivingAt(movingWindow, SpeedMotionState.moving);
+      final onward = movingWindow.length - resumes;
       check(
         'a forced resume emits one event, not two',
-        afterMoving == 1,
-        afterMoving == 1
-            ? 'changePace(true) produced exactly one event'
-            : 'REGRESSED — $afterMoving events for one transition',
+        resumes == 1,
+        resumes == 1
+            ? 'changePace(true) produced exactly one event arriving at MOVING'
+                  '${onward == 0 ? '' : ', plus $onward onward transition(s) '
+                            'the fix stream drove afterwards'} — observed: '
+                  '${describe(movingWindow)}'
+            : 'REGRESSED — $resumes events arrived at MOVING for one '
+                  'changePace(true) — observed: ${describe(movingWindow)}',
       );
 
-      // No event may report itself as going nowhere. Both a duplicate emitted
-      // after the commit (#335) and a no-op transition (#337) show up here.
+      // A stationary device sliding MOVING → SLOWING after the resume is
+      // expected, not a defect. Reported so the row above is readable rather
+      // than looking like a suppressed failure.
+      if (onward > 0) {
+        results.add(
+          'ℹ️ $onward onward transition(s) after the resume: '
+          '${describe(movingWindow.where((e) => e.state != SpeedMotionState.moving).toList())}. '
+          'This device is stationary, so its next fix reports ~0 m/s and the '
+          'machine correctly begins its SLOWING countdown. Not attributable to '
+          'changePace().',
+        );
+      }
+
+      // No event may report itself as going nowhere. This catches a no-op
+      // transition (#337) but NOT a #335-style duplicate, whose two copies each
+      // name a genuine edge — the rows above are what cover that.
       final degenerate = events
           .where((e) => e.state == e.previousState)
           .toList();
@@ -151,11 +191,14 @@ class _Issue335CardState extends State<Issue335Card> {
         'no event reports a transition to the state it came from',
         degenerate.isEmpty,
         degenerate.isEmpty
-            ? 'every event names a genuine edge'
+            ? 'every event names a genuine edge (note: a duplicate would too, '
+                  'so this row alone does not rule one out)'
             : 'REGRESSED — ${degenerate.length} event(s) with '
-                  'previousState == state: a second emit after the commit '
-                  '(#335) or a no-op transition (#337)',
+                  'previousState == state, a no-op transition (#337)',
       );
+
+      // The whole sequence, so a failure above can be read without re-running.
+      results.add('ℹ️ full event sequence: ${describe(events)}');
 
       await Tracelet.stop();
 
