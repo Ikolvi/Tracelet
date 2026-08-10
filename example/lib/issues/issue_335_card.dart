@@ -80,33 +80,60 @@ class _Issue335CardState extends State<Issue335Card> {
 
       await Tracelet.start();
       await Future<void>.delayed(const Duration(seconds: 2));
-      events.clear(); // ignore whatever start() settled into
 
-      // Two forced transitions, each of which must produce exactly one event.
+      // Seed a known state. Without this the first changePace() below lands on
+      // whatever the machine happened to settle into, and "one event" cannot be
+      // distinguished from "one *no-op* event" — which is exactly how the first
+      // run of this card surfaced #337: it reported a green
+      // `stationary → stationary`.
+      await Tracelet.changePace(true);
+      await Future<void>.delayed(const Duration(seconds: 2));
+      events.clear();
+
+      // A real edge: MOVING → STATIONARY.
       await Tracelet.changePace(false);
       await Future<void>.delayed(const Duration(seconds: 2));
       final afterStationary = List<SpeedMotionEvent>.from(events);
 
+      // The same call again. It changes nothing, so it must report nothing.
+      await Tracelet.changePace(false);
+      await Future<void>.delayed(const Duration(seconds: 2));
+      final afterRepeat = events.length - afterStationary.length;
+
+      // Back the other way: another real edge.
       await Tracelet.changePace(true);
       await Future<void>.delayed(const Duration(seconds: 2));
+      final afterMoving = events.length - afterStationary.length - afterRepeat;
 
       check(
         '#335 a forced stop emits one event, not two',
-        afterStationary.length == 1,
-        afterStationary.length == 1
-            ? 'changePace(false) produced exactly one '
+        afterStationary.length == 1 &&
+            afterStationary.first.previousState != afterStationary.first.state,
+        afterStationary.length == 1 &&
+                afterStationary.first.previousState !=
+                    afterStationary.first.state
+            ? 'changePace(false) from MOVING produced exactly one '
                   '${afterStationary.first.previousState.name} → '
                   '${afterStationary.first.state.name} event'
             : afterStationary.isEmpty
-            ? 'no event at all — the machine may already have been stationary, '
-                  'or the event stream is not wired. Nothing can be concluded '
-                  'from the rows below.'
-            : 'REGRESSED — ${afterStationary.length} events for one '
-                  'transition: '
+            ? 'no event at all — the seeding changePace(true) above did not '
+                  'take, or the event stream is not wired. Nothing can be '
+                  'concluded from the rows below.'
+            : 'REGRESSED — ${afterStationary.length} event(s): '
                   '${afterStationary.map((e) => '${e.previousState.name}→${e.state.name}').join(', ')}',
       );
 
-      final afterMoving = events.length - afterStationary.length;
+      check(
+        '#337 a repeat of the same changePace emits nothing',
+        afterRepeat == 0,
+        afterRepeat == 0
+            ? 'the second changePace(false) agreed with the current state, so '
+                  'no edge was reported'
+            : 'REGRESSED — $afterRepeat event(s) for a transition that changed '
+                  'nothing. Android used to emit these; iOS always suppressed '
+                  'them.',
+      );
+
       check(
         'a forced resume emits one event, not two',
         afterMoving == 1,
@@ -115,8 +142,8 @@ class _Issue335CardState extends State<Issue335Card> {
             : 'REGRESSED — $afterMoving events for one transition',
       );
 
-      // No transition can report itself as going nowhere. A duplicate emitted
-      // after the state had already been committed would show up here.
+      // No event may report itself as going nowhere. Both a duplicate emitted
+      // after the commit (#335) and a no-op transition (#337) show up here.
       final degenerate = events
           .where((e) => e.state == e.previousState)
           .toList();
@@ -126,8 +153,8 @@ class _Issue335CardState extends State<Issue335Card> {
         degenerate.isEmpty
             ? 'every event names a genuine edge'
             : 'REGRESSED — ${degenerate.length} event(s) with '
-                  'previousState == state, which is what a second emit after '
-                  'the commit looks like',
+                  'previousState == state: a second emit after the commit '
+                  '(#335) or a no-op transition (#337)',
       );
 
       await Tracelet.stop();
@@ -145,8 +172,17 @@ class _Issue335CardState extends State<Issue335Card> {
         'testEachTransitionEmitsExactlyOneEvent, now that the suite is '
         'actually wired into Package.swift. This card checks the contract '
         'holds end to end through the bridge.\n\n'
-        'Android was never affected: its transitionTo() has always been a '
-        'single choke point. iOS now matches it.',
+        'Android was never affected by the duplicate: its transitionTo() has '
+        'always been a single choke point, and iOS now matches it.\n\n'
+        'It was affected by the converse, which the first run of this card '
+        'found on a device (#337): transitionTo() had no "did the state '
+        'actually change" guard, so a changePace() that agreed with the '
+        'current state emitted a stationary → stationary event and wrote a '
+        'fabricated `speed-motion: STATIONARY -> STATIONARY` line into the '
+        '#334 trace. iOS commitTransition() had always guarded it. All five '
+        'iOS commit sites were checked; the four location-driven ones are real '
+        'edges by construction and onManualPaceChange is the one the guard '
+        'absorbs.',
       );
     } catch (e) {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');

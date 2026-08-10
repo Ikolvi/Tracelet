@@ -388,8 +388,22 @@ class SpeedMotionManager(
         state.speedWakeCount = wakeCount
         state.speedLastTransition = SystemClock.elapsedRealtime()
 
-        // Update isMoving for compatibility with existing consumers
+        // Update isMoving for compatibility with existing consumers.
+        //
+        // Deliberately outside the no-op guard below: this is also where
+        // isMoving is re-synced, and SmartMotionCoordinator.handleAction writes
+        // the same field directly, so a changePace() that agrees with the
+        // current state is a legitimate re-assertion of it.
         state.isMoving = newState != SpeedMotionState.STATIONARY
+
+        // #337: a "transition" that changes nothing is not a transition. An
+        // event whose previousState equals its state tells a consumer nothing
+        // while still driving every listener that reacts to one, and
+        // `speed-motion: STATIONARY -> STATIONARY` is a fabricated edge in the
+        // one trace meant to settle what actually happened during a trip
+        // (#334). iOS's `commitTransition` has always guarded this; Android had
+        // no equivalent, so the two platforms disagreed on the same call.
+        if (newState == previousState) return
 
         // Emit speed motion change event
         val eventData = mapOf<String, Any>(

@@ -346,6 +346,88 @@ class SpeedMotionManagerTest {
     }
 
     // =========================================================================
+    // A no-op transition is not a transition (#337)
+    // =========================================================================
+
+    /**
+     * Found by the #335 verification card on a device: `changePace(false)` on a
+     * machine that was already STATIONARY emitted a `stationary → stationary`
+     * event. iOS's `commitTransition` has always guarded this; Android had no
+     * equivalent, so the same call behaved differently on the two platforms.
+     */
+    @Test
+    fun `a changePace that changes nothing emits no event`() {
+        configure()
+
+        manager.onManualPaceChange(false)
+        assertEquals("stationary", manager.getCurrentState())
+        val afterFirst = events.speedMotionEvents.size
+
+        manager.onManualPaceChange(false)
+
+        assertEquals("stationary", manager.getCurrentState())
+        assertEquals(
+            afterFirst,
+            events.speedMotionEvents.size,
+            "the second call agreed with the current state, so there was no edge to report",
+        )
+    }
+
+    /** Every emitted event must name a real edge. */
+    @Test
+    fun `no emitted event reports a transition to the state it came from`() {
+        configure()
+
+        manager.onManualPaceChange(false)
+        manager.onManualPaceChange(false)
+        manager.onManualPaceChange(true)
+        manager.onManualPaceChange(true)
+
+        val degenerate = events.speedMotionEvents.filter {
+            it["state"] == it["previousState"]
+        }
+        assertTrue(
+            degenerate.isEmpty(),
+            "events reporting previousState == state: $degenerate",
+        )
+    }
+
+    /**
+     * The counterpart, and the reason the two rows above are not vacuous: a
+     * guard that suppressed everything would satisfy them both.
+     */
+    @Test
+    fun `a changePace that does change the state still emits`() {
+        configure()
+
+        manager.onManualPaceChange(false)
+        val stops = events.speedMotionEvents.size
+        manager.onManualPaceChange(true)
+
+        assertEquals("moving", manager.getCurrentState())
+        assertEquals(stops + 1, events.speedMotionEvents.size)
+    }
+
+    /**
+     * `isMoving` is re-synced inside `transitionTo` and is written directly by
+     * `SmartMotionCoordinator` too, so the no-op guard must not skip it.
+     */
+    @Test
+    fun `a no-op transition still re-asserts isMoving`() {
+        configure()
+
+        manager.onManualPaceChange(false)
+        assertFalse(state.isMoving)
+
+        // Something else moved the flag out from under the machine.
+        state.isMoving = true
+
+        manager.onManualPaceChange(false)
+
+        assertFalse(state.isMoving, "the re-assertion must survive the no-op guard")
+    }
+
+    // =========================================================================
     // Helpers
     // =========================================================================
 

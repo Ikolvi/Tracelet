@@ -308,6 +308,69 @@ final class SpeedMotionManagerTests: XCTestCase {
         XCTAssertEqual(delegate.speedMotionEvents.last?["state"], "0")
     }
 
+    // MARK: - A no-op transition is not a transition (#337)
+
+    /// Android emitted a `stationary → stationary` event for a `changePace(false)`
+    /// on an already-stationary machine, because its `transitionTo` had no
+    /// equivalent of `commitTransition`'s guard. iOS was correct; this pins it so
+    /// the platforms cannot drift apart again.
+    func testChangePaceThatChangesNothingEmitsNoEvent() {
+        makeManager()
+
+        manager.onManualPaceChange(isMoving: false)
+        XCTAssertEqual(manager.state, .stationary)
+        let afterFirst = delegate.speedMotionEvents.count
+
+        manager.onManualPaceChange(isMoving: false)
+
+        XCTAssertEqual(manager.state, .stationary)
+        XCTAssertEqual(
+            delegate.speedMotionEvents.count, afterFirst,
+            "the second call agreed with the current state, so there was no edge to report")
+    }
+
+    func testNoEmittedEventReportsATransitionToTheStateItCameFrom() {
+        makeManager()
+
+        manager.onManualPaceChange(isMoving: false)
+        manager.onManualPaceChange(isMoving: false)
+        manager.onManualPaceChange(isMoving: true)
+        manager.onManualPaceChange(isMoving: true)
+
+        let degenerate = delegate.speedMotionEvents.filter { $0["state"] == $0["previousState"] }
+        XCTAssertTrue(
+            degenerate.isEmpty,
+            "events reporting previousState == state: \(degenerate)")
+    }
+
+    /// The counterpart, and the reason the two above are not vacuous: a guard
+    /// that suppressed everything would satisfy them both.
+    func testChangePaceThatDoesChangeTheStateStillEmits() {
+        makeManager()
+
+        manager.onManualPaceChange(isMoving: false)
+        let stops = delegate.speedMotionEvents.count
+        manager.onManualPaceChange(isMoving: true)
+
+        XCTAssertEqual(manager.state, .moving)
+        XCTAssertEqual(delegate.speedMotionEvents.count, stops + 1)
+    }
+
+    /// A no-op still re-asserts the tracking mode: an explicit `changePace()`
+    /// should re-issue the switch even when the state machine already agreed.
+    func testNoOpChangePaceStillReAssertsTheTrackingMode() {
+        makeManager()
+
+        manager.onManualPaceChange(isMoving: false)
+        delegate.switchedToStationaryPeriodic = false
+
+        manager.onManualPaceChange(isMoving: false)
+
+        XCTAssertTrue(
+            delegate.switchedToStationaryPeriodic,
+            "suppressing the event must not suppress the mode switch")
+    }
+
     // MARK: - Recording doubles
 
     private final class RecordingDelegate: SpeedMotionDelegate {
