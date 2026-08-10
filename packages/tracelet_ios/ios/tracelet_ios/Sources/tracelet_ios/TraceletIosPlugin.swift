@@ -231,7 +231,15 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin, DartSyncInterceptor {
             // default payload when the app had registered a builder left no
             // trace of which link had failed — this branch and a nil
             // `dartSyncInterceptor` produced byte-identical evidence.
-            TraceletSdk.shared.logger.debug(
+            //
+            // Deliberately TraceletLog, not `TraceletSdk.shared.logger`: that
+            // property is `TraceletLogger!` and traps when read before
+            // `initialize()`. This branch must stay reachable in that state —
+            // returning the sentinel *immediately, touching nothing* is the #125
+            // guarantee, and routing the log through the SDK would put a crash in
+            // its way. TraceletLog falls back to NSLog until a logger is attached.
+            // The Android counterpart broke its own regression test this way.
+            TraceletLog.debug(
                 "requestSyncBody: no custom sync body builder registered "
                     + "(setSyncBodyBuilder never reached native) — using the default payload")
             return traceletNoSyncBodyBuilderSentinel

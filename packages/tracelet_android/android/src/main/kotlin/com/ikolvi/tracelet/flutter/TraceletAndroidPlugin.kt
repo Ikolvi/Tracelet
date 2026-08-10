@@ -339,7 +339,14 @@ class TraceletAndroidPlugin :
             // sits after this check, so this branch returned in silence and a
             // device posting the default payload gave no clue why. Kept in step
             // with the iOS log of the same name.
-            sdk.logger.debug(
+            //
+            // Deliberately TraceletLog, not `sdk.logger`: `sdk` resolves through
+            // `TraceletSdk.getInstance(context)` and throws before the plugin is
+            // attached to an engine. This branch must stay reachable in that
+            // state — returning the sentinel *immediately, touching nothing* is
+            // the #125 guarantee, and routing the log through the SDK broke it.
+            // TraceletLog falls back to Log.d until a logger is attached.
+            TraceletLog.debug(
                 "requestSyncBody: no custom sync body builder registered " +
                     "(setSyncBodyBuilder never reached native) — using the default payload",
             )
