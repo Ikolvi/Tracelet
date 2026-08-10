@@ -39,6 +39,16 @@ public final class SpeedMotionManager {
         case moving = 0
         case slowing = 1
         case stationary = 2
+
+        /// Readable name for logs. The lifecycle trace is read by humans in bug
+        /// reports, where a bare `rawValue: 2` means nothing without the source.
+        var name: String {
+            switch self {
+            case .moving: return "MOVING"
+            case .slowing: return "SLOWING"
+            case .stationary: return "STATIONARY"
+            }
+        }
     }
 
     public private(set) var state: SpeedMotionState = .moving
@@ -151,9 +161,14 @@ public final class SpeedMotionManager {
             stateManager.isMoving = true
             TraceletLog.debug("[SpeedMotion] start() — forced to MOVING state")
         } else {
-            TraceletLog.debug(String(format: "[SpeedMotion] start: restored state=%d, lowSpeedCount=%d, wakeCount=%d",
-                  state.rawValue, lowSpeedCount, wakeCount))
-            
+            // #334: a relaunched process inherits this state, and inheriting
+            // STATIONARY is indistinguishable from "tracking silently stopped"
+            // unless the trace says so. Once per session, so it belongs on the
+            // always-on channel.
+            TraceletLog.lifecycle(String(
+                format: "speed-motion: restored %@ (lowSpeedCount=%d, wakeCount=%d)",
+                state.name, lowSpeedCount, wakeCount))
+
             if state == .stationary {
                 switchToStationary()
             } else if state == .slowing {
@@ -175,33 +190,17 @@ public final class SpeedMotionManager {
     public func onManualPaceChange(isMoving: Bool) {
         guard isRunning else { return }
         TraceletLog.debug("[SpeedMotion] onManualPaceChange(isMoving=\(isMoving))")
+        lowSpeedCount = 0
+        wakeCount = 0
+        highSpeedCount = 0
+        stopSlowingTimer()
+        let previousState = state
+        state = isMoving ? .moving : .stationary
+        if previousState == .slowing { delegate?.speedMotionDidCancelSlowing() }
+        commitTransition(from: previousState, because: "manual pace change")
         if isMoving {
-            lowSpeedCount = 0
-            wakeCount = 0
-            highSpeedCount = 0
-            stopSlowingTimer()
-            let previousState = state
-            state = .moving
-            if previousState == .slowing { delegate?.speedMotionDidCancelSlowing() }
-            
-            if state != previousState {
-                persistState()
-                emitEvent(previous: previousState, current: state)
-            }
             delegate?.switchToContinuous()
         } else {
-            lowSpeedCount = 0
-            wakeCount = 0
-            highSpeedCount = 0
-            stopSlowingTimer()
-            let previousState = state
-            state = .stationary
-            if previousState == .slowing { delegate?.speedMotionDidCancelSlowing() }
-            
-            if state != previousState {
-                persistState()
-                emitEvent(previous: previousState, current: state)
-            }
             switchToStationary()
         }
     }
@@ -217,8 +216,10 @@ public final class SpeedMotionManager {
 
         let now = ProcessInfo.processInfo.systemUptime
         let effectiveSpeed = max(speed, 0)
-        let previousState = state
 
+        // Each handler commits its own transition through `commitTransition`.
+        // A second, outer commit used to run here as well, which emitted most
+        // transitions twice (#335).
         switch state {
         case .moving:
             handleMoving(speed: effectiveSpeed, now: now)
@@ -229,12 +230,31 @@ public final class SpeedMotionManager {
         }
 
         lastFixTime = now
+    }
 
-        // Persist and emit if state changed
-        if state != previousState {
-            persistState()
-            emitEvent(previous: previousState, current: state)
-        }
+    /// Commits a state change that has already been written to ``state``:
+    /// persists it, emits exactly one event, and records it on the always-on
+    /// lifecycle channel. No-op when the state did not actually change.
+    ///
+    /// Every edge used to hand-roll this sequence and ``onLocation`` re-ran it
+    /// afterwards, so `MOVING -> SLOWING`, `SLOWING -> MOVING` and
+    /// `SLOWING -> STATIONARY` each emitted twice while `STATIONARY -> MOVING`
+    /// emitted once (#335). This mirrors Android's `transitionTo`.
+    ///
+    /// The lifecycle entry exists because this machine decides whether a moving
+    /// vehicle keeps continuous tracking, and at the shipped log levels its
+    /// reasoning left no trace at all — a bug report showed the downgrade with
+    /// nothing to say why (#334). `reason` carries the speed the decision was
+    /// made on, which is the whole story in the case that motivated it: a
+    /// fabricated `speed=0.00` while the car was doing 10 m/s (#332). These
+    /// fire a handful of times per trip, not per fix, which is the bar
+    /// ``TraceletLogger/lifecycle(_:)`` sets for the channel.
+    private func commitTransition(from previousState: SpeedMotionState, because reason: String) {
+        guard state != previousState else { return }
+        persistState()
+        emitEvent(previous: previousState, current: state)
+        TraceletLog.lifecycle(
+            "speed-motion: \(previousState.name) -> \(state.name) — \(reason)")
     }
 
     // MARK: - State Handlers
@@ -249,16 +269,12 @@ public final class SpeedMotionManager {
             wakeCount = 0
             highSpeedCount = 0
             slowingStartTime = now
-            TraceletLog.debug(String(format: "[SpeedMotion] MOVING -> SLOWING (speed=%.2f < threshold=%.2f)",
-                  speed, speedMovingThreshold))
             startSlowingTimer()
-            
+
             delegate?.speedMotionDidStartSlowing()
-            
-            if state != previousState {
-                persistState()
-                emitEvent(previous: previousState, current: state)
-            }
+
+            commitTransition(from: previousState, because: String(
+                format: "speed=%.2f < threshold=%.2f", speed, speedMovingThreshold))
         }
     }
 
@@ -271,18 +287,15 @@ public final class SpeedMotionManager {
             let workItem = DispatchWorkItem { [weak self] in
                 guard let self = self else { return }
                 if self.state == .slowing {
-                    TraceletLog.debug("[SpeedMotion] SLOWING timer expired -> STATIONARY")
                     let previousState = self.state
                     self.state = .stationary
                     self.wakeCount = 0
                     self.lowSpeedCount = 0
                     self.delegate?.speedMotionDidCancelSlowing()
                     self.switchToStationary()
-                    
-                    if self.state != previousState {
-                        self.persistState()
-                        self.emitEvent(previous: previousState, current: self.state)
-                    }
+                    self.commitTransition(
+                        from: previousState,
+                        because: "SLOWING countdown of \(self.speedStationaryDelay)s expired")
                 }
             }
             self.slowingTimerWorkItem = workItem
@@ -319,18 +332,16 @@ public final class SpeedMotionManager {
             // Back to moving
             let previousState = state
             state = .moving
+            let abortCount = SpeedMotionManager.speedAbortFixCount
             lowSpeedCount = 0
             highSpeedCount = 0
             stopSlowingTimer()
-            TraceletLog.debug(String(format: "[SpeedMotion] SLOWING -> MOVING (sustained speed=%.2f >= threshold=%.2f for %d fixes)",
-                  speed, speedMovingThreshold, SpeedMotionManager.speedAbortFixCount))
 
             delegate?.speedMotionDidCancelSlowing()
 
-            if state != previousState {
-                persistState()
-                emitEvent(previous: previousState, current: state)
-            }
+            commitTransition(from: previousState, because: String(
+                format: "sustained speed=%.2f >= threshold=%.2f for %d fixes",
+                speed, speedMovingThreshold, abortCount))
             return
         }
 
@@ -343,16 +354,13 @@ public final class SpeedMotionManager {
             state = .stationary
             wakeCount = 0
             stopSlowingTimer()
-            TraceletLog.debug(String(format: "[SpeedMotion] SLOWING -> STATIONARY (elapsed=%.0fs >= delay=%ds, lowCount=%d)",
-                  elapsed, speedStationaryDelay, lowSpeedCount))
 
             delegate?.speedMotionDidCancelSlowing()
             switchToStationary()
-            
-            if state != previousState {
-                persistState()
-                emitEvent(previous: previousState, current: state)
-            }
+
+            commitTransition(from: previousState, because: String(
+                format: "speed=%.2f, elapsed=%.0fs >= delay=%ds, lowCount=%d",
+                speed, elapsed, speedStationaryDelay, lowSpeedCount))
         }
     }
 
@@ -362,11 +370,15 @@ public final class SpeedMotionManager {
             TraceletLog.debug(String(format: "[SpeedMotion] STATIONARY: wake fix (speed=%.2f, wakeCount=%d/%d)",
                   speed, wakeCount, speedWakeConfirmCount))
             if wakeCount >= speedWakeConfirmCount {
+                let previousState = state
+                let confirmCount = speedWakeConfirmCount
                 state = .moving
                 lowSpeedCount = 0
                 wakeCount = 0
-                TraceletLog.debug("[SpeedMotion] STATIONARY -> MOVING (wakeConfirm reached)")
                 delegate?.switchToContinuous()
+                commitTransition(from: previousState, because: String(
+                    format: "woke on speed=%.2f >= threshold=%.2f (%d confirming fixes)",
+                    speed, speedMovingThreshold, confirmCount))
             }
         } else {
             // Reset wake count on low-speed fix

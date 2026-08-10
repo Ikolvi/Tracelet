@@ -163,6 +163,36 @@ struct FallbackSyncResult {
 
 class TraceletSyncSink: LocationDataSink, SyncProvider {
     let coordinator = SyncCoordinator()
+
+    private static let syncBodySourceLock = NSLock()
+    private static var lastSyncBodySource: String?
+
+    /// Records which body the sync is posting — but only when the answer
+    /// changes (#340).
+    ///
+    /// The per-sync lines around the call sites are `debug`, so on a release
+    /// build at the shipped log levels they are dropped and a device posting
+    /// the default payload when the app registered a custom builder leaves no
+    /// trace of it. The lifecycle channel is never level-gated, which is
+    /// exactly what a release build needs.
+    ///
+    /// It cannot simply be written per sync, though: syncs fire every few
+    /// seconds while tracking, and ``TraceletLogger/lifecycle(_:)`` is
+    /// explicitly reserved for events that fire a handful of times per session
+    /// because its rows share a bounded cap with the killed-state trail. One
+    /// entry per sync would evict the trail it exists to preserve.
+    ///
+    /// Reporting only transitions costs a handful of rows per session and still
+    /// answers the whole question: which body is this app sending, and did that
+    /// ever change mid-session?
+    private static func reportSyncBodySource(_ source: String, _ detail: String) {
+        syncBodySourceLock.lock()
+        let changed = lastSyncBodySource != source
+        if changed { lastSyncBodySource = source }
+        syncBodySourceLock.unlock()
+        guard changed else { return }
+        TraceletSdk.shared.logger.lifecycle("sync-body: \(detail)")
+    }
     
     @discardableResult
     func insertLocation(_ location: [String: Any]) -> String {
@@ -232,6 +262,8 @@ class TraceletSyncSink: LocationDataSink, SyncProvider {
             }
             if let body = customBody, body != traceletNoSyncBodyBuilderSentinel {
                 TraceletSdk.shared.logger.debug("customBody from interceptor (syncBatchBlocking): \(body)")
+                TraceletSyncSink.reportSyncBodySource(
+                    "custom", "posting the app's custom sync body")
                 let sem = DispatchSemaphore(value: 0)
                 var fallbackResult: SyncCoordinator.FallbackSyncResult? = nil
 
@@ -269,6 +301,21 @@ class TraceletSyncSink: LocationDataSink, SyncProvider {
                 }
             }
             // sentinel → no builder → fall through to the default sync below.
+            TraceletSyncSink.reportSyncBodySource(
+                "no-builder",
+                "posting the DEFAULT payload — no custom sync body builder reached native "
+                    + "(setSyncBodyBuilder registered in Dart?)")
+        } else {
+            // #340: a nil interceptor and a registered-but-unreported builder
+            // both ended up here posting the default payload, and neither said
+            // so. Naming this branch is what separates "the plugin never
+            // attached itself to the SDK" from "Dart never registered a
+            // builder" — see the matching log in `requestSyncBody`.
+            TraceletSdk.shared.logger.debug(
+                "syncBatchBlocking: no dartSyncInterceptor attached — using the default payload")
+            TraceletSyncSink.reportSyncBodySource(
+                "no-interceptor",
+                "posting the DEFAULT payload — no dartSyncInterceptor attached to the SDK")
         }
 
         let syncHttp = tracelet_sync.SyncHttpConfig(

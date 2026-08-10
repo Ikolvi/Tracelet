@@ -51,6 +51,17 @@ class SmartMotionCoordinator(
     }
 
     /**
+     * The last speed this process actually resolved, or `null` if it has not
+     * resolved one yet.
+     *
+     * [LocationEngine.lastEffectiveSpeed] and `lastLocation` are written
+     * together on every accepted fix, so a null location is exactly "no fix has
+     * been accepted in this process" — which is *unknown*, not zero.
+     */
+    private val resolvedSpeed: Double?
+        get() = locationEngine.getLastLocation()?.let { locationEngine.lastEffectiveSpeed }
+
+    /**
      * Called when the GPS speed state changes.
      */
     fun onSpeedStateChange(isMoving: Boolean) {
@@ -61,12 +72,24 @@ class SmartMotionCoordinator(
             //   b) Walking slowly (GPS speed 0.3-0.5 m/s, below speed threshold)
             // Only override accel for case (a) — truly near-zero GPS speed.
             // For case (b), trust the accelerometer: the user IS moving.
-            val lastSpeed = locationEngine.getLastLocation()?.speed ?: 0f
-            if (lastSpeed <= 0.15f) {
-                logger.info("SmartMotionCoordinator: GPS speed near zero (${lastSpeed} m/s) but accel moving — overriding accel to false (hand tremor).")
-                coreCoordinator.onAccelStateChange(false)
-            } else {
-                logger.info("SmartMotionCoordinator: GPS speed ${lastSpeed} m/s suggests walking — trusting accel, staying continuous.")
+            //
+            // #333: this used to read the raw `Location.speed`, which reports
+            // 0.0 on a fix that carries no speed at all, so an unknown speed
+            // passed the near-zero test and overruled a positive motion signal
+            // on missing data. `lastEffectiveSpeed` is the resolved value — it
+            // falls back to a distance/time derivation exactly when the platform
+            // reading is absent — and no resolved speed at all now leaves the
+            // accelerometer standing rather than silently siding against it.
+            val lastSpeed = resolvedSpeed
+            when {
+                lastSpeed == null ->
+                    logger.info("SmartMotionCoordinator: no GPS speed resolved yet — trusting accel, staying continuous.")
+                lastSpeed <= TREMOR_SPEED_THRESHOLD -> {
+                    logger.info("SmartMotionCoordinator: GPS speed near zero ($lastSpeed m/s) but accel moving — overriding accel to false (hand tremor).")
+                    coreCoordinator.onAccelStateChange(false)
+                }
+                else ->
+                    logger.info("SmartMotionCoordinator: GPS speed $lastSpeed m/s is above the $TREMOR_SPEED_THRESHOLD m/s tremor threshold — trusting accel, staying continuous.")
             }
         }
         val action = coreCoordinator.onSpeedStateChange(isMoving)
@@ -101,10 +124,28 @@ class SmartMotionCoordinator(
         )
     }
 
+    /**
+     * Records a tracking-mode switch on the always-on lifecycle channel, naming
+     * both inputs of the OR (#334).
+     *
+     * The coordinator is a logical OR of the accelerometer and the GPS-speed
+     * machine, so a downgrade means *both* said stationary. Which one flipped
+     * last — and what the other was doing at the time — is the first question
+     * asked of any "it stopped tracking while I was moving" report, and at the
+     * shipped log levels the answer was not recorded anywhere.
+     */
+    private fun recordModeSwitch(mode: String) {
+        val speedText = resolvedSpeed?.toString() ?: "unknown"
+        com.ikolvi.tracelet.sdk.util.TraceletLog.lifecycle(
+            "smart-motion: switching to $mode — accelMoving=${coreCoordinator.isAccelMoving()} " +
+                "speedMoving=${coreCoordinator.isSpeedMoving()} lastSpeed=${speedText}m/s",
+        )
+    }
+
     private fun handleAction(action: uniffi.tracelet_core.CoordinatorAction) {
         when (action) {
             uniffi.tracelet_core.CoordinatorAction.SWITCH_TO_CONTINUOUS -> {
-                logger.info("SmartMotionCoordinator: Switching to CONTINUOUS")
+                recordModeSwitch("CONTINUOUS")
                 val useForeground = configManager.isForegroundServiceEnabled()
                 logger.debug("SmartMotionCoordinator: SWITCH_TO_CONTINUOUS — useForeground=$useForeground")
                 if (useForeground) {
@@ -124,7 +165,7 @@ class SmartMotionCoordinator(
                 events.sendMotionChange(locationMap)
             }
             uniffi.tracelet_core.CoordinatorAction.SWITCH_TO_STATIONARY_GEOFENCES -> {
-                logger.info("SmartMotionCoordinator: Switching to STATIONARY_GEOFENCES")
+                recordModeSwitch("STATIONARY_GEOFENCES")
                 val useForeground = configManager.isForegroundServiceEnabled()
                 if (useForeground) {
                     LocationService.switchToStationaryGeofences(locationEngine, stateManager, configManager)
@@ -144,7 +185,7 @@ class SmartMotionCoordinator(
                 events.sendMotionChange(locationMap)
             }
             uniffi.tracelet_core.CoordinatorAction.SWITCH_TO_STATIONARY_PERIODIC -> {
-                logger.info("SmartMotionCoordinator: Switching to STATIONARY_PERIODIC")
+                recordModeSwitch("STATIONARY_PERIODIC")
                 val useForeground = configManager.isForegroundServiceEnabled()
                 logger.debug("SmartMotionCoordinator: SWITCH_TO_STATIONARY_PERIODIC — useForeground=$useForeground")
                 if (useForeground) {
@@ -180,5 +221,13 @@ class SmartMotionCoordinator(
                 // Do nothing
             }
         }
+    }
+
+    private companion object {
+        /**
+         * GPS speed at or below which a *moving* accelerometer is read as hand
+         * tremor on a physically still device rather than as real motion.
+         */
+        const val TREMOR_SPEED_THRESHOLD = 0.15
     }
 }

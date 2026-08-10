@@ -70,6 +70,12 @@ let package = Package(
                 // still be delivered fixes (distanceFilter=None) and crossings
                 // must evaluate on the raw stream, before the persistence filter.
                 "LocationEngineGeofenceStarvationTests.swift",
+                // #332/#335: the GPS-speed motion machine decides whether a
+                // moving vehicle keeps continuous tracking. Its suite was
+                // written but never wired up here, so nothing caught it emitting
+                // every transition twice, and nothing pinned the behaviour that
+                // a drive at vehicle speed must stay MOVING.
+                "SpeedMotionManagerTests.swift",
             ]
         ),
     ]

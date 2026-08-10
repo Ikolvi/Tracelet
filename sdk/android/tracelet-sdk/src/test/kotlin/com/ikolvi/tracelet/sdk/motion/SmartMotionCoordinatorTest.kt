@@ -50,6 +50,13 @@ class SmartMotionCoordinatorTest {
         coordinator.syncCurrentMode()
     }
 
+    /** Makes [LocationEngine] report a resolved effective speed of [speed] m/s. */
+    private fun resolveSpeed(speed: Double) {
+        org.mockito.Mockito.`when`(locationEngine.getLastLocation())
+            .thenReturn(android.location.Location("test"))
+        org.mockito.Mockito.`when`(locationEngine.lastEffectiveSpeed).thenReturn(speed)
+    }
+
     @Test
     fun `initial state is Accel=false, Speed=true`() {
         assertFalse(coordinator.isAccelMoving)
@@ -94,7 +101,12 @@ class SmartMotionCoordinatorTest {
         state.trackingMode = TrackingMode.CONTINUOUS
         state.isMoving = true
         coordinator.syncCurrentMode()
-        
+
+        // #333: "GPS confirms still" has to mean GPS actually resolved a
+        // near-zero speed. This used to pass with no fix at all, because an
+        // absent reading reported 0.0 and was accepted as confirmation.
+        resolveSpeed(0.0)
+
         // Accel is true (hand tremor), Speed becomes false (GPS confirms still)
         coordinator.onAccelStateChange(true)
         coordinator.onSpeedStateChange(false)
@@ -173,8 +185,9 @@ class SmartMotionCoordinatorAccelSeedTest {
         // trusts the accelerometer instead of overriding it to false. That leaves the
         // accelerometer as the last input to settle — the exact case that was inert
         // when the flag started at false.
-        val walking = android.location.Location("test").apply { speed = 0.5f }
-        org.mockito.Mockito.`when`(locationEngine.getLastLocation()).thenReturn(walking)
+        // #333: the resolved speed is what the coordinator reads now, not the raw
+        // `Location.speed` — that reports 0.0 when the fix carries no speed at all.
+        resolveSpeed(0.5)
 
         // What start() now does when it starts in MOVING.
         coordinator.onAccelStateChange(true)
@@ -205,5 +218,60 @@ class SmartMotionCoordinatorAccelSeedTest {
 
         assertEquals(uniffi.tracelet_core.CoordinatorAction.NONE, action)
         assertTrue(state.isMoving)
+    }
+
+    // =========================================================================
+    // #333: an unresolved speed is "unknown", not "parked"
+    // =========================================================================
+
+    /** Makes [LocationEngine] report a resolved effective speed of [speed] m/s. */
+    private fun resolveSpeed(speed: Double) {
+        org.mockito.Mockito.`when`(locationEngine.getLastLocation())
+            .thenReturn(android.location.Location("test"))
+        org.mockito.Mockito.`when`(locationEngine.lastEffectiveSpeed).thenReturn(speed)
+    }
+
+    @Test
+    fun `an unresolved speed does not overrule a moving accelerometer`() {
+        // No fix has been accepted, so there is no speed to judge by. The old code
+        // read the raw `Location.speed`, got the 0.0 an absent reading reports, and
+        // treated "we don't know" as proof the device was parked — overriding the
+        // one input that was reporting motion.
+        coordinator.onAccelStateChange(true)
+        assertTrue(coordinator.isAccelMoving)
+
+        coordinator.onSpeedStateChange(false)
+
+        assertTrue(
+            coordinator.isAccelMoving,
+            "missing data is not evidence of standing still",
+        )
+        assertEquals(TrackingMode.CONTINUOUS, state.trackingMode)
+        assertTrue(state.isMoving)
+    }
+
+    @Test
+    fun `a vehicle speed does not overrule a moving accelerometer`() {
+        resolveSpeed(10.0)
+        coordinator.onAccelStateChange(true)
+
+        coordinator.onSpeedStateChange(false)
+
+        assertTrue(coordinator.isAccelMoving)
+        assertEquals(TrackingMode.CONTINUOUS, state.trackingMode)
+        assertTrue(state.isMoving)
+    }
+
+    @Test
+    fun `a genuinely near-zero speed still overrules hand tremor`() {
+        // The case the override exists for: the device is physically still and the
+        // accelerometer is reading tremor. That must keep working.
+        resolveSpeed(0.05)
+        coordinator.onAccelStateChange(true)
+
+        coordinator.onSpeedStateChange(false)
+
+        assertFalse(coordinator.isAccelMoving)
+        assertFalse(state.isMoving)
     }
 }

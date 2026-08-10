@@ -291,6 +291,143 @@ class SpeedMotionManagerTest {
     }
 
     // =========================================================================
+    // A moving vehicle stays MOVING (#332)
+    // =========================================================================
+
+    /**
+     * The failure this guards: `LocationProcessorResult::filtered` reported a
+     * hardcoded `effective_speed = 0.0`, and [LocationEngine] feeds *every* fix
+     * — accepted or not — into this machine. At a 30 m vehicle distance filter
+     * and ~1 Hz fixes, most of a 10 m/s drive is rejected, so the machine saw a
+     * stream of zeros on a motorway and ran its SLOWING countdown to completion.
+     * Given truthful speeds it must never leave MOVING.
+     */
+    @Test
+    fun `sustained vehicle speed never leaves MOVING`() {
+        configure(stationaryDelaySeconds = 0)
+
+        repeat(30) { manager.onLocation(10.0) }
+
+        assertEquals("moving", manager.getCurrentState())
+        assertTrue(events.speedMotionEvents.isEmpty(), "a steady drive is not a state change")
+        assertFalse(callback.switchedToStationaryPeriodic)
+    }
+
+    /**
+     * The shape the bug took on the wire: real fixes at vehicle speed
+     * interleaved with the fabricated zeros the rejected ones contributed. Two
+     * filtered fixes per accepted one is the ratio a 30 m filter produces at
+     * 10 m/s. Each zero reset the high-speed streak, so the abort counter never
+     * reached `SPEED_ABORT_FIX_COUNT` and the countdown expired mid-drive.
+     *
+     * Kept as a characterisation of the *input* contract: if anything ever feeds
+     * this machine a zero per rejected fix again, this fails.
+     */
+    @Test
+    fun `interleaved fabricated zeros would strand the machine in SLOWING`() {
+        configure(stationaryDelaySeconds = 600)
+
+        manager.onLocation(10.0)
+        manager.onLocation(0.0) // the first fabricated zero: MOVING -> SLOWING
+        assertEquals("slowing", manager.getCurrentState())
+
+        repeat(10) {
+            manager.onLocation(10.0) // accepted fix, genuinely driving
+            manager.onLocation(0.0) // rejected fix, fabricated
+            manager.onLocation(0.0) // rejected fix, fabricated
+        }
+
+        assertEquals(
+            "slowing",
+            manager.getCurrentState(),
+            "10 fixes at 10 m/s could not rescue the machine — which is why the " +
+                "fabricated zeros had to stop at the source (#332)",
+        )
+    }
+
+    // =========================================================================
+    // A no-op transition is not a transition (#337)
+    // =========================================================================
+
+    /**
+     * Found by the #335 verification card on a device: `changePace(false)` on a
+     * machine that was already STATIONARY emitted a `stationary → stationary`
+     * event. iOS's `commitTransition` has always guarded this; Android had no
+     * equivalent, so the same call behaved differently on the two platforms.
+     */
+    @Test
+    fun `a changePace that changes nothing emits no event`() {
+        configure()
+
+        manager.onManualPaceChange(false)
+        assertEquals("stationary", manager.getCurrentState())
+        val afterFirst = events.speedMotionEvents.size
+
+        manager.onManualPaceChange(false)
+
+        assertEquals("stationary", manager.getCurrentState())
+        assertEquals(
+            afterFirst,
+            events.speedMotionEvents.size,
+            "the second call agreed with the current state, so there was no edge to report",
+        )
+    }
+
+    /** Every emitted event must name a real edge. */
+    @Test
+    fun `no emitted event reports a transition to the state it came from`() {
+        configure()
+
+        manager.onManualPaceChange(false)
+        manager.onManualPaceChange(false)
+        manager.onManualPaceChange(true)
+        manager.onManualPaceChange(true)
+
+        val degenerate = events.speedMotionEvents.filter {
+            it["state"] == it["previousState"]
+        }
+        assertTrue(
+            degenerate.isEmpty(),
+            "events reporting previousState == state: $degenerate",
+        )
+    }
+
+    /**
+     * The counterpart, and the reason the two rows above are not vacuous: a
+     * guard that suppressed everything would satisfy them both.
+     */
+    @Test
+    fun `a changePace that does change the state still emits`() {
+        configure()
+
+        manager.onManualPaceChange(false)
+        val stops = events.speedMotionEvents.size
+        manager.onManualPaceChange(true)
+
+        assertEquals("moving", manager.getCurrentState())
+        assertEquals(stops + 1, events.speedMotionEvents.size)
+    }
+
+    /**
+     * `isMoving` is re-synced inside `transitionTo` and is written directly by
+     * `SmartMotionCoordinator` too, so the no-op guard must not skip it.
+     */
+    @Test
+    fun `a no-op transition still re-asserts isMoving`() {
+        configure()
+
+        manager.onManualPaceChange(false)
+        assertFalse(state.isMoving)
+
+        // Something else moved the flag out from under the machine.
+        state.isMoving = true
+
+        manager.onManualPaceChange(false)
+
+        assertFalse(state.isMoving, "the re-assertion must survive the no-op guard")
+    }
+
+    // =========================================================================
     // Helpers
     // =========================================================================
 
