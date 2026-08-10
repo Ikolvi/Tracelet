@@ -839,6 +839,39 @@ class TraceletSdk private constructor(private val context: Context) {
     // =========================================================================
 
     /**
+     * Reconciles the speed-motion machine with the pace this `start()` is
+     * committed to, for a start that did *not* force MOVING.
+     *
+     * [SpeedMotionManager.start] restores whatever the last session persisted,
+     * and anything but STATIONARY means "moving". Adopting that is right for a
+     * **resume**: a relaunched process has no other record of the pace it was
+     * killed in. It is wrong for a **fresh start()**, which committed a pace from
+     * `motion.isMoving` a few lines earlier — adopting the restored value there
+     * let a previous session's MOVING silently overrule an explicit
+     * `motion.isMoving: false`, and the caller was handed `isMoving=true` from a
+     * start it had asked to begin stationary. `syncCurrentMode()` (#344) has
+     * already read the committed pace by this point, so the seeded
+     * `onAccelStateChange(true)` below then woke the coordinator too — a whole
+     * session in the wrong pace, from stale state the app never asked for.
+     *
+     * A fresh start therefore keeps its committed pace and pushes it *into* the
+     * machine. That has to happen before the last-known-speed seed further down:
+     * a restored MOVING left in place falls to SLOWING on the first low-speed
+     * sample, and SLOWING is still "moving", so it writes `isMoving` back to true.
+     */
+    private fun adoptSpeedMotionPace(isResume: Boolean) {
+        val restoredMoving = speedMotionManager.getCurrentState() != "stationary"
+        if (isResume) {
+            stateManager.isMoving = restoredMoving
+        } else if (restoredMoving) {
+            speedMotionManager.onManualPaceChange(false)
+        }
+        if (::smartMotionCoordinator.isInitialized) {
+            smartMotionCoordinator.onSpeedStateChange(stateManager.isMoving)
+        }
+    }
+
+    /**
      * Starts continuous location tracking.
      *
      * @return Error string if not ready or permission denied, null on success.
@@ -921,13 +954,7 @@ class TraceletSdk private constructor(private val context: Context) {
         
         if (motionMode == com.ikolvi.tracelet.sdk.model.MotionDetectionMode.SPEED) {
             speedMotionManager.start(forceMoving = shouldForceMoving)
-            if (!shouldForceMoving) {
-                val restoredMoving = speedMotionManager.getCurrentState() != "stationary"
-                if (::smartMotionCoordinator.isInitialized) {
-                    smartMotionCoordinator.onSpeedStateChange(restoredMoving)
-                }
-                stateManager.isMoving = restoredMoving
-            }
+            if (!shouldForceMoving) adoptSpeedMotionPace(isResume)
             locationEngine.speedMotionSpeedSink = { speed -> speedMotionManager.onLocation(speed) }
             
             // Feed the last known GPS speed immediately on startup to prevent deadlocks when physically stationary
@@ -949,13 +976,7 @@ class TraceletSdk private constructor(private val context: Context) {
             // MOVING again until the process was killed.
             smartMotionCoordinator.syncCurrentMode()
             speedMotionManager.start(forceMoving = shouldForceMoving)
-            if (!shouldForceMoving) {
-                val restoredMoving = speedMotionManager.getCurrentState() != "stationary"
-                if (::smartMotionCoordinator.isInitialized) {
-                    smartMotionCoordinator.onSpeedStateChange(restoredMoving)
-                }
-                stateManager.isMoving = restoredMoving
-            }
+            if (!shouldForceMoving) adoptSpeedMotionPace(isResume)
             locationEngine.speedMotionSpeedSink = { speed -> speedMotionManager.onLocation(speed) }
             
             // Feed the last known GPS speed immediately on startup to prevent deadlocks when physically stationary

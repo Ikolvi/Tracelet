@@ -58,6 +58,22 @@ import 'package:tracelet_example/issues/issue_card_shell.dart';
 /// pinned by `SmartMotionCoordinatorSyncModeTests` (iOS) and
 /// `SmartMotionCoordinatorStationaryStartTest` (Android), both of which drive
 /// the real core through the same sequence.
+///
+/// **The precondition is checked, not assumed.** A run on a device that is
+/// genuinely moving cannot set the precondition up: the speed machine wakes on
+/// the last known GPS speed, or the accelerometer wakes the coordinator during
+/// the settle window, and either way the switch this card looks for has already
+/// happened before it can be measured. That is reported as *inconclusive*. It
+/// used to be reported as a red failure whose advice — check that
+/// `motion.isMoving:false` reached the platform — pointed at the wrong thing,
+/// followed by a vacuous green row and a second red one, all three of which
+/// were artefacts of the unmet precondition rather than a regression.
+///
+/// One real defect did hide behind that: a fresh `start()` adopted the previous
+/// session's persisted speed-motion state, so a session that had been left
+/// MOVING overruled an explicit `motion.isMoving: false` outright. Only a
+/// resume inherits the pace now — see `adoptSpeedMotionPace` (Android) and
+/// `startSpeedMotionManager(forceMoving:isResume:)` (iOS).
 class Issue344Card extends StatefulWidget {
   const Issue344Card({super.key});
 
@@ -117,15 +133,44 @@ class _Issue344CardState extends State<Issue344Card> {
       final started = await Tracelet.start();
       await Future<void>.delayed(const Duration(seconds: 2));
 
+      // The precondition is a session that is *actually* parked. Two things can
+      // deny it, and neither is a defect in #344:
+      //
+      //  * a GPS speed at or above speedMovingThreshold (1.5 m/s) — start()
+      //    feeds the last known speed into the speed machine, which wakes on it;
+      //  * real movement of the device during the settle window — a shake, a
+      //    significant-motion trigger or an activity transition all reach the
+      //    coordinator and legitimately switch it to continuous.
+      //
+      // Both leave the coordinator already continuous with both inputs true, so
+      // the changePace(true) below has nothing left to do and dedupes to none.
+      // Reported as inconclusive rather than failed: the run proves nothing
+      // either way, and a red row here used to be read as a regression.
+      final settled = await Tracelet.getState();
+      if (started.isMoving || settled.isMoving) {
+        final when = started.isMoving
+            ? 'start() itself returned isMoving=true'
+            : 'the session woke during the two-second settle window';
+        await Tracelet.stop();
+        _set(
+          '⚠️ INCONCLUSIVE: the session never parked, so #344 was not exercised.'
+          '\n\n'
+          '$when, so the wake-up this card checks for had already happened '
+          'before it could be measured. The device is moving, or GPS is '
+          'reporting a speed at or above the 1.5 m/s moving threshold.\n\n'
+          'This is not a failure of the fix and not a sign that '
+          'motion.isMoving:false was dropped — a fresh start() commits that '
+          'pace, but live motion still outranks it, which is what SMART mode '
+          'is for. Re-run with the device sitting still.',
+        );
+        return;
+      }
+
       check(
         'the fresh session starts stationary',
-        !started.isMoving,
-        !started.isMoving
-            ? 'isMoving=false after start(), as motion.isMoving:false asks for '
-                  '— this is the state that used to wedge the coordinator'
-            : 'isMoving=true after start(), so the precondition for #344 was '
-                  'never set up. Nothing below is conclusive; check that '
-                  'motion.isMoving:false actually reached the platform.',
+        true,
+        'isMoving=false after start(), as motion.isMoving:false asks for — '
+            'this is the state that used to wedge the coordinator',
       );
 
       motionEvents.clear();
@@ -189,7 +234,10 @@ class _Issue344CardState extends State<Issue344Card> {
         'The precondition matters: session 1 exists only to leave both '
         'coordinator inputs stationary. Running the wake-up on a first-ever '
         'start can pass even on a broken build, because the speed machine may '
-        'still flip its flag and repair the posture on the way through.\n\n'
+        'still flip its flag and repair the posture on the way through. A run '
+        'on a device that is actually moving is reported as inconclusive '
+        'rather than failed — the wake-up lands during start() and there is '
+        'nothing left for the card to observe.\n\n'
         'Both platforms had the identical mapping and both are fixed. The core '
         'state machine is driven through this exact sequence by '
         'SmartMotionCoordinatorSyncModeTests (iOS, newly wired into '

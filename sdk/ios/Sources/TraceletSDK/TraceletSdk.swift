@@ -482,9 +482,9 @@ public final class TraceletSdk {
         let motionMode = configManager.getMotionDetectionMode()
 
         if motionMode == .speed {
-            startSpeedMotionManager(forceMoving: shouldForceMoving)
+            startSpeedMotionManager(forceMoving: shouldForceMoving, isResume: isResume)
         } else if motionMode == .smart {
-            startSpeedMotionManager(forceMoving: shouldForceMoving)
+            startSpeedMotionManager(forceMoving: shouldForceMoving, isResume: isResume)
             // Seed the coordinator's accelerometer flag to the state we are
             // actually starting in. The Rust coordinator initialises
             // is_accel_moving = false and on_accel_state_change() early-returns on
@@ -3510,9 +3510,9 @@ public final class TraceletSdk {
             locationEngine.start()
             let motionMode = configManager.getMotionDetectionMode()
             if motionMode == .speed {
-                startSpeedMotionManager(forceMoving: stateManager.isMoving)
+                startSpeedMotionManager(forceMoving: stateManager.isMoving, isResume: true)
             } else if motionMode == .smart {
-                startSpeedMotionManager(forceMoving: stateManager.isMoving)
+                startSpeedMotionManager(forceMoving: stateManager.isMoving, isResume: true)
                 motionDetector.start()
             } else {
                 motionDetector.start()
@@ -3705,7 +3705,11 @@ public final class TraceletSdk {
         }
     }
 
-    private func startSpeedMotionManager(forceMoving: Bool = false) {
+    /// - Parameter isResume: true when the SDK is picking a session back up
+    ///   (relaunch / auto-resume) rather than the app asking for a fresh one.
+    ///   Only a resume inherits the previous session's pace — see the reconcile
+    ///   step below.
+    private func startSpeedMotionManager(forceMoving: Bool = false, isResume: Bool = false) {
         let smm = SpeedMotionManager(stateManager: stateManager)
         smm.speedMovingThreshold = configManager.getSpeedMovingThreshold()
         smm.speedStationaryDelay = configManager.getSpeedStationaryDelay()
@@ -3715,6 +3719,26 @@ public final class TraceletSdk {
         smm.delegate = self
         smm.start(forceMoving: forceMoving)
         speedMotionManager = smm
+
+        // The machine outlives a session: start() above restored whatever the
+        // last one persisted, and anything but .stationary means "moving".
+        // Inheriting that is right for a resume — a relaunched process has no
+        // other record of the pace it was killed in — and wrong for a fresh
+        // start(), which committed a pace from `motion.isMoving` a few lines
+        // earlier. Adopting the restored value there let a previous session's
+        // MOVING silently overrule an explicit `motion.isMoving: false`, so the
+        // caller was handed isMoving=true from a start it had asked to begin
+        // stationary, with syncCurrentMode() (#344) having already read the
+        // committed pace.
+        //
+        // This must precede the last-known-speed seed below: a restored .moving
+        // left in place falls to .slowing on the first low-speed fix, and
+        // .slowing is still "moving", so it writes isMoving back to true.
+        if !forceMoving && !isResume && smm.state != .stationary {
+            TraceletLog.debug(
+                "[Tracelet] start() committed a stationary pace — overriding restored \(smm.state.name)")
+            smm.onManualPaceChange(isMoving: false)
+        }
 
         // Feed CLLocation.speed to the state machine on every fix
         locationEngine.speedSink = { [weak smm] speed in
