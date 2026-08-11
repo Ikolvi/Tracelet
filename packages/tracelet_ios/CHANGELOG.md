@@ -1,3 +1,9 @@
+## 3.8.1
+
+**FIX**: a headless task after task removal could silently never fire — the same spawn-recovery fix as Android, ported to `HeadlessRunner` ([#331](https://github.com/Ikolvi/Tracelet/issues/331)).
+
+**FIX**: `requestSyncBody` now falls back to a registered headless sync-body builder instead of posting the SDK default when no foreground builder is registered — the gap a background relaunch hit on every sync ([#340](https://github.com/Ikolvi/Tracelet/issues/340)).
+
 ## 3.8.0
 
 **FIX**: a partial `setConfig()` no longer resets the persisted iOS configuration. `ConfigManager.setConfig` already skipped `NSNull` and absent keys, but the bridge built a flat dictionary of resolved defaults and so never sent one — `showsBackgroundLocationIndicator`, `preventSuspend` and `useBackgroundActivitySession` all silently reverted to `false`, degrading background tracking with no signal. The bridge now forwards unset fields as absent ([#321](https://github.com/Ikolvi/Tracelet/issues/321)).

@@ -1,5 +1,5 @@
 {
-  "badgeTitle": "New in 3.8.0",
+  "badgeTitle": "New in 3.8.1",
   "items": [
     {
       "title": "setConfig() is now a partial update",

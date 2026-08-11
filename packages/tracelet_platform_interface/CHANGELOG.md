@@ -1,3 +1,7 @@
+## 3.8.1
+
+Version alignment with tracelet 3.8.1.
+
 ## 3.8.0
 
 **FIX**: every leaf `Tl*Config` field is nullable, so "the caller did not set this" survives the channel and the platform can leave the persisted value alone instead of overwriting it with a default. The method-channel and web transports omit unset fields rather than sending them as explicit nulls or resolved defaults ([#321](https://github.com/Ikolvi/Tracelet/issues/321)).

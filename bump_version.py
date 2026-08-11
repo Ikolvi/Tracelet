@@ -1,13 +1,12 @@
 import os
 import re
 
-version_from = "3.8.0-beta.2"
-version_to = "3.8.0"
+version_from = "3.8.0"
+version_to = "3.8.1"
 
-# Promoting the beta to the stable 3.8.0. Both pub and CocoaPods order a release
-# without a pre-release identifier AFTER every `3.8.0-*`, so `3.8.0` supersedes
-# `3.8.0-beta.2` and pub will now resolve it for plain `^3.8.0` constraints
-# rather than requiring an explicit pre-release opt-in.
+# Patch release: #331, #332-#335, #337, #340, #342, #344, #346, #348 landed as
+# hand-written `## Unreleased` entries since 3.8.0 shipped. This run promotes
+# them rather than writing new ones.
 
 # 1. Bump version strings
 exact_replacements = [
@@ -116,22 +115,15 @@ detailed_changelogs = [
     # description. Same failure the tracelet_doctor comment above describes.
     'packages/tracelet_android/CHANGELOG.md',
     'packages/tracelet_ios/CHANGELOG.md',
+    # tracelet_sync carries a real #340 entry this cycle (the sync-body-source
+    # lifecycle report on iOS) — same reasoning as tracelet_doctor above.
+    'packages/tracelet_sync/CHANGELOG.md',
 ]
 
-# Packages with no hand-written entries of their own.
-plugin_changelogs = []
-
 generic_changelogs = [
-    'packages/tracelet_sync/CHANGELOG.md',
     'packages/tracelet_supabase/CHANGELOG.md',
     'packages/tracelet_firebase/CHANGELOG.md',
 ]
-
-plugin_addition = f"""## {version_to}
-
-**FEAT**: implements the `getCurrentLocationTuning` host API, which reports the location-filter thresholds actually in force in the native processor rather than echoing the configured values ([#303](https://github.com/Ikolvi/Tracelet/issues/303)).
-
-"""
 
 generic_addition = f"""## {version_to}
 
@@ -202,8 +194,8 @@ for cl in detailed_changelogs:
             f.write(content)
         print(f"Added generic entry to {cl} (no Unreleased section found)")
 
-for cl, addition in [(c, plugin_addition) for c in plugin_changelogs] + \
-                    [(c, generic_addition) for c in generic_changelogs]:
+for cl in generic_changelogs:
+    addition = generic_addition
     if not os.path.exists(cl):
         print(f"Warning: File {cl} does not exist.")
         continue

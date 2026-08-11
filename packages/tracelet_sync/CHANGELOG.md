@@ -1,3 +1,7 @@
+## 3.8.1
+
+**FIX**: (iOS) every HTTP sync now reports which body it posted — the app's custom body or the SDK default — on the always-on lifecycle channel ([#340](https://github.com/Ikolvi/Tracelet/issues/340)).
+
 ## 3.8.0
 
 Version alignment with tracelet 3.8.0.

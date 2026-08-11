@@ -1,3 +1,9 @@
+## 3.8.1
+
+**FIX**: a headless task after task removal could silently never fire — the engine spawn now times out, retries, and reports failures on the lifecycle channel instead of stalling forever, and its pending-event queue is capped instead of growing without limit ([#331](https://github.com/Ikolvi/Tracelet/issues/331)).
+
+**FIX**: `requestSyncBody` now falls back to a registered headless sync-body builder instead of posting the SDK default when no foreground builder is registered ([#340](https://github.com/Ikolvi/Tracelet/issues/340)).
+
 ## 3.8.0
 
 **FIX**: the whole config payload is forwarded with its nulls intact rather than substituted with defaults, so `ConfigManager`'s existing null-skip applies to every section and not only the foreground service ([#321](https://github.com/Ikolvi/Tracelet/issues/321)).

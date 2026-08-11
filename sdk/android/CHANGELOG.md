@@ -1,3 +1,17 @@
+## 3.8.1
+
+**FIX**: the speed-motion state machine no longer reports STATIONARY from a filtered 0 m/s fix or treats an unavailable GPS speed as standing still, and no longer double-emits a no-op transition ([#332](https://github.com/Ikolvi/Tracelet/issues/332), [#333](https://github.com/Ikolvi/Tracelet/issues/333), [#334](https://github.com/Ikolvi/Tracelet/issues/334), [#337](https://github.com/Ikolvi/Tracelet/issues/337)).
+
+**FIX**: a near-zero time delta between fixes no longer derives an implausible fallback speed that wakes a parked device ([#342](https://github.com/Ikolvi/Tracelet/issues/342)).
+
+**FIX**: `start(isMoving: false)` no longer permanently deafens the SMART motion coordinator to the accelerometer ([#344](https://github.com/Ikolvi/Tracelet/issues/344)).
+
+**FIX**: transport-mode auto-tuning no longer overrides an explicitly configured `distanceFilter: 0` ([#346](https://github.com/Ikolvi/Tracelet/issues/346)).
+
+**FIX**: only a *resumed* session inherits the previous session's speed-motion pace ([#348](https://github.com/Ikolvi/Tracelet/issues/348)).
+
+**FIX**: every HTTP sync — not just the debounced auto-sync — now reports which body it posted on the always-on lifecycle channel ([#340](https://github.com/Ikolvi/Tracelet/issues/340)).
+
 ## 3.8.0
 
 **FIX**: (Android) killed-state tracking no longer keeps running continuous GPS after the motion subsystems settle back to stationary. The engine's mode is switched only from a motion *transition*, but `MotionDetector.onManualPaceChange()` swaps its sensor set between the shake/significant-motion and stillness configurations directly, without routing through `declareStationary()` — so no transition is emitted, and the engine stays continuous for the rest of the process lifetime with the OS location indicator pinned on and fixes landing every couple of seconds. A field report showed a single `isMoving=true` transition followed by 87 s of a demonstrably still device (peak 0.02 g against a 2.0 g threshold) still persisting continuous fixes, with the detector already back in its stationary configuration. `startBootTracking()` reconciled this once at bootstrap, which is why it only appeared mid-session — and why reopening the app showed a stationary pace while the location indicator stayed on. The reconciliation now runs on every heartbeat, so a missed transition costs one interval instead of the session, and the correction is recorded as a lifecycle entry ([#319](https://github.com/Ikolvi/Tracelet/issues/319)).

@@ -1,3 +1,15 @@
+## 3.8.1
+
+**FIX**: the speed-motion state machine no longer reports STATIONARY from a filtered 0 m/s fix or treats an unavailable GPS speed as standing still, and the speedmotion event no longer double-fires per transition ([#332](https://github.com/Ikolvi/Tracelet/issues/332), [#333](https://github.com/Ikolvi/Tracelet/issues/333), [#334](https://github.com/Ikolvi/Tracelet/issues/334), [#335](https://github.com/Ikolvi/Tracelet/issues/335)).
+
+**FIX**: a near-zero time delta between fixes no longer derives an implausible fallback speed that wakes a parked device ([#342](https://github.com/Ikolvi/Tracelet/issues/342)).
+
+**FIX**: `start(isMoving: false)` no longer permanently deafens the SMART motion coordinator to the accelerometer ([#344](https://github.com/Ikolvi/Tracelet/issues/344)).
+
+**FIX**: transport-mode auto-tuning no longer overrides an explicitly configured `distanceFilter: 0` ([#346](https://github.com/Ikolvi/Tracelet/issues/346)).
+
+**FIX**: only a *resumed* session inherits the previous session's speed-motion pace ([#348](https://github.com/Ikolvi/Tracelet/issues/348)).
+
 ## 3.8.0
 
 **FIX**: (iOS) the engine is re-aligned with the committed motion state on every heartbeat, matching the Android reconciliation. iOS has no reproduction of the Android trigger and is less exposed to it — `CMMotionActivityManager` runs continuously regardless of tracking mode, so there is no `onManualPaceChange` equivalent — but the failure class is identical and silent: the persisted state reads stationary while the engine keeps running continuous updates, costing battery for the rest of the session. Any ordering that reaches it (a queued callback landing after a mode switch, a force-switch bailing on its `enabled` guard after the state was written) is now bounded to one heartbeat interval and recorded as a lifecycle entry rather than being invisible ([#319](https://github.com/Ikolvi/Tracelet/issues/319)).

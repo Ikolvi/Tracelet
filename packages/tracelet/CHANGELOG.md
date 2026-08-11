@@ -1,3 +1,19 @@
+## 3.8.1
+
+**FIX**: (Android) a headless task after task removal could silently never fire — the engine spawn now retries and reports failures instead of stalling forever ([#331](https://github.com/Ikolvi/Tracelet/issues/331)).
+
+**FIX**: (iOS) a registered custom sync body builder is now honored on every path — a background relaunch no longer silently posts the SDK's default payload instead of it ([#340](https://github.com/Ikolvi/Tracelet/issues/340)).
+
+**FIX**: (Android, iOS) the speed-motion state machine no longer reports STATIONARY from a filtered 0 m/s fix, treats an unavailable GPS speed as standing still, or double-emits a transition ([#332](https://github.com/Ikolvi/Tracelet/issues/332), [#333](https://github.com/Ikolvi/Tracelet/issues/333), [#334](https://github.com/Ikolvi/Tracelet/issues/334), [#335](https://github.com/Ikolvi/Tracelet/issues/335), [#337](https://github.com/Ikolvi/Tracelet/issues/337)).
+
+**FIX**: (Android, iOS) a near-zero time delta between fixes no longer derives an implausible fallback speed that wakes a parked device ([#342](https://github.com/Ikolvi/Tracelet/issues/342)).
+
+**FIX**: (Android, iOS) `start(isMoving: false)` no longer permanently deafens the SMART motion coordinator to the accelerometer ([#344](https://github.com/Ikolvi/Tracelet/issues/344)).
+
+**FIX**: transport-mode auto-tuning no longer overrides an explicitly configured `distanceFilter: 0` ([#346](https://github.com/Ikolvi/Tracelet/issues/346)).
+
+**FIX**: (Android, iOS) only a *resumed* session inherits the previous session's speed-motion pace ([#348](https://github.com/Ikolvi/Tracelet/issues/348)).
+
 ## 3.8.0
 
 **FIX**: `Config.toMap()` omits a section entirely when it carries nothing, so `const Config().toMap()` is now empty rather than sixteen empty sub-maps. Each section was guarded with `if (geo != null)`, which is dead code — the fields are non-nullable with defaults — the same mistake already fixed one level down for `geo.filter` and `android.foregroundService`, and the analyzer had been reporting all sixteen. Nothing downstream read them (the wire format is the Pigeon `toTlConfig()`, not this; `Config.fromMap` falls back through an absent section, and `activeConfig` is a resolved config after `ready()`, so every section still carries fields), but a partial update that changes nothing should not look like it touched every section — least of all in a pasted bug report. `AttestationToken.toMap()` loses the same dead guards on `token`, `timestamp` and `provider`: a token is a result, not a partial config, and those three are never absent ([#326](https://github.com/Ikolvi/Tracelet/issues/326)).

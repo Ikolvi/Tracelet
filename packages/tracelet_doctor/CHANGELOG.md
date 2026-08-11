@@ -1,3 +1,7 @@
+## 3.8.1
+
+Version alignment with tracelet 3.8.1.
+
 ## 3.8.0
 
 **FEAT**: `TraceletBugReport` gains a `## Session lifecycle (background & killed-state trace)` section carrying what the background pipelines actually did — service start/stop, sticky restarts and boot bootstrap outcomes on Android, relaunch and termination boundaries on iOS, and motion-state transitions on both. These are recorded regardless of `logLevel`, so a pasted report carries them even when the developer never enabled logging. Given its own section for the same reason as the geofence trace: lifecycle events are rare while routine chatter is not, so at `debug`/`verbose` the entry from the overnight run that actually failed is exactly the one pushed out of the `## Logs` window. An absent entry is diagnostic too — `motion (foreground)` with no killed-state counterpart means the background detector never ran, and an iOS `termination:` with no following `relaunch:` means the app was never woken ([#318](https://github.com/Ikolvi/Tracelet/issues/318)).
