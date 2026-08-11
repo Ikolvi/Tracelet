@@ -3,13 +3,13 @@ import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/geofence_notifier.dart';
 import 'package:tracelet_example/issues/issue_card_shell.dart';
 
-/// Issue #356 — a geofence smaller than the OS can resolve must still fire
+/// Issue #355 — a geofence smaller than the OS can resolve must still fire
 /// ENTER/EXIT, including while the app is terminated.
 ///
 /// Play Services and CoreLocation both need a radius of roughly 100 m: below
 /// that the fence is smaller than the error of the fixes it is compared
-/// against, so neither ever becomes confident enough to report a crossing
-/// (#355). The failure is deceptive rather than obvious — registering while
+/// against, so neither ever becomes confident enough to report a crossing.
+/// The failure is deceptive rather than obvious — registering while
 /// inside fires an immediate ENTER from the initial trigger, so the fence looks
 /// live, and then nothing is ever reported again.
 ///
@@ -32,18 +32,18 @@ import 'package:tracelet_example/issues/issue_card_shell.dart';
 /// so reading the log store afterwards proves the event was recorded but not
 /// *when* — a notification timestamped as you cross is the only real-time
 /// evidence the SDK woke and reported with nothing of the app running.
-class Issue356Card extends StatefulWidget {
-  const Issue356Card({super.key});
+class Issue355Card extends StatefulWidget {
+  const Issue355Card({super.key});
 
   @override
-  State<Issue356Card> createState() => _Issue356CardState();
+  State<Issue355Card> createState() => _Issue355CardState();
 }
 
-class _Issue356CardState extends State<Issue356Card> {
+class _Issue355CardState extends State<Issue355Card> {
   String _status = 'Idle';
   bool _running = false;
 
-  static const _fenceId = 'issue-356-tiny';
+  static const _fenceId = 'issue-355-tiny';
   static const _radiusMeters = 10.0;
 
   void _set(String s) {
@@ -199,8 +199,8 @@ class _Issue356CardState extends State<Issue356Card> {
           'geofence small radius 10m sub-100m terminated killed state headless '
           'notification ENTER EXIT hysteresis accuracy in-app evaluator '
           'wake-up radius polygon Play Services CoreLocation region monitoring '
-          '356',
-      title: '#356: a 10 m geofence fires ENTER/EXIT, even when killed',
+          '355',
+      title: '#355: a 10 m geofence fires ENTER/EXIT, even when killed',
       description:
           'Creates a 10 m geofence at your current position and sets up the '
           'terminated-state test. Fences under ~100 m are smaller than the OS '

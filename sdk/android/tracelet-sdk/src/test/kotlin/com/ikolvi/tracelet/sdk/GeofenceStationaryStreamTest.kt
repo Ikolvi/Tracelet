@@ -33,7 +33,7 @@ import org.robolectric.annotation.Config
  * `start()` runs no stream when the committed motion state is stationary: that
  * is the whole point of its `changePace(false)` branch, and #319 stops the
  * engine on every moving → stationary transition for the same reason. A
- * sub-100 m fence breaks the premise — since #356 it is evaluated *from* that
+ * sub-100 m fence breaks the premise — since #355 it is evaluated *from* that
  * stream — and the killed-state reconcile already refuses the throttle on those
  * grounds while the alive app did not.
  *

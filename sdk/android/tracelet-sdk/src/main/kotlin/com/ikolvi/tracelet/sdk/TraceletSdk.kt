@@ -960,7 +960,7 @@ class TraceletSdk private constructor(private val context: Context) {
         // Called unconditionally: whether a fence is evaluated here or left to
         // the OS is a per-fence question the manager answers, and it is not one
         // the config flag alone can settle — polygons and sub-100 m circles are
-        // ours to decide however `geofenceModeHighAccuracy` is set (#356).
+        // ours to decide however `geofenceModeHighAccuracy` is set (#355).
         locationEngine.onRawGeofenceLocation = { lat, lng, accuracy ->
             geofenceManager.updateProximity(lat, lng)
             geofenceManager.evaluateHighAccuracyProximity(lat, lng, accuracy)
@@ -1052,7 +1052,7 @@ class TraceletSdk private constructor(private val context: Context) {
             changePace(false)
             // A session that starts stationary runs no stream — that is the
             // point of the branch. A fence the OS cannot resolve is decided
-            // *from* that stream (#356), so one already stored at start() would
+            // *from* that stream (#355), so one already stored at start() would
             // otherwise stay dead until the device happened to move. The fence
             // set is re-asked on every later change; this covers the fences that
             // were there before the session was (#357).
@@ -1203,7 +1203,7 @@ class TraceletSdk private constructor(private val context: Context) {
         // Not just the config flag: a polygon or a sub-100 m circle is evaluated
         // in-app whatever the flag says, and in-app evaluation is exactly what
         // needs the continuous fix stream. Asking the manager keeps "who decides
-        // this fence" and "what does deciding it cost" the same question (#356).
+        // this fence" and "what does deciding it cost" the same question (#355).
         val needsInAppEvaluation = geofenceManager.hasEvaluatorOwnedGeofences()
 
         // Crossing *detection* must see every fix — a stationary device inside a
@@ -1230,7 +1230,7 @@ class TraceletSdk private constructor(private val context: Context) {
         }
 
         // Continuous GPS is needed exactly when a fence is evaluated in-app —
-        // high-accuracy mode, a polygon, or a sub-100 m circle (#356). Fences the
+        // high-accuracy mode, a polygon, or a sub-100 m circle (#355). Fences the
         // OS can decide for itself need none of it: the native GeofencingClient
         // reports crossings without a location stream, and starting one keeps the
         // persistent location indicator on and wastes battery for no benefit
@@ -1341,7 +1341,7 @@ class TraceletSdk private constructor(private val context: Context) {
      * stored fence must be evaluated in-app.
      *
      * Continuous GPS — and the foreground service that keeps it alive — is
-     * needed exactly when a fence is evaluated in-app (#356). A fence the OS can
+     * needed exactly when a fence is evaluated in-app (#355). A fence the OS can
      * decide for itself needs neither: the native Geofence API reports crossings
      * while suspended or terminated, and Google Play prohibits a foreground
      * service used *solely* for geofencing as of 2026-10-28.

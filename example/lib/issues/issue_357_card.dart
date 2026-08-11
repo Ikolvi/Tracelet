@@ -6,7 +6,7 @@ import 'package:tracelet_example/issues/issue_card_shell.dart';
 /// cadence it is decided from.
 ///
 /// A fence the in-app evaluator owns (a polygon, or a circle under 100 m) is
-/// decided from the raw fix stream, so #356 drops the OS distance filter to
+/// decided from the raw fix stream, so #355 drops the OS distance filter to
 /// give the evaluator a time-based cadence. That question was asked once, at
 /// `start()` — and `start()` then `addGeofence()` is the ordinary order, so the
 /// flag stayed false for the rest of the session. CoreLocation and the fused

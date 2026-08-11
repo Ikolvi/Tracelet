@@ -660,7 +660,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     final controller = TextEditingController(
       text: _lastCircularRadius.toStringAsFixed(0),
     );
-    // Small radii are offered again: since #356 a fence the OS cannot resolve
+    // Small radii are offered again: since #355 a fence the OS cannot resolve
     // is evaluated in-app at its true radius, so 10 m is a supported choice
     // rather than a trap.
     const presets = <double>[10, 25, 50, 100, 200, 500];
@@ -723,7 +723,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                 // Below the OS floor the SDK takes over rather than giving
                 // up, so this says which component will decide the fence and
                 // what that costs — in-app evaluation needs the location
-                // stream running, which OS-resolvable fences do not (#356).
+                // stream running, which OS-resolvable fences do not (#355).
                 if (inApp)
                   Text(
                     'ℹ️ Below ${osMinResolvableRadius.toStringAsFixed(0)}m the OS '

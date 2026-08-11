@@ -2,9 +2,9 @@ import CoreLocation
 import XCTest
 @testable import TraceletSDK
 
-/// #356 — a geofence smaller than CoreLocation can resolve must still work.
+/// #355 — a geofence smaller than CoreLocation can resolve must still work.
 ///
-/// #355 established that a 5–10 m fence is smaller than typical GPS error, so
+/// The issue established that a 5–10 m fence is smaller than typical GPS error, so
 /// region monitoring never reports a crossing: entering a region the device is
 /// already inside reports state immediately, the fence looks live, and then
 /// nothing is ever reported again. The response then was a warning. The response
@@ -135,7 +135,7 @@ final class GeofenceSmallRadiusTests: XCTestCase {
 
     func testPolygonIsEvaluatedInAppWithoutHighAccuracyMode() throws {
         // CoreLocation only monitors circular regions, so a polygon has always
-        // been ours — but before #356 it was evaluated only when
+        // been ours — but before #355 it was evaluated only when
         // geofenceModeHighAccuracy was on, which meant a polygon silently never
         // fired at default settings.
         try makeManager(radius: 0.0, vertices: [
