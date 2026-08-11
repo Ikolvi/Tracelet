@@ -87,7 +87,7 @@ class GeofenceManagerTransitionLogTest {
         db.setEncryptionKey("")
         db.clearGeofences()
         db.clearLogs()
-        db.insertGeofence("ZONE_LOG", centerLat, centerLng, radius, null, null)
+        db.insertGeofence("ZONE_LOG", centerLat, centerLng, radius, null, null, true, true, false, 0)
 
         // Attach the real logger so assertions run against the persisted store
         // that Doctor exports from.

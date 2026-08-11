@@ -95,11 +95,59 @@ class GeofenceManager(
 
         /** Mirror of `GEOFENCE_MIN_EXIT_HYSTERESIS_METERS` in the Rust core. */
         private const val MIN_EXIT_HYSTERESIS_METERS = 20.0
+
+        /**
+         * Smallest radius that can actually produce transitions, in metres
+         * (#355).
+         *
+         * Below this a geofence is not merely imprecise — it is unserviceable,
+         * and silently so:
+         *
+         *  - Play Services' own guidance is a radius of at least 100 m; below
+         *    that the fence is smaller than the location error it is being
+         *    compared against, so the platform never becomes confident enough to
+         *    report a crossing.
+         *  - The in-app evaluator cannot help either: EXIT needs
+         *    `radius + max(radius * 0.1, 20 m)` of separation, so a 5 m fence
+         *    demands ~25 m of travel plus accuracy gating before it will fire.
+         *
+         * The failure mode is deceptive rather than obvious: registering while
+         * inside fires an immediate ENTER from `INITIAL_TRIGGER_ENTER`, so the
+         * fence looks like it is working, and then no crossing is ever reported
+         * again because none can be. Hence a loud, always-on warning rather than
+         * silence.
+         *
+         * Not enforced — a small fence is still registered, because rejecting it
+         * would break callers who rely on the initial-entry ENTER and because
+         * the floor is advisory on both platforms rather than exact.
+         */
+        private const val MIN_SERVICEABLE_RADIUS_METERS = 100.0
     }
 
     /** Exit-hysteresis band the Rust evaluator applies for [radius]. Logging only. */
     private fun exitHysteresisMeters(radius: Double): Double =
         maxOf(radius * EXIT_HYSTERESIS_FRACTION, MIN_EXIT_HYSTERESIS_METERS)
+
+    /**
+     * Warns when [radius] is too small for the platform to ever report a
+     * crossing (#355).
+     *
+     * On the always-on lifecycle channel: this is a configuration mistake whose
+     * only symptom is silence, so it has to survive a release build's
+     * `logLevel` to be of any use in the bug report that follows.
+     */
+    private fun warnIfRadiusUnserviceable(identifier: String, radius: Double) {
+        if (radius <= 0.0 || radius >= MIN_SERVICEABLE_RADIUS_METERS) return
+        val exitDistance = radius + exitHysteresisMeters(radius)
+        TraceletLog.lifecycle(
+            "$GEOFENCE_LOG_TAG WARNING $identifier radius=${fmt1(radius)}m is below the " +
+                "${fmt1(MIN_SERVICEABLE_RADIUS_METERS)}m the platform can service — " +
+                "the fence is smaller than typical GPS error, so ENTER/EXIT may never " +
+                "fire. An immediate ENTER on registration is the initial trigger, not a " +
+                "detection. EXIT additionally needs ~${fmt1(exitDistance)}m of travel " +
+                "(radius + exit hysteresis) before it can be reported (#355)"
+        )
+    }
 
     /** One-decimal formatter that avoids locale-dependent decimal separators in logs. */
     private fun fmt1(value: Double): String = String.format(java.util.Locale.US, "%.1f", value)
@@ -146,7 +194,15 @@ class GeofenceManager(
             "latitude" to gf.latitude,
             "longitude" to gf.longitude,
             "radius" to gf.radius,
-            "vertices" to verticesList
+            "vertices" to verticesList,
+            // #355: these four were absent here, so every fence rebuilt from
+            // the database — on each proximity change, reboot and task removal
+            // — was re-registered with notifyOnDwell=false and loiteringDelay=0,
+            // silently killing DWELL for the rest of the install.
+            "notifyOnEntry" to gf.notifyOnEntry,
+            "notifyOnExit" to gf.notifyOnExit,
+            "notifyOnDwell" to gf.notifyOnDwell,
+            "loiteringDelay" to gf.loiteringDelay,
         )
         
         gf.extras?.let { extrasStr ->
@@ -290,7 +346,13 @@ class GeofenceManager(
         val lat = (geofenceMap["latitude"] as? Number)?.toDouble() ?: 0.0
         val lng = (geofenceMap["longitude"] as? Number)?.toDouble() ?: 0.0
         val radius = (geofenceMap["radius"] as? Number)?.toDouble() ?: 0.0
-        
+
+        // Warned at add time, not registration time: this is the moment the
+        // caller chose the radius, and it fires once per fence rather than on
+        // every proximity re-registration (#355).
+        val isPolygonShape = (geofenceMap["vertices"] as? List<*>)?.let { it.size >= 3 } == true
+        if (!isPolygonShape) warnIfRadiusUnserviceable(identifier, radius)
+
         val verticesRaw = geofenceMap["vertices"] as? List<*>
         var coreVertices: List<Coordinate>? = null
         if (verticesRaw != null) {
@@ -317,8 +379,18 @@ class GeofenceManager(
             }
         }
         
+        // Same defaulting the registration path uses, so what is persisted is
+        // exactly what was registered (#355).
+        val notifyOnEntry = geofenceMap["notifyOnEntry"] != false
+        val notifyOnExit = geofenceMap["notifyOnExit"] != false
+        val notifyOnDwell = geofenceMap["notifyOnDwell"] == true
+        val loiteringDelay = (geofenceMap["loiteringDelay"] as? Number)?.toInt() ?: 0
+
         try {
-            rustDatabase?.insertGeofence(identifier, lat, lng, radius, coreVertices, extrasStr)
+            rustDatabase?.insertGeofence(
+                identifier, lat, lng, radius, coreVertices, extrasStr,
+                notifyOnEntry, notifyOnExit, notifyOnDwell, loiteringDelay,
+            )
         } catch (e: Exception) {
             TraceletLog.error("Failed to persist geofence to Rust DB", e)
         }
@@ -1061,6 +1133,13 @@ class GeofenceManager(
                 TraceletLog.warning("Failed to stringify geofence extras: ${e.message}")
             }
         }
-        return CoreGeofence(identifier, latitude, longitude, radius, vertices, extrasStr)
+        return CoreGeofence(
+            identifier, latitude, longitude, radius, vertices, extrasStr,
+            // Same defaulting as the registration and persistence paths (#355).
+            notifyOnEntry = gf["notifyOnEntry"] != false,
+            notifyOnExit = gf["notifyOnExit"] != false,
+            notifyOnDwell = gf["notifyOnDwell"] == true,
+            loiteringDelay = (gf["loiteringDelay"] as? Number)?.toInt() ?: 0,
+        )
     }
 }

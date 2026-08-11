@@ -105,7 +105,7 @@ class LocationServiceGeofenceRestoreTest {
         // overwriting it with a fresh one.
         val sdk = TraceletSdk.getInstance(context)
         assertTrue(sdk.bootstrapForBackground(ListenerEventSender()), "test setup: bootstrap must succeed")
-        sdk.rustDatabase?.insertGeofence("issue-353-office", 10.787929, 76.684183, 100.0, null, null)
+        sdk.rustDatabase?.insertGeofence("issue-353-office", 10.787929, 76.684183, 100.0, null, null, true, true, false, 0)
         sdk.geofenceManager = GeofenceManager(
             context, config, ListenerEventSender(), sdk.rustDatabase, recordingClient,
         )

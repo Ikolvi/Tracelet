@@ -45,7 +45,11 @@ final class GeofenceManagerTransitionLogTests: XCTestCase {
             lng: centerLng,
             radius: radius,
             vertices: nil,
-            extras: nil
+            extras: nil,
+            notifyOnEntry: true,
+            notifyOnExit: true,
+            notifyOnDwell: false,
+            loiteringDelay: 0
         )
 
         config = ConfigManager()

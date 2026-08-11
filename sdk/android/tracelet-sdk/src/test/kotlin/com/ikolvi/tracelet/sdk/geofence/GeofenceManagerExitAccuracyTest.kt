@@ -53,7 +53,7 @@ class GeofenceManagerExitAccuracyTest {
         db = DatabaseManager(dbPath)
         db.setEncryptionKey("")
         db.clearGeofences()
-        db.insertGeofence("ZONE_276", centerLat, centerLng, radius, null, null)
+        db.insertGeofence("ZONE_276", centerLat, centerLng, radius, null, null, true, true, false, 0)
 
         geoManager = GeofenceManager(context, config, ListenerEventSender(), db)
         geoManager.onGeofenceEvent = { captured.add(it) }

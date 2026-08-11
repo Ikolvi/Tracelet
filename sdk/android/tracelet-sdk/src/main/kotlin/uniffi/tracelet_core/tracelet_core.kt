@@ -1096,7 +1096,7 @@ external fun uniffi_tracelet_core_fn_method_databasemanager_get_telematics_histo
 ): RustBuffer.ByValue
 external fun uniffi_tracelet_core_fn_method_databasemanager_insert_audit_trail(`ptr`: Long,`uuid`: RustBuffer.ByValue,`hash`: RustBuffer.ByValue,`prevHash`: RustBuffer.ByValue,`index`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
-external fun uniffi_tracelet_core_fn_method_databasemanager_insert_geofence(`ptr`: Long,`identifier`: RustBuffer.ByValue,`lat`: Double,`lng`: Double,`radius`: Double,`vertices`: RustBuffer.ByValue,`extras`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_tracelet_core_fn_method_databasemanager_insert_geofence(`ptr`: Long,`identifier`: RustBuffer.ByValue,`lat`: Double,`lng`: Double,`radius`: Double,`vertices`: RustBuffer.ByValue,`extras`: RustBuffer.ByValue,`notifyOnEntry`: Byte,`notifyOnExit`: Byte,`notifyOnDwell`: Byte,`loiteringDelay`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 external fun uniffi_tracelet_core_fn_method_databasemanager_insert_location(`ptr`: Long,`uuid`: RustBuffer.ByValue,`lat`: Double,`lng`: Double,`acc`: Double,`speed`: Double,`heading`: Double,`altitude`: Double,`isMock`: Byte,`isMoving`: Byte,`activity`: RustBuffer.ByValue,`activityConfidence`: Int,`routeContext`: RustBuffer.ByValue,`timestampOverride`: RustBuffer.ByValue,`eventType`: RustBuffer.ByValue,`eventPayload`: RustBuffer.ByValue,`address`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
@@ -1548,7 +1548,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_insert_audit_trail() != 2860.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tracelet_core_checksum_method_databasemanager_insert_geofence() != 35448.toShort()) {
+    if (lib.uniffi_tracelet_core_checksum_method_databasemanager_insert_geofence() != 47636.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_insert_location() != 47283.toShort()) {
@@ -3581,7 +3581,7 @@ public interface DatabaseManagerInterface {
      */
     fun `insertAuditTrail`(`uuid`: kotlin.String, `hash`: kotlin.String, `prevHash`: kotlin.String, `index`: kotlin.Int)
     
-    fun `insertGeofence`(`identifier`: kotlin.String, `lat`: kotlin.Double, `lng`: kotlin.Double, `radius`: kotlin.Double, `vertices`: List<Coordinate>?, `extras`: kotlin.String?)
+    fun `insertGeofence`(`identifier`: kotlin.String, `lat`: kotlin.Double, `lng`: kotlin.Double, `radius`: kotlin.Double, `vertices`: List<Coordinate>?, `extras`: kotlin.String?, `notifyOnEntry`: kotlin.Boolean, `notifyOnExit`: kotlin.Boolean, `notifyOnDwell`: kotlin.Boolean, `loiteringDelay`: kotlin.Int)
     
     /**
      * Inserts a new location record into the database.
@@ -4132,13 +4132,13 @@ open class DatabaseManager: Disposable, AutoCloseable, DatabaseManagerInterface
     
 
     
-    @Throws(TraceletException::class)override fun `insertGeofence`(`identifier`: kotlin.String, `lat`: kotlin.Double, `lng`: kotlin.Double, `radius`: kotlin.Double, `vertices`: List<Coordinate>?, `extras`: kotlin.String?)
+    @Throws(TraceletException::class)override fun `insertGeofence`(`identifier`: kotlin.String, `lat`: kotlin.Double, `lng`: kotlin.Double, `radius`: kotlin.Double, `vertices`: List<Coordinate>?, `extras`: kotlin.String?, `notifyOnEntry`: kotlin.Boolean, `notifyOnExit`: kotlin.Boolean, `notifyOnDwell`: kotlin.Boolean, `loiteringDelay`: kotlin.Int)
         = 
     callWithHandle {
     uniffiRustCallWithError(TraceletException) { _status ->
     UniffiLib.uniffi_tracelet_core_fn_method_databasemanager_insert_geofence(
         it,
-        FfiConverterString.lower(`identifier`),FfiConverterDouble.lower(`lat`),FfiConverterDouble.lower(`lng`),FfiConverterDouble.lower(`radius`),FfiConverterOptionalSequenceTypeCoordinate.lower(`vertices`),FfiConverterOptionalString.lower(`extras`),_status)
+        FfiConverterString.lower(`identifier`),FfiConverterDouble.lower(`lat`),FfiConverterDouble.lower(`lng`),FfiConverterDouble.lower(`radius`),FfiConverterOptionalSequenceTypeCoordinate.lower(`vertices`),FfiConverterOptionalString.lower(`extras`),FfiConverterBoolean.lower(`notifyOnEntry`),FfiConverterBoolean.lower(`notifyOnExit`),FfiConverterBoolean.lower(`notifyOnDwell`),FfiConverterInt.lower(`loiteringDelay`),_status)
 }
     }
     
@@ -9212,6 +9212,33 @@ data class CoreGeofence (
     var `vertices`: List<Coordinate>
     , 
     var `extras`: kotlin.String?
+    , 
+    /**
+     * Whether the platform should report ENTER for this fence.
+     *
+     * These four travel with the fence because the hosts re-register from the
+     * database on every proximity change, reboot and task removal. They were
+     * not persisted, so a restored fence silently reverted to
+     * ENTER+EXIT-with-no-dwell: `notify_on_dwell` became false and
+     * `loitering_delay` zero, and DWELL stopped working for good after the
+     * first process death (#355).
+     */
+    var `notifyOnEntry`: kotlin.Boolean
+    , 
+    /**
+     * Whether the platform should report EXIT for this fence.
+     */
+    var `notifyOnExit`: kotlin.Boolean
+    , 
+    /**
+     * Whether the platform should report DWELL for this fence.
+     */
+    var `notifyOnDwell`: kotlin.Boolean
+    , 
+    /**
+     * How long the device must loiter inside before DWELL fires, in ms.
+     */
+    var `loiteringDelay`: kotlin.Int
     
 ){
     
@@ -9234,6 +9261,10 @@ public object FfiConverterTypeCoreGeofence: FfiConverterRustBuffer<CoreGeofence>
             FfiConverterDouble.read(buf),
             FfiConverterSequenceTypeCoordinate.read(buf),
             FfiConverterOptionalString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterInt.read(buf),
         )
     }
 
@@ -9243,7 +9274,11 @@ public object FfiConverterTypeCoreGeofence: FfiConverterRustBuffer<CoreGeofence>
             FfiConverterDouble.allocationSize(value.`longitude`) +
             FfiConverterDouble.allocationSize(value.`radius`) +
             FfiConverterSequenceTypeCoordinate.allocationSize(value.`vertices`) +
-            FfiConverterOptionalString.allocationSize(value.`extras`)
+            FfiConverterOptionalString.allocationSize(value.`extras`) +
+            FfiConverterBoolean.allocationSize(value.`notifyOnEntry`) +
+            FfiConverterBoolean.allocationSize(value.`notifyOnExit`) +
+            FfiConverterBoolean.allocationSize(value.`notifyOnDwell`) +
+            FfiConverterInt.allocationSize(value.`loiteringDelay`)
     )
 
     override fun write(value: CoreGeofence, buf: ByteBuffer) {
@@ -9253,6 +9288,10 @@ public object FfiConverterTypeCoreGeofence: FfiConverterRustBuffer<CoreGeofence>
             FfiConverterDouble.write(value.`radius`, buf)
             FfiConverterSequenceTypeCoordinate.write(value.`vertices`, buf)
             FfiConverterOptionalString.write(value.`extras`, buf)
+            FfiConverterBoolean.write(value.`notifyOnEntry`, buf)
+            FfiConverterBoolean.write(value.`notifyOnExit`, buf)
+            FfiConverterBoolean.write(value.`notifyOnDwell`, buf)
+            FfiConverterInt.write(value.`loiteringDelay`, buf)
     }
 }
 

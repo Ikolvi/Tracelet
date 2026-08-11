@@ -35,6 +35,24 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     /// Mirror of `GEOFENCE_MIN_EXIT_HYSTERESIS_METERS` in the Rust core.
     private static let minExitHysteresisMeters = 20.0
 
+    /// Smallest radius that can actually produce transitions, in metres (#355).
+    ///
+    /// Below this a geofence is not merely imprecise — it is unserviceable, and
+    /// silently so. The fence is smaller than the location error it is being
+    /// compared against, so CoreLocation never becomes confident enough to
+    /// report a crossing, and the in-app evaluator cannot help either: EXIT
+    /// needs `radius + max(radius * 0.1, 20 m)` of separation, so a 5 m fence
+    /// demands ~25 m of travel plus accuracy gating before it will fire.
+    ///
+    /// The failure mode is deceptive rather than obvious: entering a region the
+    /// device is already inside reports state immediately, so the fence looks
+    /// like it works, and then no crossing is ever reported again because none
+    /// can be. Hence a loud, always-on warning rather than silence.
+    ///
+    /// Not enforced — a small fence is still registered, because the floor is
+    /// advisory on both platforms rather than exact.
+    private static let minServiceableRadiusMeters = 100.0
+
     /// High-accuracy mode: track which geofences the device is currently inside.
     private var insideGeofenceIds = Set<String>()
 
@@ -167,6 +185,12 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
             let lat = data["latitude"] as? Double ?? 0.0
             let lng = data["longitude"] as? Double ?? 0.0
             let radius = data["radius"] as? Double ?? 100.0
+
+            // Warned at add time, not registration time: this is the moment the
+            // caller chose the radius, and it fires once per fence rather than
+            // on every proximity re-registration (#355).
+            let isPolygonShape = (data["vertices"] as? [[Double]])?.count ?? 0 >= 3
+            if !isPolygonShape { warnIfRadiusUnserviceable(identifier, radius) }
             
             var vertices: [Coordinate]? = nil
             if let verticesRaw = data["vertices"] as? [[Double]] {
@@ -181,7 +205,13 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
             }
             
             do {
-                try rustDatabase?.insertGeofence(identifier: identifier, lat: lat, lng: lng, radius: radius, vertices: vertices, extras: extrasStr)
+                try rustDatabase?.insertGeofence(
+                    identifier: identifier, lat: lat, lng: lng, radius: radius,
+                    vertices: vertices, extras: extrasStr,
+                    notifyOnEntry: data["notifyOnEntry"] as? Bool ?? true,
+                    notifyOnExit: data["notifyOnExit"] as? Bool ?? true,
+                    notifyOnDwell: data["notifyOnDwell"] as? Bool ?? false,
+                    loiteringDelay: Int32(data["loiteringDelay"] as? Int ?? 0))
             } catch {
                 TraceletLog.error("GeofenceManager: Failed to write geofence to Rust Core DB: \(error)")
             }
@@ -227,7 +257,13 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
                 }
                 
                 do {
-                    try rustDatabase?.insertGeofence(identifier: identifier, lat: lat, lng: lng, radius: radius, vertices: vertices, extras: extrasStr)
+                    try rustDatabase?.insertGeofence(
+                        identifier: identifier, lat: lat, lng: lng, radius: radius,
+                        vertices: vertices, extras: extrasStr,
+                        notifyOnEntry: g["notifyOnEntry"] as? Bool ?? true,
+                        notifyOnExit: g["notifyOnExit"] as? Bool ?? true,
+                        notifyOnDwell: g["notifyOnDwell"] as? Bool ?? false,
+                        loiteringDelay: Int32(g["loiteringDelay"] as? Int ?? 0))
                 } catch {
                     TraceletLog.error("GeofenceManager: Failed to write batch geofence to Rust Core DB: \(error)")
                 }
@@ -321,7 +357,15 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
             "latitude": gf.latitude,
             "longitude": gf.longitude,
             "radius": gf.radius,
-            "vertices": verticesArray
+            "vertices": verticesArray,
+            // #355: these four were absent here, so every fence rebuilt from the
+            // database — on each proximity change, relaunch and reboot — was
+            // re-registered with notifyOnDwell=false and loiteringDelay=0,
+            // silently killing DWELL for the rest of the install.
+            "notifyOnEntry": gf.notifyOnEntry,
+            "notifyOnExit": gf.notifyOnExit,
+            "notifyOnDwell": gf.notifyOnDwell,
+            "loiteringDelay": gf.loiteringDelay,
         ]
         
         if let extrasStr = gf.extras,
@@ -388,6 +432,24 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     private func exitHysteresisMeters(_ radius: Double) -> Double {
         Swift.max(radius * GeofenceManager.exitHysteresisFraction,
                   GeofenceManager.minExitHysteresisMeters)
+    }
+
+    /// Warns when `radius` is too small for the platform to ever report a
+    /// crossing (#355).
+    ///
+    /// On the always-on lifecycle channel: this is a configuration mistake
+    /// whose only symptom is silence, so it has to survive a release build's
+    /// `logLevel` to be of any use in the bug report that follows.
+    private func warnIfRadiusUnserviceable(_ identifier: String, _ radius: Double) {
+        guard radius > 0, radius < GeofenceManager.minServiceableRadiusMeters else { return }
+        let exitDistance = radius + exitHysteresisMeters(radius)
+        TraceletLog.lifecycle(
+            "\(GeofenceManager.logTag) WARNING \(identifier) radius=\(fmt1(radius))m is "
+            + "below the \(fmt1(GeofenceManager.minServiceableRadiusMeters))m the platform "
+            + "can service — the fence is smaller than typical GPS error, so ENTER/EXIT may "
+            + "never fire. An immediate ENTER on registration is the initial state, not a "
+            + "detection. EXIT additionally needs ~\(fmt1(exitDistance))m of travel "
+            + "(radius + exit hysteresis) before it can be reported (#355)")
     }
 
     /// Builds the `[geofence]`-tagged decision trace logged alongside every
@@ -875,6 +937,13 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
            let jsonStr = String(data: jsonData, encoding: .utf8) {
             extrasStr = jsonStr
         }
-        return CoreGeofence(identifier: identifier, latitude: latitude, longitude: longitude, radius: radius, vertices: vertices, extras: extrasStr)
+        return CoreGeofence(
+            identifier: identifier, latitude: latitude, longitude: longitude,
+            radius: radius, vertices: vertices, extras: extrasStr,
+            // Same defaulting as the registration and persistence paths (#355).
+            notifyOnEntry: gf["notifyOnEntry"] as? Bool ?? true,
+            notifyOnExit: gf["notifyOnExit"] as? Bool ?? true,
+            notifyOnDwell: gf["notifyOnDwell"] as? Bool ?? false,
+            loiteringDelay: Int32(gf["loiteringDelay"] as? Int ?? 0))
     }
 }

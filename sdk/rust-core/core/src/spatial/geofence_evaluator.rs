@@ -45,6 +45,21 @@ pub struct CoreGeofence {
     pub radius: f64,
     pub vertices: Vec<Coordinate>,
     pub extras: Option<String>,
+    /// Whether the platform should report ENTER for this fence.
+    ///
+    /// These four travel with the fence because the hosts re-register from the
+    /// database on every proximity change, reboot and task removal. They were
+    /// not persisted, so a restored fence silently reverted to
+    /// ENTER+EXIT-with-no-dwell: `notify_on_dwell` became false and
+    /// `loitering_delay` zero, and DWELL stopped working for good after the
+    /// first process death (#355).
+    pub notify_on_entry: bool,
+    /// Whether the platform should report EXIT for this fence.
+    pub notify_on_exit: bool,
+    /// Whether the platform should report DWELL for this fence.
+    pub notify_on_dwell: bool,
+    /// How long the device must loiter inside before DWELL fires, in ms.
+    pub loitering_delay: i32,
 }
 
 #[derive(uniffi::Record, Clone, Debug)]
@@ -294,6 +309,10 @@ mod tests {
             radius,
             vertices: Vec::new(),
             extras: None,
+            notify_on_entry: true,
+            notify_on_exit: true,
+            notify_on_dwell: false,
+            loitering_delay: 0,
         }
     }
 

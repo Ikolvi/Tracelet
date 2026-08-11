@@ -593,7 +593,11 @@ impl DatabaseManager {
         lng: f64, 
         radius: f64,
         vertices: Option<Vec<Coordinate>>,
-        extras: Option<String>
+        extras: Option<String>,
+        notify_on_entry: bool,
+        notify_on_exit: bool,
+        notify_on_dwell: bool,
+        loitering_delay: i32,
     ) -> Result<(), TraceletError> {
         let conn = self.conn.lock().unwrap();
         let vertices_json = match vertices {
@@ -603,9 +607,14 @@ impl DatabaseManager {
             },
             _ => None,
         };
+        // The four notify_* columns already existed but were never written, so
+        // every fence fell back to the column defaults on read — which is how
+        // DWELL silently stopped working after a restore (#355).
         conn.execute(
-            "INSERT OR REPLACE INTO geofences (identifier, latitude, longitude, radius, vertices, gf_extras) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![identifier, lat, lng, radius, vertices_json, extras]
+            "INSERT OR REPLACE INTO geofences (identifier, latitude, longitude, radius, vertices, gf_extras, notify_on_entry, notify_on_exit, notify_on_dwell, loitering_delay) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![identifier, lat, lng, radius, vertices_json, extras,
+                    notify_on_entry as i32, notify_on_exit as i32,
+                    notify_on_dwell as i32, loitering_delay]
         ).map_err(|e| TraceletError::Database(e.to_string()))?;
         Ok(())
     }
@@ -696,7 +705,7 @@ impl DatabaseManager {
     /// Resolves polygon geofences containing multiple coordinate vertices as well as circular ones.
     pub fn get_geofences(&self) -> Result<Vec<CoreGeofence>, TraceletError> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT identifier, latitude, longitude, radius, vertices, gf_extras FROM geofences")
+        let mut stmt = conn.prepare("SELECT identifier, latitude, longitude, radius, vertices, gf_extras, notify_on_entry, notify_on_exit, notify_on_dwell, loitering_delay FROM geofences")
             .map_err(|e| TraceletError::Database(e.to_string()))?;
 
         let iter = stmt.query_map([], |row| {
@@ -706,6 +715,12 @@ impl DatabaseManager {
             let radius: f64 = row.get(3)?;
             let vertices_str: Option<String> = row.get(4)?;
             let extras: Option<String> = row.get(5)?;
+            // Rows written before these were persisted carry the column
+            // defaults (1/1/0/0), which is the historical behaviour.
+            let notify_on_entry: i32 = row.get(6).unwrap_or(1);
+            let notify_on_exit: i32 = row.get(7).unwrap_or(1);
+            let notify_on_dwell: i32 = row.get(8).unwrap_or(0);
+            let loitering_delay: i32 = row.get(9).unwrap_or(0);
 
             let mut vertices = Vec::new();
             if let Some(s) = vertices_str {
@@ -731,6 +746,10 @@ impl DatabaseManager {
                 radius,
                 vertices,
                 extras,
+                notify_on_entry: notify_on_entry != 0,
+                notify_on_exit: notify_on_exit != 0,
+                notify_on_dwell: notify_on_dwell != 0,
+                loitering_delay,
             })
         }).map_err(|e| TraceletError::Database(e.to_string()))?;
 
@@ -1109,7 +1128,7 @@ mod tests {
         let db = DatabaseManager::new(":memory:").expect("Failed to create in-memory db");
         
         // Insert a circular geofence
-        db.insert_geofence("home_zone", 37.0, -122.0, 150.0, None, None).unwrap();
+        db.insert_geofence("home_zone", 37.0, -122.0, 150.0, None, None, true, true, false, 0).unwrap();
         
         let count: i32 = db.conn.lock().unwrap().query_row("SELECT COUNT(*) FROM geofences", [], |r| r.get(0)).unwrap();
         assert_eq!(count, 1);
@@ -1121,7 +1140,7 @@ mod tests {
             Coordinate { lat: 37.2, lng: -122.2 }
         ];
         let extras = Some("{\"type\":\"polygon\",\"color\":\"blue\"}".to_string());
-        db.insert_geofence("home_zone", 37.0, -122.0, 150.0, Some(vertices), extras).unwrap();
+        db.insert_geofence("home_zone", 37.0, -122.0, 150.0, Some(vertices), extras, true, true, true, 30000).unwrap();
 
         // Verify retrieval of geofences and parsing of vertices and extras
         let geofences = db.get_geofences().unwrap();
@@ -1131,6 +1150,12 @@ mod tests {
         assert_eq!(geofences[0].vertices[0].lat, 37.0);
         assert_eq!(geofences[0].vertices[2].lng, -122.2);
         assert_eq!(geofences[0].extras.as_ref().unwrap(), "{\"type\":\"polygon\",\"color\":\"blue\"}");
+        // #355: the notify_* flags and loitering delay must round-trip. They
+        // were never written, so a restored fence lost DWELL for good.
+        assert!(geofences[0].notify_on_dwell, "notify_on_dwell must round-trip");
+        assert_eq!(geofences[0].loitering_delay, 30000, "loitering_delay must round-trip");
+        assert!(geofences[0].notify_on_entry);
+        assert!(geofences[0].notify_on_exit);
         
         // Delete the geofence
         db.delete_geofence("home_zone").unwrap();
@@ -1138,8 +1163,8 @@ mod tests {
         assert_eq!(count_after_delete, 0);
         
         // Batch inserting and clearing multiple
-        db.insert_geofence("work", 38.0, -121.0, 50.0, None, None).unwrap();
-        db.insert_geofence("gym", 39.0, -120.0, 100.0, None, None).unwrap();
+        db.insert_geofence("work", 38.0, -121.0, 50.0, None, None, true, true, false, 0).unwrap();
+        db.insert_geofence("gym", 39.0, -120.0, 100.0, None, None, true, true, false, 0).unwrap();
         db.clear_geofences().unwrap();
         let count_after_clear: i32 = db.conn.lock().unwrap().query_row("SELECT COUNT(*) FROM geofences", [], |r| r.get(0)).unwrap();
         assert_eq!(count_after_clear, 0);

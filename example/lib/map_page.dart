@@ -660,60 +660,103 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     final controller = TextEditingController(
       text: _lastCircularRadius.toStringAsFixed(0),
     );
-    // Spread of scales that behave differently in the field: 50 m is inside
-    // typical GPS noise, 100-200 m is the reliable everyday range, 500 m+ is
-    // the "approaching a site" scale.
-    const presets = <double>[50, 100, 200, 500, 1000];
+    // Starts at the smallest radius the platform can actually service. Smaller
+    // fences are not offered as presets because they cannot produce crossings
+    // — see the warning below (#355).
+    const presets = <double>[100, 200, 500, 1000];
+    // Mirrors GeofenceManager.MIN_SERVICEABLE_RADIUS_METERS on both platforms.
+    const minServiceableRadius = 100.0;
 
     final result = await showDialog<double>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Circular geofence radius'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Wrap(
-              spacing: 8,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final typed = double.tryParse(controller.text.trim());
+          final tooSmall =
+              typed != null && typed > 0 && typed < minServiceableRadius;
+          // radius + max(radius * 0.1, 20) — the separation EXIT needs.
+          final exitDistance = tooSmall
+              ? typed + (typed * 0.1 > 20 ? typed * 0.1 : 20.0)
+              : 0.0;
+
+          return AlertDialog(
+            title: const Text('Circular geofence radius'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (final p in presets)
-                  ActionChip(
-                    label: Text('${p.toStringAsFixed(0)}m'),
-                    onPressed: () => Navigator.pop(ctx, p),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final p in presets)
+                      ActionChip(
+                        label: Text('${p.toStringAsFixed(0)}m'),
+                        onPressed: () => Navigator.pop(ctx, p),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  autofocus: true,
+                  onChanged: (_) => setDialogState(() {}),
+                  decoration: const InputDecoration(
+                    labelText: 'Custom radius',
+                    suffixText: 'm',
+                    border: OutlineInputBorder(),
+                  ),
+                  onSubmitted: (v) {
+                    final parsed = double.tryParse(v.trim());
+                    if (parsed != null && parsed > 0) {
+                      Navigator.pop(ctx, parsed);
+                    }
+                  },
+                ),
+                const SizedBox(height: 8),
+                // A fence smaller than GPS error cannot produce crossings. The
+                // trap is that it *looks* like it works: registering while
+                // inside fires an immediate ENTER from the initial trigger, and
+                // then nothing is ever reported again. Say so before the fence
+                // is created rather than leaving it to be discovered by walking
+                // around (#355).
+                if (tooSmall)
+                  Text(
+                    '⚠️ Below ${minServiceableRadius.toStringAsFixed(0)}m the '
+                    'platform cannot reliably detect crossings — the fence is '
+                    'smaller than GPS error. The ENTER you see on creation is '
+                    'the initial trigger, not a detection, and EXIT would need '
+                    '~${exitDistance.toStringAsFixed(0)}m of travel. Allowed '
+                    'for testing, but expect no events.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.orange.shade900,
+                    ),
+                  )
+                else
+                  const Text(
+                    '100m+ is the reliable range on both platforms.',
+                    style: TextStyle(fontSize: 11, color: Colors.grey),
                   ),
               ],
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              keyboardType: TextInputType.number,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Custom radius',
-                suffixText: 'm',
-                border: OutlineInputBorder(),
-                helperText: 'Below ~50m, GPS noise alone can trigger crossings',
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
               ),
-              onSubmitted: (v) {
-                final parsed = double.tryParse(v.trim());
-                if (parsed != null && parsed > 0) Navigator.pop(ctx, parsed);
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final parsed = double.tryParse(controller.text.trim());
-              if (parsed != null && parsed > 0) Navigator.pop(ctx, parsed);
-            },
-            child: const Text('Add'),
-          ),
-        ],
+              FilledButton(
+                onPressed: () {
+                  final parsed = double.tryParse(controller.text.trim());
+                  if (parsed != null && parsed > 0) {
+                    Navigator.pop(ctx, parsed);
+                  }
+                },
+                child: Text(tooSmall ? 'Add anyway' : 'Add'),
+              ),
+            ],
+          );
+        },
       ),
     );
     controller.dispose();
