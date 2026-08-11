@@ -181,6 +181,21 @@ class HeadlessTaskService(
             "dispatchId" to dispatchId,
         )
 
+        // Geofence crossings only, on the always-on channel (#318): they are the
+        // SDK's product event, a handful a day, and the one place a report needs
+        // to distinguish "the crossing never reached Dart" from "it reached Dart
+        // and the app did nothing with it". Every other event is high-frequency
+        // and stays off this channel. Also names the registration, since a
+        // missing MAIN callback id delivers to nobody (#358).
+        if (eventName == "geofence") {
+            val engineReady = isEngineReady.get() && headlessMethodChannel != null
+            TraceletLog.lifecycle(
+                "headless: dispatching geofence to the headless task — " +
+                    "route=${if (engineReady) "live engine" else "queued, spawning"} " +
+                    "dispatchId=${if (dispatchId == -1L) "MISSING" else "set"}",
+            )
+        }
+
         if (isEngineReady.get() && headlessMethodChannel != null) {
             sendEvent(event)
             return

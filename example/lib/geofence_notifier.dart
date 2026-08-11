@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/widgets.dart' show WidgetsFlutterBinding;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 /// Posts a local notification for a geofence crossing.
@@ -31,6 +32,12 @@ class GeofenceNotifier {
   static Future<void> ensureInitialized() async {
     if (_initialized) return;
     _initialized = true;
+    // The headless isolate never runs `main()`, so nothing has bound the
+    // platform channels there — and every call below is one. Without this the
+    // notification silently goes nowhere in exactly the case it exists for,
+    // while the foreground isolate works because `main()` binds them at
+    // startup. Idempotent, so calling it from either isolate is safe.
+    WidgetsFlutterBinding.ensureInitialized();
     await _plugin.initialize(
       const InitializationSettings(
         // @mipmap/ic_launcher is guaranteed to exist in any Flutter app
