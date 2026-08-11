@@ -1327,7 +1327,7 @@ class LocationService : Service(), DefaultLifecycleObserver {
             // (#299) retuning a committed `still` mode to maxImpliedSpeed=3 m/s,
             // that is every fix once the device moves.
             //
-            // Ownership is per fence, not per config flag (#356): polygons and
+            // Ownership is per fence, not per config flag (#355): polygons and
             // sub-100 m circles are evaluated in-app whatever
             // geofenceModeHighAccuracy says, so the boot path must wire the
             // evaluator for them too or a small fence stops firing the moment the
@@ -1350,7 +1350,7 @@ class LocationService : Service(), DefaultLifecycleObserver {
             // if the stream has been throttled (doze, an OEM, or #319's
             // reconcile before this guard existed), coming near a small fence
             // must bring it back or the evaluator has nothing to decide on
-            // (#356).
+            // (#355).
             geoManager.onEvaluatorWakeup = {
                 val engine = bootLocationEngine
                 if (engine != null && isStationaryTimerActive()) {
@@ -1371,7 +1371,7 @@ class LocationService : Service(), DefaultLifecycleObserver {
             // reRegisterAll() first. It just does not have to stay running.
             //
             // "Needs no service" now means "the OS can decide every fence"
-            // (#356) — a restored polygon or sub-100 m circle is evaluated from
+            // (#355) — a restored polygon or sub-100 m circle is evaluated from
             // the location stream, and stopping the service here would kill the
             // stream and with it the only thing that can report its crossings.
             if (trackingMode == TrackingMode.GEOFENCES && !needsInAppEvaluation) {
@@ -1497,7 +1497,7 @@ class LocationService : Service(), DefaultLifecycleObserver {
         // stopping the engine here is what makes a 10 m fence go quiet in the
         // killed state — the reporter's trace shows this switch landing 14 s
         // after the ENTER, and `switchToStationaryPeriodic` calls `engine.stop()`
-        // (#356).
+        // (#355).
         val needsStream = runCatching {
             com.ikolvi.tracelet.sdk.TraceletSdk.getInstance(applicationContext)
                 .geofenceManager.hasEvaluatorOwnedGeofences()
@@ -1506,7 +1506,7 @@ class LocationService : Service(), DefaultLifecycleObserver {
             TraceletLog.lifecycle(
                 "motion (killed-state): staying continuous — an in-app-evaluated " +
                     "geofence needs the location stream, so the #319 throttle to " +
-                    "stationary periodic does not apply (#356)"
+                    "stationary periodic does not apply (#355)"
             )
             return
         }

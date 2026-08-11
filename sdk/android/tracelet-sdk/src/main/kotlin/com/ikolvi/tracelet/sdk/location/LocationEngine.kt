@@ -944,7 +944,7 @@ class LocationEngine(
         } else if (!isMoving && isTracking) {
             // Stopping here is #319's premise — nothing needs the continuous
             // stream while the device is still. A fence the OS cannot resolve
-            // breaks it: since #356 that fence is decided *from* this stream, so
+            // breaks it: since #355 that fence is decided *from* this stream, so
             // dropping it leaves the evaluator with nothing to judge and the
             // fence silently dead until the device happens to move again. The
             // killed-state reconcile already refuses this for the same reason

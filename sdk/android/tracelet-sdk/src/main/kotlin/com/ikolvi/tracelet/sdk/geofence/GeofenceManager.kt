@@ -56,7 +56,7 @@ class GeofenceManager(
     /**
      * Invoked when the OS reports a transition for a fence the in-app evaluator
      * owns — i.e. the wake-up that [wakeupRadiusMeters]'s inflated registration
-     * exists to produce (#356).
+     * exists to produce (#355).
      *
      * The transition itself is discarded (it describes the 100 m wake-up
      * boundary, not the fence), but the *arrival* is information: the device is
@@ -144,7 +144,7 @@ class GeofenceManager(
          * Small fences are *not* rejected. They are simply decided here instead:
          * a fence under this radius is owned by the in-app evaluator, which
          * knows the true radius and scales its hysteresis to the measured fix
-         * accuracy rather than a flat 20 m (#356). See [isEvaluatorOwned].
+         * accuracy rather than a flat 20 m (#355). See [isEvaluatorOwned].
          */
         private const val OS_MIN_RESOLVABLE_RADIUS_METERS = 100.0
     }
@@ -160,7 +160,7 @@ class GeofenceManager(
      *  - **Sub-[OS_MIN_RESOLVABLE_RADIUS_METERS] circles.** Registered only as a
      *    coarse wake-up (see [wakeupRadiusMeters]); at that inflated radius the
      *    OS's own transitions are about the wrong boundary, so they are
-     *    discarded and the true radius is applied here (#356).
+     *    discarded and the true radius is applied here (#355).
      *  - **`geofenceModeHighAccuracy`.** The caller has asked for in-app
      *    evaluation of everything.
      *
@@ -224,7 +224,7 @@ class GeofenceManager(
 
     /**
      * Records that a sub-serviceable fence has been handed to the in-app
-     * evaluator (#356).
+     * evaluator (#355).
      *
      * On the always-on lifecycle channel: which component owns a fence is the
      * first thing a "geofences stopped firing" report needs to establish, and
@@ -237,7 +237,7 @@ class GeofenceManager(
                 "${fmt1(OS_MIN_RESOLVABLE_RADIUS_METERS)}m Play Services can resolve — " +
                 "transitions will be evaluated in-app at the true radius, and the OS " +
                 "fence is registered at ${fmt1(OS_MIN_RESOLVABLE_RADIUS_METERS)}m as a " +
-                "wake-up only. Requires location updates to be running (#356)"
+                "wake-up only. Requires location updates to be running (#355)"
         )
     }
 
@@ -615,7 +615,7 @@ class GeofenceManager(
                 sawEvaluatorOwned = true
                 TraceletLog.debug(
                     "$GEOFENCE_LOG_TAG ignoring OS transition for ${gf.requestId} " +
-                        "— evaluated in-app at its true radius (#356)"
+                        "— evaluated in-app at its true radius (#355)"
                 )
             }
             !owned
@@ -623,12 +623,12 @@ class GeofenceManager(
 
         // The discarded transition still did its job: it told us we are near a
         // fence only the evaluator can decide. Claim the wake-up before
-        // returning, or the inflated registration is pure cost (#356).
+        // returning, or the inflated registration is pure cost (#355).
         if (sawEvaluatorOwned) {
             TraceletLog.lifecycle(
                 "$GEOFENCE_LOG_TAG wake-up from the OS near an in-app fence — " +
                     "resuming the location stream so its true radius can be " +
-                    "evaluated (#356)"
+                    "evaluated (#355)"
             )
             onEvaluatorWakeup?.invoke()
         }
@@ -1108,7 +1108,7 @@ class GeofenceManager(
                     longitude = longitude,
                     // Inflated for sub-serviceable fences: at their true radius
                     // Play Services fires nothing, and the registration exists
-                    // to wake us near the fence, not to judge it (#356).
+                    // to wake us near the fence, not to judge it (#355).
                     radiusMeters = wakeupRadiusMeters(radius),
                     expirationTime = -1L, // Geofence.NEVER_EXPIRE
                     transitionTypes = transitionTypes,

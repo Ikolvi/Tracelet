@@ -27,7 +27,7 @@ const GEOFENCE_MIN_EXIT_HYSTERESIS_METERS: f64 = 20.0;
 /// Deliberately small. A modern handset with a dual-frequency receiver reports
 /// 2–4 m routinely, and a band wider than the error it is guarding against just
 /// costs the user metres of travel before EXIT fires — the whole complaint that
-/// motivated #356. This is only the residual guard that keeps the band from
+/// motivated #355. This is only the residual guard that keeps the band from
 /// collapsing to nothing when a device claims sub-metre precision: reported
 /// accuracy is a 68% confidence radius, so ~a third of fixes land outside it.
 /// Isolated over-confident fixes are caught by [GEOFENCE_EXIT_CONFIRMATIONS],
@@ -42,7 +42,7 @@ const GEOFENCE_ABS_MIN_EXIT_HYSTERESIS_METERS: f64 = 3.0;
 /// never become confident enough to report a crossing. It is emphatically *not*
 /// a minimum supported radius — a fence under it is more precisely handled, not
 /// less, because it is decided here against the true radius with a band scaled
-/// to the measured fix accuracy (#356).
+/// to the measured fix accuracy (#355).
 ///
 /// Erring high is therefore the safe direction: it hands *more* fences to the
 /// evaluator, which on a 2–4 m-accurate device resolves them far better than
@@ -72,7 +72,7 @@ const GEOFENCE_SMOOTHING_MIN_RESET_METERS: f64 = 10.0;
 /// what `acc` measures — and a flat 20 m floor made small fences undecidable:
 /// a 5 m fence demanded `5 + 20` m of separation *plus* accuracy gating, which
 /// is ~28 m of travel on a 4 m-accurate fix, so EXIT never fired for a fence
-/// the user could walk out of in three steps (#356).
+/// the user could walk out of in three steps (#355).
 ///
 /// Tying the floor to the measured uncertainty keeps the anti-dither guarantee
 /// where it was earned and hands small fences back their resolution:
@@ -259,7 +259,7 @@ impl GeofenceEvaluator {
         let effective_geofences = self.resolve_geofences(latitude, longitude, geofences);
 
         // Sub-serviceable fences are decided from a stationary-cluster average
-        // rather than the bare fix (#356). Only when one is actually in play:
+        // rather than the bare fix (#355). Only when one is actually in play:
         // for ordinary fences the raw fix is already far more precise than the
         // boundary test needs, and leaving them untouched keeps this change
         // scoped to the capability it exists for.
@@ -379,7 +379,7 @@ impl GeofenceEvaluator {
     /// one fix cannot say which side of the boundary the device is on. Several
     /// fixes of the *same spot* can: averaging `n` independent observations of a
     /// fixed point shrinks the uncertainty to `acc / sqrt(n)`, which is what
-    /// turns an undecidable boundary into a decidable one (#356).
+    /// turns an undecidable boundary into a decidable one (#355).
     ///
     /// The premise is "same spot", so the cluster is discarded the moment the
     /// device demonstrably moves — a new fix further from the running centroid
@@ -717,7 +717,7 @@ mod tests {
         assert_eq!(x, 1, "an accurate, sustained departure must still EXIT");
     }
 
-    /// #356: the hysteresis band tracks the *measured* uncertainty instead of a
+    /// #355: the hysteresis band tracks the *measured* uncertainty instead of a
     /// flat 20 m, which is what makes a sub-100 m fence decidable at all.
     #[test]
     fn hysteresis_band_follows_reported_accuracy() {
@@ -733,7 +733,7 @@ mod tests {
         assert_eq!(exit_hysteresis_meters(1000.0, 4.0), 100.0, "large fences stay fraction-driven");
     }
 
-    /// #356: the field report behind this change — a 10 m fence, walked out of
+    /// #355: the field report behind this change — a 10 m fence, walked out of
     /// on 4 m-accurate fixes, that never fired EXIT because the old flat floor
     /// demanded `10 + 20 + 4` m of separation. It must now fire exactly one
     /// ENTER and one EXIT over a short, ordinary walk.
@@ -774,7 +774,7 @@ mod tests {
         assert_eq!((enters, exits), (1, 0), "jitter around a 10 m boundary must not flap");
     }
 
-    /// #356: repeated fixes of the same spot are averaged, so the estimate the
+    /// #355: repeated fixes of the same spot are averaged, so the estimate the
     /// small fence is judged against is tighter than any single fix.
     #[test]
     fn stationary_cluster_sharpens_the_estimate() {

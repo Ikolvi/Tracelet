@@ -1,20 +1,20 @@
 {
-  "badgeTitle": "New in 3.8.1",
+  "badgeTitle": "New in 3.8.2",
   "items": [
     {
-      "title": "setConfig() is now a partial update",
-      "description": "A setConfig() call that does not mention a field leaves the persisted value alone instead of resetting it to the default. Previously any partial update silently reverted everything it did not name — the foreground-service notification, the HTTP settings, and on iOS the keep-alive flags that background tracking depends on.",
-      "href": "/api-reference"
+      "title": "Geofences smaller than 100 m now work",
+      "description": "Play Services and CoreLocation both need a radius of roughly 100 m — below that, a fence is smaller than the error of the fixes it is compared against and no crossing is ever reported. A sub-100 m circle, and any polygon, is now evaluated in-app against its true radius instead. Note the cost: such a fence needs the location stream running, which an OS-resolvable fence does not.",
+      "href": "/core/geofencing"
     },
     {
-      "title": "Filter settings now apply without a restart",
-      "description": "trackingAccuracyThreshold, odometerAccuracyThreshold, maxImpliedSpeed and useKalmanFilter used to be accepted and then ignored until the next cold start. They take effect on the next fix, and the odometer keeps its anchor.",
-      "href": "/core/advanced-geo"
+      "title": "ENTER/EXIT no longer stop firing mid-session",
+      "description": "Proximity registration rode the persistence-filtered location stream, so 3.8.0's transport-mode auto-tune could reject every fix and freeze it — after which no crossing was reported again. Geofences added with addGeofence() alongside continuous tracking also survive task removal and a reboot now.",
+      "href": "/core/geofencing"
     },
     {
-      "title": "See which thresholds are actually in force",
-      "description": "getCurrentLocationTuning() reads back from the native location processor instead of echoing your config — so you can tell what the filters are really using, including a transport-mode auto-tune you did not set.",
-      "href": "/core/driving-safety"
+      "title": "notifyOnDwell and loiteringDelay are persisted",
+      "description": "These columns existed but were never written or read, so every fence rebuilt from the database came back with DWELL off and a zero loitering delay — DWELL stopped working permanently after the first restore, and an explicit notifyOnExit: false was silently reverted.",
+      "href": "/core/geofencing"
     },
     {
       "title": "Docs for older versions",

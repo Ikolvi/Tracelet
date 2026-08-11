@@ -570,11 +570,11 @@ public final class TraceletSdk {
         // Called unconditionally: whether a fence is evaluated here or left to
         // CoreLocation is a per-fence question the manager answers, and not one
         // the config flag alone can settle — polygons and sub-100 m circles are
-        // ours to decide however `geofenceModeHighAccuracy` is set (#356).
+        // ours to decide however `geofenceModeHighAccuracy` is set (#355).
         locationEngine.geofenceHighAccuracyMode = geofenceManager.hasEvaluatorOwnedGeofences()
         // Claim the wake-up the inflated OS region exists to produce: if the app
         // relaunched into a low-power posture, coming near a small fence must
-        // bring the stream back or the evaluator has nothing to decide on (#356).
+        // bring the stream back or the evaluator has nothing to decide on (#355).
         geofenceManager.onEvaluatorWakeup = { [weak self] in
             self?.locationEngine.start()
         }
@@ -634,7 +634,7 @@ public final class TraceletSdk {
     /// stored fence must be evaluated in-app.
     ///
     /// Continuous GPS is needed exactly when a fence is evaluated in-app — high
-    /// accuracy mode, a polygon, or a sub-100 m circle (#356). A fence the OS can
+    /// accuracy mode, a polygon, or a sub-100 m circle (#355). A fence the OS can
     /// decide for itself needs none of it: region monitoring fires enter/exit
     /// (and relaunches the app) while suspended or terminated, and starting a
     /// stream keeps the persistent blue location indicator on even with
@@ -760,7 +760,7 @@ public final class TraceletSdk {
         wireGeofenceLocationCallbacks(includeTripWaypoints: false)
 
         // Continuous GPS is needed exactly when a fence is evaluated in-app —
-        // high-accuracy mode, a polygon, or a sub-100 m circle (#356). A small
+        // high-accuracy mode, a polygon, or a sub-100 m circle (#355). A small
         // fence cannot be served by region monitoring, so opting into one means
         // opting into the location stream that decides it.
         if geofenceManager.hasEvaluatorOwnedGeofences() {

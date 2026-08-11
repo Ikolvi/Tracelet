@@ -38,7 +38,7 @@ void headlessTask(tl.HeadlessEvent event) {
     // A crossing delivered here has no UI to land in — this isolate exists
     // precisely because the app is gone. The notification is therefore the
     // only real-time evidence that terminated-state geofencing works; the log
-    // store proves it happened, but not that it happened *then* (#356).
+    // store proves it happened, but not that it happened *then* (#355).
     case 'geofence':
       unawaited(_notifyHeadlessGeofence(event.event));
     default:
@@ -497,7 +497,7 @@ class _DashboardPageState extends State<DashboardPage>
         // Notify in the foreground too, so a terminated-state run and a
         // running-app run produce the same observable signal — otherwise a
         // missing notification is ambiguous between "the crossing never fired"
-        // and "notifications were never permitted on this device" (#356).
+        // and "notifications were never permitted on this device" (#355).
         unawaited(
           GeofenceNotifier.showCrossing(
             action: evt.action.name.toUpperCase(),

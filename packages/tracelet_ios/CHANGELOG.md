@@ -1,3 +1,7 @@
+## 3.8.2
+
+**FIX**: picks up the geofence work in TraceletSDK — proximity registration no longer starved by the location filter ([#352](https://github.com/Ikolvi/Tracelet/issues/352)), fences added alongside continuous tracking surviving `destroyAll()` and relaunch ([#353](https://github.com/Ikolvi/Tracelet/issues/353)), in-app evaluation for radii CoreLocation cannot resolve plus persisted notify/dwell flags ([#355](https://github.com/Ikolvi/Tracelet/issues/355)), and a fence added after `start()` getting the fix cadence it is decided from ([#357](https://github.com/Ikolvi/Tracelet/issues/357)). No plugin-side changes this release.
+
 ## 3.8.1
 
 **FIX**: a headless task after task removal could silently never fire — the same spawn-recovery fix as Android, ported to `HeadlessRunner` ([#331](https://github.com/Ikolvi/Tracelet/issues/331)).

@@ -1,3 +1,21 @@
+## 3.8.2
+
+**FIX**: (Android, iOS) geofence ENTER/EXIT no longer stop firing when the location filter tightens. Proximity registration — which decides *which* fences the OS is watching, and so is the whole feature in standard mode — rode the persistence-filtered location stream, so 3.8.0's transport-mode auto-tune (#299) could reject every fix, freeze registration, and leave no crossing ever reported again ([#352](https://github.com/Ikolvi/Tracelet/issues/352)).
+
+**FIX**: (Android, iOS) geofences added alongside continuous tracking with `addGeofence()`/`addGeofences()` now survive task removal and are restored after a reboot. Only a dedicated `startGeofences()` session set the tracking mode both paths keyed off, so a `start()` session with standalone fences lost every one of them on the first task removal, with nothing to re-register them — continuous tracking kept working, so the geofence feature could die silently ([#353](https://github.com/Ikolvi/Tracelet/issues/353)).
+
+**FEAT**: (Android, iOS) geofences smaller than the ~100 m the OS can resolve are now supported instead of silently never firing. A sub-100 m circle — and any polygon, which at default settings was never evaluated at all — is now owned by the in-app evaluator and decided against its *true* radius, with the OS region registered at 100 m purely as a wake-up. Note the cost: a fence the OS cannot serve needs the location stream (and on Android its foreground service) running, which an OS-resolvable fence does not ([#355](https://github.com/Ikolvi/Tracelet/issues/355)).
+
+**FIX**: (Android, iOS) `notifyOnEntry`, `notifyOnExit`, `notifyOnDwell` and `loiteringDelay` are now persisted with the geofence. The columns existed but were never written or read, so **DWELL stopped working permanently after the first restore** and an explicitly configured `notifyOnExit: false` was silently reverted ([#355](https://github.com/Ikolvi/Tracelet/issues/355)).
+
+**FIX**: (Android, iOS) an in-app-evaluated geofence no longer goes quiet once the app is killed. The stationary throttle added in #319 stops the location stream on the premise that nothing needs it while the device is still — which a sub-100 m fence, decided *from* that stream, breaks ([#355](https://github.com/Ikolvi/Tracelet/issues/355)).
+
+**FIX**: (Android, iOS) a geofence added after `start()` now gets the fix cadence it is decided from, so EXIT no longer fires late or not at all. The cadence was settled once, at `start()` — before any fence was registered, in the ordinary `start()`-then-`addGeofence()` order — and the fence set now drives it at every point it changes, including back down again when the last such fence is removed ([#357](https://github.com/Ikolvi/Tracelet/issues/357)).
+
+**FIX**: (Android) a device carried while walking is no longer declared stationary. Accelerometer stillness was tested with a scalar that cannot see a vector which is *rotating* rather than growing, so a phone held or pocketed at a tilt scored as still and the stop timeout ended the session a minute later ([#357](https://github.com/Ikolvi/Tracelet/issues/357)).
+
+**FIX**: (Android) geofence crossings reach the registered headless task again. A headless engine spawned for anything else — a custom sync body, say — joined the event fan-out and swallowed every subsequent crossing for the rest of the process: evaluated, logged, persisted and synced natively, but never delivered to the app, and dropped in silence ([#358](https://github.com/Ikolvi/Tracelet/issues/358)).
+
 ## 3.8.1
 
 **FIX**: (Android) a headless task after task removal could silently never fire — the engine spawn now retries and reports failures instead of stalling forever ([#331](https://github.com/Ikolvi/Tracelet/issues/331)).

@@ -20,9 +20,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * #356 — a geofence smaller than the OS can resolve must still work.
+ * #355 — a geofence smaller than the OS can resolve must still work.
  *
- * #355 established that a 5–10 m fence is smaller than typical GPS error, so
+ * The issue established that a 5–10 m fence is smaller than typical GPS error, so
  * Play Services never reports a crossing: registering while inside fires an
  * immediate ENTER from the initial trigger, the fence looks live, and then
  * nothing is ever reported again. The response then was a warning. The response
@@ -154,7 +154,7 @@ class GeofenceSmallRadiusTest {
     @Test
     fun `a polygon is evaluated in-app whatever the accuracy mode`() {
         // Play Services only monitors circles, so a polygon has always been ours
-        // — but before #356 it was only evaluated when geofenceModeHighAccuracy
+        // — but before #355 it was only evaluated when geofenceModeHighAccuracy
         // was on, which meant a polygon silently never fired at default settings.
         geoManager.addGeofence(
             mapOf(

@@ -1,11 +1,11 @@
 import os
 import re
 
-version_from = "3.8.0"
-version_to = "3.8.1"
+version_from = "3.8.1"
+version_to = "3.8.2"
 
-# Patch release: #331, #332-#335, #337, #340, #342, #344, #346, #348 landed as
-# hand-written `## Unreleased` entries since 3.8.0 shipped. This run promotes
+# Patch release: the geofence cycle — #352, #353, #355, #357, #358 — landed as
+# hand-written `## Unreleased` entries since 3.8.1 shipped. This run promotes
 # them rather than writing new ones.
 
 # 1. Bump version strings

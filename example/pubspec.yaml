@@ -25,7 +25,7 @@ dependencies:
   tracelet_doctor:
     path: ../packages/tracelet_doctor
   cupertino_icons: ^1.0.8
-  # Terminated-state geofence testing (#356): a crossing that fires while
+  # Terminated-state geofence testing (#355): a crossing that fires while
   # the app is killed has no UI to land in, so the notification IS the
   # observation. Posted from the headless isolate.
   flutter_local_notifications: ^19.0.0

@@ -14,7 +14,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
 
     /// Invoked when CoreLocation reports a transition for a fence the in-app
     /// evaluator owns — the wake-up that `wakeupRadiusMeters`' inflated region
-    /// exists to produce (#356).
+    /// exists to produce (#355).
     ///
     /// The transition itself is discarded (it describes the 100 m wake-up
     /// boundary, not the fence), but its *arrival* is information: the device is
@@ -74,7 +74,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     ///
     /// Small fences are *not* rejected. They are decided in-app instead, against
     /// the true radius and with a hysteresis band scaled to the measured fix
-    /// accuracy rather than a flat 20 m (#356). See `isEvaluatorOwned`.
+    /// accuracy rather than a flat 20 m (#355). See `isEvaluatorOwned`.
     private static let osMinResolvableRadiusMeters = 100.0
 
     /// High-accuracy mode: track which geofences the device is currently inside.
@@ -477,7 +477,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     ///  - **Sub-`osMinResolvableRadiusMeters` circles.** Monitored only as a
     ///    coarse wake-up (see `wakeupRadiusMeters`); at that inflated radius the
     ///    OS's transitions describe the wrong boundary, so they are discarded
-    ///    and the true radius is applied in-app (#356).
+    ///    and the true radius is applied in-app (#355).
     ///  - **`geofenceModeHighAccuracy`.** The caller asked for in-app
     ///    evaluation of everything.
     ///
@@ -510,7 +510,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     }
 
     /// Records that a sub-resolvable fence has been handed to the in-app
-    /// evaluator (#356).
+    /// evaluator (#355).
     ///
     /// On the always-on lifecycle channel: which component owns a fence is the
     /// first thing a "geofences stopped firing" report needs to establish, and
@@ -522,7 +522,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
             "\(GeofenceManager.logTag) \(identifier) radius=\(fmt1(radius))m is below the "
             + "\(floor)m CoreLocation can resolve — transitions will be evaluated in-app at "
             + "the true radius, and the monitored region is registered at \(floor)m as a "
-            + "wake-up only. Requires location updates to be running (#356)")
+            + "wake-up only. Requires location updates to be running (#355)")
     }
 
     /// Builds the `[geofence]`-tagged decision trace logged alongside every
@@ -862,7 +862,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         let center = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
         // Inflated for sub-resolvable fences: at their true radius CoreLocation
         // fires nothing, and this registration exists to wake us near the fence,
-        // not to judge it (#356).
+        // not to judge it (#355).
         let region = CLCircularRegion(
             center: center, radius: wakeupRadiusMeters(radius), identifier: identifier)
 
@@ -948,17 +948,17 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         // under `geofenceModeHighAccuracy` that is every fence, and otherwise the
         // small ones, whose monitored region is inflated to a wake-up radius and
         // whose OS transitions therefore describe the wrong boundary.
-        // `evaluateHighAccuracyProximity` reports those instead (#356).
+        // `evaluateHighAccuracyProximity` reports those instead (#355).
         if let stored = getGeofence(region.identifier), isEvaluatorOwned(stored) {
             TraceletLog.debug(
                 "\(GeofenceManager.logTag) ignoring OS transition for \(region.identifier) "
-                + "— evaluated in-app at its true radius (#356)")
+                + "— evaluated in-app at its true radius (#355)")
             // The discarded transition still did its job: it says we are near a
             // fence only the evaluator can decide. Claim the wake-up before
-            // returning, or the inflated region is pure cost (#356).
+            // returning, or the inflated region is pure cost (#355).
             TraceletLog.lifecycle(
                 "\(GeofenceManager.logTag) wake-up from the OS near an in-app fence — "
-                + "resuming the location stream so its true radius can be evaluated (#356)")
+                + "resuming the location stream so its true radius can be evaluated (#355)")
             onEvaluatorWakeup?()
             return
         }

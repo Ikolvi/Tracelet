@@ -66,7 +66,7 @@ let package = Package(
                 // #292: resume/boot must not re-emit ENTER for a stationary
                 // device (persisted knownInsideIds dedup).
                 "GeofenceManagerResumeChurnTests.swift",
-                // #356: a fence smaller than CoreLocation can resolve is
+                // #355: a fence smaller than CoreLocation can resolve is
                 // evaluated in-app at its true radius, at default settings —
                 // and so is every polygon, which before this never fired
                 // unless geofenceModeHighAccuracy happened to be on.
