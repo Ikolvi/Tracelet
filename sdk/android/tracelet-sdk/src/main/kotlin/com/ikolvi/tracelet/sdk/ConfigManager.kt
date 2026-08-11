@@ -113,6 +113,8 @@ class ConfigManager(context: Context) {
         const val DEFAULT_NOTIFICATION_TEXT = "Tracking location in background"
         const val DEFAULT_NOTIFICATION_PRIORITY = 0
         const val DEFAULT_NOTIFICATION_ONGOING = true
+        const val DEFAULT_FG_SHOW_TIMER = false
+        const val DEFAULT_FG_ONLY_ALERT_ONCE = false
         const val DEFAULT_SHOW_NOTIFICATION_ON_PAUSE_ONLY = false
 
         // AppConfig extras
@@ -539,6 +541,15 @@ class ConfigManager(context: Context) {
 
     fun getFgNotificationOngoing(): Boolean =
         getBool("fg_notificationOngoing", DEFAULT_NOTIFICATION_ONGOING)
+
+    fun getFgNotificationStartedAt(): Long? =
+        (configCache["fg_notificationStartedAt"] as? Number)?.toLong()
+
+    fun getFgNotificationShowTimer(): Boolean =
+        getBool("fg_notificationShowTimer", DEFAULT_FG_SHOW_TIMER)
+
+    fun getFgNotificationOnlyAlertOnce(): Boolean =
+        getBool("fg_notificationOnlyAlertOnce", DEFAULT_FG_ONLY_ALERT_ONCE)
 
     fun getShowNotificationOnPauseOnly(): Boolean =
         getBool("fg_showNotificationOnPauseOnly", DEFAULT_SHOW_NOTIFICATION_ON_PAUSE_ONLY)

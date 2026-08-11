@@ -15,6 +15,7 @@ import com.ikolvi.tracelet.TlCurrentPositionOptions
 import com.ikolvi.tracelet.TlGeofence
 import com.ikolvi.tracelet.TlLocation
 import com.ikolvi.tracelet.TlLocationTuning
+import com.ikolvi.tracelet.TlNotificationUpdate
 import com.ikolvi.tracelet.TlProviderChangeEvent
 import com.ikolvi.tracelet.TlState
 import com.ikolvi.tracelet.TlTrackingMode
@@ -243,6 +244,9 @@ class TraceletHostApiImpl(
                 put("notificationColor", fg?.notificationColor)
                 put("notificationSmallIcon", fg?.notificationSmallIcon)
                 put("notificationLargeIcon", fg?.notificationLargeIcon)
+                put("notificationStartedAt", fg?.notificationStartedAt)
+                put("notificationShowTimer", fg?.notificationShowTimer)
+                put("notificationOnlyAlertOnce", fg?.notificationOnlyAlertOnce)
                 put("notificationPriority", fg?.notificationPriority?.let { it.raw - 2 })
                 put("notificationOngoing", fg?.notificationOngoing)
                 put("showNotificationOnPauseOnly", fg?.showNotificationOnPauseOnly)
@@ -480,6 +484,18 @@ class TraceletHostApiImpl(
         // running — LocationService only reposts when already promoted.
         try {
             sdk.updateNotification()
+            callback(Result.success(Unit))
+        } catch (e: Exception) { callback(Result.failure(e)) }
+    }
+
+    override fun setNotification(update: TlNotificationUpdate, callback: (Result<Unit>) -> Unit) {
+        try {
+            sdk.setNotification(
+                title = update.title,
+                text = update.text,
+                startedAt = update.startedAt,
+                showTimer = update.showTimer,
+            )
             callback(Result.success(Unit))
         } catch (e: Exception) { callback(Result.failure(e)) }
     }

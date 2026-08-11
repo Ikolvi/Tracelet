@@ -325,6 +325,12 @@ data class ForegroundServiceConfig(
     val notificationOngoing: Boolean = true,
     val showNotificationOnPauseOnly: Boolean = false,
     val actions: List<String> = emptyList(),
+    /** Epoch milliseconds used as the origin of the notification timer. */
+    val notificationStartedAt: Long? = null,
+    /** Whether to render the self-ticking notification timer. */
+    val notificationShowTimer: Boolean = false,
+    /** Whether notification updates should alert the user only once. */
+    val notificationOnlyAlertOnce: Boolean = false,
 ) {
     companion object {
         fun fromMap(m: Map<String, Any?>) = ForegroundServiceConfig(
@@ -339,13 +345,18 @@ data class ForegroundServiceConfig(
             notificationPriority = NotificationPriority.fromValue((m["notificationPriority"] as? Number)?.toInt() ?: 0),
             notificationOngoing = m["notificationOngoing"] as? Boolean ?: true,
             showNotificationOnPauseOnly = m["showNotificationOnPauseOnly"] as? Boolean ?: false,
-            actions = (m["actions"] as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+            actions = (m["actions"] as? List<*>)?.mapNotNull { it as? String } ?: emptyList(),
+            notificationStartedAt = (m["notificationStartedAt"] as? Number)?.toLong(),
+            notificationShowTimer = m["notificationShowTimer"] as? Boolean ?: false,
+            notificationOnlyAlertOnce = m["notificationOnlyAlertOnce"] as? Boolean ?: false,
         )
     }
     fun toMap(): Map<String, Any?> = mapOf(
         "enabled" to enabled, "channelId" to channelId, "channelName" to channelName, "notificationTitle" to notificationTitle,
         "notificationText" to notificationText, "notificationColor" to notificationColor, "notificationSmallIcon" to notificationSmallIcon,
-        "notificationLargeIcon" to notificationLargeIcon, "notificationPriority" to notificationPriority.value, "notificationOngoing" to notificationOngoing,
+        "notificationLargeIcon" to notificationLargeIcon, "notificationStartedAt" to notificationStartedAt,
+        "notificationShowTimer" to notificationShowTimer, "notificationOnlyAlertOnce" to notificationOnlyAlertOnce,
+        "notificationPriority" to notificationPriority.value, "notificationOngoing" to notificationOngoing,
         "showNotificationOnPauseOnly" to showNotificationOnPauseOnly, "actions" to actions
     )
 }

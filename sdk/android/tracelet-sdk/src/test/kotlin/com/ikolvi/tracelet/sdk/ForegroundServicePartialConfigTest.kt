@@ -5,6 +5,7 @@ import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -44,6 +45,9 @@ class ForegroundServicePartialConfigTest {
                 "channelId" to "tracelet_demo_channel",
                 "channelName" to "Tracelet Demo Background",
                 "showNotificationOnPauseOnly" to true,
+                "notificationStartedAt" to 4_294_967_296L,
+                "notificationShowTimer" to true,
+                "notificationOnlyAlertOnce" to true,
             ),
         ),
     )
@@ -76,6 +80,9 @@ class ForegroundServicePartialConfigTest {
         assertEquals("📍 Tracelet Demo Active", configManager.getFgNotificationTitle())
         assertEquals("tracelet_demo_channel", configManager.getFgChannelId())
         assertEquals("Tracelet Demo Background", configManager.getFgChannelName())
+        assertEquals(4_294_967_296L, configManager.getFgNotificationStartedAt())
+        assertTrue(configManager.getFgNotificationShowTimer())
+        assertTrue(configManager.getFgNotificationOnlyAlertOnce())
     }
 
     /**
@@ -99,6 +106,9 @@ class ForegroundServicePartialConfigTest {
                         "notificationPriority" to null,
                         "notificationOngoing" to null,
                         "showNotificationOnPauseOnly" to null,
+                        "notificationStartedAt" to null,
+                        "notificationShowTimer" to null,
+                        "notificationOnlyAlertOnce" to null,
                         "actions" to null,
                     ),
                 ),
@@ -108,6 +118,9 @@ class ForegroundServicePartialConfigTest {
         assertTrue(configManager.getShowNotificationOnPauseOnly())
         assertEquals("📍 Tracelet Demo Active", configManager.getFgNotificationTitle())
         assertEquals("tracelet_demo_channel", configManager.getFgChannelId())
+        assertEquals(4_294_967_296L, configManager.getFgNotificationStartedAt())
+        assertTrue(configManager.getFgNotificationShowTimer())
+        assertTrue(configManager.getFgNotificationOnlyAlertOnce())
     }
 
     /**
@@ -123,12 +136,16 @@ class ForegroundServicePartialConfigTest {
         configManager.setConfig(
             mapOf(
                 "android" to mapOf(
-                    "foregroundService" to mapOf("showNotificationOnPauseOnly" to false),
+                    "foregroundService" to mapOf(
+                        "showNotificationOnPauseOnly" to false,
+                        "notificationOnlyAlertOnce" to false,
+                    ),
                 ),
             ),
         )
 
         assertFalse(configManager.getShowNotificationOnPauseOnly())
+        assertFalse(configManager.getFgNotificationOnlyAlertOnce())
         // The fields alongside it were not supplied, so they are untouched.
         assertEquals("📍 Tracelet Demo Active", configManager.getFgNotificationTitle())
     }
@@ -152,6 +169,9 @@ class ForegroundServicePartialConfigTest {
         )
         assertTrue(configManager.getFgNotificationOngoing())
         assertFalse(configManager.getShowNotificationOnPauseOnly())
+        assertNull(configManager.getFgNotificationStartedAt())
+        assertFalse(configManager.getFgNotificationShowTimer())
+        assertFalse(configManager.getFgNotificationOnlyAlertOnce())
     }
 
     /** The merged result is persisted, so it has to survive a new instance. */
@@ -168,6 +188,27 @@ class ForegroundServicePartialConfigTest {
         val reloaded = ConfigManager(context)
 
         assertTrue(reloaded.getShowNotificationOnPauseOnly())
+        assertEquals(4_294_967_296L, reloaded.getFgNotificationStartedAt())
+        assertTrue(reloaded.getFgNotificationShowTimer())
+        assertTrue(reloaded.getFgNotificationOnlyAlertOnce())
         assertEquals("📍 Tracelet Demo Active", reloaded.getFgNotificationTitle())
+    }
+
+    /** Small Kotlin Int values must be accepted by the epoch-millis getter. */
+    @Test
+    fun testSmallIntNotificationStartedAt_SurvivesAsLong() {
+        configManager.setConfig(
+            mapOf(
+                "android" to mapOf(
+                    "foregroundService" to mapOf("notificationStartedAt" to 1234),
+                ),
+            ),
+        )
+
+        assertEquals(1234L, configManager.getFgNotificationStartedAt())
+
+        Shadows.shadowOf(Looper.getMainLooper()).idle()
+        val reloaded = ConfigManager(context)
+        assertEquals(1234L, reloaded.getFgNotificationStartedAt())
     }
 }

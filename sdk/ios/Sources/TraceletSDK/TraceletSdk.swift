@@ -1030,7 +1030,12 @@ public final class TraceletSdk {
                     if #available(iOS 17.0, *) {
                         #if canImport(ActivityKit)
                         if let lc = configManager.getLiveActivityConfig() {
-                            LiveActivityManager.shared.updateLiveActivity(title: lc.title, body: lc.body)
+                            LiveActivityManager.shared.updateLiveActivity(
+                                title: lc.title,
+                                body: lc.body,
+                                startedAt: lc.startedAt,
+                                showTimer: lc.showTimer
+                            )
                         }
                         #endif
                     }
@@ -1146,9 +1151,39 @@ public final class TraceletSdk {
                 logger.info("updateNotification: tracking not enabled — nothing to refresh")
                 return
             }
-            LiveActivityManager.shared.refreshLiveActivity(title: liveConfig.title, body: liveConfig.body)
+            LiveActivityManager.shared.refreshLiveActivity(
+                title: liveConfig.title,
+                body: liveConfig.body,
+                startedAt: liveConfig.startedAt,
+                showTimer: liveConfig.showTimer
+            )
             #endif
         }
+    }
+
+    /// Applies a targeted update to the optional Live Activity and reposts it
+    /// without carrying HTTP or any unrelated configuration section.
+    public func setNotification(title: String?, text: String?, startedAt: Date?, showTimer: Bool?) {
+        guard title != nil || text != nil || startedAt != nil || showTimer != nil else { return }
+        guard isReady else { return }
+        guard let current = configManager.getLiveActivityConfig() else {
+            logger.info("no liveActivityConfig set — setNotification is Android-only until one is configured")
+            return
+        }
+
+        let mergedStartedAt = startedAt ?? current.startedAt
+        var merged: [String: Any] = [
+            "title": title ?? current.title,
+            "body": text ?? current.body,
+            "showTimer": showTimer ?? current.showTimer,
+        ]
+        if let mergedStartedAt = mergedStartedAt {
+            merged["startedAt"] = Int64(
+                (mergedStartedAt.timeIntervalSince1970 * 1000.0).rounded()
+            )
+        }
+        _ = configManager.setConfig(["liveActivityConfig": merged])
+        updateNotification()
     }
 
     /// Loose equality for two heterogeneous config values, used to detect which

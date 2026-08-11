@@ -1698,6 +1698,29 @@ class TraceletSdk private constructor(private val context: Context) {
     }
 
     /**
+     * Applies a targeted update to the foreground-service notification and
+     * reposts it. Merges only the supplied fields into the persisted config —
+     * the payload cannot carry http or any other section, so a notification
+     * refresh can never clobber sync settings.
+     */
+    fun setNotification(
+        title: String? = null,
+        text: String? = null,
+        startedAt: Long? = null,
+        showTimer: Boolean? = null,
+    ) {
+        val fg = buildMap<String, Any?> {
+            if (title != null) put("notificationTitle", title)
+            if (text != null) put("notificationText", text)
+            if (startedAt != null) put("notificationStartedAt", startedAt)
+            if (showTimer != null) put("notificationShowTimer", showTimer)
+        }
+        if (fg.isEmpty()) return
+        configManager.setConfig(mapOf("android" to mapOf("foregroundService" to fg)))
+        updateNotification()
+    }
+
+    /**
      * Bootstraps the SDK for a headless / boot / task-removal restart.
      *
      * Returns `true` only when initialization has fully completed and the

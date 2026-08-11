@@ -91,10 +91,20 @@ class TraceletHostApiImpl: TraceletHostApi {
         dict["preventSuspend"] = c.ios.preventSuspend
         dict["useBackgroundActivitySession"] = c.ios.useBackgroundActivitySession
         if let liveConfig = c.ios.liveActivityConfig {
-            dict["liveActivityConfig"] = [
-                "title": liveConfig.title,
-                "body": liveConfig.body
-            ]
+            var liveActivityDict: [String: Any] = [:]
+            if let title = liveConfig.title {
+                liveActivityDict["title"] = title
+            }
+            if let body = liveConfig.body {
+                liveActivityDict["body"] = body
+            }
+            if let startedAt = liveConfig.startedAt {
+                liveActivityDict["startedAt"] = startedAt
+            }
+            if let showTimer = liveConfig.showTimer {
+                liveActivityDict["showTimer"] = showTimer
+            }
+            dict["liveActivityConfig"] = liveActivityDict
         }
 
         // HTTP
@@ -462,6 +472,19 @@ class TraceletHostApiImpl: TraceletHostApi {
         // tracking. No isReadyState guard so it degrades to a no-op rather than
         // throwing when called before ready().
         sdk.updateNotification()
+        completion(.success(()))
+    }
+
+    func setNotification(update: TlNotificationUpdate, completion: @escaping (Result<Void, Error>) -> Void) {
+        let startedAt = update.startedAt.map {
+            Date(timeIntervalSince1970: Double($0) / 1000.0)
+        }
+        sdk.setNotification(
+            title: update.title,
+            text: update.text,
+            startedAt: startedAt,
+            showTimer: update.showTimer
+        )
         completion(.success(()))
     }
 

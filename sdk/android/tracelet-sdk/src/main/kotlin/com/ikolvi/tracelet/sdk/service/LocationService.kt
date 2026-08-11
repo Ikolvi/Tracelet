@@ -13,6 +13,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -31,6 +32,36 @@ import com.ikolvi.tracelet.sdk.location.PeriodicLocationWorker
 import com.ikolvi.tracelet.sdk.receiver.GeofenceBroadcastReceiver
 import com.ikolvi.tracelet.sdk.model.TrackingMode
 import com.ikolvi.tracelet.sdk.util.OemCompat
+
+/**
+ * Applies the self-ticking elapsed timer: count-up only, future [startedAt]
+ * clamped to [now], and no timer without a start instant.
+ */
+@VisibleForTesting
+internal fun applyChronometer(
+    builder: NotificationCompat.Builder,
+    showTimer: Boolean,
+    startedAt: Long?,
+    now: Long,
+) {
+    if (!showTimer) return
+    if (startedAt == null) {
+        TraceletLog.debug("notificationShowTimer is set but notificationStartedAt is not — no timer shown")
+        return
+    }
+    builder.setWhen(minOf(startedAt, now))
+    builder.setShowWhen(true)
+    builder.setUsesChronometer(true)
+}
+
+/** Applies whether only the first post of this notification should alert. */
+@VisibleForTesting
+internal fun applyOnlyAlertOnce(
+    builder: NotificationCompat.Builder,
+    onlyAlertOnce: Boolean,
+) {
+    builder.setOnlyAlertOnce(onlyAlertOnce)
+}
 
 /**
  * Foreground service for persistent background location tracking.
@@ -1720,6 +1751,14 @@ class LocationService : Service(), DefaultLifecycleObserver {
             )
             builder.addAction(0, actionLabel, actionPendingIntent)
         }
+
+        applyChronometer(
+            builder,
+            configManager.getFgNotificationShowTimer(),
+            configManager.getFgNotificationStartedAt(),
+            System.currentTimeMillis(),
+        )
+        applyOnlyAlertOnce(builder, configManager.getFgNotificationOnlyAlertOnce())
 
         return builder.build()
     }

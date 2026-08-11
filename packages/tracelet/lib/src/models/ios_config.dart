@@ -4,13 +4,19 @@ import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 
 /// Configuration for iOS 17+ Live Activities.
 ///
-/// Both fields are required — a Live Activity is either configured or absent
+/// A Live Activity is either configured or absent
 /// (`IosConfig.liveActivityConfig` is nullable), so there is no partial state
-/// to preserve and no `#321` unset-tracking here.
+/// to preserve and no `#321` unset-tracking here. The object is always sent as
+/// a whole value.
 @immutable
 class LiveActivityConfig {
   /// Creates a new [LiveActivityConfig].
-  const LiveActivityConfig({required this.title, required this.body});
+  const LiveActivityConfig({
+    required this.title,
+    required this.body,
+    this.startedAt,
+    this.showTimer = false,
+  });
 
   /// Creates a [LiveActivityConfig] from a map.
   factory LiveActivityConfig.fromMap(Map<String, Object?> map) {
@@ -19,6 +25,8 @@ class LiveActivityConfig {
       body:
           map['body'] as String? ??
           'Your location is being updated in the background.',
+      startedAt: (map['startedAt'] as num?)?.toInt(),
+      showTimer: map['showTimer'] as bool? ?? false,
     );
   }
 
@@ -28,14 +36,38 @@ class LiveActivityConfig {
   /// The dynamic status text.
   final String body;
 
+  /// The wall-clock instant from which the Live Activity counts up, in epoch
+  /// milliseconds.
+  ///
+  /// This is rendered only when [showTimer] is `true`. A future value is
+  /// clamped to the render-time current instant by iOS. Once set, this field
+  /// cannot be reset to `null` through a targeted update because the wire
+  /// protocol has no explicit-null state; set [showTimer] to `false` instead.
+  final int? startedAt;
+
+  /// Whether the Live Activity shows a self-ticking count-up clock from
+  /// [startedAt].
+  ///
+  /// No timer is shown if [startedAt] is absent. Defaults to `false`.
+  final bool showTimer;
+
   /// Serializes to a map.
   Map<String, Object?> toMap() {
-    return <String, Object?>{'title': title, 'body': body};
+    return <String, Object?>{
+      'title': title,
+      'body': body,
+      if (startedAt != null) 'startedAt': startedAt,
+      'showTimer': showTimer,
+    };
   }
 
   /// Converts to Pigeon [TlLiveActivityConfig].
-  TlLiveActivityConfig toTlConfig() =>
-      TlLiveActivityConfig(title: title, body: body);
+  TlLiveActivityConfig toTlConfig() => TlLiveActivityConfig(
+    title: title,
+    body: body,
+    startedAt: startedAt,
+    showTimer: showTimer,
+  );
 
   @override
   bool operator ==(Object other) =>
@@ -43,10 +75,12 @@ class LiveActivityConfig {
       other is LiveActivityConfig &&
           runtimeType == other.runtimeType &&
           title == other.title &&
-          body == other.body;
+          body == other.body &&
+          startedAt == other.startedAt &&
+          showTimer == other.showTimer;
 
   @override
-  int get hashCode => Object.hash(title, body);
+  int get hashCode => Object.hash(title, body, startedAt, showTimer);
 }
 
 /// iOS-specific configuration settings.

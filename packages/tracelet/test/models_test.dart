@@ -384,6 +384,38 @@ void main() {
     });
   });
 
+  group('LiveActivityConfig timer', () {
+    test('round trip preserves timer fields', () {
+      const config = LiveActivityConfig(
+        title: 'Tracking',
+        body: 'Moving',
+        startedAt: 4294967296,
+        showTimer: true,
+      );
+
+      final restored = LiveActivityConfig.fromMap(config.toMap());
+
+      expect(restored, config);
+      expect(restored.toTlConfig().startedAt, 4294967296);
+      expect(restored.toTlConfig().showTimer, isTrue);
+    });
+
+    test('missing timer fields default off and omit startedAt', () {
+      final config = LiveActivityConfig.fromMap(const {
+        'title': 'Tracking',
+        'body': 'Moving',
+      });
+
+      expect(config.startedAt, isNull);
+      expect(config.showTimer, isFalse);
+      expect(config.toMap(), {
+        'title': 'Tracking',
+        'body': 'Moving',
+        'showTimer': false,
+      });
+    });
+  });
+
   group('LocationFilter', () {
     test('defaults are correct', () {
       const filter = LocationFilter();

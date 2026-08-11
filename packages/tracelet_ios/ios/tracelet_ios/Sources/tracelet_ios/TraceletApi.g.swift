@@ -589,6 +589,12 @@ struct TlForegroundServiceConfig: Hashable {
   var notificationOngoing: Bool? = nil
   var showNotificationOnPauseOnly: Bool? = nil
   var actions: [String?]? = nil
+  /// Epoch milliseconds for the optional wall-clock count-up timer.
+  var notificationStartedAt: Int64? = nil
+  /// Whether to show the count-up timer when [notificationStartedAt] exists.
+  var notificationShowTimer: Bool? = nil
+  /// Whether notification reposts should alert only on the first post.
+  var notificationOnlyAlertOnce: Bool? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -605,6 +611,9 @@ struct TlForegroundServiceConfig: Hashable {
     let notificationOngoing: Bool? = nilOrValue(pigeonVar_list[9])
     let showNotificationOnPauseOnly: Bool? = nilOrValue(pigeonVar_list[10])
     let actions: [String?]? = nilOrValue(pigeonVar_list[11])
+    let notificationStartedAt: Int64? = nilOrValue(pigeonVar_list[12])
+    let notificationShowTimer: Bool? = nilOrValue(pigeonVar_list[13])
+    let notificationOnlyAlertOnce: Bool? = nilOrValue(pigeonVar_list[14])
 
     return TlForegroundServiceConfig(
       enabled: enabled,
@@ -618,7 +627,10 @@ struct TlForegroundServiceConfig: Hashable {
       notificationPriority: notificationPriority,
       notificationOngoing: notificationOngoing,
       showNotificationOnPauseOnly: showNotificationOnPauseOnly,
-      actions: actions
+      actions: actions,
+      notificationStartedAt: notificationStartedAt,
+      notificationShowTimer: notificationShowTimer,
+      notificationOnlyAlertOnce: notificationOnlyAlertOnce
     )
   }
   func toList() -> [Any?] {
@@ -635,13 +647,16 @@ struct TlForegroundServiceConfig: Hashable {
       notificationOngoing,
       showNotificationOnPauseOnly,
       actions,
+      notificationStartedAt,
+      notificationShowTimer,
+      notificationOnlyAlertOnce,
     ]
   }
   static func == (lhs: TlForegroundServiceConfig, rhs: TlForegroundServiceConfig) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsTraceletApi(lhs.enabled, rhs.enabled) && deepEqualsTraceletApi(lhs.channelId, rhs.channelId) && deepEqualsTraceletApi(lhs.channelName, rhs.channelName) && deepEqualsTraceletApi(lhs.notificationTitle, rhs.notificationTitle) && deepEqualsTraceletApi(lhs.notificationText, rhs.notificationText) && deepEqualsTraceletApi(lhs.notificationColor, rhs.notificationColor) && deepEqualsTraceletApi(lhs.notificationSmallIcon, rhs.notificationSmallIcon) && deepEqualsTraceletApi(lhs.notificationLargeIcon, rhs.notificationLargeIcon) && deepEqualsTraceletApi(lhs.notificationPriority, rhs.notificationPriority) && deepEqualsTraceletApi(lhs.notificationOngoing, rhs.notificationOngoing) && deepEqualsTraceletApi(lhs.showNotificationOnPauseOnly, rhs.showNotificationOnPauseOnly) && deepEqualsTraceletApi(lhs.actions, rhs.actions)
+    return deepEqualsTraceletApi(lhs.enabled, rhs.enabled) && deepEqualsTraceletApi(lhs.channelId, rhs.channelId) && deepEqualsTraceletApi(lhs.channelName, rhs.channelName) && deepEqualsTraceletApi(lhs.notificationTitle, rhs.notificationTitle) && deepEqualsTraceletApi(lhs.notificationText, rhs.notificationText) && deepEqualsTraceletApi(lhs.notificationColor, rhs.notificationColor) && deepEqualsTraceletApi(lhs.notificationSmallIcon, rhs.notificationSmallIcon) && deepEqualsTraceletApi(lhs.notificationLargeIcon, rhs.notificationLargeIcon) && deepEqualsTraceletApi(lhs.notificationPriority, rhs.notificationPriority) && deepEqualsTraceletApi(lhs.notificationOngoing, rhs.notificationOngoing) && deepEqualsTraceletApi(lhs.showNotificationOnPauseOnly, rhs.showNotificationOnPauseOnly) && deepEqualsTraceletApi(lhs.actions, rhs.actions) && deepEqualsTraceletApi(lhs.notificationStartedAt, rhs.notificationStartedAt) && deepEqualsTraceletApi(lhs.notificationShowTimer, rhs.notificationShowTimer) && deepEqualsTraceletApi(lhs.notificationOnlyAlertOnce, rhs.notificationOnlyAlertOnce)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -658,6 +673,9 @@ struct TlForegroundServiceConfig: Hashable {
     deepHashTraceletApi(value: notificationOngoing, hasher: &hasher)
     deepHashTraceletApi(value: showNotificationOnPauseOnly, hasher: &hasher)
     deepHashTraceletApi(value: actions, hasher: &hasher)
+    deepHashTraceletApi(value: notificationStartedAt, hasher: &hasher)
+    deepHashTraceletApi(value: notificationShowTimer, hasher: &hasher)
+    deepHashTraceletApi(value: notificationOnlyAlertOnce, hasher: &hasher)
   }
 }
 
@@ -743,35 +761,47 @@ struct TlAndroidConfig: Hashable {
 struct TlLiveActivityConfig: Hashable {
   var title: String? = nil
   var body: String? = nil
+  /// Epoch milliseconds for the optional wall-clock count-up timer.
+  var startedAt: Int64? = nil
+  /// Whether to show the count-up timer when [startedAt] exists.
+  var showTimer: Bool? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> TlLiveActivityConfig? {
     let title: String? = nilOrValue(pigeonVar_list[0])
     let body: String? = nilOrValue(pigeonVar_list[1])
+    let startedAt: Int64? = nilOrValue(pigeonVar_list[2])
+    let showTimer: Bool? = nilOrValue(pigeonVar_list[3])
 
     return TlLiveActivityConfig(
       title: title,
-      body: body
+      body: body,
+      startedAt: startedAt,
+      showTimer: showTimer
     )
   }
   func toList() -> [Any?] {
     return [
       title,
       body,
+      startedAt,
+      showTimer,
     ]
   }
   static func == (lhs: TlLiveActivityConfig, rhs: TlLiveActivityConfig) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsTraceletApi(lhs.title, rhs.title) && deepEqualsTraceletApi(lhs.body, rhs.body)
+    return deepEqualsTraceletApi(lhs.title, rhs.title) && deepEqualsTraceletApi(lhs.body, rhs.body) && deepEqualsTraceletApi(lhs.startedAt, rhs.startedAt) && deepEqualsTraceletApi(lhs.showTimer, rhs.showTimer)
   }
 
   func hash(into hasher: inout Hasher) {
     hasher.combine("TlLiveActivityConfig")
     deepHashTraceletApi(value: title, hasher: &hasher)
     deepHashTraceletApi(value: body, hasher: &hasher)
+    deepHashTraceletApi(value: startedAt, hasher: &hasher)
+    deepHashTraceletApi(value: showTimer, hasher: &hasher)
   }
 }
 
@@ -2890,11 +2920,6 @@ struct TlLogEntry: Hashable {
 
 /// Location-filter thresholds applied by transport-mode auto-tuning (#301).
 ///
-/// Declared last on purpose: pigeon assigns codec type IDs by declaration
-/// order, so inserting a class higher up would renumber every type after it
-/// and break any app that resolves a plugin and the platform interface at
-/// different versions.
-///
 /// Generated class from Pigeon that represents data sent in messages.
 struct TlLocationTuning: Hashable {
   /// Minimum movement (m) between recorded fixes.
@@ -2942,6 +2967,64 @@ struct TlLocationTuning: Hashable {
     deepHashTraceletApi(value: trackingAccuracyThreshold, hasher: &hasher)
     deepHashTraceletApi(value: odometerAccuracyThreshold, hasher: &hasher)
     deepHashTraceletApi(value: maxImpliedSpeed, hasher: &hasher)
+  }
+}
+
+/// A targeted notification update for `setNotification()`.
+///
+/// Every field is nullable; null means "leave the persisted value alone".
+/// Deliberately NOT a TlConfig: this payload can never carry http.url or
+/// headers, so a notification refresh cannot clobber sync settings.
+///
+/// Declared last to preserve all existing Pigeon codec type IDs.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct TlNotificationUpdate: Hashable {
+  /// The replacement notification or Live Activity title.
+  var title: String? = nil
+  /// The replacement notification text or Live Activity body.
+  var text: String? = nil
+  /// Epoch milliseconds for the optional wall-clock count-up timer.
+  var startedAt: Int64? = nil
+  /// Whether to show the count-up timer when a start instant exists.
+  var showTimer: Bool? = nil
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> TlNotificationUpdate? {
+    let title: String? = nilOrValue(pigeonVar_list[0])
+    let text: String? = nilOrValue(pigeonVar_list[1])
+    let startedAt: Int64? = nilOrValue(pigeonVar_list[2])
+    let showTimer: Bool? = nilOrValue(pigeonVar_list[3])
+
+    return TlNotificationUpdate(
+      title: title,
+      text: text,
+      startedAt: startedAt,
+      showTimer: showTimer
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      title,
+      text,
+      startedAt,
+      showTimer,
+    ]
+  }
+  static func == (lhs: TlNotificationUpdate, rhs: TlNotificationUpdate) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsTraceletApi(lhs.title, rhs.title) && deepEqualsTraceletApi(lhs.text, rhs.text) && deepEqualsTraceletApi(lhs.startedAt, rhs.startedAt) && deepEqualsTraceletApi(lhs.showTimer, rhs.showTimer)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("TlNotificationUpdate")
+    deepHashTraceletApi(value: title, hasher: &hasher)
+    deepHashTraceletApi(value: text, hasher: &hasher)
+    deepHashTraceletApi(value: startedAt, hasher: &hasher)
+    deepHashTraceletApi(value: showTimer, hasher: &hasher)
   }
 }
 
@@ -3150,6 +3233,8 @@ private class TraceletApiPigeonCodecReader: FlutterStandardReader {
       return TlLogEntry.fromList(self.readValue() as! [Any?])
     case 191:
       return TlLocationTuning.fromList(self.readValue() as! [Any?])
+    case 192:
+      return TlNotificationUpdate.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
     }
@@ -3347,6 +3432,9 @@ private class TraceletApiPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? TlLocationTuning {
       super.writeByte(191)
       super.writeValue(value.toList())
+    } else if let value = value as? TlNotificationUpdate {
+      super.writeByte(192)
+      super.writeValue(value.toList())
     } else {
       super.writeValue(value)
     }
@@ -3389,6 +3477,10 @@ protocol TraceletHostApi {
   ///   liveActivityConfig (if the developer opted into one). No-op otherwise.
   /// - Web: no-op.
   func updateNotification(completion: @escaping (Result<Void, Error>) -> Void)
+  /// Applies a targeted update to the tracking indicator's content and
+  /// reposts it, merging only the supplied fields into the persisted
+  /// configuration. Never touches any other config section.
+  func setNotification(update: TlNotificationUpdate, completion: @escaping (Result<Void, Error>) -> Void)
   func getCurrentPosition(options: TlCurrentPositionOptions, completion: @escaping (Result<TlLocation, Error>) -> Void)
   func getLastKnownLocation(options: TlCurrentPositionOptions?, completion: @escaping (Result<TlLocation?, Error>) -> Void)
   func watchPosition(options: TlCurrentPositionOptions, completion: @escaping (Result<Int64, Error>) -> Void)
@@ -3658,6 +3750,26 @@ class TraceletHostApiSetup {
       }
     } else {
       updateNotificationChannel.setMessageHandler(nil)
+    }
+    /// Applies a targeted update to the tracking indicator's content and
+    /// reposts it, merging only the supplied fields into the persisted
+    /// configuration. Never touches any other config section.
+    let setNotificationChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.setNotification\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      setNotificationChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let updateArg = args[0] as! TlNotificationUpdate
+        api.setNotification(update: updateArg) { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      setNotificationChannel.setMessageHandler(nil)
     }
     let getCurrentPositionChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.getCurrentPosition\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {

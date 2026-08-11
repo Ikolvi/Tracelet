@@ -51,6 +51,8 @@ let package = Package(
                 // config. The merge guard was always right; the bridge simply
                 // never sent an absent key, so it never fired.
                 "ConfigManagerPartialConfigTests.swift",
+                "ConfigManagerLiveActivityTimerTests.swift",
+                "TraceletActivityAttributesDecodingTests.swift",
                 // #303: the `filter` sub-map every transport nests inside `geo`
                 // has to reach the flat getters. It did not, so the whole
                 // location-filter block was pinned to its defaults on iOS.

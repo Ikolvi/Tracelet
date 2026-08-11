@@ -361,6 +361,9 @@ class ForegroundServiceConfig {
     this.notificationColor,
     this.notificationSmallIcon,
     this.notificationLargeIcon,
+    this.notificationStartedAt,
+    bool? notificationShowTimer,
+    bool? notificationOnlyAlertOnce,
     NotificationPriority? notificationPriority,
     bool? notificationOngoing,
     bool? showNotificationOnPauseOnly,
@@ -370,6 +373,8 @@ class ForegroundServiceConfig {
        _channelName = channelName,
        _notificationTitle = notificationTitle,
        _notificationText = notificationText,
+       _notificationShowTimer = notificationShowTimer,
+       _notificationOnlyAlertOnce = notificationOnlyAlertOnce,
        _notificationPriority = notificationPriority,
        _notificationOngoing = notificationOngoing,
        _showNotificationOnPauseOnly = showNotificationOnPauseOnly,
@@ -401,6 +406,13 @@ class ForegroundServiceConfig {
       notificationColor: map['notificationColor'] as String?,
       notificationSmallIcon: map['notificationSmallIcon'] as String?,
       notificationLargeIcon: map['notificationLargeIcon'] as String?,
+      notificationStartedAt: (map['notificationStartedAt'] as num?)?.toInt(),
+      notificationShowTimer: map.containsKey('notificationShowTimer')
+          ? ensureBool(map['notificationShowTimer'], fallback: false)
+          : null,
+      notificationOnlyAlertOnce: map.containsKey('notificationOnlyAlertOnce')
+          ? ensureBool(map['notificationOnlyAlertOnce'], fallback: false)
+          : null,
       notificationPriority: map.containsKey('notificationPriority')
           ? _parseNotificationPriority(map['notificationPriority'])
           : null,
@@ -425,6 +437,9 @@ class ForegroundServiceConfig {
     String? notificationColor,
     String? notificationSmallIcon,
     String? notificationLargeIcon,
+    int? notificationStartedAt,
+    bool? notificationShowTimer,
+    bool? notificationOnlyAlertOnce,
     NotificationPriority? notificationPriority,
     bool? notificationOngoing,
     bool? showNotificationOnPauseOnly,
@@ -441,6 +456,11 @@ class ForegroundServiceConfig {
           notificationSmallIcon ?? this.notificationSmallIcon,
       notificationLargeIcon:
           notificationLargeIcon ?? this.notificationLargeIcon,
+      notificationStartedAt:
+          notificationStartedAt ?? this.notificationStartedAt,
+      notificationShowTimer: notificationShowTimer ?? _notificationShowTimer,
+      notificationOnlyAlertOnce:
+          notificationOnlyAlertOnce ?? _notificationOnlyAlertOnce,
       notificationPriority: notificationPriority ?? _notificationPriority,
       notificationOngoing: notificationOngoing ?? _notificationOngoing,
       showNotificationOnPauseOnly:
@@ -457,6 +477,8 @@ class ForegroundServiceConfig {
   final String? _channelName;
   final String? _notificationTitle;
   final String? _notificationText;
+  final bool? _notificationShowTimer;
+  final bool? _notificationOnlyAlertOnce;
   final NotificationPriority? _notificationPriority;
   final bool? _notificationOngoing;
   final bool? _showNotificationOnPauseOnly;
@@ -495,6 +517,33 @@ class ForegroundServiceConfig {
   /// Defaults to `null`.
   final String? notificationLargeIcon;
 
+  /// The wall-clock instant from which the notification counts up, in epoch
+  /// milliseconds.
+  ///
+  /// This is rendered only when [notificationShowTimer] is `true`; the OS
+  /// advances the count-up clock without notification reposts. A future value
+  /// is clamped to the render-time current instant by the native platform.
+  /// Once set, this field cannot be reset to `null` because the wire protocol
+  /// has no explicit-null state; set [notificationShowTimer] to `false` to make
+  /// it inert.
+  final int? notificationStartedAt;
+
+  /// Whether to show a self-ticking count-up clock from
+  /// [notificationStartedAt].
+  ///
+  /// No timer is shown if [notificationStartedAt] is absent. Defaults to
+  /// `false`.
+  bool get notificationShowTimer => _notificationShowTimer ?? false;
+
+  /// Whether reposting the foreground-service notification alerts the user
+  /// only on its first post.
+  ///
+  /// When `true`, later updates replace the existing notification silently
+  /// instead of replaying its sound or vibration. This Android-only setting is
+  /// not applicable to iOS Live Activities. Defaults to `false` to preserve
+  /// existing behaviour.
+  bool get notificationOnlyAlertOnce => _notificationOnlyAlertOnce ?? false;
+
   /// The notification priority level.
   /// Defaults to [NotificationPriority.defaultPriority].
   NotificationPriority get notificationPriority =>
@@ -531,6 +580,9 @@ class ForegroundServiceConfig {
       notificationColor != null ||
       notificationSmallIcon != null ||
       notificationLargeIcon != null ||
+      notificationStartedAt != null ||
+      _notificationShowTimer != null ||
+      _notificationOnlyAlertOnce != null ||
       _notificationPriority != null ||
       _notificationOngoing != null ||
       _showNotificationOnPauseOnly != null ||
@@ -554,6 +606,11 @@ class ForegroundServiceConfig {
     notificationColor: other.notificationColor ?? notificationColor,
     notificationSmallIcon: other.notificationSmallIcon ?? notificationSmallIcon,
     notificationLargeIcon: other.notificationLargeIcon ?? notificationLargeIcon,
+    notificationStartedAt: other.notificationStartedAt ?? notificationStartedAt,
+    notificationShowTimer:
+        other._notificationShowTimer ?? _notificationShowTimer,
+    notificationOnlyAlertOnce:
+        other._notificationOnlyAlertOnce ?? _notificationOnlyAlertOnce,
     notificationPriority: other._notificationPriority ?? _notificationPriority,
     notificationOngoing: other._notificationOngoing ?? _notificationOngoing,
     showNotificationOnPauseOnly:
@@ -575,6 +632,9 @@ class ForegroundServiceConfig {
     notificationColor: notificationColor,
     notificationSmallIcon: notificationSmallIcon,
     notificationLargeIcon: notificationLargeIcon,
+    notificationStartedAt: notificationStartedAt,
+    notificationShowTimer: notificationShowTimer,
+    notificationOnlyAlertOnce: notificationOnlyAlertOnce,
     notificationPriority: notificationPriority,
     notificationOngoing: notificationOngoing,
     showNotificationOnPauseOnly: showNotificationOnPauseOnly,
@@ -594,6 +654,9 @@ class ForegroundServiceConfig {
     notificationColor: notificationColor,
     notificationSmallIcon: notificationSmallIcon,
     notificationLargeIcon: notificationLargeIcon,
+    notificationStartedAt: notificationStartedAt,
+    notificationShowTimer: _notificationShowTimer,
+    notificationOnlyAlertOnce: _notificationOnlyAlertOnce,
     notificationPriority: _notificationPriority == null
         ? null
         : TlNotificationPriority.values[_notificationPriority.index],
@@ -615,6 +678,12 @@ class ForegroundServiceConfig {
         'notificationSmallIcon': notificationSmallIcon,
       if (notificationLargeIcon != null)
         'notificationLargeIcon': notificationLargeIcon,
+      if (notificationStartedAt != null)
+        'notificationStartedAt': notificationStartedAt,
+      if (_notificationShowTimer != null)
+        'notificationShowTimer': _notificationShowTimer,
+      if (_notificationOnlyAlertOnce != null)
+        'notificationOnlyAlertOnce': _notificationOnlyAlertOnce,
       if (_notificationPriority != null)
         'notificationPriority': _notificationPriority.index,
       if (_notificationOngoing != null)
@@ -642,6 +711,9 @@ class ForegroundServiceConfig {
           notificationColor == other.notificationColor &&
           notificationSmallIcon == other.notificationSmallIcon &&
           notificationLargeIcon == other.notificationLargeIcon &&
+          notificationStartedAt == other.notificationStartedAt &&
+          _notificationShowTimer == other._notificationShowTimer &&
+          _notificationOnlyAlertOnce == other._notificationOnlyAlertOnce &&
           _notificationPriority == other._notificationPriority &&
           _notificationOngoing == other._notificationOngoing &&
           _showNotificationOnPauseOnly == other._showNotificationOnPauseOnly &&
@@ -657,6 +729,9 @@ class ForegroundServiceConfig {
     notificationColor,
     notificationSmallIcon,
     notificationLargeIcon,
+    notificationStartedAt,
+    _notificationShowTimer,
+    _notificationOnlyAlertOnce,
     _notificationPriority,
     _notificationOngoing,
     _showNotificationOnPauseOnly,

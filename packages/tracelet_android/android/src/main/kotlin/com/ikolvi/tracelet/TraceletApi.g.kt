@@ -697,7 +697,13 @@ data class TlForegroundServiceConfig (
   val notificationPriority: TlNotificationPriority? = null,
   val notificationOngoing: Boolean? = null,
   val showNotificationOnPauseOnly: Boolean? = null,
-  val actions: List<String?>? = null
+  val actions: List<String?>? = null,
+  /** Epoch milliseconds for the optional wall-clock count-up timer. */
+  val notificationStartedAt: Long? = null,
+  /** Whether to show the count-up timer when [notificationStartedAt] exists. */
+  val notificationShowTimer: Boolean? = null,
+  /** Whether notification reposts should alert only on the first post. */
+  val notificationOnlyAlertOnce: Boolean? = null
 )
  {
   companion object {
@@ -714,7 +720,10 @@ data class TlForegroundServiceConfig (
       val notificationOngoing = pigeonVar_list[9] as Boolean?
       val showNotificationOnPauseOnly = pigeonVar_list[10] as Boolean?
       val actions = pigeonVar_list[11] as List<String?>?
-      return TlForegroundServiceConfig(enabled, channelId, channelName, notificationTitle, notificationText, notificationColor, notificationSmallIcon, notificationLargeIcon, notificationPriority, notificationOngoing, showNotificationOnPauseOnly, actions)
+      val notificationStartedAt = pigeonVar_list[12] as Long?
+      val notificationShowTimer = pigeonVar_list[13] as Boolean?
+      val notificationOnlyAlertOnce = pigeonVar_list[14] as Boolean?
+      return TlForegroundServiceConfig(enabled, channelId, channelName, notificationTitle, notificationText, notificationColor, notificationSmallIcon, notificationLargeIcon, notificationPriority, notificationOngoing, showNotificationOnPauseOnly, actions, notificationStartedAt, notificationShowTimer, notificationOnlyAlertOnce)
     }
   }
   fun toList(): List<Any?> {
@@ -731,6 +740,9 @@ data class TlForegroundServiceConfig (
       notificationOngoing,
       showNotificationOnPauseOnly,
       actions,
+      notificationStartedAt,
+      notificationShowTimer,
+      notificationOnlyAlertOnce,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -741,7 +753,7 @@ data class TlForegroundServiceConfig (
       return true
     }
     val other = other as TlForegroundServiceConfig
-    return TraceletApiPigeonUtils.deepEquals(this.enabled, other.enabled) && TraceletApiPigeonUtils.deepEquals(this.channelId, other.channelId) && TraceletApiPigeonUtils.deepEquals(this.channelName, other.channelName) && TraceletApiPigeonUtils.deepEquals(this.notificationTitle, other.notificationTitle) && TraceletApiPigeonUtils.deepEquals(this.notificationText, other.notificationText) && TraceletApiPigeonUtils.deepEquals(this.notificationColor, other.notificationColor) && TraceletApiPigeonUtils.deepEquals(this.notificationSmallIcon, other.notificationSmallIcon) && TraceletApiPigeonUtils.deepEquals(this.notificationLargeIcon, other.notificationLargeIcon) && TraceletApiPigeonUtils.deepEquals(this.notificationPriority, other.notificationPriority) && TraceletApiPigeonUtils.deepEquals(this.notificationOngoing, other.notificationOngoing) && TraceletApiPigeonUtils.deepEquals(this.showNotificationOnPauseOnly, other.showNotificationOnPauseOnly) && TraceletApiPigeonUtils.deepEquals(this.actions, other.actions)
+    return TraceletApiPigeonUtils.deepEquals(this.enabled, other.enabled) && TraceletApiPigeonUtils.deepEquals(this.channelId, other.channelId) && TraceletApiPigeonUtils.deepEquals(this.channelName, other.channelName) && TraceletApiPigeonUtils.deepEquals(this.notificationTitle, other.notificationTitle) && TraceletApiPigeonUtils.deepEquals(this.notificationText, other.notificationText) && TraceletApiPigeonUtils.deepEquals(this.notificationColor, other.notificationColor) && TraceletApiPigeonUtils.deepEquals(this.notificationSmallIcon, other.notificationSmallIcon) && TraceletApiPigeonUtils.deepEquals(this.notificationLargeIcon, other.notificationLargeIcon) && TraceletApiPigeonUtils.deepEquals(this.notificationPriority, other.notificationPriority) && TraceletApiPigeonUtils.deepEquals(this.notificationOngoing, other.notificationOngoing) && TraceletApiPigeonUtils.deepEquals(this.showNotificationOnPauseOnly, other.showNotificationOnPauseOnly) && TraceletApiPigeonUtils.deepEquals(this.actions, other.actions) && TraceletApiPigeonUtils.deepEquals(this.notificationStartedAt, other.notificationStartedAt) && TraceletApiPigeonUtils.deepEquals(this.notificationShowTimer, other.notificationShowTimer) && TraceletApiPigeonUtils.deepEquals(this.notificationOnlyAlertOnce, other.notificationOnlyAlertOnce)
   }
 
   override fun hashCode(): Int {
@@ -758,6 +770,9 @@ data class TlForegroundServiceConfig (
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.notificationOngoing)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.showNotificationOnPauseOnly)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.actions)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.notificationStartedAt)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.notificationShowTimer)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.notificationOnlyAlertOnce)
     return result
   }
 }
@@ -839,20 +854,28 @@ data class TlAndroidConfig (
 /** Generated class from Pigeon that represents data sent in messages. */
 data class TlLiveActivityConfig (
   val title: String? = null,
-  val body: String? = null
+  val body: String? = null,
+  /** Epoch milliseconds for the optional wall-clock count-up timer. */
+  val startedAt: Long? = null,
+  /** Whether to show the count-up timer when [startedAt] exists. */
+  val showTimer: Boolean? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): TlLiveActivityConfig {
       val title = pigeonVar_list[0] as String?
       val body = pigeonVar_list[1] as String?
-      return TlLiveActivityConfig(title, body)
+      val startedAt = pigeonVar_list[2] as Long?
+      val showTimer = pigeonVar_list[3] as Boolean?
+      return TlLiveActivityConfig(title, body, startedAt, showTimer)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
       title,
       body,
+      startedAt,
+      showTimer,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -863,13 +886,15 @@ data class TlLiveActivityConfig (
       return true
     }
     val other = other as TlLiveActivityConfig
-    return TraceletApiPigeonUtils.deepEquals(this.title, other.title) && TraceletApiPigeonUtils.deepEquals(this.body, other.body)
+    return TraceletApiPigeonUtils.deepEquals(this.title, other.title) && TraceletApiPigeonUtils.deepEquals(this.body, other.body) && TraceletApiPigeonUtils.deepEquals(this.startedAt, other.startedAt) && TraceletApiPigeonUtils.deepEquals(this.showTimer, other.showTimer)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.title)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.body)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.startedAt)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.showTimer)
     return result
   }
 }
@@ -2933,11 +2958,6 @@ data class TlLogEntry (
 /**
  * Location-filter thresholds applied by transport-mode auto-tuning (#301).
  *
- * Declared last on purpose: pigeon assigns codec type IDs by declaration
- * order, so inserting a class higher up would renumber every type after it
- * and break any app that resolves a plugin and the platform interface at
- * different versions.
- *
  * Generated class from Pigeon that represents data sent in messages.
  */
 data class TlLocationTuning (
@@ -2985,6 +3005,66 @@ data class TlLocationTuning (
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.trackingAccuracyThreshold)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.odometerAccuracyThreshold)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.maxImpliedSpeed)
+    return result
+  }
+}
+
+/**
+ * A targeted notification update for `setNotification()`.
+ *
+ * Every field is nullable; null means "leave the persisted value alone".
+ * Deliberately NOT a TlConfig: this payload can never carry http.url or
+ * headers, so a notification refresh cannot clobber sync settings.
+ *
+ * Declared last to preserve all existing Pigeon codec type IDs.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class TlNotificationUpdate (
+  /** The replacement notification or Live Activity title. */
+  val title: String? = null,
+  /** The replacement notification text or Live Activity body. */
+  val text: String? = null,
+  /** Epoch milliseconds for the optional wall-clock count-up timer. */
+  val startedAt: Long? = null,
+  /** Whether to show the count-up timer when a start instant exists. */
+  val showTimer: Boolean? = null
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): TlNotificationUpdate {
+      val title = pigeonVar_list[0] as String?
+      val text = pigeonVar_list[1] as String?
+      val startedAt = pigeonVar_list[2] as Long?
+      val showTimer = pigeonVar_list[3] as Boolean?
+      return TlNotificationUpdate(title, text, startedAt, showTimer)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      title,
+      text,
+      startedAt,
+      showTimer,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as TlNotificationUpdate
+    return TraceletApiPigeonUtils.deepEquals(this.title, other.title) && TraceletApiPigeonUtils.deepEquals(this.text, other.text) && TraceletApiPigeonUtils.deepEquals(this.startedAt, other.startedAt) && TraceletApiPigeonUtils.deepEquals(this.showTimer, other.showTimer)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.title)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.text)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.startedAt)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.showTimer)
     return result
   }
 }
@@ -3306,6 +3386,11 @@ private open class TraceletApiPigeonCodec : StandardMessageCodec() {
           TlLocationTuning.fromList(it)
         }
       }
+      192.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          TlNotificationUpdate.fromList(it)
+        }
+      }
       else -> super.readValueOfType(type, buffer)
     }
   }
@@ -3563,6 +3648,10 @@ private open class TraceletApiPigeonCodec : StandardMessageCodec() {
         stream.write(191)
         writeValue(stream, value.toList())
       }
+      is TlNotificationUpdate -> {
+        stream.write(192)
+        writeValue(stream, value.toList())
+      }
       else -> super.writeValue(stream, value)
     }
   }
@@ -3592,6 +3681,12 @@ interface TraceletHostApi {
    * - Web: no-op.
    */
   fun updateNotification(callback: (Result<Unit>) -> Unit)
+  /**
+   * Applies a targeted update to the tracking indicator's content and
+   * reposts it, merging only the supplied fields into the persisted
+   * configuration. Never touches any other config section.
+   */
+  fun setNotification(update: TlNotificationUpdate, callback: (Result<Unit>) -> Unit)
   fun getCurrentPosition(options: TlCurrentPositionOptions, callback: (Result<TlLocation>) -> Unit)
   fun getLastKnownLocation(options: TlCurrentPositionOptions?, callback: (Result<TlLocation?>) -> Unit)
   fun watchPosition(options: TlCurrentPositionOptions, callback: (Result<Long>) -> Unit)
@@ -3878,6 +3973,25 @@ interface TraceletHostApi {
         if (api != null) {
           channel.setMessageHandler { _, reply ->
             api.updateNotification{ result: Result<Unit> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(TraceletApiPigeonUtils.wrapError(error))
+              } else {
+                reply.reply(TraceletApiPigeonUtils.wrapResult(null))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.setNotification$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val updateArg = args[0] as TlNotificationUpdate
+            api.setNotification(updateArg) { result: Result<Unit> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(TraceletApiPigeonUtils.wrapError(error))

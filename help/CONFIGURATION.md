@@ -262,6 +262,9 @@ Nested under `AndroidConfig.foregroundService`. Controls the user-facing foregro
 | `notificationColor` | `String?` | `null` | Notification accent color hex string (e.g. `'#4CAF50'`). |
 | `notificationSmallIcon` | `String?` | `null` | Custom resource name for the notification's small icon. |
 | `notificationLargeIcon` | `String?` | `null` | Custom resource name for the notification's large icon. |
+| `notificationStartedAt` | `int?` | `null` | Epoch milliseconds (wall clock) from which the notification counts up. Used only when `notificationShowTimer` is true; future values are clamped to the current time when posted. |
+| `notificationShowTimer` | `bool` | `false` | Show a count-up chronometer from `notificationStartedAt`. No timer is shown without a start value. Android advances it without notification reposts. |
+| `notificationOnlyAlertOnce` | `bool` | `false` | Alert with sound or vibration only on the first notification post, so later content updates are silent. Android only; not applicable to iOS Live Activities. |
 | `notificationPriority` | `NotificationPriority` | `defaultPriority` | Priority level: `min`, `low`, `defaultPriority`, `high`, or `max`. |
 | `notificationOngoing` | `bool` | `true` | When true, the notification cannot be cleared by swiping. |
 | `actions` | `List<String>` | `[]` | Custom action buttons to display inside the notification. |
@@ -281,6 +284,38 @@ iOS-specific configurations. Ignored on Android and Web.
 | `locationAuthorizationRequest` | `LocationAuthorizationRequest` | `always` | Authorization level to request: `always` or `whenInUse`. |
 | `disableLocationAuthorizationAlert` | `bool` | `false` | Suppress the automatic dialog warning when required permissions are missing. |
 | `preventSuspend` | `bool` | `false` | Play an extremely quiet silent audio clip in the background to prevent iOS from suspending the process. |
+| `liveActivityConfig` | `LiveActivityConfig?` | `null` | Opt in to an iOS 17+ Live Activity for the tracking indicator. Requires a Widget Extension. |
+
+### LiveActivityConfig
+
+Nested under `IosConfig.liveActivityConfig`. When absent, Tracelet does not create a Live Activity.
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `title` | `String` | required | Static Live Activity title. A change applies when the next activity starts because ActivityKit attributes are immutable while it is running. |
+| `body` | `String` | required | Dynamic status text shown by the Live Activity. |
+| `startedAt` | `int?` | `null` | Epoch milliseconds (wall clock) from which the Live Activity counts up. Used only when `showTimer` is true; future values are clamped when rendered. |
+| `showTimer` | `bool` | `false` | Show a count-up timer from `startedAt`. No timer is shown without a start value, and iOS advances it without SDK updates. |
+
+The bundled `TraceletLiveActivityView` renders the timer automatically. A custom Widget Extension can opt in using `context.state.startedAt` and `context.state.showTimer`; the SDK does not push periodic updates because `Text(timerInterval:countsDown:)` advances on its own.
+
+### Updating the tracking indicator
+
+Use `Tracelet.setNotification` to update only notification or Live Activity content:
+
+```dart
+await Tracelet.setNotification(
+  text: 'Delivery in progress',
+  startedAt: shiftStartedAt.millisecondsSinceEpoch,
+  showTimer: true,
+);
+```
+
+Only non-null arguments are merged into the persisted indicator configuration. This is safer than using `setConfig` for frequent content updates: the targeted payload cannot carry `http.url`, headers, or other unrelated settings that could be overwritten accidentally. An all-null call is a no-op.
+
+On Android, the foreground-service notification is reposted if the service is running; otherwise the values are persisted for its next post. On iOS, the call updates an already configured Live Activity and is a logged no-op when `liveActivityConfig` is absent. On Web it is a no-op. `showTimer: false` disables a stored timer; `startedAt` cannot be cleared through this nullable update API and remains inert while the timer is off.
+
+`Tracelet.updateNotification()` remains available when configuration was changed separately and the current indicator only needs to be reposted. Neither API needs periodic calls to advance the timer.
 
 ---
 

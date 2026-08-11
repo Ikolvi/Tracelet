@@ -59,6 +59,9 @@ void main() {
       expect(fg.notificationPriority, NotificationPriority.defaultPriority);
       expect(fg.notificationOngoing, isTrue);
       expect(fg.showNotificationOnPauseOnly, isFalse);
+      expect(fg.notificationStartedAt, isNull);
+      expect(fg.notificationShowTimer, isFalse);
+      expect(fg.notificationOnlyAlertOnce, isFalse);
       expect(fg.actions, isEmpty);
     });
   });
@@ -84,6 +87,20 @@ void main() {
         'actions': <String>[],
       });
     });
+
+    test('explicit timer and alert-once false values are sent', () {
+      final map = const ForegroundServiceConfig(
+        notificationStartedAt: 4294967296,
+        notificationShowTimer: false,
+        notificationOnlyAlertOnce: false,
+      ).toMap();
+
+      expect(map, {
+        'notificationStartedAt': 4294967296,
+        'notificationShowTimer': false,
+        'notificationOnlyAlertOnce': false,
+      });
+    });
   });
 
   group('#320 unset-ness survives round-tripping', () {
@@ -107,6 +124,20 @@ void main() {
       final restored = ForegroundServiceConfig.fromMap(original.toMap());
 
       expect(restored.toMap(), {'showNotificationOnPauseOnly': false});
+    });
+
+    test('timer suppliedness survives the round trip', () {
+      const original = ForegroundServiceConfig(
+        notificationStartedAt: 4294967296,
+        notificationShowTimer: false,
+        notificationOnlyAlertOnce: false,
+      );
+
+      final restored = ForegroundServiceConfig.fromMap(original.toMap());
+
+      expect(restored.toMap(), original.toMap());
+      expect(restored, original);
+      expect(restored.hasExplicitValues, isTrue);
     });
 
     test('copyWith does not resolve untouched fields to their defaults', () {
@@ -154,6 +185,29 @@ void main() {
         ),
       );
     });
+
+    test('timer unset is not equal to explicit false', () {
+      const unset = ForegroundServiceConfig();
+      const explicit = ForegroundServiceConfig(notificationShowTimer: false);
+
+      expect(unset.notificationShowTimer, explicit.notificationShowTimer);
+      expect(unset, isNot(explicit));
+      expect(unset.hashCode, isNot(explicit.hashCode));
+    });
+
+    test('alert-once unset is not equal to explicit false', () {
+      const unset = ForegroundServiceConfig();
+      const explicit = ForegroundServiceConfig(
+        notificationOnlyAlertOnce: false,
+      );
+
+      expect(
+        unset.notificationOnlyAlertOnce,
+        explicit.notificationOnlyAlertOnce,
+      );
+      expect(unset, isNot(explicit));
+      expect(unset.hashCode, isNot(explicit.hashCode));
+    });
   });
 
   group('#320 mergedWith keeps the Dart mirror aligned with the platform', () {
@@ -197,6 +251,53 @@ void main() {
       expect(merged.notificationTitle, '📍 Tracking');
     });
 
+    test('timer values merge independently and later values win', () {
+      const configured = ForegroundServiceConfig(
+        notificationStartedAt: 1234,
+        notificationShowTimer: true,
+      );
+
+      expect(
+        configured.mergedWith(const ForegroundServiceConfig()).toMap(),
+        configured.toMap(),
+      );
+
+      final disabled = configured.mergedWith(
+        const ForegroundServiceConfig(notificationShowTimer: false),
+      );
+      expect(disabled.notificationStartedAt, 1234);
+      expect(disabled.notificationShowTimer, isFalse);
+      expect(disabled.toMap()['notificationShowTimer'], isFalse);
+
+      final replaced = disabled.mergedWith(
+        const ForegroundServiceConfig(notificationStartedAt: 5678),
+      );
+      expect(replaced.notificationStartedAt, 5678);
+      expect(replaced.notificationShowTimer, isFalse);
+    });
+
+    test('alert-once explicit false overrides true', () {
+      const configured = ForegroundServiceConfig(
+        notificationOnlyAlertOnce: true,
+      );
+
+      final disabled = configured.mergedWith(
+        const ForegroundServiceConfig(notificationOnlyAlertOnce: false),
+      );
+
+      expect(disabled.notificationOnlyAlertOnce, isFalse);
+      expect(disabled.toMap()['notificationOnlyAlertOnce'], isFalse);
+    });
+
+    test('a start instant alone counts as an explicit value', () {
+      expect(
+        const ForegroundServiceConfig(
+          notificationStartedAt: 1234,
+        ).hasExplicitValues,
+        isTrue,
+      );
+    });
+
     test('merging onto an unconfigured base keeps the payload minimal', () {
       // After a process restart the mirror is empty while the platform still
       // holds the persisted values; the merge must not invent defaults.
@@ -217,17 +318,26 @@ void main() {
       expect(tl.notificationTitle, isNull);
       expect(tl.notificationPriority, isNull);
       expect(tl.showNotificationOnPauseOnly, isNull);
+      expect(tl.notificationStartedAt, isNull);
+      expect(tl.notificationShowTimer, isNull);
+      expect(tl.notificationOnlyAlertOnce, isNull);
       expect(tl.actions, isNull);
     });
 
     test('supplied fields cross the channel with their value', () {
       final tl = const ForegroundServiceConfig(
         showNotificationOnPauseOnly: true,
+        notificationStartedAt: 4294967296,
+        notificationShowTimer: false,
+        notificationOnlyAlertOnce: false,
         notificationPriority: NotificationPriority.high,
       ).toTlConfig();
 
       expect(tl.showNotificationOnPauseOnly, isTrue);
       expect(tl.notificationPriority, isNotNull);
+      expect(tl.notificationStartedAt, 4294967296);
+      expect(tl.notificationShowTimer, isFalse);
+      expect(tl.notificationOnlyAlertOnce, isFalse);
       expect(tl.enabled, isNull);
     });
   });

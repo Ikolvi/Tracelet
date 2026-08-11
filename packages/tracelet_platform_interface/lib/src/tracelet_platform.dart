@@ -97,6 +97,11 @@ abstract class TraceletPlatform extends PlatformInterface {
     throw UnimplementedError('updateNotification() has not been implemented.');
   }
 
+  /// Applies a targeted tracking-indicator update and reposts it.
+  Future<void> setNotification(TlNotificationUpdate update) {
+    throw UnimplementedError('setNotification() has not been implemented.');
+  }
+
   // ---------------------------------------------------------------------------
   // Location
   // ---------------------------------------------------------------------------

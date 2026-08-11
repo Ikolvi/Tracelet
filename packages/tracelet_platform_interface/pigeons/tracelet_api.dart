@@ -180,6 +180,9 @@ class TlForegroundServiceConfig {
     this.notificationColor,
     this.notificationSmallIcon,
     this.notificationLargeIcon,
+    this.notificationStartedAt,
+    this.notificationShowTimer,
+    this.notificationOnlyAlertOnce,
   });
 
   final bool? enabled;
@@ -194,6 +197,15 @@ class TlForegroundServiceConfig {
   final bool? notificationOngoing;
   final bool? showNotificationOnPauseOnly;
   final List<String?>? actions;
+
+  /// Epoch milliseconds for the optional wall-clock count-up timer.
+  final int? notificationStartedAt;
+
+  /// Whether to show the count-up timer when [notificationStartedAt] exists.
+  final bool? notificationShowTimer;
+
+  /// Whether notification reposts should alert only on the first post.
+  final bool? notificationOnlyAlertOnce;
 }
 
 class TlAndroidConfig {
@@ -226,9 +238,15 @@ class TlAndroidConfig {
 }
 
 class TlLiveActivityConfig {
-  TlLiveActivityConfig({this.title, this.body});
+  TlLiveActivityConfig({this.title, this.body, this.startedAt, this.showTimer});
   final String? title;
   final String? body;
+
+  /// Epoch milliseconds for the optional wall-clock count-up timer.
+  final int? startedAt;
+
+  /// Whether to show the count-up timer when [startedAt] exists.
+  final bool? showTimer;
 }
 
 class TlIosConfig {
@@ -911,6 +929,12 @@ abstract class TraceletHostApi {
   @async
   void updateNotification();
 
+  /// Applies a targeted update to the tracking indicator's content and
+  /// reposts it, merging only the supplied fields into the persisted
+  /// configuration. Never touches any other config section.
+  @async
+  void setNotification(TlNotificationUpdate update);
+
   @async
   TlLocation getCurrentPosition(TlCurrentPositionOptions options);
 
@@ -1231,11 +1255,6 @@ class TlLogEntry {
 }
 
 /// Location-filter thresholds applied by transport-mode auto-tuning (#301).
-///
-/// Declared last on purpose: pigeon assigns codec type IDs by declaration
-/// order, so inserting a class higher up would renumber every type after it
-/// and break any app that resolves a plugin and the platform interface at
-/// different versions.
 class TlLocationTuning {
   TlLocationTuning({
     required this.distanceFilter,
@@ -1255,6 +1274,30 @@ class TlLocationTuning {
 
   /// Fixes implying a speed above this (m/s) are rejected.
   final int maxImpliedSpeed;
+}
+
+/// A targeted notification update for `setNotification()`.
+///
+/// Every field is nullable; null means "leave the persisted value alone".
+/// Deliberately NOT a TlConfig: this payload can never carry http.url or
+/// headers, so a notification refresh cannot clobber sync settings.
+///
+/// Declared last to preserve all existing Pigeon codec type IDs.
+class TlNotificationUpdate {
+  /// Creates a targeted notification update from only the supplied fields.
+  TlNotificationUpdate({this.title, this.text, this.startedAt, this.showTimer});
+
+  /// The replacement notification or Live Activity title.
+  final String? title;
+
+  /// The replacement notification text or Live Activity body.
+  final String? text;
+
+  /// Epoch milliseconds for the optional wall-clock count-up timer.
+  final int? startedAt;
+
+  /// Whether to show the count-up timer when a start instant exists.
+  final bool? showTimer;
 }
 
 // =============================================================================
