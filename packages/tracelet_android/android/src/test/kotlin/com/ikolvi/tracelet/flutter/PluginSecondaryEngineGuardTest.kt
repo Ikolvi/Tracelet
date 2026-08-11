@@ -14,6 +14,7 @@ import org.mockito.kotlin.any
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 
 /**
  * Tests that the primary-instance guard in [TraceletAndroidPlugin] prevents
@@ -90,6 +91,57 @@ internal class PluginSecondaryEngineGuardTest {
 
         verify(mockSdk).setEventSender(any())
         verify(mockSdk).initialize()
+    }
+
+    /**
+     * #358: a headless background engine must not join the event fan-out.
+     *
+     * `EventDispatcher` decides "can a Flutter engine receive this?" by whether
+     * its Pigeon `eventApi` is non-null, and `register()` sets that for any
+     * messenger. Registering a headless engine therefore made every subsequent
+     * event take the engine branch and post into an isolate with no listener,
+     * instead of falling through to `headlessFallback` — the headless task
+     * receives events through `dispatchEvent`, a different channel. One
+     * transient headless engine (spawned for a sync body, say) silently
+     * swallowed every geofence crossing for the rest of the process.
+     */
+    @Test
+    fun headlessSecondaryEngine_doesNotJoinTheEventFanOut() {
+        val primaryPlugin = TraceletAndroidPlugin()
+        primaryPlugin.onAttachedToEngine(createMockBinding("primary"))
+        val afterPrimary = globalDispatcherCount()
+
+        // A headless engine attaches on a background thread.
+        setIsMainThread(false)
+        TraceletAndroidPlugin().onAttachedToEngine(createMockBinding("headless"))
+
+        assertEquals(
+            afterPrimary,
+            globalDispatcherCount(),
+            "a headless engine must not be added to the fan-out, or it swallows " +
+                "events the headless task should have received",
+        )
+    }
+
+    /**
+     * The other half: an in-process *UI* engine (EngineGroup, e.g. an overlay)
+     * attaches on the main thread and genuinely can display events, so it must
+     * still receive them.
+     */
+    @Test
+    fun uiSecondaryEngine_joinsTheEventFanOut() {
+        val primaryPlugin = TraceletAndroidPlugin()
+        primaryPlugin.onAttachedToEngine(createMockBinding("primary"))
+        val afterPrimary = globalDispatcherCount()
+
+        setIsMainThread(true)
+        TraceletAndroidPlugin().onAttachedToEngine(createMockBinding("overlay"))
+
+        assertEquals(
+            afterPrimary + 1,
+            globalDispatcherCount(),
+            "an in-process UI engine must still receive events",
+        )
     }
 
     /**
@@ -226,10 +278,26 @@ internal class PluginSecondaryEngineGuardTest {
     }
 
     private fun restoreIsMainThread() {
-        // No longer used but kept for setup compatibility
+        val field = TraceletAndroidPlugin::class.java.getDeclaredField("isMainThread")
+        field.isAccessible = true
+        field.set(null, {
+            android.os.Looper.myLooper() == android.os.Looper.getMainLooper()
+        })
     }
 
     private fun setIsMainThread(value: Boolean) {
-        // No longer used but kept for setup compatibility
+        val field = TraceletAndroidPlugin::class.java.getDeclaredField("isMainThread")
+        field.isAccessible = true
+        field.set(null, { value })
+    }
+
+    /** Number of dispatchers currently in the global event fan-out. */
+    private fun globalDispatcherCount(): Int {
+        val senderField = TraceletAndroidPlugin::class.java.getDeclaredField("globalEventSender")
+        senderField.isAccessible = true
+        val sender = senderField.get(null)
+        val listField = sender.javaClass.getDeclaredField("dispatchers")
+        listField.isAccessible = true
+        return (listField.get(sender) as java.util.List<*>).size
     }
 }
