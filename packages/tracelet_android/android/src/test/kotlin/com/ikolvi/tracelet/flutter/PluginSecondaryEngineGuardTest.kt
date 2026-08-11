@@ -111,9 +111,15 @@ internal class PluginSecondaryEngineGuardTest {
         primaryPlugin.onAttachedToEngine(createMockBinding("primary"))
         val afterPrimary = globalDispatcherCount()
 
-        // A headless engine attaches on a background thread.
-        setIsMainThread(false)
-        TraceletAndroidPlugin().onAttachedToEngine(createMockBinding("headless"))
+        // A headless engine attaches from *inside* the FlutterEngine constructor
+        // that HeadlessTaskService wraps in this flag — on the main thread, which
+        // is why a thread check misidentified it as a UI engine on a real device.
+        setSpawningHeadlessEngine(true)
+        try {
+            TraceletAndroidPlugin().onAttachedToEngine(createMockBinding("headless"))
+        } finally {
+            setSpawningHeadlessEngine(false)
+        }
 
         assertEquals(
             afterPrimary,
@@ -134,7 +140,7 @@ internal class PluginSecondaryEngineGuardTest {
         primaryPlugin.onAttachedToEngine(createMockBinding("primary"))
         val afterPrimary = globalDispatcherCount()
 
-        setIsMainThread(true)
+        // No headless spawn in flight — an EngineGroup/overlay engine.
         TraceletAndroidPlugin().onAttachedToEngine(createMockBinding("overlay"))
 
         assertEquals(
@@ -289,6 +295,15 @@ internal class PluginSecondaryEngineGuardTest {
         val field = TraceletAndroidPlugin::class.java.getDeclaredField("isMainThread")
         field.isAccessible = true
         field.set(null, { value })
+    }
+
+    private fun setSpawningHeadlessEngine(value: Boolean) {
+        val cls = Class.forName(
+            "com.ikolvi.tracelet.flutter.service.HeadlessTaskService",
+        )
+        val field = cls.getDeclaredField("isSpawningHeadlessEngine")
+        field.isAccessible = true
+        field.setBoolean(null, value)
     }
 
     /** Number of dispatchers currently in the global event fan-out. */

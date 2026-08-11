@@ -179,10 +179,17 @@ class TraceletAndroidPlugin :
         } else {
             // Secondary engine — either an in-process UI engine (EngineGroup,
             // e.g. flutter_overlay_window) or a headless background isolate.
-            // The two must be handled differently, and the attach thread tells
-            // them apart: a UI engine attaches on the main looper, a headless
-            // one on a background thread. Same heuristic requestSyncBody uses.
-            val isUiEngine = isMainThread()
+            // The two must be handled differently (see below).
+            //
+            // The attach *thread* cannot tell them apart, though it looks like it
+            // can: Flutter requires FlutterEngine to be constructed on the main
+            // looper, so a headless spawn attaches from the main thread too and a
+            // thread check calls it a UI engine. (requestSyncBody's isMainThread()
+            // check is sound — it runs on a background sync thread, a different
+            // situation.) What is exact is the flag HeadlessTaskService already
+            // sets around the FlutterEngine constructor, which is precisely the
+            // call that triggers this attach (#358).
+            val isUiEngine = !HeadlessTaskService.isSpawningHeadlessEngine
             // On the always-on lifecycle channel (#318), not DEBUG: this decides
             // which component delivers every subsequent event, it is taken in the
             // killed state, and when it goes wrong the only symptom is silence —
