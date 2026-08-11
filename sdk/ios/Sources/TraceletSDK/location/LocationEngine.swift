@@ -95,9 +95,19 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// kCLDistanceFilterNone` so a stationary/backgrounded device is still
     /// delivered fixes for `onRawGeofenceLocation` to evaluate. The persistence
     /// distance filter (the Rust `LocationProcessor`) is unchanged, so this does
-    /// not increase stored/synced location volume. Set by the plugin around
-    /// startGeofences() when geofenceModeHighAccuracy is on.
-    public var geofenceHighAccuracyMode: Bool = false
+    /// not increase stored/synced location volume. Set from
+    /// `hasEvaluatorOwnedGeofences()` — high-accuracy mode, a polygon, or a
+    /// sub-100 m circle — not from `geofenceModeHighAccuracy` alone.
+    ///
+    /// Applied live: the fence set is mutable while tracking, so a fence added
+    /// mid-session must drop the OS distance filter immediately rather than at
+    /// the next `start()` — which, in continuous mode, never comes (#357).
+    public var geofenceHighAccuracyMode: Bool = false {
+        didSet {
+            guard geofenceHighAccuracyMode != oldValue, isTracking else { return }
+            applyLocationProviderOptions()
+        }
+    }
 
     /// Optional callback invoked after a location is persisted to the database.
     /// Used by the plugin to trigger HTTP auto-sync.
@@ -432,7 +442,16 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         // the killed-state entry point for Always-only enforcement).
         locationManager.startMonitoringSignificantLocationChanges()
 
-        let isLowPowerGeofences = stateManager.trackingMode == .geofences && !configManager.getGeofenceModeHighAccuracy()
+        // `geofenceHighAccuracyMode` and not just the config flag: a polygon or a
+        // sub-100 m circle is evaluated in-app however that flag is set, and
+        // in-app evaluation is exactly what the continuous stream feeds. Keying
+        // this on the flag alone meant `startGeofences()` took its
+        // needs-in-app-evaluation branch, called start(), and still got no
+        // `startUpdatingLocation()` — so at default settings a small fence in
+        // `geofences` mode could never fire (#357).
+        let isLowPowerGeofences = stateManager.trackingMode == .geofences
+            && !configManager.getGeofenceModeHighAccuracy()
+            && !geofenceHighAccuracyMode
         let skipContinuousGps = configManager.getUseSignificantChangesOnly() || isLowPowerGeofences
 
         if !skipContinuousGps {

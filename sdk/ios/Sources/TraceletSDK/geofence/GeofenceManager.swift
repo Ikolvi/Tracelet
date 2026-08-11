@@ -22,7 +22,22 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     /// stream. Hosts wire this to resume continuous tracking, so a relaunch that
     /// came up in a low-power posture still evaluates the true radius.
     public var onEvaluatorWakeup: (() -> Void)?
-    
+
+    /// Invoked whenever the stored fence set changes, because that is when the
+    /// answer to `hasEvaluatorOwnedGeofences()` can change (#357).
+    ///
+    /// A fence the evaluator owns is decided from the raw fix stream, so who
+    /// owns the current fences dictates the cadence CoreLocation is asked for.
+    /// The host answers that question at `start()`, but the fence set is
+    /// mutable for the rest of the session: a 10 m fence added afterwards left
+    /// the OS distance filter in force and the evaluator saw one fix per
+    /// `distanceFilter` metres travelled — too few to ever confirm an EXIT.
+    /// Hosts wire this to re-apply the cadence.
+    ///
+    /// Fired from the manager rather than the SDK facade so the internal
+    /// removals (KnockOut mode) are covered too.
+    public var onEvaluatorOwnershipChanged: (() -> Void)?
+
     private let isoFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -227,6 +242,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         }
 
         cachedGeofences = nil
+        onEvaluatorOwnershipChanged?()
 
         // Polygon geofences are evaluated in Dart — no system registration needed
         let vertices = data["vertices"] as? [[Double]]
@@ -280,6 +296,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         }
 
         cachedGeofences = nil
+        onEvaluatorOwnershipChanged?()
 
         // Re-evaluate proximity for all geofences at once
         if let lat = lastLatitude, let lng = lastLongitude {
@@ -306,6 +323,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         }
 
         cachedGeofences = nil
+        onEvaluatorOwnershipChanged?()
 
         // Forget any inside-state for this fence so a later re-add — or an id
         // reused for a different location — starts clean instead of having its
@@ -330,6 +348,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         }
 
         cachedGeofences = nil
+        onEvaluatorOwnershipChanged?()
         // No fences means the device is inside nothing — forget all inside-state
         // so a subsequent add/enter is reported cleanly (#292).
         if !knownInsideIds.isEmpty {

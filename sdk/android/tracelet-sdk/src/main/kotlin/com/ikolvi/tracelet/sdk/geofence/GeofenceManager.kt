@@ -68,6 +68,23 @@ class GeofenceManager(
      * Hosts wire this to resume continuous tracking.
      */
     var onEvaluatorWakeup: (() -> Unit)? = null
+
+    /**
+     * Invoked whenever the stored fence set changes, because that is when the
+     * answer to [hasEvaluatorOwnedGeofences] can change (#357).
+     *
+     * A fence the evaluator owns is decided from the raw fix stream, so who owns
+     * the current fences dictates the cadence the provider is requested with.
+     * The host answers that question at `start()`, but the fence set is mutable
+     * for the rest of the session: a 10 m fence added afterwards left
+     * `minUpdateDistanceMeters` at the configured distance filter and the
+     * evaluator saw one fix per that many metres travelled — too few to ever
+     * confirm an EXIT.
+     *
+     * Fired from the manager rather than the SDK facade so the internal removals
+     * (KnockOut mode) are covered too.
+     */
+    var onEvaluatorOwnershipChanged: (() -> Unit)? = null
     companion object {
         private const val TAG = "GeofenceManager"
         const val ACTION_GEOFENCE_EVENT = "com.tracelet.ACTION_GEOFENCE_EVENT"
@@ -471,6 +488,7 @@ class GeofenceManager(
         }
         
         invalidateGeofenceCache()
+        onEvaluatorOwnershipChanged?.invoke()
 
         // Polygon geofences are evaluated in Dart — no system registration needed
         val vertices = geofenceMap["vertices"]
@@ -507,6 +525,7 @@ class GeofenceManager(
             TraceletLog.error("Failed to delete geofence from Rust DB", e)
         }
         invalidateGeofenceCache()
+        onEvaluatorOwnershipChanged?.invoke()
         // Forget any inside-state for this fence so a later re-add — or an id
         // reused for a different location — starts clean instead of having its
         // ENTER suppressed by stale persisted state (#292).
@@ -523,6 +542,7 @@ class GeofenceManager(
             TraceletLog.error("Failed to clear geofences from Rust DB", e)
         }
         invalidateGeofenceCache()
+        onEvaluatorOwnershipChanged?.invoke()
         // No fences means the device is inside nothing — forget all inside-state
         // so a subsequent add/enter is reported cleanly (#292).
         if (knownInsideIds.isNotEmpty()) {

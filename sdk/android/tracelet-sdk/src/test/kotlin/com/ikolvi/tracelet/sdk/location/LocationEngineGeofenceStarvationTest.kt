@@ -127,6 +127,71 @@ class LocationEngineGeofenceStarvationTest {
         )
     }
 
+    /**
+     * Regression for #357 — the fence set is mutable after `start()`.
+     *
+     * `start()` then `addGeofence(radius = 10f)` is the ordinary order, and the
+     * flag was only ever computed at start: the request kept
+     * `minUpdateDistanceMeters` at the configured filter for the whole session,
+     * so the evaluator saw one fix per that many metres travelled. A device can
+     * cross a 10 m fence's exit band and be back inside between two deliveries,
+     * and EXIT needs two *consecutive* fixes beyond it.
+     */
+    @Test
+    fun `a fence added after start drops the distance gate live`() {
+        engine.start()
+        assertEquals(
+            "precondition: no fences, so the configured filter gates the request",
+            10f,
+            client.lastRequest!!.minUpdateDistanceMeters,
+        )
+
+        engine.geofenceHighAccuracyMode = true
+
+        assertEquals(
+            "a fence the evaluator owns, added mid-session, must drop the distance " +
+                "gate without waiting for a restart",
+            0f,
+            client.lastRequest!!.minUpdateDistanceMeters,
+        )
+        assertEquals(
+            "the live update must replace the request in place, not tear tracking down",
+            true,
+            engine.isTracking,
+        )
+    }
+
+    @Test
+    fun `removing the last evaluator-owned fence restores the configured gate`() {
+        engine.geofenceHighAccuracyMode = true
+        engine.start()
+        assertEquals(0f, client.lastRequest!!.minUpdateDistanceMeters)
+
+        engine.geofenceHighAccuracyMode = false
+
+        assertEquals(
+            "with no evaluator-owned fence left, the configured filter must come " +
+                "back rather than leaking time-based delivery for the whole session",
+            10f,
+            client.lastRequest!!.minUpdateDistanceMeters,
+        )
+    }
+
+    @Test
+    fun `setting the same cadence twice does not re-issue the request`() {
+        engine.geofenceHighAccuracyMode = true
+        engine.start()
+        val requestsAfterStart = client.requestCount
+
+        engine.geofenceHighAccuracyMode = true
+
+        assertEquals(
+            "an unchanged fence set must not churn the fused subscription",
+            requestsAfterStart,
+            client.requestCount,
+        )
+    }
+
     @Test
     fun `crossings evaluate on every raw fix even when persistence rejects the duplicate`() {
         var rawEvaluations = 0
@@ -212,6 +277,7 @@ class LocationEngineGeofenceStarvationTest {
 private class CapturingLocationClient : TraceletLocationClient {
     var lastRequest: TraceletLocationRequest? = null
     var lastCallback: TraceletLocationCallback? = null
+    var requestCount = 0
 
     override fun requestLocationUpdates(
         request: TraceletLocationRequest,
@@ -220,6 +286,7 @@ private class CapturingLocationClient : TraceletLocationClient {
     ) {
         lastRequest = request
         lastCallback = callback
+        requestCount++
     }
 
     override fun removeLocationUpdates(callback: TraceletLocationCallback) {}

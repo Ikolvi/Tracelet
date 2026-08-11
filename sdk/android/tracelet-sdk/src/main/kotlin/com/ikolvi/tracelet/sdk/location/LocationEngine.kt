@@ -420,9 +420,20 @@ class LocationEngine(
      * delivered fixes for [onRawGeofenceLocation] to evaluate. The persistence
      * distance filter (the Rust [LocationProcessor]) is unchanged, so this does
      * not increase stored/synced location volume. Set by the plugin around
-     * startGeofences() when geofenceModeHighAccuracy is on.
+     * startGeofences() from `hasEvaluatorOwnedGeofences()` — high-accuracy mode,
+     * a polygon, or a sub-100 m circle — not from `geofenceModeHighAccuracy`
+     * alone, and re-applied whenever the fence set changes (#357).
      */
     var geofenceHighAccuracyMode: Boolean = false
+        set(value) {
+            val changed = field != value
+            field = value
+            // Applied live: the fence set is mutable while tracking, so a fence
+            // added mid-session must drop the distance gate immediately rather
+            // than at the next start() — which, in continuous mode, never
+            // comes (#357).
+            if (changed) reapplyProviderOptionsIfTracking()
+        }
 
     /** Optional callback invoked after a location is persisted to the database.
      *  Used by the plugin to trigger HTTP auto-sync. */
@@ -1555,6 +1566,29 @@ class LocationEngine(
             runtimeDesiredAccuracy = previousAccuracy
             runtimeDistanceFilter = previousFilter
             false
+        }
+    }
+
+    /**
+     * Re-issues the fused request from the current settings, without touching
+     * the runtime overrides [updateLocationProviderOptions] owns.
+     *
+     * Re-registering the same callback replaces the request in place, so
+     * processor state, odometer continuity and accepted-point filtering are
+     * untouched — the same mechanism [updateLocationProviderOptions] relies on.
+     * Used when [geofenceHighAccuracyMode] changes mid-session (#357).
+     */
+    private fun reapplyProviderOptionsIfTracking() {
+        if (!isTracking || isPeriodicTracking) return
+        val callback = trackingCallback ?: return
+        try {
+            fusedClient.requestLocationUpdates(
+                buildLocationRequestWithGpsFallback(), callback, Looper.getMainLooper()
+            )
+        } catch (e: SecurityException) {
+            TraceletLog.warning(
+                "Could not re-apply provider options for the geofence evaluator: ${e.message}"
+            )
         }
     }
 
