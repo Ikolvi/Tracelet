@@ -239,12 +239,44 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin, DartSyncInterceptor {
             // guarantee, and routing the log through the SDK would put a crash in
             // its way. TraceletLog falls back to NSLog until a logger is attached.
             // The Android counterpart broke its own regression test this way.
+            //
+            // #340: before falling through to the default payload, try the
+            // *headless* builder. This flag only ever reflects the foreground
+            // isolate, and a process relaunched in the background — iOS's
+            // `resume=true` session, launched by a location event with nobody
+            // driving the UI — never runs the app code that calls
+            // `setSyncBodyBuilder`, so it is false there even when the app
+            // registered `registerHeadlessSyncBodyBuilder` at startup. This
+            // branch then returned before the `primaryInstance == nil` routing
+            // below could be reached, and the device posted the SDK default
+            // while the same app on Android posted its own body. Android's
+            // engine-less process is covered by HeadlessSyncInterceptor,
+            // installed from a ContentProvider at process start; iOS has no
+            // equivalent seam, so the fallback belongs here.
+            //
+            // Guarded so the #125 promise survives: a UserDefaults read only,
+            // skipped entirely on the main thread because
+            // requestCustomSyncBody answers nil there (it would deadlock), and
+            // nil means "abort the sync" — a worse outcome than the default
+            // payload this branch exists to permit.
+            if let runner = headlessRunner, !Thread.isMainThread,
+                runner.isSyncBodyBuilderRegistered()
+            {
+                TraceletLog.debug(
+                    "requestSyncBody: no foreground builder — routing to the headless builder")
+                return runner.requestCustomSyncBody(
+                    locations,
+                    timeout: TraceletIosPlugin.dartCallbackTimeout,
+                    telematics: TraceletSdk.shared.getTelematicsForCustomBuilder(),
+                )
+            }
+
             TraceletLog.debug(
                 "requestSyncBody: no custom sync body builder registered "
                     + "(setSyncBodyBuilder never reached native) — using the default payload")
             return traceletNoSyncBodyBuilderSentinel
         }
-        
+
         if TraceletIosPlugin.primaryInstance == nil {
             // Background/killed: no foreground engine. Route to the headless
             // runner, which returns the sentinel when no headless sync-body

@@ -9,15 +9,18 @@ import com.ikolvi.tracelet.sdk.ConfigManager
 import com.ikolvi.tracelet.sdk.HeadersRefreshable
 import com.ikolvi.tracelet.sdk.HeadlessDispatcher
 import com.ikolvi.tracelet.sdk.sync.NO_SYNC_BODY_BUILDER_SENTINEL
+import com.ikolvi.tracelet.sdk.util.TraceletLog
+import io.flutter.FlutterInjector
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.dart.DartExecutor
-import io.flutter.embedding.engine.loader.FlutterLoader
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.view.FlutterCallbackInformation
+import android.os.SystemClock
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Headless Dart execution service for background events.
@@ -48,10 +51,46 @@ class HeadlessTaskService(
         private const val METHODS_CHANNEL_NAME = "com.tracelet/methods"
 
         // Context flag to protect against FlutterLoader auto-registering plugins.
-        // Used by TraceletAndroidPlugin.onAttachedToEngine to avoid hijacking the primary 
+        // Used by TraceletAndroidPlugin.onAttachedToEngine to avoid hijacking the primary
         // instance singletons (like dartSyncInterceptor) when a headless engine boots (Issue 136).
         @JvmStatic
         var isSpawningHeadlessEngine = false
+
+        /**
+         * How long a spawn may take before it is declared stalled and retried
+         * (#331). Generous: a cold engine on a loaded device legitimately takes
+         * seconds. What it must not do is wait forever in silence.
+         */
+        internal const val ENGINE_SPAWN_TIMEOUT_MS = 30_000L
+
+        /**
+         * Cap on events buffered while the engine comes up (#331). The queue was
+         * unbounded, so a spawn that never completed grew it for as long as
+         * tracking ran — every 2 s on a continuous config.
+         */
+        internal const val MAX_PENDING_EVENTS = 200
+    }
+
+    /**
+     * How far a spawn attempt got. Named in the stall log so a single bug report
+     * identifies which link broke, instead of leaving "no engine, no error"
+     * (#331).
+     */
+    internal enum class SpawnStage {
+        /** No spawn in flight. */
+        IDLE,
+
+        /** Posted to the main thread; the block has not started. */
+        POSTED,
+
+        /** FlutterLoader initialization completed. */
+        LOADER_READY,
+
+        /** The FlutterEngine object exists; Dart has not signalled back. */
+        ENGINE_CREATED,
+
+        /** Dart called `initialized` — events flow. */
+        READY,
     }
 
     enum class CallbackType(val regKey: String, val dispatchKey: String) {
@@ -60,11 +99,31 @@ class HeadlessTaskService(
         SYNC_BODY("headlessSyncBody_registrationId", "headlessSyncBody_dispatchId")
     }
 
+    @Volatile
     private var flutterEngine: FlutterEngine? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val isEngineReady = AtomicBoolean(false)
     private val pendingEvents = LinkedBlockingQueue<Map<String, Any?>>()
+    @Volatile
     private var headlessMethodChannel: MethodChannel? = null
+
+    /**
+     * One spawn at a time (#331). Events arrive from several threads at once
+     * (location, heartbeat, sync); without this each one posted its own spawn
+     * and a second FlutterEngine could overwrite [headlessMethodChannel] out
+     * from under the engine that was about to become ready.
+     */
+    private val spawnInFlight = AtomicBoolean(false)
+
+    @Volatile
+    private var spawnStage = SpawnStage.IDLE
+
+    /** [SystemClock.elapsedRealtime] when the in-flight spawn was posted. */
+    @Volatile
+    private var spawnStartedAtMs = 0L
+
+    /** Events discarded because the queue hit [MAX_PENDING_EVENTS]. */
+    private val droppedEvents = AtomicLong(0)
 
     /** Latch signaled when headless Dart callback calls setDynamicHeaders. */
     @Volatile
@@ -92,6 +151,19 @@ class HeadlessTaskService(
     }
 
     /**
+     * Whether `registerHeadlessSyncBodyBuilder` has persisted a callback pair.
+     *
+     * A SharedPreferences read and nothing else (#340): it is consulted from
+     * `requestSyncBody`'s earliest branch, which must stay cheap and must not
+     * reach into the SDK.
+     */
+    fun isSyncBodyBuilderRegistered(): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getLong(CallbackType.SYNC_BODY.regKey, -1L) != -1L &&
+            prefs.getLong(CallbackType.SYNC_BODY.dispatchKey, -1L) != -1L
+    }
+
+    /**
      * Dispatch a headless event. If no UI engine is available, creates
      * a new FlutterEngine to handle the event.
      *
@@ -114,16 +186,25 @@ class HeadlessTaskService(
             return
         }
 
-        pendingEvents.add(event)
+        enqueue(event)
         ensureEngine()
     }
 
-    /** Destroy the headless FlutterEngine. */
+    /**
+     * Destroy the headless FlutterEngine and discard anything still queued.
+     *
+     * Only for a real teardown. A *failed spawn* must not come through here —
+     * clearing the queue there threw away every event the engine was being
+     * spawned to deliver (#331); [resetSpawn] keeps them for the next attempt.
+     */
     fun destroy() {
-        headlessMethodChannel = null
-        isEngineReady.set(false)
-        flutterEngine?.destroy()
-        flutterEngine = null
+        val abandoned = pendingEvents.size
+        if (abandoned > 0) {
+            TraceletLog.warning(
+                "headless: destroy() discarding $abandoned undelivered event(s)",
+            )
+        }
+        resetSpawn()
         pendingEvents.clear()
     }
 
@@ -167,7 +248,7 @@ class HeadlessTaskService(
         if (isEngineReady.get() && headlessMethodChannel != null) {
             sendEvent(event)
         } else {
-            pendingEvents.add(event)
+            enqueue(event)
             ensureEngine()
         }
 
@@ -237,7 +318,7 @@ class HeadlessTaskService(
         if (isEngineReady.get() && headlessMethodChannel != null) {
             sendEvent(event)
         } else {
-            pendingEvents.add(event)
+            enqueue(event)
             ensureEngine()
         }
 
@@ -263,10 +344,19 @@ class HeadlessTaskService(
     // =========================================================================
 
     private fun ensureEngine() {
+        // A spawn that never finished used to leave the engine non-null (or the
+        // in-flight flag set) forever, and this method's first line then made
+        // every subsequent event a silent no-op. Give up on it and try again
+        // instead (#331).
+        failStalledSpawn()
+
         if (flutterEngine != null) return
 
+        // One spawn at a time — concurrent dispatches must not each post one.
+        if (!spawnInFlight.compareAndSet(false, true)) return
+
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        
+
         // Try main headless callback first, then fallback to headers or sync body
         var registrationCallbackId = prefs.getLong(CallbackType.MAIN.regKey, -1L)
         if (registrationCallbackId == -1L) {
@@ -277,88 +367,215 @@ class HeadlessTaskService(
         }
 
         if (registrationCallbackId == -1L) {
-            TraceletSdk.getInstance(context).logger.warning("No headless callbacks registered")
+            TraceletLog.warning(
+                "headless: no callbacks registered — dropping ${pendingEvents.size} queued event(s)",
+            )
             pendingEvents.clear()
+            spawnInFlight.set(false)
             return
         }
 
+        spawnStage = SpawnStage.POSTED
+        spawnStartedAtMs = SystemClock.elapsedRealtime()
+        // The anchor for every "headless never fired" report: it says a spawn was
+        // asked for. Its absence means routing never reached this service; its
+        // presence without a matching `engine ready` names the stall (#331).
+        TraceletLog.lifecycle(
+            "headless: spawning a FlutterEngine (${pendingEvents.size} event(s) queued)",
+        )
+
         mainHandler.post {
             try {
-                val loader = FlutterLoader()
-                loader.startInitialization(context)
-                loader.ensureInitializationComplete(context, null)
+                // The process-wide loader, not a fresh FlutterLoader(). A new one
+                // re-runs full Flutter initialization — the source of the
+                // "FlutterJNI.loadLibrary called more than once" warning — and
+                // blocks the main thread on its own init future. Once the app has
+                // started Flutter, both calls below return immediately (#331).
+                val loader = FlutterInjector.instance().flutterLoader()
+                if (!loader.initialized()) {
+                    loader.startInitialization(context)
+                    loader.ensureInitializationComplete(context, null)
+                }
+                spawnStage = SpawnStage.LOADER_READY
 
                 isSpawningHeadlessEngine = true
-                try {
-                    flutterEngine = FlutterEngine(context).also { engine ->
-                    headlessMethodChannel = MethodChannel(engine.dartExecutor.binaryMessenger, CHANNEL_NAME)
+                val engine = try {
+                    FlutterEngine(context)
+                } finally {
+                    isSpawningHeadlessEngine = false
+                }
 
-                    // Set up method channel to receive "ready" signal from Dart
-                    headlessMethodChannel?.setMethodCallHandler { call, result ->
-                        when (call.method) {
-                            "initialized" -> {
-                                isEngineReady.set(true)
-                                drainPendingEvents()
-                                result.success(true)
-                            }
-                            else -> result.notImplemented()
+                headlessMethodChannel = MethodChannel(engine.dartExecutor.binaryMessenger, CHANNEL_NAME)
+
+                // Set up method channel to receive "ready" signal from Dart
+                headlessMethodChannel?.setMethodCallHandler { call, result ->
+                    when (call.method) {
+                        "initialized" -> {
+                            spawnStage = SpawnStage.READY
+                            isEngineReady.set(true)
+                            spawnInFlight.set(false)
+                            TraceletLog.lifecycle(
+                                "headless: engine ready — draining " +
+                                    "${pendingEvents.size} queued event(s)",
+                            )
+                            drainPendingEvents()
+                            result.success(true)
                         }
-                    }
-
-                    // Handle setDynamicHeaders from headless Dart callback.
-                    // When the Dart headless callback calls Tracelet.setDynamicHeaders(),
-                    // it goes through com.tracelet/methods. We handle it here so the
-                    // headless engine can update headers and signal the refresh latch.
-                    val methodsChannel = MethodChannel(engine.dartExecutor.binaryMessenger, METHODS_CHANNEL_NAME)
-                    methodsChannel.setMethodCallHandler { call, result ->
-                        when (call.method) {
-                            "setDynamicHeaders" -> {
-                                @Suppress("UNCHECKED_CAST")
-                                val headers = (call.arguments as? Map<String, Any?>)
-                                    ?.mapValues { it.value?.toString() ?: "" }
-                                    ?: emptyMap()
-                                configManager?.setDynamicHeaders(headers)
-                                headersRefreshLatch?.countDown()
-                                result.success(true)
-                            }
-                            "setSyncBodyResponse" -> {
-                                synchronized(syncBodyLock) {
-                                    syncBodyResponse = call.arguments as? String
-                                }
-                                syncBodyLatch?.countDown()
-                                result.success(true)
-                            }
-                            "requestTermination" -> {
-                                try {
-                                    TraceletSdk.getInstance(context).stop()
-                                    result.success(true)
-                                } catch (e: Exception) {
-                                    result.error("STOP_FAILED", e.message, null)
-                                }
-                            }
-                            else -> result.notImplemented()
-                        }
-                    }
-
-                    // Execute the registration callback in Dart
-                    val callbackInfo = FlutterCallbackInformation.lookupCallbackInformation(registrationCallbackId)
-                    if (callbackInfo != null) {
-                        engine.dartExecutor.executeDartCallback(
-                            DartExecutor.DartCallback(context.assets, loader.findAppBundlePath(), callbackInfo)
-                        )
-                    } else {
-                        TraceletSdk.getInstance(context).logger.error("Could not find callback info for ID: $registrationCallbackId")
-                        destroy()
+                        else -> result.notImplemented()
                     }
                 }
-            } finally {
-                isSpawningHeadlessEngine = false
-            }
-        } catch (e: Exception) {
-                TraceletSdk.getInstance(context).logger.error("Failed to create headless FlutterEngine: ${e.message}")
-                destroy()
+
+                // Handle setDynamicHeaders from headless Dart callback.
+                // When the Dart headless callback calls Tracelet.setDynamicHeaders(),
+                // it goes through com.tracelet/methods. We handle it here so the
+                // headless engine can update headers and signal the refresh latch.
+                val methodsChannel = MethodChannel(engine.dartExecutor.binaryMessenger, METHODS_CHANNEL_NAME)
+                methodsChannel.setMethodCallHandler { call, result ->
+                    when (call.method) {
+                        "setDynamicHeaders" -> {
+                            @Suppress("UNCHECKED_CAST")
+                            val headers = (call.arguments as? Map<String, Any?>)
+                                ?.mapValues { it.value?.toString() ?: "" }
+                                ?: emptyMap()
+                            configManager?.setDynamicHeaders(headers)
+                            headersRefreshLatch?.countDown()
+                            result.success(true)
+                        }
+                        "setSyncBodyResponse" -> {
+                            synchronized(syncBodyLock) {
+                                syncBodyResponse = call.arguments as? String
+                            }
+                            syncBodyLatch?.countDown()
+                            result.success(true)
+                        }
+                        "requestTermination" -> {
+                            try {
+                                TraceletSdk.getInstance(context).stop()
+                                result.success(true)
+                            } catch (e: Exception) {
+                                result.error("STOP_FAILED", e.message, null)
+                            }
+                        }
+                        else -> result.notImplemented()
+                    }
+                }
+
+                // Execute the registration callback in Dart
+                val callbackInfo = FlutterCallbackInformation.lookupCallbackInformation(registrationCallbackId)
+                if (callbackInfo == null) {
+                    // Nothing can ever consume these events: the callback the
+                    // engine exists to run is gone from the app bundle.
+                    TraceletLog.lifecycle(
+                        "headless: no callback info for ID $registrationCallbackId — " +
+                            "the registered Dart entrypoint is gone from this build",
+                    )
+                    headlessMethodChannel = null
+                    engine.destroy()
+                    destroy()
+                    return@post
+                }
+
+                engine.dartExecutor.executeDartCallback(
+                    DartExecutor.DartCallback(context.assets, loader.findAppBundlePath(), callbackInfo)
+                )
+                // Published only once the engine is fully wired. Assigning it
+                // before this point (as the `.also {}` form did) meant a failure
+                // inside the block still left a non-null engine behind, and
+                // ensureEngine()'s null check then blocked every retry (#331).
+                flutterEngine = engine
+                spawnStage = SpawnStage.ENGINE_CREATED
+            } catch (t: Throwable) {
+                // Throwable, not Exception: a failed native load arrives as
+                // UnsatisfiedLinkError, which escaped this handler unseen and left
+                // the caller with no engine and no error at any level (#331).
+                TraceletLog.lifecycle(
+                    "headless: engine spawn FAILED at stage $spawnStage — ${t.message}",
+                )
+                TraceletLog.error("Failed to create headless FlutterEngine", t)
+                // resetSpawn, not destroy: the queued events are what the engine
+                // was being spawned to deliver. Keep them for the next attempt.
+                resetSpawn()
             }
         }
+    }
+
+    /**
+     * Abandons an in-flight spawn that has outlived [ENGINE_SPAWN_TIMEOUT_MS] so
+     * the next event can start a fresh one (#331).
+     *
+     * The reported failure was permanent: whatever the main thread was doing —
+     * blocked, or never running the posted block at all — no timeout, retry, or
+     * log ever followed, and events accumulated for as long as tracking ran. The
+     * stage recorded here is the diagnostic: it names how far the attempt got.
+     */
+    private fun failStalledSpawn() {
+        if (!spawnInFlight.get() || isEngineReady.get()) return
+        val startedAt = spawnStartedAtMs
+        if (startedAt == 0L) return
+        val elapsed = SystemClock.elapsedRealtime() - startedAt
+        if (elapsed < ENGINE_SPAWN_TIMEOUT_MS) return
+
+        TraceletLog.lifecycle(
+            "headless: engine spawn STALLED at stage $spawnStage after ${elapsed}ms — " +
+                "retrying (${pendingEvents.size} event(s) queued)",
+        )
+        resetSpawn()
+    }
+
+    /**
+     * Returns to a spawnable state, keeping [pendingEvents] intact. Unlike
+     * [destroy] this is recoverable: the next dispatched event starts a new
+     * spawn and drains everything buffered in the meantime.
+     */
+    private fun resetSpawn() {
+        val engine = flutterEngine
+        flutterEngine = null
+        headlessMethodChannel = null
+        isEngineReady.set(false)
+        spawnStage = SpawnStage.IDLE
+        spawnStartedAtMs = 0L
+        spawnInFlight.set(false)
+        // FlutterEngine.destroy() is main-thread-only; failStalledSpawn runs on
+        // whichever thread produced the event.
+        if (engine != null) {
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                engine.destroy()
+            } else {
+                mainHandler.post { engine.destroy() }
+            }
+        }
+    }
+
+    /**
+     * Buffers an event for the engine that is coming up, capped at
+     * [MAX_PENDING_EVENTS].
+     *
+     * The queue was unbounded (#331): a spawn that never completed grew it by one
+     * entry per location fix — every 2 s under the reporter's config — for the
+     * life of the process. Oldest-first eviction keeps the freshest events, and
+     * the drop is reported rather than silent.
+     */
+    private fun enqueue(event: Map<String, Any?>) {
+        var dropped = 0
+        while (pendingEvents.size >= MAX_PENDING_EVENTS) {
+            if (pendingEvents.poll() == null) break
+            dropped++
+        }
+        if (dropped > 0) {
+            val total = droppedEvents.addAndGet(dropped.toLong())
+            if (total == dropped.toLong()) {
+                // Once per queue, on the always-on channel: a report showing this
+                // has a headless engine that never came up.
+                TraceletLog.lifecycle(
+                    "headless: pending-event queue hit its $MAX_PENDING_EVENTS cap — " +
+                        "dropping the oldest events while stage $spawnStage",
+                )
+            }
+            TraceletLog.warning(
+                "headless: queue full — dropped $dropped event(s) (total $total)",
+            )
+        }
+        pendingEvents.add(event)
     }
 
     private fun drainPendingEvents() {

@@ -61,10 +61,12 @@ import 'package:tracelet_example/issues/issue_320_card.dart';
 import 'package:tracelet_example/issues/issue_321_card.dart';
 import 'package:tracelet_example/issues/issue_324_card.dart';
 import 'package:tracelet_example/issues/issue_326_card.dart';
+import 'package:tracelet_example/issues/issue_331_card.dart';
 import 'package:tracelet_example/issues/issue_332_card.dart';
 import 'package:tracelet_example/issues/issue_333_card.dart';
 import 'package:tracelet_example/issues/issue_334_card.dart';
 import 'package:tracelet_example/issues/issue_335_card.dart';
+import 'package:tracelet_example/issues/issue_340_card.dart';
 import 'package:tracelet_example/issues/issue_344_card.dart';
 import 'package:tracelet_example/issues/issue_346_card.dart';
 import 'package:tracelet_example/issues/battery_budget_remote_config_card.dart';
@@ -1741,10 +1743,12 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
                   // stay wrapped in _searchableCard with explicit keywords.
                   const Issue346Card(),
                   const Issue344Card(),
+                  const Issue340Card(),
                   const Issue335Card(),
                   const Issue334Card(),
                   const Issue333Card(),
                   const Issue332Card(),
+                  const Issue331Card(),
                   const Issue326Card(),
                   const Issue324Card(),
                   const Issue321Card(),

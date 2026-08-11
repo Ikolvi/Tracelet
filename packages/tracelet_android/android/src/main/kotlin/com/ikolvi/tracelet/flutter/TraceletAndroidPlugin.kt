@@ -346,6 +346,31 @@ class TraceletAndroidPlugin :
             // state — returning the sentinel *immediately, touching nothing* is
             // the #125 guarantee, and routing the log through the SDK broke it.
             // TraceletLog falls back to Log.d until a logger is attached.
+            //
+            // #340: before falling through to the default payload, try the
+            // *headless* builder. This flag only ever reflects the foreground
+            // isolate, so a process whose Dart never ran the app code that calls
+            // setSyncBodyBuilder — a background relaunch, or an app opened but
+            // not yet through its own init — reads false here even when
+            // registerHeadlessSyncBodyBuilder is registered and usable. The
+            // routing below is gated on !isEngineAttached, so it could not
+            // rescue an *attached* engine whose Dart simply had not registered.
+            //
+            // `headlessService` is non-null only on the attached primary
+            // instance, so this cannot fire in the never-attached state the
+            // #125 guarantee is about — `context` itself is unset there.
+            val hs = headlessService
+            if (hs != null && !isMainThread() && hs.isSyncBodyBuilderRegistered()) {
+                TraceletLog.debug(
+                    "requestSyncBody: no foreground builder — routing to the headless builder",
+                )
+                return hs.requestCustomSyncBody(
+                    locations,
+                    DART_CALLBACK_TIMEOUT_MS,
+                    sdk.getTelematicsForCustomBuilder(),
+                )
+            }
+
             TraceletLog.debug(
                 "requestSyncBody: no custom sync body builder registered " +
                     "(setSyncBodyBuilder never reached native) — using the default payload",
