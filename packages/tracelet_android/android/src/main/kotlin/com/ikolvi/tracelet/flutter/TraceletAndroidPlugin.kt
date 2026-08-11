@@ -183,8 +183,19 @@ class TraceletAndroidPlugin :
             // them apart: a UI engine attaches on the main looper, a headless
             // one on a background thread. Same heuristic requestSyncBody uses.
             val isUiEngine = isMainThread()
-            sdk.logger.debug(
-                "onAttachedToEngine: secondary engine attach (uiEngine=$isUiEngine)"
+            // On the always-on lifecycle channel (#318), not DEBUG: this decides
+            // which component delivers every subsequent event, it is taken in the
+            // killed state, and when it goes wrong the only symptom is silence —
+            // exactly the report that arrives from a release build whose logLevel
+            // may be `error` or `off`, which drops DEBUG. Engine attaches are a
+            // handful per process (the headless spawn beside it is already
+            // lifecycle), so the row budget is unaffected (#358).
+            val kind = if (isUiEngine) "UI" else "headless"
+            val delivery =
+                if (isUiEngine) "delivered to it" else "routed to the headless task"
+            TraceletLog.lifecycle(
+                "engines: secondary attach — $kind (engineCount=$count); " +
+                    "events $delivery"
             )
 
             eventDispatcher = EventDispatcher()
@@ -213,10 +224,6 @@ class TraceletAndroidPlugin :
                 // crossing in that process: logged, persisted and synced
                 // natively, but never delivered to the registered headless
                 // task, and therefore invisible to the app (#358).
-                sdk.logger.debug(
-                    "onAttachedToEngine: headless engine — not joining the event " +
-                        "fan-out; events reach it via dispatchEvent (#358)"
-                )
             }
         }
 
