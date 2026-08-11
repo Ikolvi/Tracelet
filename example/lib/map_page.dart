@@ -516,6 +516,88 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   /// drops don't force re-picking.
   double _lastCircularRadius = 200;
 
+  /// Drops a circular geofence at the current fix, falling back to the map
+  /// centre when there is no fix yet.
+  ///
+  /// The fallback matters: without a location the button would simply do
+  /// nothing indoors or before the first fix, which reads as "the feature is
+  /// broken" rather than "wait for GPS".
+  Future<void> _addCircularGeofenceAtCurrentLocation() async {
+    final pos = _currentPosition ?? _mapController.camera.center;
+    if (!pos.isSafe) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No position available yet')),
+        );
+      }
+      return;
+    }
+    if (_currentPosition == null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No GPS fix yet — using map centre'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+    await _addCircularGeofenceAt(pos);
+  }
+
+  /// Removes every geofence, circular and polygon, after confirming.
+  Future<void> _clearAllGeofences() async {
+    final count = _geofences.length;
+    if (count == 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('No geofences to clear')));
+      }
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear all geofences?'),
+        content: Text(
+          'Removes all $count geofence(s) from the SDK and unregisters them '
+          'from the platform.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Clear all'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await tl.Tracelet.removeGeofences();
+      final fences = await tl.Tracelet.getGeofences();
+      setState(() => _geofences = fences);
+      _addMapEvent(
+        _MapEvent(
+          icon: Icons.delete_sweep,
+          color: Colors.red,
+          title: 'Geofences cleared',
+          subtitle: '$count removed, ${fences.length} remaining',
+          time: DateTime.now(),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to clear: $e')));
+      }
+    }
+  }
+
   /// Asks for a radius, then drops a circular geofence at [pos].
   ///
   /// The radius is picked rather than hardcoded because it is the variable that
@@ -845,8 +927,8 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                   Icons.circle_outlined,
                   color: Colors.orange,
                 ),
-                title: const Text('Circular Geofence (200m)'),
-                subtitle: const Text('Entry + exit + dwell monitoring'),
+                title: const Text('Circular Geofence…'),
+                subtitle: const Text('Pick a radius — entry, exit and dwell'),
                 onTap: () {
                   Navigator.pop(ctx);
                   _addCircularGeofenceAt(pos);
@@ -2360,6 +2442,9 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                     _tripStart = null;
                     _tripEnd = null;
                     _lastTrip = null;
+                  case 'clearGeofences':
+                    // Async + confirmed, so it runs outside this setState.
+                    _clearAllGeofences();
                 }
               });
             },
@@ -2397,6 +2482,19 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                 _showPrivacyZones,
               ),
               const PopupMenuDivider(),
+              PopupMenuItem(
+                value: 'clearGeofences',
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.delete_sweep,
+                    size: 20,
+                    color: Colors.orange,
+                  ),
+                  title: Text('Clear geofences (${_geofences.length})'),
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
               const PopupMenuItem(
                 value: 'clearTrail',
                 child: ListTile(
@@ -2536,9 +2634,23 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
             ),
           ),
           const SizedBox(height: 8),
+          // Circular geofence at the current location.
+          //
+          // Long-pressing the map has always offered this, but that is not
+          // discoverable — the polygon tool had a button and circles did not,
+          // so the map looked polygon-only. Circles are the common case (and
+          // the only shape the OS itself monitors), so they get a button too.
+          FloatingActionButton.small(
+            heroTag: 'circleGeo',
+            tooltip: 'Add circular geofence here',
+            onPressed: _addCircularGeofenceAtCurrentLocation,
+            child: const Icon(Icons.add_circle_outline, color: Colors.orange),
+          ),
+          const SizedBox(height: 8),
           // Polygon draw toggle
           FloatingActionButton.small(
             heroTag: 'polygon',
+            tooltip: 'Draw polygon geofence',
             backgroundColor: _polygonDrawMode ? Colors.deepOrange : null,
             onPressed: () {
               setState(() {
