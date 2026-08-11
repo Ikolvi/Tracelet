@@ -305,11 +305,30 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
 
         val interceptor = sdk.dartSyncInterceptor
         sdk.logger.debug("NativeSyncProvider: Interceptor is $interceptor")
+        if (interceptor == null) {
+            // #340: this entry point reported nothing at all. `triggerSync` — the
+            // debounced auto-sync — was instrumented and this one was not, so a
+            // manual sync() and every killed-state sync that lands here left no
+            // trace of which body it posted. iOS reports from inside its own
+            // syncBatchBlocking, so the two platforms disagreed about what a
+            // bug report would contain.
+            reportSyncBodySource(
+                "no-interceptor",
+                "posting the DEFAULT payload — no dartSyncInterceptor attached to the SDK",
+            )
+        }
         if (interceptor != null) {
             // Issue #126: nested schema matching onLocation/getLocations.
             val recordMaps = records.map { sdk.mapRecordToLocation(it) }
             val customBody = interceptor.requestSyncBody(recordMaps)
             sdk.logger.debug("NativeSyncProvider: Custom body is $customBody")
+            if (customBody == NO_SYNC_BODY_BUILDER_SENTINEL) {
+                reportSyncBodySource(
+                    "no-builder",
+                    "posting the DEFAULT payload — no custom sync body builder reached " +
+                        "native (setSyncBodyBuilder registered in Dart?)",
+                )
+            }
             if (customBody == null) {
                 // Builder registered but failed → abort (0 = nothing synced).
                 sdk.logger.error("NativeSyncProvider: custom sync body failed to build; aborting sync")
@@ -323,6 +342,7 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
                 return 0L
             }
             if (customBody != NO_SYNC_BODY_BUILDER_SENTINEL) {
+                reportSyncBodySource("custom", "posting the app's custom sync body")
                 return kotlinx.coroutines.runBlocking {
                     val result = executeFallbackHttpSync(config, customBody, interceptor)
                     sdk.logger.debug("NativeSyncProvider: Fallback HTTP result: ${result.success}, status: ${result.status}")
