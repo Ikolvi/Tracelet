@@ -162,9 +162,7 @@ class TraceletAndroidPlugin :
             sdk.dartSyncInterceptor = this
 
             eventDispatcher.headlessFallback = { eventName, eventData ->
-                if (hs.isRegistered()) {
-                    hs.dispatchEvent(eventName, eventData)
-                }
+                dispatchToHeadless(hs, eventName, eventData)
             }
 
             TraceletBootstrap.headlessDispatcherFactory = { ctx -> HeadlessTaskService(ctx) }
@@ -172,7 +170,7 @@ class TraceletAndroidPlugin :
                 val dispatcher = EventDispatcher()
                 val h = HeadlessTaskService(ctx)
                 dispatcher.headlessFallback = { name, data ->
-                    if (h.isRegistered()) h.dispatchEvent(name, data)
+                    dispatchToHeadless(h, name, data)
                 }
                 dispatcher
             }
@@ -213,7 +211,7 @@ class TraceletAndroidPlugin :
                 globalEventSender.add(eventDispatcher)
                 primaryInstance?.headlessService?.let { hs ->
                     eventDispatcher.headlessFallback = { name, data ->
-                        if (hs.isRegistered()) hs.dispatchEvent(name, data)
+                        dispatchToHeadless(hs, name, data)
                     }
                 }
             } else {
