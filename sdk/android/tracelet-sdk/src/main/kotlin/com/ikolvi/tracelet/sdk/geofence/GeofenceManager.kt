@@ -96,56 +96,115 @@ class GeofenceManager(
         /** Mirror of `GEOFENCE_MIN_EXIT_HYSTERESIS_METERS` in the Rust core. */
         private const val MIN_EXIT_HYSTERESIS_METERS = 20.0
 
+        /** Mirror of `GEOFENCE_ABS_MIN_EXIT_HYSTERESIS_METERS` in the Rust core. */
+        private const val ABS_MIN_EXIT_HYSTERESIS_METERS = 3.0
+
         /**
-         * Smallest radius that can actually produce transitions, in metres
+         * Smallest radius Play Services can decide for itself, in metres.
+         *
+         * Below this the fence is smaller than the error of the fixes it is
+         * compared against, so the platform never becomes confident enough to
+         * report a crossing: it fires the `INITIAL_TRIGGER_ENTER` on
+         * registration — which looks like it works — and then nothing, ever
          * (#355).
          *
-         * Below this a geofence is not merely imprecise — it is unserviceable,
-         * and silently so:
-         *
-         *  - Play Services' own guidance is a radius of at least 100 m; below
-         *    that the fence is smaller than the location error it is being
-         *    compared against, so the platform never becomes confident enough to
-         *    report a crossing.
-         *  - The in-app evaluator cannot help either: EXIT needs
-         *    `radius + max(radius * 0.1, 20 m)` of separation, so a 5 m fence
-         *    demands ~25 m of travel plus accuracy gating before it will fire.
-         *
-         * The failure mode is deceptive rather than obvious: registering while
-         * inside fires an immediate ENTER from `INITIAL_TRIGGER_ENTER`, so the
-         * fence looks like it is working, and then no crossing is ever reported
-         * again because none can be. Hence a loud, always-on warning rather than
-         * silence.
-         *
-         * Not enforced — a small fence is still registered, because rejecting it
-         * would break callers who rely on the initial-entry ENTER and because
-         * the floor is advisory on both platforms rather than exact.
+         * Small fences are *not* rejected. They are simply decided here instead:
+         * a fence under this radius is owned by the in-app evaluator, which
+         * knows the true radius and scales its hysteresis to the measured fix
+         * accuracy rather than a flat 20 m (#356). See [isEvaluatorOwned].
          */
-        private const val MIN_SERVICEABLE_RADIUS_METERS = 100.0
+        private const val OS_MIN_RESOLVABLE_RADIUS_METERS = 100.0
     }
 
-    /** Exit-hysteresis band the Rust evaluator applies for [radius]. Logging only. */
-    private fun exitHysteresisMeters(radius: Double): Double =
-        maxOf(radius * EXIT_HYSTERESIS_FRACTION, MIN_EXIT_HYSTERESIS_METERS)
+    /**
+     * Whether the in-app evaluator — not the OS — decides this fence's
+     * transitions.
+     *
+     * Three cases, and each is a case the OS cannot serve:
+     *
+     *  - **Polygons.** Play Services only monitors circles, so a polygon is
+     *    never registered with it and has always been ours to evaluate.
+     *  - **Sub-[OS_MIN_RESOLVABLE_RADIUS_METERS] circles.** Registered only as a
+     *    coarse wake-up (see [wakeupRadiusMeters]); at that inflated radius the
+     *    OS's own transitions are about the wrong boundary, so they are
+     *    discarded and the true radius is applied here (#356).
+     *  - **`geofenceModeHighAccuracy`.** The caller has asked for in-app
+     *    evaluation of everything.
+     *
+     * Ownership is per fence, not global: a config with one 20 m fence and one
+     * 500 m fence has the first decided here and the second by the OS, each by
+     * whichever is actually able to.
+     */
+    private fun isEvaluatorOwned(geofence: Map<String, Any?>): Boolean {
+        val vertices = geofence["vertices"]
+        if (vertices is List<*> && vertices.size >= 3) return true
+        if (config.getGeofenceModeHighAccuracy()) return true
+        val radius = (geofence["radius"] as? Number)?.toDouble() ?: return false
+        return radius > 0.0 && radius < OS_MIN_RESOLVABLE_RADIUS_METERS
+    }
 
     /**
-     * Warns when [radius] is too small for the platform to ever report a
-     * crossing (#355).
+     * The radius a circular fence is registered with at the OS level.
      *
-     * On the always-on lifecycle channel: this is a configuration mistake whose
-     * only symptom is silence, so it has to survive a release build's
-     * `logLevel` to be of any use in the bug report that follows.
+     * A sub-serviceable fence is inflated to [OS_MIN_RESOLVABLE_RADIUS_METERS]
+     * because at its true radius Play Services will not reliably fire at all —
+     * and firing is the entire point of the OS registration for these fences.
+     * It is not there to detect the crossing (the evaluator does that, at the
+     * true radius); it is there to wake the process when the device comes near,
+     * which is the only way a 10 m fence can work in `geofences` tracking mode
+     * or after the app is killed.
+     *
+     * The consequence — the OS reporting ENTER 100 m from a 10 m fence — is
+     * handled by [isEvaluatorOwned] discarding those transitions.
      */
-    private fun warnIfRadiusUnserviceable(identifier: String, radius: Double) {
-        if (radius <= 0.0 || radius >= MIN_SERVICEABLE_RADIUS_METERS) return
-        val exitDistance = radius + exitHysteresisMeters(radius)
+    private fun wakeupRadiusMeters(radius: Float): Float =
+        if (radius > 0f && radius < OS_MIN_RESOLVABLE_RADIUS_METERS) {
+            OS_MIN_RESOLVABLE_RADIUS_METERS.toFloat()
+        } else {
+            radius
+        }
+
+    /**
+     * Whether any stored fence needs the uninterrupted fix stream that in-app
+     * evaluation runs on.
+     *
+     * Drives `LocationEngine.geofenceHighAccuracyMode`, which drops the
+     * OS-level distance filter so a slow-moving device is not starved of the
+     * fixes its crossings are computed from.
+     */
+    fun hasEvaluatorOwnedGeofences(): Boolean =
+        config.getGeofenceModeHighAccuracy() || getCachedGeofences().any { isEvaluatorOwned(it) }
+
+    /**
+     * Exit-hysteresis band the Rust evaluator applies for [radius] at a fix
+     * accuracy of [accuracy]. Mirrors `exit_hysteresis_meters` in the core so
+     * the decision trace reports the threshold actually used. Logging only.
+     */
+    private fun exitHysteresisMeters(radius: Double, accuracy: Double): Double {
+        val jitter = if (accuracy > 0.0) {
+            accuracy.coerceIn(ABS_MIN_EXIT_HYSTERESIS_METERS, MIN_EXIT_HYSTERESIS_METERS)
+        } else {
+            MIN_EXIT_HYSTERESIS_METERS
+        }
+        return maxOf(radius * EXIT_HYSTERESIS_FRACTION, jitter)
+    }
+
+    /**
+     * Records that a sub-serviceable fence has been handed to the in-app
+     * evaluator (#356).
+     *
+     * On the always-on lifecycle channel: which component owns a fence is the
+     * first thing a "geofences stopped firing" report needs to establish, and
+     * such a report arrives from a release build whose `logLevel` may be `off`.
+     */
+    private fun noteSmallRadiusHandling(identifier: String, radius: Double) {
+        if (radius <= 0.0 || radius >= OS_MIN_RESOLVABLE_RADIUS_METERS) return
         TraceletLog.lifecycle(
-            "$GEOFENCE_LOG_TAG WARNING $identifier radius=${fmt1(radius)}m is below the " +
-                "${fmt1(MIN_SERVICEABLE_RADIUS_METERS)}m the platform can service — " +
-                "the fence is smaller than typical GPS error, so ENTER/EXIT may never " +
-                "fire. An immediate ENTER on registration is the initial trigger, not a " +
-                "detection. EXIT additionally needs ~${fmt1(exitDistance)}m of travel " +
-                "(radius + exit hysteresis) before it can be reported (#355)"
+            "$GEOFENCE_LOG_TAG $identifier radius=${fmt1(radius)}m is below the " +
+                "${fmt1(OS_MIN_RESOLVABLE_RADIUS_METERS)}m Play Services can resolve — " +
+                "transitions will be evaluated in-app at the true radius, and the OS " +
+                "fence is registered at ${fmt1(OS_MIN_RESOLVABLE_RADIUS_METERS)}m as a " +
+                "wake-up only. Requires location updates to be running (#356)"
         )
     }
 
@@ -347,11 +406,11 @@ class GeofenceManager(
         val lng = (geofenceMap["longitude"] as? Number)?.toDouble() ?: 0.0
         val radius = (geofenceMap["radius"] as? Number)?.toDouble() ?: 0.0
 
-        // Warned at add time, not registration time: this is the moment the
+        // Noted at add time, not registration time: this is the moment the
         // caller chose the radius, and it fires once per fence rather than on
         // every proximity re-registration (#355).
         val isPolygonShape = (geofenceMap["vertices"] as? List<*>)?.let { it.size >= 3 } == true
-        if (!isPolygonShape) warnIfRadiusUnserviceable(identifier, radius)
+        if (!isPolygonShape) noteSmallRadiusHandling(identifier, radius)
 
         val verticesRaw = geofenceMap["vertices"] as? List<*>
         var coreVertices: List<Coordinate>? = null
@@ -498,8 +557,11 @@ class GeofenceManager(
      * Called when a geofence event is received from GeofenceBroadcastReceiver.
      * Dispatches events via TraceletEventSender.
      *
-     * When geofenceModeHighAccuracy is active, OS-level events are suppressed
-     * to avoid duplicates — transitions are handled by [evaluateHighAccuracyProximity].
+     * OS-level events are dropped for fences the in-app evaluator owns (see
+     * [isEvaluatorOwned]) — under `geofenceModeHighAccuracy` that is every
+     * fence, and otherwise it is the small ones whose OS registration is
+     * inflated to a wake-up radius and whose transitions therefore describe the
+     * wrong boundary. [evaluateHighAccuracyProximity] reports those instead.
      */
     fun handleGeofenceEvent(
         transitionType: Int,
@@ -507,8 +569,20 @@ class GeofenceManager(
         latitude: Double,
         longitude: Double,
     ) {
-        // Skip OS-level events when high-accuracy mode handles transitions
-        if (config.getGeofenceModeHighAccuracy()) return
+        // Per fence, not globally: a mixed set has its large fences decided by
+        // the OS and its small ones in-app, and each must reach exactly one path.
+        val triggeringGeofences = triggeringGeofences.filter { gf ->
+            val stored = getGeofence(gf.requestId)
+            val owned = stored != null && isEvaluatorOwned(stored)
+            if (owned) {
+                TraceletLog.debug(
+                    "$GEOFENCE_LOG_TAG ignoring OS transition for ${gf.requestId} " +
+                        "— evaluated in-app at its true radius (#356)"
+                )
+            }
+            !owned
+        }
+        if (triggeringGeofences.isEmpty()) return
 
         val action = when (transitionType) {
             1 -> "ENTER" // Geofence.GEOFENCE_TRANSITION_ENTER
@@ -640,7 +714,7 @@ class GeofenceManager(
             builder.append(" shape=polygon vertices=").append((vertices as List<*>).size)
         } else if (gfLat != null && gfLng != null && radius != null && radius > 0.0) {
             val distance = haversine(latitude, longitude, gfLat, gfLng)
-            val buffer = exitHysteresisMeters(radius)
+            val buffer = exitHysteresisMeters(radius, accuracyEffective)
             val threshold = radius + buffer
             builder.append(" dist=").append(fmt1(distance))
                 .append(" radius=").append(fmt1(radius))
@@ -670,7 +744,10 @@ class GeofenceManager(
     }
 
     fun evaluateHighAccuracyProximity(latitude: Double, longitude: Double, accuracy: Double = 0.0) {
-        val allGeofences = getCachedGeofences()
+        // Only the fences this path owns (see [isEvaluatorOwned]). Feeding the
+        // evaluator a fence the OS is also reporting would double-fire it, so
+        // ownership is exclusive on both sides of the split.
+        val allGeofences = getCachedGeofences().filter { isEvaluatorOwned(it) }
         if (allGeofences.isEmpty()) return
 
         val geofenceMapById = allGeofences.associateBy { it["identifier"] as? String }
@@ -979,7 +1056,10 @@ class GeofenceManager(
                     requestId = identifier,
                     latitude = latitude,
                     longitude = longitude,
-                    radiusMeters = radius,
+                    // Inflated for sub-serviceable fences: at their true radius
+                    // Play Services fires nothing, and the registration exists
+                    // to wake us near the fence, not to judge it (#356).
+                    radiusMeters = wakeupRadiusMeters(radius),
                     expirationTime = -1L, // Geofence.NEVER_EXPIRE
                     transitionTypes = transitionTypes,
                     loiteringDelayMs = loiteringDelay

@@ -952,16 +952,17 @@ class TraceletSdk private constructor(private val context: Context) {
         // geofenceProximityRadius are never registered, and ENTER/EXIT never
         // fire again. The filter is a persistence-volume control and must not
         // gate geofence registration.
-        val highAccuracyGeofence = configManager.getGeofenceModeHighAccuracy()
         locationEngine.onLocationUpdate = { lat, lng, _ ->
             tripManager.onLocationReceived(lat, lng, System.currentTimeMillis().toString())
         }
-        locationEngine.geofenceHighAccuracyMode = highAccuracyGeofence
+        locationEngine.geofenceHighAccuracyMode = geofenceManager.hasEvaluatorOwnedGeofences()
+        // Called unconditionally: whether a fence is evaluated here or left to
+        // the OS is a per-fence question the manager answers, and it is not one
+        // the config flag alone can settle — polygons and sub-100 m circles are
+        // ours to decide however `geofenceModeHighAccuracy` is set (#356).
         locationEngine.onRawGeofenceLocation = { lat, lng, accuracy ->
             geofenceManager.updateProximity(lat, lng)
-            if (highAccuracyGeofence) {
-                geofenceManager.evaluateHighAccuracyProximity(lat, lng, accuracy)
-            }
+            geofenceManager.evaluateHighAccuracyProximity(lat, lng, accuracy)
         }
 
         // Start the appropriate motion detector
@@ -1181,7 +1182,11 @@ class TraceletSdk private constructor(private val context: Context) {
 
         geofenceManager.reRegisterAll()
 
-        val highAccuracy = configManager.getGeofenceModeHighAccuracy()
+        // Not just the config flag: a polygon or a sub-100 m circle is evaluated
+        // in-app whatever the flag says, and in-app evaluation is exactly what
+        // needs the continuous fix stream. Asking the manager keeps "who decides
+        // this fence" and "what does deciding it cost" the same question (#356).
+        val needsInAppEvaluation = geofenceManager.hasEvaluatorOwnedGeofences()
 
         // Crossing *detection* must see every fix — a stationary device inside a
         // small fence emits no accepted fixes on a stable provider (GMS Fused
@@ -1199,28 +1204,28 @@ class TraceletSdk private constructor(private val context: Context) {
         //
         // The persistence filter is a volume control; it must gate neither.
         locationEngine.onLocationUpdate = null
-        locationEngine.geofenceHighAccuracyMode = highAccuracy
+        locationEngine.geofenceHighAccuracyMode = needsInAppEvaluation
         locationEngine.onRawGeofenceLocation = { lat, lng, accuracy ->
             geofenceManager.updateProximity(lat, lng)
-            if (highAccuracy) {
-                geofenceManager.evaluateHighAccuracyProximity(lat, lng, accuracy)
-            }
+            geofenceManager.evaluateHighAccuracyProximity(lat, lng, accuracy)
         }
 
-        // Only high-accuracy geofence mode needs continuous GPS (for in-app
-        // proximity detection). Standard mode relies solely on the native
-        // GeofencingClient, which detects enter/exit without continuous location
-        // updates — starting them keeps the persistent location indicator on and
-        // wastes battery for no benefit (parity with the iOS #210 fix).
+        // Continuous GPS is needed exactly when a fence is evaluated in-app —
+        // high-accuracy mode, a polygon, or a sub-100 m circle (#356). Fences the
+        // OS can decide for itself need none of it: the native GeofencingClient
+        // reports crossings without a location stream, and starting one keeps the
+        // persistent location indicator on and wastes battery for no benefit
+        // (parity with the iOS #210 fix).
         //
-        // Foreground service: only high-accuracy mode (continuous GPS) needs one.
-        // Standard geofence-only mode must NOT run a foreground service — the
-        // native Geofence API fires enter/exit while suspended/terminated without
-        // it, and Google Play prohibits using a foreground service *solely* for
-        // geofencing as of 2026-10-28. Starting an FGS here would make every
-        // geofence-only Tracelet app non-compliant. Any FGS left over from a
-        // previous continuous/high-accuracy session is torn down.
-        if (highAccuracy) {
+        // Foreground service: same condition, same reason. A geofence-only config
+        // the OS can serve must NOT run one — the native Geofence API fires while
+        // suspended/terminated without it, and Google Play prohibits a foreground
+        // service used *solely* for geofencing as of 2026-10-28. Note the
+        // corollary for small fences: they cannot be served by the OS, so opting
+        // into one means opting into the location stream (and its FGS) that
+        // in-app evaluation runs on. Any FGS left over from a previous
+        // continuous/high-accuracy session is torn down.
+        if (needsInAppEvaluation) {
             // A fresh start resets inside-state so the initial-entry trigger
             // fires exactly once. A resume/boot/redundant re-start must NOT reset
             // it, or a stationary device inside a fence re-emits ENTER on every
@@ -1261,7 +1266,9 @@ class TraceletSdk private constructor(private val context: Context) {
         // so "no service entries" is expected here and a finding elsewhere.
         TraceletLog.lifecycle(
             "session: start — mode=geofences resume=$treatAsResume " +
-                "highAccuracy=$highAccuracy fences=${geofenceManager.getGeofences().size}"
+                "highAccuracy=${configManager.getGeofenceModeHighAccuracy()} " +
+                "inAppEvaluation=$needsInAppEvaluation " +
+                "fences=${geofenceManager.getGeofences().size}"
         )
         return null
     }

@@ -567,16 +567,17 @@ public final class TraceletSdk {
             )
         }
 
-        let highAccuracy = configManager.getGeofenceModeHighAccuracy()
-        locationEngine.geofenceHighAccuracyMode = highAccuracy
+        // Called unconditionally: whether a fence is evaluated here or left to
+        // CoreLocation is a per-fence question the manager answers, and not one
+        // the config flag alone can settle — polygons and sub-100 m circles are
+        // ours to decide however `geofenceModeHighAccuracy` is set (#356).
+        locationEngine.geofenceHighAccuracyMode = geofenceManager.hasEvaluatorOwnedGeofences()
         locationEngine.onRawGeofenceLocation = { [weak self] lat, lng, accuracy in
             guard let self = self else { return }
             self.geofenceManager.updateProximity(latitude: lat, longitude: lng)
-            if highAccuracy {
-                self.geofenceManager.evaluateHighAccuracyProximity(
-                    latitude: lat, longitude: lng, accuracy: accuracy
-                )
-            }
+            self.geofenceManager.evaluateHighAccuracyProximity(
+                latitude: lat, longitude: lng, accuracy: accuracy
+            )
         }
     }
 
@@ -670,8 +671,11 @@ public final class TraceletSdk {
         // Wire proximity-based geofence monitoring.
         wireGeofenceLocationCallbacks(includeTripWaypoints: false)
 
-        // geofenceModeHighAccuracy: start GPS for in-app transition detection.
-        if configManager.getGeofenceModeHighAccuracy() {
+        // Continuous GPS is needed exactly when a fence is evaluated in-app —
+        // high-accuracy mode, a polygon, or a sub-100 m circle (#356). A small
+        // fence cannot be served by region monitoring, so opting into one means
+        // opting into the location stream that decides it.
+        if geofenceManager.hasEvaluatorOwnedGeofences() {
             // A fresh start resets inside-state so the initial-entry trigger
             // fires exactly once. A resume/boot/redundant re-start must NOT reset
             // it, or a stationary device inside a fence re-emits ENTER on every
@@ -3561,10 +3565,10 @@ public final class TraceletSdk {
             // relaunch silently converted a low-power geofence-only app into
             // continuous tracking — with the persistent blue location indicator
             // #210 removed — for the rest of the process lifetime.
-            if configManager.getGeofenceModeHighAccuracy() {
-                // High accuracy genuinely needs continuous GPS: OS-level
-                // transitions are suppressed and crossings come from per-location
-                // proximity evaluation.
+            if geofenceManager.hasEvaluatorOwnedGeofences() {
+                // In-app evaluation genuinely needs continuous GPS: OS-level
+                // transitions are suppressed for these fences and crossings come
+                // from per-location proximity evaluation (#356).
                 locationEngine.start()
                 preventSuspendManager.start()
                 backgroundActivitySessionManager.start()

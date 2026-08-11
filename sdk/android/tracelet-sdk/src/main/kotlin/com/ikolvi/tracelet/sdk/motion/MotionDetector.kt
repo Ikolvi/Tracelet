@@ -859,6 +859,28 @@ class MotionDetector(
                     }
                     consecutiveFrozenCount = 0
                 }
+                // How much the acceleration *vector* moved since the last sample.
+                //
+                // `magnitude` above is ‖a‖ - g, a scalar that is blind to
+                // rotation: a phone carried at a tilt while walking keeps a norm
+                // within a few hundredths of g even as the vector swings, so
+                // sample after sample scored as "still" and a walking user was
+                // declared stationary once the countdown elapsed (#357). The
+                // field report's own trace shows it — raw=[-0.42, 6.35, 7.24]
+                // has a norm of 9.64, i.e. |Δ| = 0.17, comfortably under the 0.4
+                // threshold, on a device that was demonstrably in motion.
+                //
+                // The direction of the vector carries exactly what the norm
+                // discards, so require both to be quiet: a device genuinely at
+                // rest has a steady norm *and* a steady direction, while one
+                // being carried fails the second test even when it passes the
+                // first. The very first sample has no predecessor to compare to.
+                val isFirstSample = sampleCount == 1
+                val dx = x - lastX
+                val dy = y - lastY
+                val dz = z - lastZ
+                val vectorDelta = sqrt((dx * dx + dy * dy + dz * dz).toDouble())
+
                 lastX = x
                 lastY = y
                 lastZ = z
@@ -875,14 +897,14 @@ class MotionDetector(
                 val isFrozen = consecutiveFrozenCount >= 5
                 val logInterval = if (isFrozen) 5000 else 50
                 if (sampleCount % logInterval == 1) {
-                    logger.debug("[STILLNESS] sample #$sampleCount: current_mag=${String.format("%.3f", magnitude)}, max_mag_last_10=${String.format("%.3f", maxMagLast10)}, still=$consecutiveStillSamples/$stillCount, raw=[$x, $y, $z]")
+                    logger.debug("[STILLNESS] sample #$sampleCount: current_mag=${String.format("%.3f", magnitude)}, vector_delta=${String.format("%.3f", vectorDelta)}, max_mag_last_10=${String.format("%.3f", maxMagLast10)}, still=$consecutiveStillSamples/$stillCount, raw=[$x, $y, $z]")
                 }
                 // Always reset max mag every 10 samples
                 if (sampleCount % 10 == 0) {
                     maxMagLast10 = 0.0
                 }
 
-                if (absMag < stillThreshold) {
+                if (absMag < stillThreshold && (isFirstSample || vectorDelta < stillThreshold)) {
                     // A quiet sample — reset any motion streak that was building
                     // toward an abort, then count toward the still threshold.
                     consecutiveMotionSamples = 0

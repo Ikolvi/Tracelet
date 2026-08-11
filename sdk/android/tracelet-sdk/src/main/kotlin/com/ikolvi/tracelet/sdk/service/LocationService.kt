@@ -1326,16 +1326,25 @@ class LocationService : Service(), DefaultLifecycleObserver {
             // — froze whenever the filter rejected fixes. With 3.8.0's auto-tune
             // (#299) retuning a committed `still` mode to maxImpliedSpeed=3 m/s,
             // that is every fix once the device moves.
-            val highAccuracy = config.getGeofenceModeHighAccuracy()
-            if (highAccuracy) {
+            //
+            // Ownership is per fence, not per config flag (#356): polygons and
+            // sub-100 m circles are evaluated in-app whatever
+            // geofenceModeHighAccuracy says, so the boot path must wire the
+            // evaluator for them too or a small fence stops firing the moment the
+            // app is killed — precisely the state it is most needed in.
+            // The flag is read from *this* service's ConfigManager, not the
+            // manager's: the boot-bootstrapped SDK can hold a different instance,
+            // and reading it only through geoManager silently lost high-accuracy
+            // mode on the boot path.
+            val needsInAppEvaluation =
+                config.getGeofenceModeHighAccuracy() || geoManager.hasEvaluatorOwnedGeofences()
+            if (needsInAppEvaluation) {
                 geoManager.clearHighAccuracyState()
             }
-            bootLocationEngine?.geofenceHighAccuracyMode = highAccuracy
+            bootLocationEngine?.geofenceHighAccuracyMode = needsInAppEvaluation
             bootLocationEngine?.onRawGeofenceLocation = { lat, lng, accuracy ->
                 geoManager.updateProximity(lat, lng)
-                if (highAccuracy) {
-                    geoManager.evaluateHighAccuracyProximity(lat, lng, accuracy)
-                }
+                geoManager.evaluateHighAccuracyProximity(lat, lng, accuracy)
             }
             TraceletLog.debug("Geofence registrations restored after boot/task-removal (proximity stream wired)")
 
@@ -1349,7 +1358,12 @@ class LocationService : Service(), DefaultLifecycleObserver {
             // The service could not simply be skipped at boot: Play Services
             // clears all geofences on reboot, so something has to run
             // reRegisterAll() first. It just does not have to stay running.
-            if (trackingMode == TrackingMode.GEOFENCES && !config.getGeofenceModeHighAccuracy()) {
+            //
+            // "Needs no service" now means "the OS can decide every fence"
+            // (#356) — a restored polygon or sub-100 m circle is evaluated from
+            // the location stream, and stopping the service here would kill the
+            // stream and with it the only thing that can report its crossings.
+            if (trackingMode == TrackingMode.GEOFENCES && !needsInAppEvaluation) {
                 TraceletLog.debug(
                     "Standard geofence-only mode — geofences restored, stopping the " +
                         "foreground service (#316)"

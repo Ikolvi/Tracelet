@@ -660,23 +660,29 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     final controller = TextEditingController(
       text: _lastCircularRadius.toStringAsFixed(0),
     );
-    // Starts at the smallest radius the platform can actually service. Smaller
-    // fences are not offered as presets because they cannot produce crossings
-    // — see the warning below (#355).
-    const presets = <double>[100, 200, 500, 1000];
-    // Mirrors GeofenceManager.MIN_SERVICEABLE_RADIUS_METERS on both platforms.
-    const minServiceableRadius = 100.0;
+    // Small radii are offered again: since #356 a fence the OS cannot resolve
+    // is evaluated in-app at its true radius, so 10 m is a supported choice
+    // rather than a trap.
+    const presets = <double>[10, 25, 50, 100, 200, 500];
+    // Mirrors GeofenceManager.OS_MIN_RESOLVABLE_RADIUS_METERS on both platforms.
+    const osMinResolvableRadius = 100.0;
 
     final result = await showDialog<double>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
           final typed = double.tryParse(controller.text.trim());
-          final tooSmall =
-              typed != null && typed > 0 && typed < minServiceableRadius;
-          // radius + max(radius * 0.1, 20) — the separation EXIT needs.
-          final exitDistance = tooSmall
-              ? typed + (typed * 0.1 > 20 ? typed * 0.1 : 20.0)
+          final inApp =
+              typed != null && typed > 0 && typed < osMinResolvableRadius;
+          // radius + max(radius * 0.1, clamp(accuracy, 3, 20)) — the separation
+          // EXIT needs. Shown for a typical 4 m-accurate handset fix, which is
+          // what the band is now scaled to.
+          const typicalAccuracy = 4.0;
+          final exitDistance = inApp
+              ? typed +
+                    (typed * 0.1 > typicalAccuracy
+                        ? typed * 0.1
+                        : typicalAccuracy)
               : 0.0;
 
           return AlertDialog(
@@ -714,28 +720,23 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                   },
                 ),
                 const SizedBox(height: 8),
-                // A fence smaller than GPS error cannot produce crossings. The
-                // trap is that it *looks* like it works: registering while
-                // inside fires an immediate ENTER from the initial trigger, and
-                // then nothing is ever reported again. Say so before the fence
-                // is created rather than leaving it to be discovered by walking
-                // around (#355).
-                if (tooSmall)
+                // Below the OS floor the SDK takes over rather than giving
+                // up, so this says which component will decide the fence and
+                // what that costs — in-app evaluation needs the location
+                // stream running, which OS-resolvable fences do not (#356).
+                if (inApp)
                   Text(
-                    '⚠️ Below ${minServiceableRadius.toStringAsFixed(0)}m the '
-                    'platform cannot reliably detect crossings — the fence is '
-                    'smaller than GPS error. The ENTER you see on creation is '
-                    'the initial trigger, not a detection, and EXIT would need '
-                    '~${exitDistance.toStringAsFixed(0)}m of travel. Allowed '
-                    'for testing, but expect no events.',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.orange.shade900,
-                    ),
+                    'ℹ️ Below ${osMinResolvableRadius.toStringAsFixed(0)}m the OS '
+                    'cannot resolve the fence, so Tracelet evaluates it in-app at '
+                    'the true radius. EXIT needs roughly '
+                    '~${exitDistance.toStringAsFixed(0)}m of travel on a '
+                    '${typicalAccuracy.toStringAsFixed(0)}m-accurate fix. Requires '
+                    'location updates to be running.',
+                    style: TextStyle(fontSize: 11, color: Colors.blue.shade900),
                   )
                 else
                   const Text(
-                    '100m+ is the reliable range on both platforms.',
+                    '100m+ is decided by the OS, with no location stream needed.',
                     style: TextStyle(fontSize: 11, color: Colors.grey),
                   ),
               ],
@@ -752,7 +753,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                     Navigator.pop(ctx, parsed);
                   }
                 },
-                child: Text(tooSmall ? 'Add anyway' : 'Add'),
+                child: const Text('Add'),
               ),
             ],
           );

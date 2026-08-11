@@ -12,12 +12,90 @@ use crate::spatial::rtree::RTree;
 /// (issue #268).
 const GEOFENCE_EXIT_HYSTERESIS_FRACTION: f64 = 0.1;
 
-/// Minimum exit-hysteresis band in meters.
+/// Exit-hysteresis band used when the fix carries no usable accuracy, in meters.
 ///
 /// For small-radius geofences `radius * FRACTION` is smaller than typical GPS
-/// noise, so a floor is applied to keep the buffer meaningful (e.g. a 50 m
-/// geofence still gets a 20 m band rather than 5 m).
+/// noise, so a floor is applied to keep the buffer meaningful. This constant is
+/// the *pessimistic* floor: it stands in for the jitter we would have measured
+/// had the platform told us, and applies only when it did not (see
+/// [exit_hysteresis_meters]).
 const GEOFENCE_MIN_EXIT_HYSTERESIS_METERS: f64 = 20.0;
+
+/// Smallest exit-hysteresis band, in meters, for a fix that *does* report
+/// accuracy.
+///
+/// Deliberately small. A modern handset with a dual-frequency receiver reports
+/// 2–4 m routinely, and a band wider than the error it is guarding against just
+/// costs the user metres of travel before EXIT fires — the whole complaint that
+/// motivated #356. This is only the residual guard that keeps the band from
+/// collapsing to nothing when a device claims sub-metre precision: reported
+/// accuracy is a 68% confidence radius, so ~a third of fixes land outside it.
+/// Isolated over-confident fixes are caught by [GEOFENCE_EXIT_CONFIRMATIONS],
+/// which is the defence actually suited to them.
+const GEOFENCE_ABS_MIN_EXIT_HYSTERESIS_METERS: f64 = 3.0;
+
+/// Radius, in meters, below which a circular fence is handed to the in-app
+/// evaluator because the *OS* geofencing services cannot resolve it.
+///
+/// This is a statement about Play Services and CoreLocation, not about
+/// Tracelet: both document a minimum useful radius of ~100 m, and below it they
+/// never become confident enough to report a crossing. It is emphatically *not*
+/// a minimum supported radius — a fence under it is more precisely handled, not
+/// less, because it is decided here against the true radius with a band scaled
+/// to the measured fix accuracy (#356).
+///
+/// Erring high is therefore the safe direction: it hands *more* fences to the
+/// evaluator, which on a 2–4 m-accurate device resolves them far better than
+/// the OS would have.
+pub const GEOFENCE_OS_MIN_RESOLVABLE_RADIUS_METERS: f64 = 100.0;
+
+/// Number of recent fixes averaged into the stationary-cluster estimate.
+///
+/// See [GeofenceEvaluator::smooth_small_fence_fix]. Five is enough to halve the
+/// effective uncertainty (`acc / sqrt(n)`) without adding a lag a pedestrian
+/// would notice.
+const GEOFENCE_SMOOTHING_MAX_SAMPLES: usize = 5;
+
+/// Distance, in meters, beyond which a new fix is treated as a genuine move
+/// rather than jitter around the same spot, discarding the cluster.
+///
+/// Scaled by the fix accuracy — a 40 m-accurate fix legitimately scatters
+/// further than a 4 m one — with a floor so a device reporting implausibly
+/// tight accuracy still gets a usable jitter allowance.
+const GEOFENCE_SMOOTHING_RESET_FACTOR: f64 = 1.5;
+const GEOFENCE_SMOOTHING_MIN_RESET_METERS: f64 = 10.0;
+
+/// The exit-hysteresis band for `radius`, given a fix accuracy of `acc`.
+///
+/// The band exists to out-reach GPS jitter so a stationary device does not
+/// dither across the boundary (#268). Jitter is not a constant, though — it is
+/// what `acc` measures — and a flat 20 m floor made small fences undecidable:
+/// a 5 m fence demanded `5 + 20` m of separation *plus* accuracy gating, which
+/// is ~28 m of travel on a 4 m-accurate fix, so EXIT never fired for a fence
+/// the user could walk out of in three steps (#356).
+///
+/// Tying the floor to the measured uncertainty keeps the anti-dither guarantee
+/// where it was earned and hands small fences back their resolution:
+///
+/// - accuracy unknown (`0.0`): fall back to the pessimistic 20 m floor — with
+///   nothing measured, assume the worst.
+/// - accuracy known: use it, clamped to
+///   `[GEOFENCE_ABS_MIN_EXIT_HYSTERESIS_METERS, GEOFENCE_MIN_EXIT_HYSTERESIS_METERS]`,
+///   so the band never collapses on an over-confident fix and never exceeds the
+///   old constant on a poor one.
+///
+/// Large fences are unaffected: `radius * FRACTION` dominates from 200 m up.
+fn exit_hysteresis_meters(radius: f64, acc: f64) -> f64 {
+    let jitter = if acc > 0.0 {
+        acc.clamp(
+            GEOFENCE_ABS_MIN_EXIT_HYSTERESIS_METERS,
+            GEOFENCE_MIN_EXIT_HYSTERESIS_METERS,
+        )
+    } else {
+        GEOFENCE_MIN_EXIT_HYSTERESIS_METERS
+    };
+    (radius * GEOFENCE_EXIT_HYSTERESIS_FRACTION).max(jitter)
+}
 
 /// Number of consecutive out-of-fence fixes required to confirm an EXIT.
 ///
@@ -80,6 +158,11 @@ pub struct GeofenceEvaluator {
     pending_exit_counts: std::sync::RwLock<HashMap<String, u32>>,
     rtree: std::sync::RwLock<Option<RTree<CoreGeofence>>>,
     indexed_geofences: std::sync::RwLock<Option<HashMap<String, CoreGeofence>>>,
+    /// Recent fixes believed to be the same stationary spot, newest last, as
+    /// `(lat, lng, accuracy)`. Averaged into a tighter position estimate when a
+    /// sub-[GEOFENCE_OS_MIN_RESOLVABLE_RADIUS_METERS] fence is in play — see
+    /// [GeofenceEvaluator::smooth_small_fence_fix].
+    recent_fixes: std::sync::RwLock<Vec<(f64, f64, f64)>>,
 }
 
 /// Records one more consecutive out-of-fence observation for `identifier` and
@@ -87,6 +170,20 @@ pub struct GeofenceEvaluator {
 /// point the pending count is cleared so a later re-entry then exit starts
 /// fresh. Returns `false` (holding the EXIT) while confirmations are still
 /// accruing.
+/// Unweighted mean position of `fixes`, or `None` when there is nothing to
+/// average. Used only as the reference point for the "has the device actually
+/// moved?" test, where every sample should count equally.
+fn centroid(fixes: &[(f64, f64, f64)]) -> Option<(f64, f64)> {
+    if fixes.is_empty() {
+        return None;
+    }
+    let n = fixes.len() as f64;
+    Some((
+        fixes.iter().map(|(lat, _, _)| lat).sum::<f64>() / n,
+        fixes.iter().map(|(_, lng, _)| lng).sum::<f64>() / n,
+    ))
+}
+
 fn confirm_exit(pending: &mut HashMap<String, u32>, identifier: &str) -> bool {
     let count = pending.get(identifier).copied().unwrap_or(0) + 1;
     if count >= GEOFENCE_EXIT_CONFIRMATIONS {
@@ -108,6 +205,7 @@ impl GeofenceEvaluator {
             pending_exit_counts: std::sync::RwLock::new(HashMap::new()),
             rtree: std::sync::RwLock::new(None),
             indexed_geofences: std::sync::RwLock::new(None),
+            recent_fixes: std::sync::RwLock::new(Vec::new()),
         })
     }
 
@@ -159,6 +257,22 @@ impl GeofenceEvaluator {
         // 0 so gating is a no-op rather than pulling the exit threshold inward.
         let acc = if accuracy.is_finite() && accuracy > 0.0 { accuracy } else { 0.0 };
         let effective_geofences = self.resolve_geofences(latitude, longitude, geofences);
+
+        // Sub-serviceable fences are decided from a stationary-cluster average
+        // rather than the bare fix (#356). Only when one is actually in play:
+        // for ordinary fences the raw fix is already far more precise than the
+        // boundary test needs, and leaving them untouched keeps this change
+        // scoped to the capability it exists for.
+        let has_small_fence = effective_geofences.iter().any(|gf| {
+            gf.vertices.len() < 3 && gf.radius > 0.0 && gf.radius < GEOFENCE_OS_MIN_RESOLVABLE_RADIUS_METERS
+        });
+        let (latitude, longitude, acc) = if has_small_fence {
+            self.smooth_small_fence_fix(latitude, longitude, acc)
+        } else {
+            self.recent_fixes.write().unwrap().clear();
+            (latitude, longitude, acc)
+        };
+
         let mut transitions = Vec::new();
         let mut inside_ids = self.inside_geofence_ids.write().unwrap();
         let mut pending = self.pending_exit_counts.write().unwrap();
@@ -205,8 +319,7 @@ impl GeofenceEvaluator {
             // device is clearly beyond it (radius + buffer). Without this, a
             // stationary device whose fixes jitter across the boundary produces
             // repeated ENTER/EXIT events (issue #268).
-            let exit_buffer = (gf.radius * GEOFENCE_EXIT_HYSTERESIS_FRACTION)
-                .max(GEOFENCE_MIN_EXIT_HYSTERESIS_METERS);
+            let exit_buffer = exit_hysteresis_meters(gf.radius, acc);
             let entered = distance <= gf.radius;
             // Accuracy-aware EXIT (#274): require the whole error circle to be
             // beyond the fence, not just the reported point. `distance - acc`
@@ -248,6 +361,7 @@ impl GeofenceEvaluator {
     pub fn clear(&self) {
         self.inside_geofence_ids.write().unwrap().clear();
         self.pending_exit_counts.write().unwrap().clear();
+        self.recent_fixes.write().unwrap().clear();
         self.clear_index();
     }
 
@@ -258,6 +372,79 @@ impl GeofenceEvaluator {
 }
 
 impl GeofenceEvaluator {
+    /// Averages the recent stationary fixes into a tighter position estimate,
+    /// returning `(lat, lng, accuracy)` to evaluate small fences against.
+    ///
+    /// A fence of 5–50 m is comparable in size to the error of a single fix, so
+    /// one fix cannot say which side of the boundary the device is on. Several
+    /// fixes of the *same spot* can: averaging `n` independent observations of a
+    /// fixed point shrinks the uncertainty to `acc / sqrt(n)`, which is what
+    /// turns an undecidable boundary into a decidable one (#356).
+    ///
+    /// The premise is "same spot", so the cluster is discarded the moment the
+    /// device demonstrably moves — a new fix further from the running centroid
+    /// than jitter can explain. That keeps the average from lagging behind a
+    /// walking user and dragging them back inside a fence they have left: while
+    /// travelling this degrades to the raw fix, which is the correct input then.
+    ///
+    /// Accuracy is combined by inverse-variance weighting, the estimator that
+    /// makes a tight fix count for more than a loose one and yields the
+    /// `acc / sqrt(n)` shrink when they are equal.
+    fn smooth_small_fence_fix(&self, lat: f64, lng: f64, acc: f64) -> (f64, f64, f64) {
+        let mut fixes = self.recent_fixes.write().unwrap();
+
+        // Averaging is an error-model argument: it shrinks uncertainty by
+        // `sqrt(n)` *because* each sample's uncertainty is known. A fix that
+        // reports no accuracy gives us no model, so there is nothing to justify
+        // moving the position or claiming a tighter one — inventing a number
+        // here would convert "unknown" into a hard gate that suppresses real
+        // crossings. Pass it through untouched, and drop the cluster: without
+        // accuracy we also cannot tell jitter from travel.
+        if acc <= 0.0 {
+            fixes.clear();
+            return (lat, lng, acc);
+        }
+
+        if let Some((c_lat, c_lng)) = centroid(&fixes) {
+            let allowance = (acc * GEOFENCE_SMOOTHING_RESET_FACTOR)
+                .max(GEOFENCE_SMOOTHING_MIN_RESET_METERS);
+            if haversine(lat, lng, c_lat, c_lng) > allowance {
+                fixes.clear();
+            }
+        }
+
+        fixes.push((lat, lng, acc));
+        if fixes.len() > GEOFENCE_SMOOTHING_MAX_SAMPLES {
+            let excess = fixes.len() - GEOFENCE_SMOOTHING_MAX_SAMPLES;
+            fixes.drain(0..excess);
+        }
+
+        // A lone fix is its own average; nothing to gain and nothing to claim.
+        if fixes.len() < 2 {
+            return (lat, lng, acc);
+        }
+
+        // Weight by 1/acc²: a tight fix counts for more than a loose one, and
+        // equal accuracies give the `acc / sqrt(n)` shrink. Every sample here
+        // reported an accuracy — the guard above rejected those that did not.
+        let weight_of = |a: f64| 1.0 / (a * a);
+
+        let total: f64 = fixes.iter().map(|(_, _, a)| weight_of(*a)).sum();
+        if !total.is_finite() || total <= 0.0 {
+            return (lat, lng, acc);
+        }
+
+        let s_lat = fixes.iter().map(|(la, _, a)| la * weight_of(*a)).sum::<f64>() / total;
+        let s_lng = fixes.iter().map(|(_, ln, a)| ln * weight_of(*a)).sum::<f64>() / total;
+        // Standard error of the inverse-variance mean: sqrt(1 / sum(weights)).
+        let s_acc = (1.0 / total).sqrt();
+
+        // Never claim to be *more* uncertain than the newest fix alone — the
+        // average is a refinement, and reporting a worse accuracy than we were
+        // handed would widen the exit band instead of narrowing it.
+        (s_lat, s_lng, s_acc.min(acc))
+    }
+
     fn resolve_geofences(&self, lat: f64, lng: f64, all_geofences: Vec<CoreGeofence>) -> Vec<CoreGeofence> {
         let rtree_guard = self.rtree.read().unwrap();
         let lookup_guard = self.indexed_geofences.read().unwrap();
@@ -461,8 +648,9 @@ mod tests {
         assert_eq!(exits, 0, "alternating out/in glitches must never confirm an EXIT");
     }
 
-    /// Small-radius geofences use the meter floor for their hysteresis band, so
-    /// they too resist flapping from typical GPS noise.
+    /// With no reported accuracy there is nothing to measure jitter with, so the
+    /// hysteresis band falls back to the pessimistic 20 m floor and small
+    /// geofences still resist flapping from typical GPS noise.
     #[test]
     fn small_radius_uses_meter_floor() {
         let (lat, lng) = (37.4219983, -122.084);
@@ -527,5 +715,129 @@ mod tests {
         assert_eq!(x, 0, "first out-of-fence fix is held pending confirmation");
         let (_, x) = count(&eval.evaluate_proximity(plat, plng, 10.0, vec![gf.clone()]));
         assert_eq!(x, 1, "an accurate, sustained departure must still EXIT");
+    }
+
+    /// #356: the hysteresis band tracks the *measured* uncertainty instead of a
+    /// flat 20 m, which is what makes a sub-100 m fence decidable at all.
+    #[test]
+    fn hysteresis_band_follows_reported_accuracy() {
+        // A tight fix shrinks the band to match — a 2–4 m device is not made to
+        // walk 20 m to leave a 10 m fence.
+        assert_eq!(exit_hysteresis_meters(10.0, 4.0), 4.0, "a 4 m fix gets a 4 m band");
+        assert_eq!(exit_hysteresis_meters(10.0, 2.0), 3.0, "clamped up to the 3 m residual guard");
+        assert_eq!(exit_hysteresis_meters(10.0, 0.5), 3.0, "an over-confident fix cannot collapse it");
+        assert_eq!(exit_hysteresis_meters(10.0, 12.0), 12.0, "a looser fix widens it proportionally");
+        // ...but never past the old constant, and never below radius * 10%.
+        assert_eq!(exit_hysteresis_meters(10.0, 90.0), 20.0, "a hopeless fix caps at the 20 m floor");
+        assert_eq!(exit_hysteresis_meters(10.0, 0.0), 20.0, "unknown accuracy assumes the worst");
+        assert_eq!(exit_hysteresis_meters(1000.0, 4.0), 100.0, "large fences stay fraction-driven");
+    }
+
+    /// #356: the field report behind this change — a 10 m fence, walked out of
+    /// on 4 m-accurate fixes, that never fired EXIT because the old flat floor
+    /// demanded `10 + 20 + 4` m of separation. It must now fire exactly one
+    /// ENTER and one EXIT over a short, ordinary walk.
+    #[test]
+    fn small_fence_enters_and_exits_on_a_short_walk() {
+        let (lat, lng) = (37.4219983, -122.084);
+        let gf = circular("desk", lat, lng, 10.0);
+        let eval = GeofenceEvaluator::new();
+
+        let (mut enters, mut exits) = (0usize, 0usize);
+        // Arrive, stand still a moment, then walk away — well short of the ~34 m
+        // the reporter covered without ever seeing an EXIT.
+        for d in [3.0, 2.0, 4.0, 25.0, 30.0] {
+            let (plat, plng) = point_north(lat, lng, d);
+            let (e, x) = count(&eval.evaluate_proximity(plat, plng, 4.0, vec![gf.clone()]));
+            enters += e;
+            exits += x;
+        }
+        assert_eq!(enters, 1, "arriving at a 10 m fence must ENTER once");
+        assert_eq!(exits, 1, "walking 30 m away from a 10 m fence must EXIT once");
+    }
+
+    /// A stationary device inside a small fence still must not dither, even
+    /// though its band is now much narrower than the old 20 m.
+    #[test]
+    fn small_fence_does_not_flap_while_stationary() {
+        let (lat, lng) = (37.4219983, -122.084);
+        let gf = circular("desk", lat, lng, 10.0);
+        let eval = GeofenceEvaluator::new();
+
+        let (mut enters, mut exits) = (0usize, 0usize);
+        for d in [2.0, 11.0, 6.0, 13.0, 4.0, 12.0, 5.0] {
+            let (plat, plng) = point_north(lat, lng, d);
+            let (e, x) = count(&eval.evaluate_proximity(plat, plng, 6.0, vec![gf.clone()]));
+            enters += e;
+            exits += x;
+        }
+        assert_eq!((enters, exits), (1, 0), "jitter around a 10 m boundary must not flap");
+    }
+
+    /// #356: repeated fixes of the same spot are averaged, so the estimate the
+    /// small fence is judged against is tighter than any single fix.
+    #[test]
+    fn stationary_cluster_sharpens_the_estimate() {
+        let (lat, lng) = (37.4219983, -122.084);
+        let eval = GeofenceEvaluator::new();
+
+        let first = eval.smooth_small_fence_fix(lat, lng, 12.0);
+        assert_eq!(first.2, 12.0, "a lone fix is its own average");
+
+        let mut acc = first.2;
+        for _ in 0..4 {
+            acc = eval.smooth_small_fence_fix(lat, lng, 12.0).2;
+        }
+        // Five equal 12 m observations of one point → 12 / sqrt(5) ≈ 5.4 m.
+        assert!(acc < 6.0, "five clustered fixes must sharpen 12 m to ~5.4 m, got {acc}");
+    }
+
+    /// The average is only valid while the device holds still. A genuine move
+    /// discards the cluster rather than dragging the estimate backwards.
+    #[test]
+    fn moving_away_discards_the_cluster() {
+        let (lat, lng) = (37.4219983, -122.084);
+        let eval = GeofenceEvaluator::new();
+
+        for _ in 0..5 {
+            eval.smooth_small_fence_fix(lat, lng, 5.0);
+        }
+        let (moved_lat, moved_lng) = point_north(lat, lng, 60.0);
+        let (s_lat, s_lng, s_acc) = eval.smooth_small_fence_fix(moved_lat, moved_lng, 5.0);
+
+        assert_eq!((s_lat, s_lng, s_acc), (moved_lat, moved_lng, 5.0),
+            "a 60 m jump must reset the cluster to the raw fix, not average it");
+    }
+
+    /// A fix with no reported accuracy is passed through untouched: there is no
+    /// error model to average under, and fabricating one would turn "unknown"
+    /// into a hard gate that suppresses genuine crossings.
+    #[test]
+    fn unknown_accuracy_is_never_smoothed() {
+        let (lat, lng) = (37.4219983, -122.084);
+        let eval = GeofenceEvaluator::new();
+
+        let (a_lat, a_lng, a_acc) = eval.smooth_small_fence_fix(lat, lng, 0.0);
+        assert_eq!((a_lat, a_lng, a_acc), (lat, lng, 0.0));
+
+        let (near_lat, near_lng) = point_north(lat, lng, 2.0);
+        let (b_lat, b_lng, b_acc) = eval.smooth_small_fence_fix(near_lat, near_lng, 0.0);
+        assert_eq!((b_lat, b_lng, b_acc), (near_lat, near_lng, 0.0),
+            "a second unknown-accuracy fix must not be averaged with the first");
+    }
+
+    /// Smoothing exists for small fences; ordinary ones keep the raw fix, so
+    /// this change cannot perturb their long-established behaviour.
+    #[test]
+    fn large_fences_bypass_smoothing() {
+        let (lat, lng) = (37.4219983, -122.084);
+        let gf = circular("campus", lat, lng, 500.0);
+        let eval = GeofenceEvaluator::new();
+
+        for _ in 0..3 {
+            let _ = eval.evaluate_proximity(lat, lng, 9.0, vec![gf.clone()]);
+        }
+        assert!(eval.recent_fixes.read().unwrap().is_empty(),
+            "no small fence in play → no cluster is accumulated");
     }
 }
