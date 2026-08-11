@@ -157,6 +157,56 @@ class LocationEngineGeofenceStarvationTest {
             persistedUpdates,
         )
     }
+
+    /**
+     * Regression for #352 — geofence **proximity scope** must survive a fix the
+     * processor rejects for a reason unrelated to movement.
+     *
+     * `updateProximity()` is what registers fences with Play Services, so in
+     * standard (OS) geofence mode it *is* the feature. It used to ride the
+     * persistence-filtered `onLocationUpdate`, which meant the tracking filter
+     * silently decided whether geofencing worked at all.
+     *
+     * 3.8.0's transport-mode auto-tune (#299) made that fatal: a committed
+     * `still` mode retunes `maxImpliedSpeed` to 3 m/s, so the moment the device
+     * starts moving every fix is rejected — registration froze and ENTER/EXIT
+     * never fired again. This models that exact rejection.
+     */
+    @Test
+    fun `proximity scope still updates when the implied-speed filter rejects the fix`() {
+        // Mirrors TransportMode::Still from the auto-tune table: 3 m/s.
+        config.setConfig(mapOf("maxImpliedSpeed" to 3))
+
+        var rawEvaluations = 0
+        var persistedUpdates = 0
+        // Standard (OS) geofence mode — high accuracy OFF, which is the
+        // configuration in the field report.
+        engine.geofenceHighAccuracyMode = false
+        engine.onRawGeofenceLocation = { _, _, _ -> rawEvaluations++ }
+        engine.onLocationUpdate = { _, _, _ -> persistedUpdates++ }
+        engine.start()
+
+        val callback = client.lastCallback!!
+        // First fix anchors the processor. The second is ~110 m away one second
+        // later — an implied ~110 m/s, far above the 3 m/s auto-tuned gate, so
+        // the processor rejects it for persistence.
+        callback.onLocationResult(listOf(fixAt(10.787929, 76.684183, 1_000L)))
+        callback.onLocationResult(listOf(fixAt(10.788929, 76.684183, 2_000L)))
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(
+            "both fixes must reach geofence proximity — a fix rejected by the " +
+                "implied-speed filter must NOT freeze Play Services registration (#352)",
+            2,
+            rawEvaluations,
+        )
+        assertEquals(
+            "persistence stays filtered: the implausible-speed fix is still " +
+                "rejected for persistence, so only the first fix is dispatched",
+            1,
+            persistedUpdates,
+        )
+    }
 }
 
 private class CapturingLocationClient : TraceletLocationClient {

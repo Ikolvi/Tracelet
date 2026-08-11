@@ -650,8 +650,15 @@ class LocationEngine(
                         events.sendLocation(enriched)
                         TraceletLog.debug("periodic fix dispatched — lat=$lat, lng=$lng, acc=$accuracy, speed=$speed")
 
-                        // Notify proximity-based geofence monitoring
+                        // Notify proximity-based geofence monitoring.
+                        //
+                        // Geofence work lives on [onRawGeofenceLocation] (#352), so a
+                        // periodic fix must drive that hook too — periodic fixes never
+                        // reach the processor, so this is their only path to geofence
+                        // registration. [onLocationUpdate] still fires for its other
+                        // consumers (trip waypoints).
                         if (lat != null && lng != null) {
+                            onRawGeofenceLocation?.invoke(lat, lng, accuracy ?: 0.0)
                             onLocationUpdate?.invoke(lat, lng, accuracy ?: 0.0)
                         }
                     } else {

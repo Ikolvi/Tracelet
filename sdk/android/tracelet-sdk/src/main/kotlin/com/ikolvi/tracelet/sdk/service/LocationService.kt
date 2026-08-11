@@ -1281,18 +1281,32 @@ class LocationService : Service(), DefaultLifecycleObserver {
                 }
             } // end let
 
-            // Geofence mode: re-register persisted geofences with Play Services
-            // and restore the static BroadcastReceiver reference so transition
-            // events are not silently dropped after process death.
+            // Re-register persisted geofences with Play Services (it clears them
+            // on every reboot) and restore the static BroadcastReceiver reference
+            // so transition events are not silently dropped after process death.
             // Safe to read geofenceManager here: startBootTracking() only reaches
             // this point when bootstrapForBackground() returned true, which
             // already awaited init (awaitInit) AND verified geofenceManager is
             // assigned — so the background "tracelet-init" thread has finished
             // wiring the lateinit and this cannot throw
             // UninitializedPropertyAccessException (#264).
+            //
+            // Previously gated on `trackingMode == TrackingMode.GEOFENCES`, which
+            // conflated the dedicated geofence-only *session* (startGeofences())
+            // with "there are geofences to restore" — addGeofence()/addGeofences()
+            // never set that tracking mode, so a continuous-tracking app with
+            // standalone geofences never got them re-registered after a reboot or
+            // task removal (paired with the destroyAll() fix, #353). reRegisterAll()
+            // is a cheap no-op when there are no persisted geofences, so calling it
+            // unconditionally is safe for every mode.
             val geoManager = sdk.geofenceManager
-            if (trackingMode == TrackingMode.GEOFENCES) {
-                geoManager.reRegisterAll()
+            val fenceCountBeforeRestore = geoManager.getGeofences().size
+            geoManager.reRegisterAll()
+            if (fenceCountBeforeRestore > 0) {
+                TraceletLog.lifecycle(
+                    "geofences: re-registered $fenceCountBeforeRestore geofence(s) " +
+                        "after boot/task-removal — mode=$trackingMode (#353)"
+                )
             }
             GeofenceBroadcastReceiver.geofenceManager = geoManager
 
@@ -1303,12 +1317,23 @@ class LocationService : Service(), DefaultLifecycleObserver {
             // — produces NO enter/exit events after a reboot or task removal:
             // the foreground service and engine run, but transitions never fire.
             // Mirrors TraceletSdk.startGeofences() and TraceletSdk.start().
-            if (config.getGeofenceModeHighAccuracy()) {
+            //
+            // Both duties ride the RAW stream (#352). This path had them on the
+            // persistence-filtered `onLocationUpdate`, so it never received the
+            // #297 fix at all: after a reboot or task removal even high-accuracy
+            // crossings were gated by the tracking filter, and proximity scope —
+            // which in standard mode is what registers fences with Play Services
+            // — froze whenever the filter rejected fixes. With 3.8.0's auto-tune
+            // (#299) retuning a committed `still` mode to maxImpliedSpeed=3 m/s,
+            // that is every fix once the device moves.
+            val highAccuracy = config.getGeofenceModeHighAccuracy()
+            if (highAccuracy) {
                 geoManager.clearHighAccuracyState()
             }
-            bootLocationEngine?.onLocationUpdate = { lat, lng, accuracy ->
+            bootLocationEngine?.geofenceHighAccuracyMode = highAccuracy
+            bootLocationEngine?.onRawGeofenceLocation = { lat, lng, accuracy ->
                 geoManager.updateProximity(lat, lng)
-                if (config.getGeofenceModeHighAccuracy()) {
+                if (highAccuracy) {
                     geoManager.evaluateHighAccuracyProximity(lat, lng, accuracy)
                 }
             }
