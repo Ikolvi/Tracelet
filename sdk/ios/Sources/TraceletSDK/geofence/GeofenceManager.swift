@@ -11,6 +11,17 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     private let configManager: ConfigManager
     private let eventDispatcher: TraceletEventSending
     public var onGeofenceEvent: (([String: Any]) -> Void)?
+
+    /// Invoked when CoreLocation reports a transition for a fence the in-app
+    /// evaluator owns — the wake-up that `wakeupRadiusMeters`' inflated region
+    /// exists to produce (#356).
+    ///
+    /// The transition itself is discarded (it describes the 100 m wake-up
+    /// boundary, not the fence), but its *arrival* is information: the device is
+    /// near a fence only this SDK can decide, and deciding it needs the location
+    /// stream. Hosts wire this to resume continuous tracking, so a relaunch that
+    /// came up in a low-power posture still evaluates the true radius.
+    public var onEvaluatorWakeup: (() -> Void)?
     
     private let isoFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
@@ -923,6 +934,13 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
             TraceletLog.debug(
                 "\(GeofenceManager.logTag) ignoring OS transition for \(region.identifier) "
                 + "— evaluated in-app at its true radius (#356)")
+            // The discarded transition still did its job: it says we are near a
+            // fence only the evaluator can decide. Claim the wake-up before
+            // returning, or the inflated region is pure cost (#356).
+            TraceletLog.lifecycle(
+                "\(GeofenceManager.logTag) wake-up from the OS near an in-app fence — "
+                + "resuming the location stream so its true radius can be evaluated (#356)")
+            onEvaluatorWakeup?()
             return
         }
 

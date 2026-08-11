@@ -572,6 +572,12 @@ public final class TraceletSdk {
         // the config flag alone can settle — polygons and sub-100 m circles are
         // ours to decide however `geofenceModeHighAccuracy` is set (#356).
         locationEngine.geofenceHighAccuracyMode = geofenceManager.hasEvaluatorOwnedGeofences()
+        // Claim the wake-up the inflated OS region exists to produce: if the app
+        // relaunched into a low-power posture, coming near a small fence must
+        // bring the stream back or the evaluator has nothing to decide on (#356).
+        geofenceManager.onEvaluatorWakeup = { [weak self] in
+            self?.locationEngine.start()
+        }
         locationEngine.onRawGeofenceLocation = { [weak self] lat, lng, accuracy in
             guard let self = self else { return }
             self.geofenceManager.updateProximity(latitude: lat, longitude: lng)

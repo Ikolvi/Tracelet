@@ -180,6 +180,77 @@ class GeofenceSmallRadiusTest {
         )
     }
 
+    // ── The wake-up ─────────────────────────────────────────────────────────
+
+    @Test
+    fun `an OS transition for a small fence claims the wake-up instead of being dropped`() {
+        geoManager.addGeofence(circle("TINY", 10.0))
+        var wokeUp = 0
+        geoManager.onEvaluatorWakeup = { wokeUp++ }
+
+        // Play Services reports EXIT from the *inflated* 100 m region. That
+        // transition is about the wrong boundary and must not surface as a
+        // crossing — but it is the only signal a killed app gets that it is near
+        // a fence only the evaluator can decide, so it has to resume the stream.
+        geoManager.handleGeofenceEvent(
+            transitionType = 2, // EXIT
+            triggeringGeofences = listOf(
+                com.ikolvi.tracelet.sdk.wrapper.TraceletGeofence(
+                    requestId = "TINY",
+                    latitude = centerLat,
+                    longitude = centerLng,
+                    radiusMeters = 100f,
+                    expirationTime = -1L,
+                    transitionTypes = 3,
+                    loiteringDelayMs = 0,
+                ),
+            ),
+            latitude = north(120.0),
+            longitude = centerLng,
+        )
+
+        assertEquals(1, wokeUp, "the OS wake-up must resume the location stream")
+        assertTrue(
+            transitions.isEmpty(),
+            "the 100 m wake-up boundary must not be reported as a crossing, got: $transitions",
+        )
+    }
+
+    @Test
+    fun `an OS transition for a fence the OS owns does not claim the wake-up`() {
+        geoManager.addGeofence(circle("BIG", 500.0))
+        var wokeUp = 0
+        geoManager.onEvaluatorWakeup = { wokeUp++ }
+
+        geoManager.handleGeofenceEvent(
+            transitionType = 1, // ENTER
+            triggeringGeofences = listOf(
+                com.ikolvi.tracelet.sdk.wrapper.TraceletGeofence(
+                    requestId = "BIG",
+                    latitude = centerLat,
+                    longitude = centerLng,
+                    radiusMeters = 500f,
+                    expirationTime = -1L,
+                    transitionTypes = 3,
+                    loiteringDelayMs = 0,
+                ),
+            ),
+            latitude = centerLat,
+            longitude = centerLng,
+        )
+
+        assertEquals(
+            0,
+            wokeUp,
+            "a fence the OS decides needs no stream, so it must not force one on",
+        )
+        assertEquals(
+            listOf("BIG" to "ENTER"),
+            transitions,
+            "and its own transition must still be reported",
+        )
+    }
+
     // ── The always-on note ──────────────────────────────────────────────────
 
     @Test

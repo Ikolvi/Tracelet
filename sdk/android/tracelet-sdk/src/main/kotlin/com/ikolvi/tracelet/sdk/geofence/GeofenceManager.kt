@@ -52,6 +52,22 @@ class GeofenceManager(
     private val lastLocationProvider: (() -> Location?)? = null,
 ) {
     var onGeofenceEvent: ((Map<String, Any?>) -> Unit)? = null
+
+    /**
+     * Invoked when the OS reports a transition for a fence the in-app evaluator
+     * owns — i.e. the wake-up that [wakeupRadiusMeters]'s inflated registration
+     * exists to produce (#356).
+     *
+     * The transition itself is discarded (it describes the 100 m wake-up
+     * boundary, not the fence), but the *arrival* is information: the device is
+     * near a fence only this SDK can decide, and deciding it needs the location
+     * stream. In the killed state that stream may have been throttled to
+     * stationary-periodic by #319's reconcile, so without this the wake-up wakes
+     * nothing and a small fence goes quiet exactly when the app is gone.
+     *
+     * Hosts wire this to resume continuous tracking.
+     */
+    var onEvaluatorWakeup: (() -> Unit)? = null
     companion object {
         private const val TAG = "GeofenceManager"
         const val ACTION_GEOFENCE_EVENT = "com.tracelet.ACTION_GEOFENCE_EVENT"
@@ -571,16 +587,30 @@ class GeofenceManager(
     ) {
         // Per fence, not globally: a mixed set has its large fences decided by
         // the OS and its small ones in-app, and each must reach exactly one path.
+        var sawEvaluatorOwned = false
         val triggeringGeofences = triggeringGeofences.filter { gf ->
             val stored = getGeofence(gf.requestId)
             val owned = stored != null && isEvaluatorOwned(stored)
             if (owned) {
+                sawEvaluatorOwned = true
                 TraceletLog.debug(
                     "$GEOFENCE_LOG_TAG ignoring OS transition for ${gf.requestId} " +
                         "— evaluated in-app at its true radius (#356)"
                 )
             }
             !owned
+        }
+
+        // The discarded transition still did its job: it told us we are near a
+        // fence only the evaluator can decide. Claim the wake-up before
+        // returning, or the inflated registration is pure cost (#356).
+        if (sawEvaluatorOwned) {
+            TraceletLog.lifecycle(
+                "$GEOFENCE_LOG_TAG wake-up from the OS near an in-app fence — " +
+                    "resuming the location stream so its true radius can be " +
+                    "evaluated (#356)"
+            )
+            onEvaluatorWakeup?.invoke()
         }
         if (triggeringGeofences.isEmpty()) return
 

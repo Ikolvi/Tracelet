@@ -1346,6 +1346,17 @@ class LocationService : Service(), DefaultLifecycleObserver {
                 geoManager.updateProximity(lat, lng)
                 geoManager.evaluateHighAccuracyProximity(lat, lng, accuracy)
             }
+            // Claim the wake-up the inflated OS registration exists to produce:
+            // if the stream has been throttled (doze, an OEM, or #319's
+            // reconcile before this guard existed), coming near a small fence
+            // must bring it back or the evaluator has nothing to decide on
+            // (#356).
+            geoManager.onEvaluatorWakeup = {
+                val engine = bootLocationEngine
+                if (engine != null && isStationaryTimerActive()) {
+                    switchToContinuous(engine, StateManager(applicationContext))
+                }
+            }
             TraceletLog.debug("Geofence registrations restored after boot/task-removal (proximity stream wired)")
 
             // #316: standard (low-power) geofence-only mode is now fully restored
@@ -1479,6 +1490,26 @@ class LocationService : Service(), DefaultLifecycleObserver {
         val wantsStationary = !state.isMoving
         val isStationary = isStationaryTimerActive()
         if (wantsStationary == isStationary) return
+
+        // #319 throttles to stationary-periodic on the premise that nothing
+        // needs the continuous stream while the device is still. A fence the OS
+        // cannot resolve breaks that premise: it is decided from the stream, so
+        // stopping the engine here is what makes a 10 m fence go quiet in the
+        // killed state — the reporter's trace shows this switch landing 14 s
+        // after the ENTER, and `switchToStationaryPeriodic` calls `engine.stop()`
+        // (#356).
+        val needsStream = runCatching {
+            com.ikolvi.tracelet.sdk.TraceletSdk.getInstance(applicationContext)
+                .geofenceManager.hasEvaluatorOwnedGeofences()
+        }.getOrDefault(false)
+        if (wantsStationary && needsStream) {
+            TraceletLog.lifecycle(
+                "motion (killed-state): staying continuous — an in-app-evaluated " +
+                    "geofence needs the location stream, so the #319 throttle to " +
+                    "stationary periodic does not apply (#356)"
+            )
+            return
+        }
 
         if (wantsStationary) {
             TraceletLog.lifecycle(
