@@ -42,7 +42,20 @@ class _Issue357CardState extends State<Issue357Card> {
 
   /// Long enough for a time-based cadence to produce several fixes, short
   /// enough that the card stays a card. Two of these windows run back to back.
-  static const _windowSeconds = 12;
+  ///
+  /// Sized for the slow side: Android's fused provider ramps from a cold GPS
+  /// start — a device trace shows one fix every ~5 s for the first half-minute,
+  /// reaching the requested 1 Hz only after that — so a 12 s window closed on
+  /// two fixes and failed a run in which the stream had opened perfectly.
+  static const _windowSeconds = 20;
+
+  /// Fixes in the second window that count as "the stream is open".
+  ///
+  /// This is a presence check, not a rate measurement: the baseline window
+  /// establishes what a gated stream looks like (zero), so any *sustained*
+  /// delivery against that is the signal. Two rules out a lone heartbeat fix
+  /// without assuming a cadence the provider does not promise while warming up.
+  static const _minStreamFixes = 2;
 
   /// Emitted once per raw fix the persistence filter rejects — on both
   /// platforms, from the shared Rust processor.
@@ -185,9 +198,9 @@ class _Issue357CardState extends State<Issue357Card> {
 
       check(
         'adding a 10 m fence opens the stream the evaluator is decided from',
-        stayedStill && windowB >= 3 && windowB > windowA,
+        stayedStill && windowB >= _minStreamFixes && windowB > windowA,
         '$windowB raw fixes in ${_windowSeconds}s after the fence was added '
-            '(baseline $windowA). '
+            '(baseline $windowA, need $_minStreamFixes). '
             '${realigned ? 'The cadence WAS re-aligned, so a zero here is not the '
                       '#357 bug — something else is holding the stream down '
                       '(check the provider and any power throttling).' : 'Before this fix the flag was only computed at start(), so this '
