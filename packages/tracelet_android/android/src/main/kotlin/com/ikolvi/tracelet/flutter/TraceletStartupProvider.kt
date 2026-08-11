@@ -52,7 +52,7 @@ class TraceletStartupProvider : ContentProvider() {
                     val dispatcher = EventDispatcher()
                     val h = HeadlessTaskService(c, ConfigManager.getInstance(c))
                     dispatcher.headlessFallback = { name, data ->
-                        if (h.isRegistered()) h.dispatchEvent(name, data)
+                        dispatchToHeadless(h, name, data)
                     }
                     dispatcher
                 }

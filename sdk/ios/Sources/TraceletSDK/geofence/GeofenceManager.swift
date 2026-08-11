@@ -11,7 +11,33 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     private let configManager: ConfigManager
     private let eventDispatcher: TraceletEventSending
     public var onGeofenceEvent: (([String: Any]) -> Void)?
-    
+
+    /// Invoked when CoreLocation reports a transition for a fence the in-app
+    /// evaluator owns — the wake-up that `wakeupRadiusMeters`' inflated region
+    /// exists to produce (#356).
+    ///
+    /// The transition itself is discarded (it describes the 100 m wake-up
+    /// boundary, not the fence), but its *arrival* is information: the device is
+    /// near a fence only this SDK can decide, and deciding it needs the location
+    /// stream. Hosts wire this to resume continuous tracking, so a relaunch that
+    /// came up in a low-power posture still evaluates the true radius.
+    public var onEvaluatorWakeup: (() -> Void)?
+
+    /// Invoked whenever the stored fence set changes, because that is when the
+    /// answer to `hasEvaluatorOwnedGeofences()` can change (#357).
+    ///
+    /// A fence the evaluator owns is decided from the raw fix stream, so who
+    /// owns the current fences dictates the cadence CoreLocation is asked for.
+    /// The host answers that question at `start()`, but the fence set is
+    /// mutable for the rest of the session: a 10 m fence added afterwards left
+    /// the OS distance filter in force and the evaluator saw one fix per
+    /// `distanceFilter` metres travelled — too few to ever confirm an EXIT.
+    /// Hosts wire this to re-apply the cadence.
+    ///
+    /// Fired from the manager rather than the SDK facade so the internal
+    /// removals (KnockOut mode) are covered too.
+    public var onEvaluatorOwnershipChanged: (() -> Void)?
+
     private let isoFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -34,6 +60,22 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
 
     /// Mirror of `GEOFENCE_MIN_EXIT_HYSTERESIS_METERS` in the Rust core.
     private static let minExitHysteresisMeters = 20.0
+
+    /// Mirror of `GEOFENCE_ABS_MIN_EXIT_HYSTERESIS_METERS` in the Rust core.
+    private static let absMinExitHysteresisMeters = 3.0
+
+    /// Smallest radius CoreLocation can decide for itself, in metres.
+    ///
+    /// Below this the fence is smaller than the error of the fixes it is
+    /// compared against, so region monitoring never becomes confident enough to
+    /// report a crossing: entering a region the device is already inside reports
+    /// state immediately — which looks like it works — and then nothing, ever
+    /// (#355).
+    ///
+    /// Small fences are *not* rejected. They are decided in-app instead, against
+    /// the true radius and with a hysteresis band scaled to the measured fix
+    /// accuracy rather than a flat 20 m (#356). See `isEvaluatorOwned`.
+    private static let osMinResolvableRadiusMeters = 100.0
 
     /// High-accuracy mode: track which geofences the device is currently inside.
     private var insideGeofenceIds = Set<String>()
@@ -167,6 +209,12 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
             let lat = data["latitude"] as? Double ?? 0.0
             let lng = data["longitude"] as? Double ?? 0.0
             let radius = data["radius"] as? Double ?? 100.0
+
+            // Warned at add time, not registration time: this is the moment the
+            // caller chose the radius, and it fires once per fence rather than
+            // on every proximity re-registration (#355).
+            let isPolygonShape = (data["vertices"] as? [[Double]])?.count ?? 0 >= 3
+            if !isPolygonShape { noteSmallRadiusHandling(identifier, radius) }
             
             var vertices: [Coordinate]? = nil
             if let verticesRaw = data["vertices"] as? [[Double]] {
@@ -181,13 +229,20 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
             }
             
             do {
-                try rustDatabase?.insertGeofence(identifier: identifier, lat: lat, lng: lng, radius: radius, vertices: vertices, extras: extrasStr)
+                try rustDatabase?.insertGeofence(
+                    identifier: identifier, lat: lat, lng: lng, radius: radius,
+                    vertices: vertices, extras: extrasStr,
+                    notifyOnEntry: data["notifyOnEntry"] as? Bool ?? true,
+                    notifyOnExit: data["notifyOnExit"] as? Bool ?? true,
+                    notifyOnDwell: data["notifyOnDwell"] as? Bool ?? false,
+                    loiteringDelay: Int32(data["loiteringDelay"] as? Int ?? 0))
             } catch {
                 TraceletLog.error("GeofenceManager: Failed to write geofence to Rust Core DB: \(error)")
             }
         }
 
         cachedGeofences = nil
+        onEvaluatorOwnershipChanged?()
 
         // Polygon geofences are evaluated in Dart — no system registration needed
         let vertices = data["vertices"] as? [[Double]]
@@ -227,7 +282,13 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
                 }
                 
                 do {
-                    try rustDatabase?.insertGeofence(identifier: identifier, lat: lat, lng: lng, radius: radius, vertices: vertices, extras: extrasStr)
+                    try rustDatabase?.insertGeofence(
+                        identifier: identifier, lat: lat, lng: lng, radius: radius,
+                        vertices: vertices, extras: extrasStr,
+                        notifyOnEntry: g["notifyOnEntry"] as? Bool ?? true,
+                        notifyOnExit: g["notifyOnExit"] as? Bool ?? true,
+                        notifyOnDwell: g["notifyOnDwell"] as? Bool ?? false,
+                        loiteringDelay: Int32(g["loiteringDelay"] as? Int ?? 0))
                 } catch {
                     TraceletLog.error("GeofenceManager: Failed to write batch geofence to Rust Core DB: \(error)")
                 }
@@ -235,6 +296,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         }
 
         cachedGeofences = nil
+        onEvaluatorOwnershipChanged?()
 
         // Re-evaluate proximity for all geofences at once
         if let lat = lastLatitude, let lng = lastLongitude {
@@ -261,6 +323,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         }
 
         cachedGeofences = nil
+        onEvaluatorOwnershipChanged?()
 
         // Forget any inside-state for this fence so a later re-add — or an id
         // reused for a different location — starts clean instead of having its
@@ -285,6 +348,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         }
 
         cachedGeofences = nil
+        onEvaluatorOwnershipChanged?()
         // No fences means the device is inside nothing — forget all inside-state
         // so a subsequent add/enter is reported cleanly (#292).
         if !knownInsideIds.isEmpty {
@@ -321,7 +385,15 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
             "latitude": gf.latitude,
             "longitude": gf.longitude,
             "radius": gf.radius,
-            "vertices": verticesArray
+            "vertices": verticesArray,
+            // #355: these four were absent here, so every fence rebuilt from the
+            // database — on each proximity change, relaunch and reboot — was
+            // re-registered with notifyOnDwell=false and loiteringDelay=0,
+            // silently killing DWELL for the rest of the install.
+            "notifyOnEntry": gf.notifyOnEntry,
+            "notifyOnExit": gf.notifyOnExit,
+            "notifyOnDwell": gf.notifyOnDwell,
+            "loiteringDelay": gf.loiteringDelay,
         ]
         
         if let extrasStr = gf.extras,
@@ -384,10 +456,73 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         String(format: "%.1f", value)
     }
 
-    /// Exit-hysteresis band the Rust evaluator applies for `radius`. Logging only.
-    private func exitHysteresisMeters(_ radius: Double) -> Double {
-        Swift.max(radius * GeofenceManager.exitHysteresisFraction,
-                  GeofenceManager.minExitHysteresisMeters)
+    /// Exit-hysteresis band the Rust evaluator applies for `radius` at a fix
+    /// accuracy of `accuracy`. Mirrors `exit_hysteresis_meters` in the core so
+    /// the decision trace reports the threshold actually used. Logging only.
+    private func exitHysteresisMeters(_ radius: Double, _ accuracy: Double) -> Double {
+        let jitter = accuracy > 0
+            ? Swift.min(Swift.max(accuracy, GeofenceManager.absMinExitHysteresisMeters),
+                        GeofenceManager.minExitHysteresisMeters)
+            : GeofenceManager.minExitHysteresisMeters
+        return Swift.max(radius * GeofenceManager.exitHysteresisFraction, jitter)
+    }
+
+    /// Whether the in-app evaluator — not CoreLocation — decides this fence's
+    /// transitions.
+    ///
+    /// Three cases, and each is one region monitoring cannot serve:
+    ///
+    ///  - **Polygons.** CoreLocation only monitors circular regions, so a
+    ///    polygon is never registered with it and has always been ours.
+    ///  - **Sub-`osMinResolvableRadiusMeters` circles.** Monitored only as a
+    ///    coarse wake-up (see `wakeupRadiusMeters`); at that inflated radius the
+    ///    OS's transitions describe the wrong boundary, so they are discarded
+    ///    and the true radius is applied in-app (#356).
+    ///  - **`geofenceModeHighAccuracy`.** The caller asked for in-app
+    ///    evaluation of everything.
+    ///
+    /// Ownership is per fence, not global: a 20 m fence and a 500 m fence in the
+    /// same config are decided by whichever component can actually resolve them.
+    private func isEvaluatorOwned(_ geofence: [String: Any]) -> Bool {
+        if let vertices = geofence["vertices"] as? [Any], vertices.count >= 3 { return true }
+        if configManager.getGeofenceModeHighAccuracy() { return true }
+        guard let radius = geofence["radius"] as? Double else { return false }
+        return radius > 0 && radius < GeofenceManager.osMinResolvableRadiusMeters
+    }
+
+    /// The radius a circular fence is monitored with at the OS level.
+    ///
+    /// A sub-resolvable fence is inflated to `osMinResolvableRadiusMeters`
+    /// because at its true radius CoreLocation will not reliably fire at all —
+    /// and firing is the entire point of the OS registration for these fences.
+    /// It exists to wake the process when the device comes near, not to judge
+    /// the boundary; the evaluator does that, at the true radius.
+    private func wakeupRadiusMeters(_ radius: Double) -> Double {
+        radius > 0 && radius < GeofenceManager.osMinResolvableRadiusMeters
+            ? GeofenceManager.osMinResolvableRadiusMeters
+            : radius
+    }
+
+    /// Whether any stored fence needs the uninterrupted fix stream that in-app
+    /// evaluation runs on.
+    public func hasEvaluatorOwnedGeofences() -> Bool {
+        configManager.getGeofenceModeHighAccuracy() || getGeofences().contains { isEvaluatorOwned($0) }
+    }
+
+    /// Records that a sub-resolvable fence has been handed to the in-app
+    /// evaluator (#356).
+    ///
+    /// On the always-on lifecycle channel: which component owns a fence is the
+    /// first thing a "geofences stopped firing" report needs to establish, and
+    /// such a report arrives from a release build whose `logLevel` may be `off`.
+    private func noteSmallRadiusHandling(_ identifier: String, _ radius: Double) {
+        guard radius > 0, radius < GeofenceManager.osMinResolvableRadiusMeters else { return }
+        let floor = fmt1(GeofenceManager.osMinResolvableRadiusMeters)
+        TraceletLog.lifecycle(
+            "\(GeofenceManager.logTag) \(identifier) radius=\(fmt1(radius))m is below the "
+            + "\(floor)m CoreLocation can resolve — transitions will be evaluated in-app at "
+            + "the true radius, and the monitored region is registered at \(floor)m as a "
+            + "wake-up only. Requires location updates to be running (#356)")
     }
 
     /// Builds the `[geofence]`-tagged decision trace logged alongside every
@@ -422,7 +557,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
             // Same Rust haversine the evaluator uses, so the logged distance
             // cannot disagree with the decision.
             let distance = haversine(lat1: latitude, lon1: longitude, lat2: gfLat, lon2: gfLng)
-            let buffer = exitHysteresisMeters(radius)
+            let buffer = exitHysteresisMeters(radius, accuracyEffective)
             let threshold = radius + buffer
             parts.append("dist=\(fmt1(distance))")
             parts.append("radius=\(fmt1(radius))")
@@ -451,7 +586,10 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     }
 
     public func evaluateHighAccuracyProximity(latitude: Double, longitude: Double, accuracy: Double = 0.0) {
-        let allGeofences = getCachedGeofences()
+        // Only the fences this path owns (see `isEvaluatorOwned`). Feeding the
+        // evaluator a fence CoreLocation is also reporting would double-fire it,
+        // so ownership is exclusive on both sides of the split.
+        let allGeofences = getCachedGeofences().filter { isEvaluatorOwned($0) }
         if allGeofences.isEmpty { return }
 
         let geofenceMapById = Dictionary(uniqueKeysWithValues: allGeofences.compactMap {
@@ -516,10 +654,13 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
 
             let gfMap = geofenceMapById[t.identifier]
 
-            // Logged at INFO, not DEBUG: production apps run at INFO, and a
-            // false EXIT is reported days later by an end user. Volume is a
-            // handful of lines per day, and the line carries no coordinates.
-            TraceletLog.info(
+            // On the always-on lifecycle channel (#318), not INFO or DEBUG: a
+            // false EXIT is reported days later by an end user, from a release
+            // build whose logLevel may be `error` or `off` — which dropped even
+            // the INFO line, so the bug report that was supposed to explain the
+            // crossing contained no trace of it. Volume is a handful of lines
+            // per day, and the line carries no coordinates (#352).
+            TraceletLog.lifecycle(
                 transitionTrace(
                     action: t.action,
                     identifier: t.identifier,
@@ -719,7 +860,11 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         }
 
         let center = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-        let region = CLCircularRegion(center: center, radius: radius, identifier: identifier)
+        // Inflated for sub-resolvable fences: at their true radius CoreLocation
+        // fires nothing, and this registration exists to wake us near the fence,
+        // not to judge it (#356).
+        let region = CLCircularRegion(
+            center: center, radius: wakeupRadiusMeters(radius), identifier: identifier)
 
         region.notifyOnEntry = data["notifyOnEntry"] as? Bool ?? true
         region.notifyOnExit = data["notifyOnExit"] as? Bool ?? true
@@ -799,9 +944,24 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     }
 
     private func handleTransition(region: CLCircularRegion, action: String) {
-        // When high-accuracy mode is active, evaluateHighAccuracyProximity()
-        // handles transitions in-app. Skip OS-level events to avoid duplicates.
-        if configManager.getGeofenceModeHighAccuracy() { return }
+        // Dropped for fences the in-app evaluator owns (see `isEvaluatorOwned`):
+        // under `geofenceModeHighAccuracy` that is every fence, and otherwise the
+        // small ones, whose monitored region is inflated to a wake-up radius and
+        // whose OS transitions therefore describe the wrong boundary.
+        // `evaluateHighAccuracyProximity` reports those instead (#356).
+        if let stored = getGeofence(region.identifier), isEvaluatorOwned(stored) {
+            TraceletLog.debug(
+                "\(GeofenceManager.logTag) ignoring OS transition for \(region.identifier) "
+                + "— evaluated in-app at its true radius (#356)")
+            // The discarded transition still did its job: it says we are near a
+            // fence only the evaluator can decide. Claim the wake-up before
+            // returning, or the inflated region is pure cost (#356).
+            TraceletLog.lifecycle(
+                "\(GeofenceManager.logTag) wake-up from the OS near an in-app fence — "
+                + "resuming the location stream so its true radius can be evaluated (#356)")
+            onEvaluatorWakeup?()
+            return
+        }
 
         let geofenceData = getGeofence(region.identifier)
         let location = locationManager.location
@@ -809,7 +969,10 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         // The OS region-monitoring path has no accuracy gating — CoreLocation
         // owns the debouncing. Log it distinctly so a bug report makes clear
         // which path produced the transition.
-        TraceletLog.info(
+        // On the always-on lifecycle channel (#318), not INFO — see the
+        // high-accuracy path above: a release build may run logLevel `off` and
+        // a crossing is exactly what the later bug report needs (#352).
+        TraceletLog.lifecycle(
             "\(GeofenceManager.logTag) \(action) \(region.identifier) source=os " +
             "radius=\(fmt1(region.radius)) (no accuracy gating on this path)"
         )
@@ -869,6 +1032,13 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
            let jsonStr = String(data: jsonData, encoding: .utf8) {
             extrasStr = jsonStr
         }
-        return CoreGeofence(identifier: identifier, latitude: latitude, longitude: longitude, radius: radius, vertices: vertices, extras: extrasStr)
+        return CoreGeofence(
+            identifier: identifier, latitude: latitude, longitude: longitude,
+            radius: radius, vertices: vertices, extras: extrasStr,
+            // Same defaulting as the registration and persistence paths (#355).
+            notifyOnEntry: gf["notifyOnEntry"] as? Bool ?? true,
+            notifyOnExit: gf["notifyOnExit"] as? Bool ?? true,
+            notifyOnDwell: gf["notifyOnDwell"] as? Bool ?? false,
+            loiteringDelay: Int32(gf["loiteringDelay"] as? Int ?? 0))
     }
 }

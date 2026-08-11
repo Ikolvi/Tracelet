@@ -46,7 +46,7 @@ class GeofenceManagerProximityTest {
         db = DatabaseManager(dbPath)
         db.setEncryptionKey("")
         db.clearGeofences()
-        db.insertGeofence("ISSUE_185_ZONE", centerLat, centerLng, radius, null, null)
+        db.insertGeofence("ISSUE_185_ZONE", centerLat, centerLng, radius, null, null, true, true, false, 0)
 
         geoManager = GeofenceManager(context, config, ListenerEventSender(), db)
         geoManager.onGeofenceEvent = { captured.add(it) }

@@ -12,6 +12,10 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // Required by flutter_local_notifications, which the example uses to
+        // surface geofence crossings while the app is terminated (#356). Any
+        // host app adopting that pattern needs this too.
+        isCoreLibraryDesugaringEnabled = true
     }
 
 
@@ -59,4 +63,7 @@ dependencies {
 
     // Device attestation (Play Integrity) — adds ~1MB
     implementation("com.google.android.play:integrity:1.6.0")
+
+    // Backs isCoreLibraryDesugaringEnabled above.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

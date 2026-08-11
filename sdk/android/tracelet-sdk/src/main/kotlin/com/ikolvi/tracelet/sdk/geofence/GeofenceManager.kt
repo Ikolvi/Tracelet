@@ -52,6 +52,39 @@ class GeofenceManager(
     private val lastLocationProvider: (() -> Location?)? = null,
 ) {
     var onGeofenceEvent: ((Map<String, Any?>) -> Unit)? = null
+
+    /**
+     * Invoked when the OS reports a transition for a fence the in-app evaluator
+     * owns — i.e. the wake-up that [wakeupRadiusMeters]'s inflated registration
+     * exists to produce (#356).
+     *
+     * The transition itself is discarded (it describes the 100 m wake-up
+     * boundary, not the fence), but the *arrival* is information: the device is
+     * near a fence only this SDK can decide, and deciding it needs the location
+     * stream. In the killed state that stream may have been throttled to
+     * stationary-periodic by #319's reconcile, so without this the wake-up wakes
+     * nothing and a small fence goes quiet exactly when the app is gone.
+     *
+     * Hosts wire this to resume continuous tracking.
+     */
+    var onEvaluatorWakeup: (() -> Unit)? = null
+
+    /**
+     * Invoked whenever the stored fence set changes, because that is when the
+     * answer to [hasEvaluatorOwnedGeofences] can change (#357).
+     *
+     * A fence the evaluator owns is decided from the raw fix stream, so who owns
+     * the current fences dictates the cadence the provider is requested with.
+     * The host answers that question at `start()`, but the fence set is mutable
+     * for the rest of the session: a 10 m fence added afterwards left
+     * `minUpdateDistanceMeters` at the configured distance filter and the
+     * evaluator saw one fix per that many metres travelled — too few to ever
+     * confirm an EXIT.
+     *
+     * Fired from the manager rather than the SDK facade so the internal removals
+     * (KnockOut mode) are covered too.
+     */
+    var onEvaluatorOwnershipChanged: (() -> Unit)? = null
     companion object {
         private const val TAG = "GeofenceManager"
         const val ACTION_GEOFENCE_EVENT = "com.tracelet.ACTION_GEOFENCE_EVENT"
@@ -95,11 +128,118 @@ class GeofenceManager(
 
         /** Mirror of `GEOFENCE_MIN_EXIT_HYSTERESIS_METERS` in the Rust core. */
         private const val MIN_EXIT_HYSTERESIS_METERS = 20.0
+
+        /** Mirror of `GEOFENCE_ABS_MIN_EXIT_HYSTERESIS_METERS` in the Rust core. */
+        private const val ABS_MIN_EXIT_HYSTERESIS_METERS = 3.0
+
+        /**
+         * Smallest radius Play Services can decide for itself, in metres.
+         *
+         * Below this the fence is smaller than the error of the fixes it is
+         * compared against, so the platform never becomes confident enough to
+         * report a crossing: it fires the `INITIAL_TRIGGER_ENTER` on
+         * registration — which looks like it works — and then nothing, ever
+         * (#355).
+         *
+         * Small fences are *not* rejected. They are simply decided here instead:
+         * a fence under this radius is owned by the in-app evaluator, which
+         * knows the true radius and scales its hysteresis to the measured fix
+         * accuracy rather than a flat 20 m (#356). See [isEvaluatorOwned].
+         */
+        private const val OS_MIN_RESOLVABLE_RADIUS_METERS = 100.0
     }
 
-    /** Exit-hysteresis band the Rust evaluator applies for [radius]. Logging only. */
-    private fun exitHysteresisMeters(radius: Double): Double =
-        maxOf(radius * EXIT_HYSTERESIS_FRACTION, MIN_EXIT_HYSTERESIS_METERS)
+    /**
+     * Whether the in-app evaluator — not the OS — decides this fence's
+     * transitions.
+     *
+     * Three cases, and each is a case the OS cannot serve:
+     *
+     *  - **Polygons.** Play Services only monitors circles, so a polygon is
+     *    never registered with it and has always been ours to evaluate.
+     *  - **Sub-[OS_MIN_RESOLVABLE_RADIUS_METERS] circles.** Registered only as a
+     *    coarse wake-up (see [wakeupRadiusMeters]); at that inflated radius the
+     *    OS's own transitions are about the wrong boundary, so they are
+     *    discarded and the true radius is applied here (#356).
+     *  - **`geofenceModeHighAccuracy`.** The caller has asked for in-app
+     *    evaluation of everything.
+     *
+     * Ownership is per fence, not global: a config with one 20 m fence and one
+     * 500 m fence has the first decided here and the second by the OS, each by
+     * whichever is actually able to.
+     */
+    private fun isEvaluatorOwned(geofence: Map<String, Any?>): Boolean {
+        val vertices = geofence["vertices"]
+        if (vertices is List<*> && vertices.size >= 3) return true
+        if (config.getGeofenceModeHighAccuracy()) return true
+        val radius = (geofence["radius"] as? Number)?.toDouble() ?: return false
+        return radius > 0.0 && radius < OS_MIN_RESOLVABLE_RADIUS_METERS
+    }
+
+    /**
+     * The radius a circular fence is registered with at the OS level.
+     *
+     * A sub-serviceable fence is inflated to [OS_MIN_RESOLVABLE_RADIUS_METERS]
+     * because at its true radius Play Services will not reliably fire at all —
+     * and firing is the entire point of the OS registration for these fences.
+     * It is not there to detect the crossing (the evaluator does that, at the
+     * true radius); it is there to wake the process when the device comes near,
+     * which is the only way a 10 m fence can work in `geofences` tracking mode
+     * or after the app is killed.
+     *
+     * The consequence — the OS reporting ENTER 100 m from a 10 m fence — is
+     * handled by [isEvaluatorOwned] discarding those transitions.
+     */
+    private fun wakeupRadiusMeters(radius: Float): Float =
+        if (radius > 0f && radius < OS_MIN_RESOLVABLE_RADIUS_METERS) {
+            OS_MIN_RESOLVABLE_RADIUS_METERS.toFloat()
+        } else {
+            radius
+        }
+
+    /**
+     * Whether any stored fence needs the uninterrupted fix stream that in-app
+     * evaluation runs on.
+     *
+     * Drives `LocationEngine.geofenceHighAccuracyMode`, which drops the
+     * OS-level distance filter so a slow-moving device is not starved of the
+     * fixes its crossings are computed from.
+     */
+    fun hasEvaluatorOwnedGeofences(): Boolean =
+        config.getGeofenceModeHighAccuracy() || getCachedGeofences().any { isEvaluatorOwned(it) }
+
+    /**
+     * Exit-hysteresis band the Rust evaluator applies for [radius] at a fix
+     * accuracy of [accuracy]. Mirrors `exit_hysteresis_meters` in the core so
+     * the decision trace reports the threshold actually used. Logging only.
+     */
+    private fun exitHysteresisMeters(radius: Double, accuracy: Double): Double {
+        val jitter = if (accuracy > 0.0) {
+            accuracy.coerceIn(ABS_MIN_EXIT_HYSTERESIS_METERS, MIN_EXIT_HYSTERESIS_METERS)
+        } else {
+            MIN_EXIT_HYSTERESIS_METERS
+        }
+        return maxOf(radius * EXIT_HYSTERESIS_FRACTION, jitter)
+    }
+
+    /**
+     * Records that a sub-serviceable fence has been handed to the in-app
+     * evaluator (#356).
+     *
+     * On the always-on lifecycle channel: which component owns a fence is the
+     * first thing a "geofences stopped firing" report needs to establish, and
+     * such a report arrives from a release build whose `logLevel` may be `off`.
+     */
+    private fun noteSmallRadiusHandling(identifier: String, radius: Double) {
+        if (radius <= 0.0 || radius >= OS_MIN_RESOLVABLE_RADIUS_METERS) return
+        TraceletLog.lifecycle(
+            "$GEOFENCE_LOG_TAG $identifier radius=${fmt1(radius)}m is below the " +
+                "${fmt1(OS_MIN_RESOLVABLE_RADIUS_METERS)}m Play Services can resolve — " +
+                "transitions will be evaluated in-app at the true radius, and the OS " +
+                "fence is registered at ${fmt1(OS_MIN_RESOLVABLE_RADIUS_METERS)}m as a " +
+                "wake-up only. Requires location updates to be running (#356)"
+        )
+    }
 
     /** One-decimal formatter that avoids locale-dependent decimal separators in logs. */
     private fun fmt1(value: Double): String = String.format(java.util.Locale.US, "%.1f", value)
@@ -146,7 +286,15 @@ class GeofenceManager(
             "latitude" to gf.latitude,
             "longitude" to gf.longitude,
             "radius" to gf.radius,
-            "vertices" to verticesList
+            "vertices" to verticesList,
+            // #355: these four were absent here, so every fence rebuilt from
+            // the database — on each proximity change, reboot and task removal
+            // — was re-registered with notifyOnDwell=false and loiteringDelay=0,
+            // silently killing DWELL for the rest of the install.
+            "notifyOnEntry" to gf.notifyOnEntry,
+            "notifyOnExit" to gf.notifyOnExit,
+            "notifyOnDwell" to gf.notifyOnDwell,
+            "loiteringDelay" to gf.loiteringDelay,
         )
         
         gf.extras?.let { extrasStr ->
@@ -290,7 +438,13 @@ class GeofenceManager(
         val lat = (geofenceMap["latitude"] as? Number)?.toDouble() ?: 0.0
         val lng = (geofenceMap["longitude"] as? Number)?.toDouble() ?: 0.0
         val radius = (geofenceMap["radius"] as? Number)?.toDouble() ?: 0.0
-        
+
+        // Noted at add time, not registration time: this is the moment the
+        // caller chose the radius, and it fires once per fence rather than on
+        // every proximity re-registration (#355).
+        val isPolygonShape = (geofenceMap["vertices"] as? List<*>)?.let { it.size >= 3 } == true
+        if (!isPolygonShape) noteSmallRadiusHandling(identifier, radius)
+
         val verticesRaw = geofenceMap["vertices"] as? List<*>
         var coreVertices: List<Coordinate>? = null
         if (verticesRaw != null) {
@@ -317,13 +471,24 @@ class GeofenceManager(
             }
         }
         
+        // Same defaulting the registration path uses, so what is persisted is
+        // exactly what was registered (#355).
+        val notifyOnEntry = geofenceMap["notifyOnEntry"] != false
+        val notifyOnExit = geofenceMap["notifyOnExit"] != false
+        val notifyOnDwell = geofenceMap["notifyOnDwell"] == true
+        val loiteringDelay = (geofenceMap["loiteringDelay"] as? Number)?.toInt() ?: 0
+
         try {
-            rustDatabase?.insertGeofence(identifier, lat, lng, radius, coreVertices, extrasStr)
+            rustDatabase?.insertGeofence(
+                identifier, lat, lng, radius, coreVertices, extrasStr,
+                notifyOnEntry, notifyOnExit, notifyOnDwell, loiteringDelay,
+            )
         } catch (e: Exception) {
             TraceletLog.error("Failed to persist geofence to Rust DB", e)
         }
         
         invalidateGeofenceCache()
+        onEvaluatorOwnershipChanged?.invoke()
 
         // Polygon geofences are evaluated in Dart — no system registration needed
         val vertices = geofenceMap["vertices"]
@@ -360,6 +525,7 @@ class GeofenceManager(
             TraceletLog.error("Failed to delete geofence from Rust DB", e)
         }
         invalidateGeofenceCache()
+        onEvaluatorOwnershipChanged?.invoke()
         // Forget any inside-state for this fence so a later re-add — or an id
         // reused for a different location — starts clean instead of having its
         // ENTER suppressed by stale persisted state (#292).
@@ -376,6 +542,7 @@ class GeofenceManager(
             TraceletLog.error("Failed to clear geofences from Rust DB", e)
         }
         invalidateGeofenceCache()
+        onEvaluatorOwnershipChanged?.invoke()
         // No fences means the device is inside nothing — forget all inside-state
         // so a subsequent add/enter is reported cleanly (#292).
         if (knownInsideIds.isNotEmpty()) {
@@ -426,8 +593,11 @@ class GeofenceManager(
      * Called when a geofence event is received from GeofenceBroadcastReceiver.
      * Dispatches events via TraceletEventSender.
      *
-     * When geofenceModeHighAccuracy is active, OS-level events are suppressed
-     * to avoid duplicates — transitions are handled by [evaluateHighAccuracyProximity].
+     * OS-level events are dropped for fences the in-app evaluator owns (see
+     * [isEvaluatorOwned]) — under `geofenceModeHighAccuracy` that is every
+     * fence, and otherwise it is the small ones whose OS registration is
+     * inflated to a wake-up radius and whose transitions therefore describe the
+     * wrong boundary. [evaluateHighAccuracyProximity] reports those instead.
      */
     fun handleGeofenceEvent(
         transitionType: Int,
@@ -435,8 +605,34 @@ class GeofenceManager(
         latitude: Double,
         longitude: Double,
     ) {
-        // Skip OS-level events when high-accuracy mode handles transitions
-        if (config.getGeofenceModeHighAccuracy()) return
+        // Per fence, not globally: a mixed set has its large fences decided by
+        // the OS and its small ones in-app, and each must reach exactly one path.
+        var sawEvaluatorOwned = false
+        val triggeringGeofences = triggeringGeofences.filter { gf ->
+            val stored = getGeofence(gf.requestId)
+            val owned = stored != null && isEvaluatorOwned(stored)
+            if (owned) {
+                sawEvaluatorOwned = true
+                TraceletLog.debug(
+                    "$GEOFENCE_LOG_TAG ignoring OS transition for ${gf.requestId} " +
+                        "— evaluated in-app at its true radius (#356)"
+                )
+            }
+            !owned
+        }
+
+        // The discarded transition still did its job: it told us we are near a
+        // fence only the evaluator can decide. Claim the wake-up before
+        // returning, or the inflated registration is pure cost (#356).
+        if (sawEvaluatorOwned) {
+            TraceletLog.lifecycle(
+                "$GEOFENCE_LOG_TAG wake-up from the OS near an in-app fence — " +
+                    "resuming the location stream so its true radius can be " +
+                    "evaluated (#356)"
+            )
+            onEvaluatorWakeup?.invoke()
+        }
+        if (triggeringGeofences.isEmpty()) return
 
         val action = when (transitionType) {
             1 -> "ENTER" // Geofence.GEOFENCE_TRANSITION_ENTER
@@ -452,7 +648,15 @@ class GeofenceManager(
             // The OS/AOSP path has no accuracy gating at all — the platform owns
             // debouncing. Log it distinctly so a bug report makes clear which
             // path produced the transition (source=os vs the in-app evaluator).
-            TraceletLog.info(
+            //
+            // On the always-on lifecycle channel (#318), not INFO: a crossing is
+            // the SDK's primary product event and is exactly what a "geofences
+            // stopped firing" report needs, but it arrives days later from a
+            // release build whose logLevel may be `error` or `off` — which
+            // dropped the INFO line and left the report with nothing to show
+            // either way. Crossings are a handful a day, so the row budget is
+            // unaffected (#352).
+            TraceletLog.lifecycle(
                 "$GEOFENCE_LOG_TAG $action $identifier source=os " +
                     "transitionType=$transitionType (no accuracy gating on this path)"
             )
@@ -560,7 +764,7 @@ class GeofenceManager(
             builder.append(" shape=polygon vertices=").append((vertices as List<*>).size)
         } else if (gfLat != null && gfLng != null && radius != null && radius > 0.0) {
             val distance = haversine(latitude, longitude, gfLat, gfLng)
-            val buffer = exitHysteresisMeters(radius)
+            val buffer = exitHysteresisMeters(radius, accuracyEffective)
             val threshold = radius + buffer
             builder.append(" dist=").append(fmt1(distance))
                 .append(" radius=").append(fmt1(radius))
@@ -590,7 +794,10 @@ class GeofenceManager(
     }
 
     fun evaluateHighAccuracyProximity(latitude: Double, longitude: Double, accuracy: Double = 0.0) {
-        val allGeofences = getCachedGeofences()
+        // Only the fences this path owns (see [isEvaluatorOwned]). Feeding the
+        // evaluator a fence the OS is also reporting would double-fire it, so
+        // ownership is exclusive on both sides of the split.
+        val allGeofences = getCachedGeofences().filter { isEvaluatorOwned(it) }
         if (allGeofences.isEmpty()) return
 
         val geofenceMapById = allGeofences.associateBy { it["identifier"] as? String }
@@ -653,10 +860,13 @@ class GeofenceManager(
 
             val gfMap = geofenceMapById[t.identifier]
 
-            // Logged at INFO, not DEBUG: production apps run at INFO, and a
-            // false EXIT is reported days later by an end user. Volume is a
-            // handful of lines per day, and the line carries no coordinates.
-            TraceletLog.info(
+            // On the always-on lifecycle channel (#318), not INFO or DEBUG: a
+            // false EXIT is reported days later by an end user, from a release
+            // build whose logLevel may be `error` or `off` — which dropped even
+            // the INFO line, so the bug report that was supposed to explain the
+            // crossing contained no trace of it. Volume is a handful of lines
+            // per day, and the line carries no coordinates (#352).
+            TraceletLog.lifecycle(
                 transitionTrace(
                     action = t.action,
                     identifier = t.identifier,
@@ -896,7 +1106,10 @@ class GeofenceManager(
                     requestId = identifier,
                     latitude = latitude,
                     longitude = longitude,
-                    radiusMeters = radius,
+                    // Inflated for sub-serviceable fences: at their true radius
+                    // Play Services fires nothing, and the registration exists
+                    // to wake us near the fence, not to judge it (#356).
+                    radiusMeters = wakeupRadiusMeters(radius),
                     expirationTime = -1L, // Geofence.NEVER_EXPIRE
                     transitionTypes = transitionTypes,
                     loiteringDelayMs = loiteringDelay
@@ -1050,6 +1263,13 @@ class GeofenceManager(
                 TraceletLog.warning("Failed to stringify geofence extras: ${e.message}")
             }
         }
-        return CoreGeofence(identifier, latitude, longitude, radius, vertices, extrasStr)
+        return CoreGeofence(
+            identifier, latitude, longitude, radius, vertices, extrasStr,
+            // Same defaulting as the registration and persistence paths (#355).
+            notifyOnEntry = gf["notifyOnEntry"] != false,
+            notifyOnExit = gf["notifyOnExit"] != false,
+            notifyOnDwell = gf["notifyOnDwell"] == true,
+            loiteringDelay = (gf["loiteringDelay"] as? Number)?.toInt() ?: 0,
+        )
     }
 }

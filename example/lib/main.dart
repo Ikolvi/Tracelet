@@ -6,6 +6,7 @@ import 'package:tracelet/tracelet.dart' as tl;
 import 'package:tracelet_doctor/tracelet_doctor.dart';
 import 'package:tracelet_example/behavior_page.dart';
 import 'package:tracelet_example/demo_config.dart';
+import 'package:tracelet_example/geofence_notifier.dart';
 import 'package:tracelet_example/provider_options_page.dart';
 import 'package:tracelet_example/map_page.dart';
 import 'package:tracelet_example/issues_page.dart';
@@ -34,9 +35,38 @@ void headlessTask(tl.HeadlessEvent event) {
       final lng = event.event['longitude'] ?? coordsMap?['longitude'];
       final eventType = event.event['event'] ?? 'unknown';
       debugPrint('[Headless] $eventType location: lat=$lat, lng=$lng');
+    // A crossing delivered here has no UI to land in — this isolate exists
+    // precisely because the app is gone. The notification is therefore the
+    // only real-time evidence that terminated-state geofencing works; the log
+    // store proves it happened, but not that it happened *then* (#356).
+    case 'geofence':
+      unawaited(_notifyHeadlessGeofence(event.event));
     default:
       debugPrint('[Headless] ${event.name}: ${event.event}');
   }
+}
+
+Future<void> _notifyHeadlessGeofence(Map<Object?, Object?> raw) async {
+  // The payload shape differs by delivery path: the OS geofence broadcast
+  // nests the crossing under `geofence`, while some paths hand the fields up
+  // flat. Read both rather than assuming one.
+  final nested = raw['geofence'];
+  final gf = nested is Map ? nested : raw;
+  final action = (gf['action'] ?? 'UNKNOWN').toString();
+  final identifier = (gf['identifier'] ?? 'unknown').toString();
+
+  final coords = raw['coords'];
+  final coordsMap = coords is Map ? coords : null;
+  final lat = (coordsMap?['latitude'] ?? raw['latitude']) as num?;
+  final lng = (coordsMap?['longitude'] ?? raw['longitude']) as num?;
+
+  debugPrint('[Headless] geofence $action $identifier');
+  await GeofenceNotifier.showCrossing(
+    action: action,
+    identifier: identifier,
+    latitude: lat?.toDouble(),
+    longitude: lng?.toDouble(),
+  );
 }
 
 /// Headless headers callback — refreshes auth tokens when the app is killed
@@ -464,6 +494,16 @@ class _DashboardPageState extends State<DashboardPage>
         final isPolygon = evt.identifier.startsWith('poly_');
         final tag = isPolygon ? 'POLYGON' : 'GEOFENCE';
         _addLog(tag, '${evt.action.name} → ${evt.identifier}');
+        // Notify in the foreground too, so a terminated-state run and a
+        // running-app run produce the same observable signal — otherwise a
+        // missing notification is ambiguous between "the crossing never fired"
+        // and "notifications were never permitted on this device" (#356).
+        unawaited(
+          GeofenceNotifier.showCrossing(
+            action: evt.action.name.toUpperCase(),
+            identifier: evt.identifier,
+          ),
+        );
       }),
     );
 

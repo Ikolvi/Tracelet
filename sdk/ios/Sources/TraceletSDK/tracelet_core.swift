@@ -1415,7 +1415,7 @@ public protocol DatabaseManagerProtocol: AnyObject, Sendable {
      */
     func insertAuditTrail(uuid: String, hash: String, prevHash: String, index: Int32) throws 
     
-    func insertGeofence(identifier: String, lat: Double, lng: Double, radius: Double, vertices: [Coordinate]?, extras: String?) throws 
+    func insertGeofence(identifier: String, lat: Double, lng: Double, radius: Double, vertices: [Coordinate]?, extras: String?, notifyOnEntry: Bool, notifyOnExit: Bool, notifyOnDwell: Bool, loiteringDelay: Int32) throws 
     
     /**
      * Inserts a new location record into the database.
@@ -1805,7 +1805,7 @@ open func insertAuditTrail(uuid: String, hash: String, prevHash: String, index: 
 }
 }
     
-open func insertGeofence(identifier: String, lat: Double, lng: Double, radius: Double, vertices: [Coordinate]?, extras: String?)throws   {try rustCallWithError(FfiConverterTypeTraceletError_lift) {
+open func insertGeofence(identifier: String, lat: Double, lng: Double, radius: Double, vertices: [Coordinate]?, extras: String?, notifyOnEntry: Bool, notifyOnExit: Bool, notifyOnDwell: Bool, loiteringDelay: Int32)throws   {try rustCallWithError(FfiConverterTypeTraceletError_lift) {
     uniffi_tracelet_core_fn_method_databasemanager_insert_geofence(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(identifier),
@@ -1813,7 +1813,11 @@ open func insertGeofence(identifier: String, lat: Double, lng: Double, radius: D
         FfiConverterDouble.lower(lng),
         FfiConverterDouble.lower(radius),
         FfiConverterOptionSequenceTypeCoordinate.lower(vertices),
-        FfiConverterOptionString.lower(extras),$0
+        FfiConverterOptionString.lower(extras),
+        FfiConverterBool.lower(notifyOnEntry),
+        FfiConverterBool.lower(notifyOnExit),
+        FfiConverterBool.lower(notifyOnDwell),
+        FfiConverterInt32.lower(loiteringDelay),$0
     )
 }
 }
@@ -5326,16 +5330,62 @@ public struct CoreGeofence: Equatable, Hashable {
     public var radius: Double
     public var vertices: [Coordinate]
     public var extras: String?
+    /**
+     * Whether the platform should report ENTER for this fence.
+     *
+     * These four travel with the fence because the hosts re-register from the
+     * database on every proximity change, reboot and task removal. They were
+     * not persisted, so a restored fence silently reverted to
+     * ENTER+EXIT-with-no-dwell: `notify_on_dwell` became false and
+     * `loitering_delay` zero, and DWELL stopped working for good after the
+     * first process death (#355).
+     */
+    public var notifyOnEntry: Bool
+    /**
+     * Whether the platform should report EXIT for this fence.
+     */
+    public var notifyOnExit: Bool
+    /**
+     * Whether the platform should report DWELL for this fence.
+     */
+    public var notifyOnDwell: Bool
+    /**
+     * How long the device must loiter inside before DWELL fires, in ms.
+     */
+    public var loiteringDelay: Int32
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(identifier: String, latitude: Double, longitude: Double, radius: Double, vertices: [Coordinate], extras: String?) {
+    public init(identifier: String, latitude: Double, longitude: Double, radius: Double, vertices: [Coordinate], extras: String?, 
+        /**
+         * Whether the platform should report ENTER for this fence.
+         *
+         * These four travel with the fence because the hosts re-register from the
+         * database on every proximity change, reboot and task removal. They were
+         * not persisted, so a restored fence silently reverted to
+         * ENTER+EXIT-with-no-dwell: `notify_on_dwell` became false and
+         * `loitering_delay` zero, and DWELL stopped working for good after the
+         * first process death (#355).
+         */notifyOnEntry: Bool, 
+        /**
+         * Whether the platform should report EXIT for this fence.
+         */notifyOnExit: Bool, 
+        /**
+         * Whether the platform should report DWELL for this fence.
+         */notifyOnDwell: Bool, 
+        /**
+         * How long the device must loiter inside before DWELL fires, in ms.
+         */loiteringDelay: Int32) {
         self.identifier = identifier
         self.latitude = latitude
         self.longitude = longitude
         self.radius = radius
         self.vertices = vertices
         self.extras = extras
+        self.notifyOnEntry = notifyOnEntry
+        self.notifyOnExit = notifyOnExit
+        self.notifyOnDwell = notifyOnDwell
+        self.loiteringDelay = loiteringDelay
     }
 
     
@@ -5359,7 +5409,11 @@ public struct FfiConverterTypeCoreGeofence: FfiConverterRustBuffer {
                 longitude: FfiConverterDouble.read(from: &buf), 
                 radius: FfiConverterDouble.read(from: &buf), 
                 vertices: FfiConverterSequenceTypeCoordinate.read(from: &buf), 
-                extras: FfiConverterOptionString.read(from: &buf)
+                extras: FfiConverterOptionString.read(from: &buf), 
+                notifyOnEntry: FfiConverterBool.read(from: &buf), 
+                notifyOnExit: FfiConverterBool.read(from: &buf), 
+                notifyOnDwell: FfiConverterBool.read(from: &buf), 
+                loiteringDelay: FfiConverterInt32.read(from: &buf)
         )
     }
 
@@ -5370,6 +5424,10 @@ public struct FfiConverterTypeCoreGeofence: FfiConverterRustBuffer {
         FfiConverterDouble.write(value.radius, into: &buf)
         FfiConverterSequenceTypeCoordinate.write(value.vertices, into: &buf)
         FfiConverterOptionString.write(value.extras, into: &buf)
+        FfiConverterBool.write(value.notifyOnEntry, into: &buf)
+        FfiConverterBool.write(value.notifyOnExit, into: &buf)
+        FfiConverterBool.write(value.notifyOnDwell, into: &buf)
+        FfiConverterInt32.write(value.loiteringDelay, into: &buf)
     }
 }
 
@@ -10145,7 +10203,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_tracelet_core_checksum_method_databasemanager_insert_audit_trail() != 2860) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_tracelet_core_checksum_method_databasemanager_insert_geofence() != 35448) {
+    if (uniffi_tracelet_core_checksum_method_databasemanager_insert_geofence() != 47636) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_databasemanager_insert_location() != 47283) {

@@ -162,9 +162,7 @@ class TraceletAndroidPlugin :
             sdk.dartSyncInterceptor = this
 
             eventDispatcher.headlessFallback = { eventName, eventData ->
-                if (hs.isRegistered()) {
-                    hs.dispatchEvent(eventName, eventData)
-                }
+                dispatchToHeadless(hs, eventName, eventData)
             }
 
             TraceletBootstrap.headlessDispatcherFactory = { ctx -> HeadlessTaskService(ctx) }
@@ -172,24 +170,65 @@ class TraceletAndroidPlugin :
                 val dispatcher = EventDispatcher()
                 val h = HeadlessTaskService(ctx)
                 dispatcher.headlessFallback = { name, data ->
-                    if (h.isRegistered()) h.dispatchEvent(name, data)
+                    dispatchToHeadless(h, name, data)
                 }
                 dispatcher
             }
         } else {
-            // Secondary engine (e.g. headless isolate or EngineGroup overlay)
-            sdk.logger.debug("onAttachedToEngine: secondary engine attach")
-            
-            // We still need an EventDispatcher for this engine if it wants to receive events in the foreground
+            // Secondary engine — either an in-process UI engine (EngineGroup,
+            // e.g. flutter_overlay_window) or a headless background isolate.
+            // The two must be handled differently (see below).
+            //
+            // The attach *thread* cannot tell them apart, though it looks like it
+            // can: Flutter requires FlutterEngine to be constructed on the main
+            // looper, so a headless spawn attaches from the main thread too and a
+            // thread check calls it a UI engine. (requestSyncBody's isMainThread()
+            // check is sound — it runs on a background sync thread, a different
+            // situation.) What is exact is the flag HeadlessTaskService already
+            // sets around the FlutterEngine constructor, which is precisely the
+            // call that triggers this attach (#358).
+            val isUiEngine = !HeadlessTaskService.isSpawningHeadlessEngine
+            // On the always-on lifecycle channel (#318), not DEBUG: this decides
+            // which component delivers every subsequent event, it is taken in the
+            // killed state, and when it goes wrong the only symptom is silence —
+            // exactly the report that arrives from a release build whose logLevel
+            // may be `error` or `off`, which drops DEBUG. Engine attaches are a
+            // handful per process (the headless spawn beside it is already
+            // lifecycle), so the row budget is unaffected (#358).
+            val kind = if (isUiEngine) "UI" else "headless"
+            val delivery =
+                if (isUiEngine) "delivered to it" else "routed to the headless task"
+            TraceletLog.lifecycle(
+                "engines: secondary attach — $kind (engineCount=$count); " +
+                    "events $delivery"
+            )
+
             eventDispatcher = EventDispatcher()
-            eventDispatcher.register(binding.binaryMessenger)
-            globalEventSender.add(eventDispatcher)
-            
-            // At least we ensure that events fall back to headless if this engine is not the primary.
-            primaryInstance?.headlessService?.let { hs ->
-                eventDispatcher.headlessFallback = { name, data ->
-                    if (hs.isRegistered()) hs.dispatchEvent(name, data)
+
+            if (isUiEngine) {
+                // A real UI engine can display events, so let it receive them.
+                eventDispatcher.register(binding.binaryMessenger)
+                globalEventSender.add(eventDispatcher)
+                primaryInstance?.headlessService?.let { hs ->
+                    eventDispatcher.headlessFallback = { name, data ->
+                        dispatchToHeadless(hs, name, data)
+                    }
                 }
+            } else {
+                // A headless engine must NOT join the event fan-out. Registering
+                // its Pigeon event API gives the dispatcher a non-null `eventApi`,
+                // and `EventDispatcher` treats that as "a Flutter engine can
+                // receive this" — so every subsequent event took the engine
+                // branch and was posted into an isolate with no `onGeofence`
+                // listener, instead of falling through to `headlessFallback`.
+                //
+                // The headless isolate receives events through
+                // `HeadlessTaskService.dispatchEvent`, a different channel
+                // entirely. So one transient headless engine — spawned for a
+                // sync body, say — permanently swallowed every geofence
+                // crossing in that process: logged, persisted and synced
+                // natively, but never delivered to the registered headless
+                // task, and therefore invisible to the app (#358).
             }
         }
 

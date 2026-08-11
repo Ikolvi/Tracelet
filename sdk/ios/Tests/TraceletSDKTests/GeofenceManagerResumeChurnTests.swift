@@ -38,7 +38,11 @@ final class GeofenceManagerResumeChurnTests: XCTestCase {
             lng: centerLng,
             radius: radius,
             vertices: nil,
-            extras: nil
+            extras: nil,
+            notifyOnEntry: true,
+            notifyOnExit: true,
+            notifyOnDwell: false,
+            loiteringDelay: 0
         )
 
         config = ConfigManager()
@@ -146,7 +150,7 @@ final class GeofenceManagerResumeChurnTests: XCTestCase {
         // Remove the fence, then add it back (a fence-list refresh, or an id
         // reused for a different location).
         _ = manager.removeGeofence("OFFICE")
-        try? db.insertGeofence(identifier: "OFFICE", lat: centerLat, lng: centerLng, radius: radius, vertices: nil, extras: nil)
+        try? db.insertGeofence(identifier: "OFFICE", lat: centerLat, lng: centerLng, radius: radius, vertices: nil, extras: nil, notifyOnEntry: true, notifyOnExit: true, notifyOnDwell: false, loiteringDelay: 0)
 
         // Being inside the re-added fence must ENTER again.
         manager.evaluateHighAccuracyProximity(latitude: centerLat, longitude: centerLng, accuracy: 8.0)

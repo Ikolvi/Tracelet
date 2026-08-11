@@ -20,7 +20,7 @@ import XCTest
 /// only fires on accepted fixes.
 final class LocationEngineGeofenceStarvationTests: XCTestCase {
 
-    private func makeEngine() -> (LocationEngine, ConfigManager, StarvationLocationManager) {
+    private func makeEngine() -> (LocationEngine, ConfigManager, StarvationLocationManager, StateManager) {
         let config = ConfigManager()
         config.reset(nil)
         _ = config.setConfig([
@@ -34,19 +34,20 @@ final class LocationEngineGeofenceStarvationTests: XCTestCase {
             "pausesLocationUpdatesAutomatically": false,
         ])
 
+        let state = StateManager()
         let engine = LocationEngine(
             configManager: config,
-            stateManager: StateManager(),
+            stateManager: state,
             eventDispatcher: StarvationEventSender()
         )
         let recorder = StarvationLocationManager()
         engine.locationManager = recorder
         recorder.delegate = engine
-        return (engine, config, recorder)
+        return (engine, config, recorder, state)
     }
 
     func testHighAccuracyGeofenceModeRequestsTimeBasedUpdates() {
-        let (engine, _, recorder) = makeEngine()
+        let (engine, _, recorder, _) = makeEngine()
         engine.geofenceHighAccuracyMode = true
         engine.start()
 
@@ -61,7 +62,7 @@ final class LocationEngineGeofenceStarvationTests: XCTestCase {
     }
 
     func testNormalTrackingKeepsTheConfiguredDistanceFilter() {
-        let (engine, _, recorder) = makeEngine()
+        let (engine, _, recorder, _) = makeEngine()
         engine.geofenceHighAccuracyMode = false
         engine.start()
 
@@ -74,7 +75,7 @@ final class LocationEngineGeofenceStarvationTests: XCTestCase {
     }
 
     func testCrossingsEvaluateOnEveryRawFixEvenWhenPersistenceRejectsTheDuplicate() {
-        let (engine, _, recorder) = makeEngine()
+        let (engine, _, recorder, _) = makeEngine()
         var rawEvaluations = 0
         var persistedUpdates = 0
         engine.geofenceHighAccuracyMode = true
@@ -110,11 +111,92 @@ final class LocationEngineGeofenceStarvationTests: XCTestCase {
         )
         engine.stop()
     }
+
+    // MARK: - The fence set is mutable after start() (#357)
+
+    func testAFenceAddedAfterStartDropsTheDistanceFilterLive() {
+        let (engine, _, recorder, _) = makeEngine()
+        engine.start()
+        XCTAssertEqual(recorder.distanceFilter, 10, "precondition: no fences, configured filter in force")
+
+        // `start()` then `addGeofence(radius: 10)` is the ordinary order, and it
+        // used to leave the filter at 10 m for the rest of the session: the
+        // evaluator then saw one fix per 10 m travelled and could not observe
+        // the two consecutive beyond-the-band fixes an EXIT needs.
+        engine.geofenceHighAccuracyMode = true
+
+        XCTAssertEqual(
+            recorder.distanceFilter,
+            kCLDistanceFilterNone,
+            "a fence the evaluator owns, added mid-session, must drop the OS " +
+            "distance filter without waiting for a restart"
+        )
+        XCTAssertTrue(engine.isTracking, "the live update must not tear tracking down")
+        engine.stop()
+    }
+
+    func testRemovingTheLastEvaluatorFenceRestoresTheConfiguredFilter() {
+        let (engine, _, recorder, _) = makeEngine()
+        engine.geofenceHighAccuracyMode = true
+        engine.start()
+        XCTAssertEqual(recorder.distanceFilter, kCLDistanceFilterNone)
+
+        engine.geofenceHighAccuracyMode = false
+
+        XCTAssertEqual(
+            recorder.distanceFilter,
+            10,
+            "with no evaluator-owned fence left, the configured filter must come " +
+            "back rather than leaking time-based delivery for the whole session"
+        )
+        engine.stop()
+    }
+
+    func testGeofenceModeRunsTheStreamForAnEvaluatorOwnedFence() {
+        let (engine, _, recorder, state) = makeEngine()
+        // StateManager is backed by UserDefaults, which is process-wide: leaving
+        // the mode set would hand every later test a geofence-mode engine.
+        let previousMode = state.trackingMode
+        defer { state.trackingMode = previousMode }
+
+        // At default settings geofenceModeHighAccuracy is off, and the fence is
+        // owned by the evaluator only because its radius is under 100 m.
+        state.trackingMode = .geofences
+        engine.geofenceHighAccuracyMode = true
+
+        engine.start()
+
+        XCTAssertEqual(
+            recorder.startUpdatingCallCount, 1,
+            "keying the low-power skip on geofenceModeHighAccuracy alone meant a " +
+            "sub-100 m fence in geofences mode got no stream — so it could never fire"
+        )
+        engine.stop()
+    }
+
+    func testGeofenceModeStaysLowPowerWhenTheOsCanServeTheFence() {
+        let (engine, _, recorder, state) = makeEngine()
+        let previousMode = state.trackingMode
+        defer { state.trackingMode = previousMode }
+
+        state.trackingMode = .geofences
+        engine.geofenceHighAccuracyMode = false
+
+        engine.start()
+
+        XCTAssertEqual(
+            recorder.startUpdatingCallCount, 0,
+            "a fence the OS can resolve needs no continuous GPS — starting one " +
+            "would light the location indicator for nothing (#210)"
+        )
+        engine.stop()
+    }
 }
 
 private final class StarvationLocationManager: CLLocationManager {
     private var allowsBackground = false
     private var storedDistanceFilter: CLLocationDistance = kCLDistanceFilterNone
+    private(set) var startUpdatingCallCount = 0
 
     override var allowsBackgroundLocationUpdates: Bool {
         get { allowsBackground }
@@ -128,7 +210,7 @@ private final class StarvationLocationManager: CLLocationManager {
 
     override var authorizationStatus: CLAuthorizationStatus { .authorizedAlways }
 
-    override func startUpdatingLocation() {}
+    override func startUpdatingLocation() { startUpdatingCallCount += 1 }
     override func stopUpdatingLocation() {}
     override func startMonitoringSignificantLocationChanges() {}
     override func stopMonitoringSignificantLocationChanges() {}

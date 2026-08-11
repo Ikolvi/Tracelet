@@ -546,25 +546,126 @@ public final class TraceletSdk {
     /// time-based delivery for the high-accuracy path. Call this *before*
     /// starting the engine.
     private func wireGeofenceLocationCallbacks(includeTripWaypoints: Bool) {
+        // Trip waypoints stay on the persistence-filtered stream where they
+        // belong; both geofence duties ride the RAW one.
+        //
+        // #297 moved crossing *detection* to the raw stream but left proximity
+        // *scope* on the filtered one — the same bug in a less obvious place
+        // (#352). In standard (OS) geofence mode the SDK detects nothing itself,
+        // so which fences are registered IS the feature, and updateProximity()
+        // is what registers them. Running that off the filtered stream lets the
+        // persistence filter decide whether geofencing works at all — and
+        // 3.8.0's transport-mode auto-tune (#299) retunes a committed `still`
+        // mode to maxImpliedSpeed=3 m/s, rejecting every fix once the device
+        // moves. Mirrors the Android fix.
         locationEngine.onLocationUpdate = { [weak self] lat, lng, _ in
-            guard let self = self else { return }
-            self.geofenceManager.updateProximity(latitude: lat, longitude: lng)
-            if includeTripWaypoints {
-                self.tripManager.onLocationReceived(
-                    latitude: lat,
-                    longitude: lng,
-                    timestamp: ISO8601DateFormatter().string(from: Date())
-                )
-            }
+            guard let self = self, includeTripWaypoints else { return }
+            self.tripManager.onLocationReceived(
+                latitude: lat,
+                longitude: lng,
+                timestamp: ISO8601DateFormatter().string(from: Date())
+            )
         }
 
-        let highAccuracy = configManager.getGeofenceModeHighAccuracy()
-        locationEngine.geofenceHighAccuracyMode = highAccuracy
-        locationEngine.onRawGeofenceLocation = highAccuracy
-            ? { [weak self] lat, lng, accuracy in
-                self?.geofenceManager.evaluateHighAccuracyProximity(latitude: lat, longitude: lng, accuracy: accuracy)
+        // Called unconditionally: whether a fence is evaluated here or left to
+        // CoreLocation is a per-fence question the manager answers, and not one
+        // the config flag alone can settle — polygons and sub-100 m circles are
+        // ours to decide however `geofenceModeHighAccuracy` is set (#356).
+        locationEngine.geofenceHighAccuracyMode = geofenceManager.hasEvaluatorOwnedGeofences()
+        // Claim the wake-up the inflated OS region exists to produce: if the app
+        // relaunched into a low-power posture, coming near a small fence must
+        // bring the stream back or the evaluator has nothing to decide on (#356).
+        geofenceManager.onEvaluatorWakeup = { [weak self] in
+            self?.locationEngine.start()
+        }
+        // The line above answers "who owns these fences?" once. The fence set is
+        // mutable for the rest of the session, so it has to be re-asked every
+        // time it changes (#357).
+        geofenceManager.onEvaluatorOwnershipChanged = { [weak self] in
+            self?.applyGeofenceEvaluationCadence()
+        }
+        locationEngine.onRawGeofenceLocation = { [weak self] lat, lng, accuracy in
+            guard let self = self else { return }
+            self.geofenceManager.updateProximity(latitude: lat, longitude: lng)
+            self.geofenceManager.evaluateHighAccuracyProximity(
+                latitude: lat, longitude: lng, accuracy: accuracy
+            )
+        }
+    }
+
+    /// Re-aligns the location cadence with who owns the currently-stored fences.
+    ///
+    /// `wireGeofenceLocationCallbacks` settles this at `start()`, when there may
+    /// be no fences at all — `start()` then `addGeofence(radius: 10)` is the
+    /// ordinary order, and it left `geofenceHighAccuracyMode` false for the rest
+    /// of the session. CoreLocation kept the configured `distanceFilter`, so the
+    /// evaluator was handed one fix per `distanceFilter` metres travelled: a
+    /// device can cross a 10 m fence's exit band and be back inside between two
+    /// deliveries, and EXIT needs two *consecutive* fixes beyond it. Field trace
+    /// showed deliveries 10.5 m / 10.3 m / 10.9 m apart against a 10 m filter,
+    /// with no EXIT at all on the first walk (#357).
+    private func applyGeofenceEvaluationCadence() {
+        guard stateManager.enabled else { return }
+        let needsInAppEvaluation = geofenceManager.hasEvaluatorOwnedGeofences()
+        guard locationEngine.geofenceHighAccuracyMode != needsInAppEvaluation else { return }
+
+        TraceletLog.lifecycle(
+            "[geofence] fence set changed — in-app evaluation "
+                + "\(needsInAppEvaluation ? "required" : "no longer required")"
+                + ", realigning the location cadence (#357)")
+        // Setting this re-applies the provider options live when tracking.
+        locationEngine.geofenceHighAccuracyMode = needsInAppEvaluation
+
+        if stateManager.trackingMode == .geofences {
+            applyGeofenceModePosture(needsInAppEvaluation: needsInAppEvaluation)
+        } else if needsInAppEvaluation, !locationEngine.isTracking {
+            // Continuous mode does not necessarily have a stream running — the
+            // #319 stationary throttle stops the engine — and a fence added in
+            // that window would be registered against nothing. `start()` is a
+            // no-op when it is already tracking.
+            TraceletLog.lifecycle(
+                "[geofence] starting the location stream for an in-app-evaluated "
+                    + "fence — nothing was running to decide it from (#357)")
+            locationEngine.start()
+        }
+    }
+
+    /// Applies the power posture `geofences` mode runs at, given whether any
+    /// stored fence must be evaluated in-app.
+    ///
+    /// Continuous GPS is needed exactly when a fence is evaluated in-app — high
+    /// accuracy mode, a polygon, or a sub-100 m circle (#356). A fence the OS can
+    /// decide for itself needs none of it: region monitoring fires enter/exit
+    /// (and relaunches the app) while suspended or terminated, and starting a
+    /// stream keeps the persistent blue location indicator on even with
+    /// `showsBackgroundLocationIndicator = false` (#210).
+    ///
+    /// Shared by `startGeofences()` and the mid-session refresh so the two cannot
+    /// drift: a fence added later must be able to *reach* this posture, and one
+    /// removed later — KnockOut removes on EXIT — must be able to leave it, or
+    /// the mode leaks continuous GPS for the rest of the session (#357).
+    private func applyGeofenceModePosture(needsInAppEvaluation: Bool) {
+        if needsInAppEvaluation {
+            locationEngine.start()
+            preventSuspendManager.start()
+            backgroundActivitySessionManager.start()
+            serviceSessionManager.start()
+        } else {
+            locationEngine.stop()
+
+            if configManager.getPreventSuspend() {
+                preventSuspendManager.start()
+            } else {
+                preventSuspendManager.stop()
             }
-            : nil
+
+            // Explicitly stop CLBackgroundActivitySession if switching from High to Low.
+            // Like continuous updates, it forces the location indicator on.
+            backgroundActivitySessionManager.stop()
+
+            // iOS 18+: Preserve authorization across suspension/termination.
+            startServiceSessionForCurrentAuth()
+        }
     }
 
     /// Stop all tracking.
@@ -586,6 +687,7 @@ public final class TraceletSdk {
             locationEngine.speedSink = nil
             locationEngine.onRawGeofenceLocation = nil
             locationEngine.geofenceHighAccuracyMode = false
+            geofenceManager.onEvaluatorOwnershipChanged = nil
             // Cancel any in-flight debounced auto-sync so stop() halts background
             // network activity immediately instead of firing ~autoSyncDelay later (#213).
             syncProvider?.cancelPendingSync()
@@ -657,8 +759,11 @@ public final class TraceletSdk {
         // Wire proximity-based geofence monitoring.
         wireGeofenceLocationCallbacks(includeTripWaypoints: false)
 
-        // geofenceModeHighAccuracy: start GPS for in-app transition detection.
-        if configManager.getGeofenceModeHighAccuracy() {
+        // Continuous GPS is needed exactly when a fence is evaluated in-app —
+        // high-accuracy mode, a polygon, or a sub-100 m circle (#356). A small
+        // fence cannot be served by region monitoring, so opting into one means
+        // opting into the location stream that decides it.
+        if geofenceManager.hasEvaluatorOwnedGeofences() {
             // A fresh start resets inside-state so the initial-entry trigger
             // fires exactly once. A resume/boot/redundant re-start must NOT reset
             // it, or a stationary device inside a fence re-emits ENTER on every
@@ -670,33 +775,8 @@ public final class TraceletSdk {
             } else {
                 geofenceManager.resetHighAccuracyInsideState()
             }
-            locationEngine.start()
-
-            preventSuspendManager.start()
-            backgroundActivitySessionManager.start()
-            serviceSessionManager.start()
-        } else {
-            // Standard (low-power) geofence mode: rely solely on native region
-            // monitoring (registered above via reRegisterAll). Do NOT start
-            // continuous location updates — that keeps the persistent blue
-            // location indicator on even with showsBackgroundLocationIndicator
-            // = false (Issue #210), and it isn't needed: CLLocationManager
-            // region monitoring fires enter/exit (and relaunches the app) even
-            // while suspended/terminated, without continuous GPS.
-
-            if configManager.getPreventSuspend() {
-                preventSuspendManager.start()
-            } else {
-                preventSuspendManager.stop()
-            }
-
-            // Explicitly stop CLBackgroundActivitySession if switching from High to Low.
-            // Like continuous updates, it forces the location indicator on.
-            backgroundActivitySessionManager.stop()
-
-            // iOS 18+: Preserve authorization across suspension/termination.
-            startServiceSessionForCurrentAuth()
         }
+        applyGeofenceModePosture(needsInAppEvaluation: geofenceManager.hasEvaluatorOwnedGeofences())
 
         eventSender.sendEnabledChange(true)
         logger.info("startGeofences() — geofence-only mode")
@@ -1110,9 +1190,10 @@ public final class TraceletSdk {
             periodicRefreshScheduler.stop()
             remoteConfigManager?.stop()
 
-            let keepGeofencesAlive = !configManager.getStopOnTerminate()
-                && stateManager.enabled
-                && stateManager.trackingMode == .geofences
+            // #353: mirrors the destroyAll()/autoResumeTracking() fix — geofences
+            // are a standalone feature and must not require trackingMode ==
+            // .geofences to survive.
+            let keepGeofencesAlive = !configManager.getStopOnTerminate() && stateManager.enabled
             if !keepGeofencesAlive {
                 geofenceManager.destroy()
             }
@@ -3502,6 +3583,23 @@ public final class TraceletSdk {
             // Location persistence handled by Rust
         }
 
+        // Re-register persisted geofences. addGeofence()/addGeofences() never
+        // set trackingMode = .geofences — that is only the dedicated
+        // geofence-only session startGeofences() starts — so gating this
+        // inside the .geofences case below (as it used to be) left a
+        // continuous- or periodic-tracking app's standalone geofences
+        // unregistered after every killed-state relaunch, with nothing ever
+        // restoring them. reRegisterAll() is a cheap no-op when there are no
+        // persisted geofences, so calling it unconditionally is safe for every
+        // mode (#353, mirrors the Android fix).
+        let fenceCountBeforeRestore = geofenceManager.getGeofences().count
+        geofenceManager.reRegisterAll()
+        if fenceCountBeforeRestore > 0 {
+            TraceletLog.lifecycle(
+                "geofences: re-registered \(fenceCountBeforeRestore) geofence(s) "
+                    + "after killed-state relaunch — mode=\(trackingMode) (#353)")
+        }
+
         switch trackingMode {
         case .continuous:
             // Wire before start() so the high-accuracy geofence path requests
@@ -3523,34 +3621,15 @@ public final class TraceletSdk {
             serviceSessionManager.start()
 
         case .geofences:
-            geofenceManager.reRegisterAll()
             wireGeofenceLocationCallbacks(includeTripWaypoints: false)
-            // #316: branch on geofenceModeHighAccuracy exactly as startGeofences()
-            // does. This case used to start the engine and the background
-            // activity session unconditionally, so every significant-location
-            // relaunch silently converted a low-power geofence-only app into
-            // continuous tracking — with the persistent blue location indicator
-            // #210 removed — for the rest of the process lifetime.
-            if configManager.getGeofenceModeHighAccuracy() {
-                // High accuracy genuinely needs continuous GPS: OS-level
-                // transitions are suppressed and crossings come from per-location
-                // proximity evaluation.
-                locationEngine.start()
-                preventSuspendManager.start()
-                backgroundActivitySessionManager.start()
-                serviceSessionManager.start()
-            } else {
-                // Standard mode relies solely on native region monitoring, which
-                // fires ENTER/EXIT (and relaunches the app) while suspended or
-                // terminated, without continuous GPS.
-                if configManager.getPreventSuspend() {
-                    preventSuspendManager.start()
-                } else {
-                    preventSuspendManager.stop()
-                }
-                backgroundActivitySessionManager.stop()
-                startServiceSessionForCurrentAuth()
-            }
+            // #316: take the same posture startGeofences() would. This case used
+            // to start the engine and the background activity session
+            // unconditionally, so every significant-location relaunch silently
+            // converted a low-power geofence-only app into continuous tracking —
+            // with the persistent blue location indicator #210 removed — for the
+            // rest of the process lifetime.
+            applyGeofenceModePosture(
+                needsInAppEvaluation: geofenceManager.hasEvaluatorOwnedGeofences())
 
         case .periodic:
             locationEngine.startPeriodic()
@@ -3678,9 +3757,29 @@ public final class TraceletSdk {
         }
         motionDetector?.stop()
 
-        // GeofenceManager — keep alive only in geofence mode.
-        let keepGeofencesAlive = keepAlive && stateManager.trackingMode == .geofences
+        // GeofenceManager — geofences are a standalone feature: addGeofence()/
+        // addGeofences() never require trackingMode == .geofences, which is only
+        // the dedicated geofence-only *session* started by startGeofences().
+        // Geofences must therefore survive teardown on the same `keepAlive`
+        // terms as everything else in this function, regardless of which
+        // tracking mode is active.
+        //
+        // This was previously additionally gated on `trackingMode == .geofences`,
+        // so a `start()` (continuous) session with geofences added via
+        // addGeofences() — a fully supported, documented combination — had
+        // every geofence unregistered on the very first teardown, and nothing
+        // ever re-registered them afterwards (autoResumeTracking() had the
+        // matching .geofences-only gate on reRegisterAll(), fixed alongside
+        // this). Continuous tracking itself kept working, which is why the
+        // geofence feature could die silently and go unnoticed (#353, mirrors
+        // the Android fix).
+        let keepGeofencesAlive = keepAlive
         if !keepGeofencesAlive {
+            let fenceCount = geofenceManager?.getGeofences().count ?? 0
+            TraceletLog.lifecycle(
+                "geofences: unregistering \(fenceCount) geofence(s) on destroyAll() "
+                    + "— mode=\(stateManager.trackingMode) stopOnTerminate="
+                    + "\(configManager.getStopOnTerminate()) enabled=\(stateManager.enabled) (#353)")
             geofenceManager?.destroy()
         }
 

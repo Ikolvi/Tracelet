@@ -214,3 +214,6 @@ cloudflare/**/dist/
 # Cloudflare licensing code moved to the private Ikolvi/tracelet-licensing repo.
 # Never keep it in this public repo — ignore the whole directory.
 cloudflare/
+
+# Kotlin compiler daemon session files (build artifact)
+**/.kotlin/

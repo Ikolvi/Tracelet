@@ -124,10 +124,17 @@ class LocationServiceSmartBootTest {
     fun `boot start in high-accuracy geofence mode wires the proximity location stream (issue 185)`() {
         // Regression: geofenceModeHighAccuracy suppresses OS-level geofence
         // transitions and relies ENTIRELY on per-location proximity evaluation
-        // (LocationEngine.onLocationUpdate -> evaluateHighAccuracyProximity). The
-        // boot/task-removal path used to re-register geofences but never wire that
-        // callback, so after a reboot NO enter/exit events ever fired even though
-        // the foreground service and engine were running.
+        // (-> evaluateHighAccuracyProximity). The boot/task-removal path used to
+        // re-register geofences but never wire that callback, so after a reboot
+        // NO enter/exit events ever fired even though the foreground service and
+        // engine were running.
+        //
+        // The stream it must be wired to is now the RAW one
+        // (onRawGeofenceLocation) rather than the persistence-filtered
+        // onLocationUpdate (#352). This boot path never received the #297 fix, so
+        // both crossings and proximity scope were gated by the tracking filter —
+        // which 3.8.0's auto-tune (#299) tightens to maxImpliedSpeed=3 m/s for a
+        // committed `still` mode, rejecting every fix once the device moves.
         config.setConfig(mapOf(
             "trackingMode" to 1, // GEOFENCES
             "motionDetectionMode" to 2, // SMART
@@ -146,8 +153,14 @@ class LocationServiceSmartBootTest {
         val engine = LocationService.bootLocationEngine
         assertNotNull(engine, "bootLocationEngine should be initialized in geofence boot mode")
         assertNotNull(
-            engine.onLocationUpdate,
-            "onLocationUpdate must be wired after boot so high-accuracy geofence transitions can fire",
+            engine.onRawGeofenceLocation,
+            "the raw geofence stream must be wired after boot so high-accuracy " +
+                "transitions can fire without the persistence filter gating them",
+        )
+        assertTrue(
+            engine.geofenceHighAccuracyMode,
+            "high-accuracy mode must be propagated to the boot engine so it " +
+                "requests time-based delivery",
         )
     }
 

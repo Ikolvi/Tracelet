@@ -2,6 +2,8 @@ package com.ikolvi.tracelet.flutter
 
 import android.os.Handler
 import android.os.Looper
+import com.ikolvi.tracelet.flutter.service.HeadlessTaskService
+import com.ikolvi.tracelet.sdk.util.TraceletLog
 import com.ikolvi.tracelet.TlActivity
 import com.ikolvi.tracelet.TlActivityChangeEvent
 import com.ikolvi.tracelet.TlAuthorizationEvent
@@ -485,6 +487,42 @@ class EventDispatcher : TraceletEventSender {
     }
 
     private fun fallback(eventName: String, data: Map<String, Any?>) {
+        if (headlessFallback == null && eventName == "geofence") {
+            TraceletLog.lifecycle(
+                "headless: geofence crossing had nowhere to go — no Flutter engine " +
+                    "attached and no headless fallback wired on this dispatcher (#358)",
+            )
+        }
         headlessFallback?.invoke(eventName, data)
+    }
+}
+
+/**
+ * Route an event to the headless task, reporting it when there is no task to
+ * route it to.
+ *
+ * The registration guard used to be an `if` at each call site, which dropped
+ * the event and said nothing. That is the worst possible silence for a geofence
+ * crossing: the crossing is evaluated, logged and persisted natively, so a
+ * report shows the fence working perfectly while the app never hears about it,
+ * and `dispatchEvent`'s own lifecycle line — the one that would have explained
+ * it — is never reached because the call never happens (#358).
+ */
+internal fun dispatchToHeadless(
+    headless: HeadlessTaskService,
+    eventName: String,
+    data: Map<String, Any?>,
+) {
+    if (headless.isRegistered()) {
+        headless.dispatchEvent(eventName, data)
+        return
+    }
+    if (eventName == "geofence") {
+        TraceletLog.lifecycle(
+            "headless: geofence crossing dropped — no headless task is registered. " +
+                "The crossing was still evaluated, logged and persisted; only the " +
+                "app-facing delivery is lost. Call Tracelet.registerHeadlessTask() " +
+                "before runApp() (#358)",
+        )
     }
 }

@@ -60,7 +60,7 @@ class GeofenceManagerResumeChurnTest {
         db = DatabaseManager(dbPath)
         db.setEncryptionKey("")
         db.clearGeofences()
-        db.insertGeofence("OFFICE", centerLat, centerLng, radius, null, null)
+        db.insertGeofence("OFFICE", centerLat, centerLng, radius, null, null, true, true, false, 0)
 
         geoManager = newManager()
         // Isolate persisted crossing state from any previous test run.
@@ -161,7 +161,7 @@ class GeofenceManagerResumeChurnTest {
         // Remove the fence, then add it back (a fence-list refresh, or an id
         // reused for a different location).
         geoManager.removeGeofence("OFFICE")
-        db.insertGeofence("OFFICE", centerLat, centerLng, radius, null, null)
+        db.insertGeofence("OFFICE", centerLat, centerLng, radius, null, null, true, true, false, 0)
 
         // Being inside the re-added fence must ENTER again — the prior
         // inside-state must not suppress it.

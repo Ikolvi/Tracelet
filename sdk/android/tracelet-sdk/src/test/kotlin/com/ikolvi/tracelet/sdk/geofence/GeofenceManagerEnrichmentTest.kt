@@ -47,7 +47,7 @@ class GeofenceManagerEnrichmentTest {
         db = DatabaseManager(dbPath)
         db.setEncryptionKey("")
         db.clearGeofences()
-        db.insertGeofence("ENRICH_ZONE", centerLat, centerLng, radius, null, null)
+        db.insertGeofence("ENRICH_ZONE", centerLat, centerLng, radius, null, null, true, true, false, 0)
     }
 
     @After

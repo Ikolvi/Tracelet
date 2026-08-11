@@ -36,7 +36,11 @@ class TraceletDatabaseGeofenceTest {
             lng = -122.4194,
             radius = 200.0,
             vertices = null,
-            extras = null
+            extras = null,
+            notifyOnEntry = true,
+            notifyOnExit = true,
+            notifyOnDwell = true,
+            loiteringDelay = 30000,
         )
 
         val result = db.getGeofences().find { it.identifier == "circle-1" }
@@ -46,6 +50,12 @@ class TraceletDatabaseGeofenceTest {
         assertEquals(-122.4194, result.longitude)
         assertEquals(200.0, result.radius)
         assertTrue(result.vertices.isNullOrEmpty())
+        // #355: the notify_* flags and loitering delay must round-trip, or a
+        // fence rebuilt from the DB after a reboot silently loses DWELL.
+        assertTrue(result.notifyOnEntry)
+        assertTrue(result.notifyOnExit)
+        assertTrue(result.notifyOnDwell)
+        assertEquals(30000, result.loiteringDelay)
     }
 
     @Test
@@ -62,7 +72,11 @@ class TraceletDatabaseGeofenceTest {
             lng = -122.42,
             radius = 0.0,
             vertices = vertices,
-            extras = null
+            extras = null,
+            notifyOnEntry = true,
+            notifyOnExit = true,
+            notifyOnDwell = false,
+            loiteringDelay = 0,
         )
 
         val result = db.getGeofences().find { it.identifier == "polygon-1" }
@@ -80,7 +94,7 @@ class TraceletDatabaseGeofenceTest {
 
     @Test
     fun deleteGeofence_removesGeofence() {
-        db.insertGeofence("to-delete", 37.0, -122.0, 100.0, null, null)
+        db.insertGeofence("to-delete", 37.0, -122.0, 100.0, null, null, true, true, false, 0)
         assertTrue(db.getGeofences().any { it.identifier == "to-delete" })
         
         db.deleteGeofence("to-delete")

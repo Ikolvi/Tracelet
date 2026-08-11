@@ -1281,18 +1281,32 @@ class LocationService : Service(), DefaultLifecycleObserver {
                 }
             } // end let
 
-            // Geofence mode: re-register persisted geofences with Play Services
-            // and restore the static BroadcastReceiver reference so transition
-            // events are not silently dropped after process death.
+            // Re-register persisted geofences with Play Services (it clears them
+            // on every reboot) and restore the static BroadcastReceiver reference
+            // so transition events are not silently dropped after process death.
             // Safe to read geofenceManager here: startBootTracking() only reaches
             // this point when bootstrapForBackground() returned true, which
             // already awaited init (awaitInit) AND verified geofenceManager is
             // assigned — so the background "tracelet-init" thread has finished
             // wiring the lateinit and this cannot throw
             // UninitializedPropertyAccessException (#264).
+            //
+            // Previously gated on `trackingMode == TrackingMode.GEOFENCES`, which
+            // conflated the dedicated geofence-only *session* (startGeofences())
+            // with "there are geofences to restore" — addGeofence()/addGeofences()
+            // never set that tracking mode, so a continuous-tracking app with
+            // standalone geofences never got them re-registered after a reboot or
+            // task removal (paired with the destroyAll() fix, #353). reRegisterAll()
+            // is a cheap no-op when there are no persisted geofences, so calling it
+            // unconditionally is safe for every mode.
             val geoManager = sdk.geofenceManager
-            if (trackingMode == TrackingMode.GEOFENCES) {
-                geoManager.reRegisterAll()
+            val fenceCountBeforeRestore = geoManager.getGeofences().size
+            geoManager.reRegisterAll()
+            if (fenceCountBeforeRestore > 0) {
+                TraceletLog.lifecycle(
+                    "geofences: re-registered $fenceCountBeforeRestore geofence(s) " +
+                        "after boot/task-removal — mode=$trackingMode (#353)"
+                )
             }
             GeofenceBroadcastReceiver.geofenceManager = geoManager
 
@@ -1303,13 +1317,44 @@ class LocationService : Service(), DefaultLifecycleObserver {
             // — produces NO enter/exit events after a reboot or task removal:
             // the foreground service and engine run, but transitions never fire.
             // Mirrors TraceletSdk.startGeofences() and TraceletSdk.start().
-            if (config.getGeofenceModeHighAccuracy()) {
+            //
+            // Both duties ride the RAW stream (#352). This path had them on the
+            // persistence-filtered `onLocationUpdate`, so it never received the
+            // #297 fix at all: after a reboot or task removal even high-accuracy
+            // crossings were gated by the tracking filter, and proximity scope —
+            // which in standard mode is what registers fences with Play Services
+            // — froze whenever the filter rejected fixes. With 3.8.0's auto-tune
+            // (#299) retuning a committed `still` mode to maxImpliedSpeed=3 m/s,
+            // that is every fix once the device moves.
+            //
+            // Ownership is per fence, not per config flag (#356): polygons and
+            // sub-100 m circles are evaluated in-app whatever
+            // geofenceModeHighAccuracy says, so the boot path must wire the
+            // evaluator for them too or a small fence stops firing the moment the
+            // app is killed — precisely the state it is most needed in.
+            // The flag is read from *this* service's ConfigManager, not the
+            // manager's: the boot-bootstrapped SDK can hold a different instance,
+            // and reading it only through geoManager silently lost high-accuracy
+            // mode on the boot path.
+            val needsInAppEvaluation =
+                config.getGeofenceModeHighAccuracy() || geoManager.hasEvaluatorOwnedGeofences()
+            if (needsInAppEvaluation) {
                 geoManager.clearHighAccuracyState()
             }
-            bootLocationEngine?.onLocationUpdate = { lat, lng, accuracy ->
+            bootLocationEngine?.geofenceHighAccuracyMode = needsInAppEvaluation
+            bootLocationEngine?.onRawGeofenceLocation = { lat, lng, accuracy ->
                 geoManager.updateProximity(lat, lng)
-                if (config.getGeofenceModeHighAccuracy()) {
-                    geoManager.evaluateHighAccuracyProximity(lat, lng, accuracy)
+                geoManager.evaluateHighAccuracyProximity(lat, lng, accuracy)
+            }
+            // Claim the wake-up the inflated OS registration exists to produce:
+            // if the stream has been throttled (doze, an OEM, or #319's
+            // reconcile before this guard existed), coming near a small fence
+            // must bring it back or the evaluator has nothing to decide on
+            // (#356).
+            geoManager.onEvaluatorWakeup = {
+                val engine = bootLocationEngine
+                if (engine != null && isStationaryTimerActive()) {
+                    switchToContinuous(engine, StateManager(applicationContext))
                 }
             }
             TraceletLog.debug("Geofence registrations restored after boot/task-removal (proximity stream wired)")
@@ -1324,7 +1369,12 @@ class LocationService : Service(), DefaultLifecycleObserver {
             // The service could not simply be skipped at boot: Play Services
             // clears all geofences on reboot, so something has to run
             // reRegisterAll() first. It just does not have to stay running.
-            if (trackingMode == TrackingMode.GEOFENCES && !config.getGeofenceModeHighAccuracy()) {
+            //
+            // "Needs no service" now means "the OS can decide every fence"
+            // (#356) — a restored polygon or sub-100 m circle is evaluated from
+            // the location stream, and stopping the service here would kill the
+            // stream and with it the only thing that can report its crossings.
+            if (trackingMode == TrackingMode.GEOFENCES && !needsInAppEvaluation) {
                 TraceletLog.debug(
                     "Standard geofence-only mode — geofences restored, stopping the " +
                         "foreground service (#316)"
@@ -1440,6 +1490,26 @@ class LocationService : Service(), DefaultLifecycleObserver {
         val wantsStationary = !state.isMoving
         val isStationary = isStationaryTimerActive()
         if (wantsStationary == isStationary) return
+
+        // #319 throttles to stationary-periodic on the premise that nothing
+        // needs the continuous stream while the device is still. A fence the OS
+        // cannot resolve breaks that premise: it is decided from the stream, so
+        // stopping the engine here is what makes a 10 m fence go quiet in the
+        // killed state — the reporter's trace shows this switch landing 14 s
+        // after the ENTER, and `switchToStationaryPeriodic` calls `engine.stop()`
+        // (#356).
+        val needsStream = runCatching {
+            com.ikolvi.tracelet.sdk.TraceletSdk.getInstance(applicationContext)
+                .geofenceManager.hasEvaluatorOwnedGeofences()
+        }.getOrDefault(false)
+        if (wantsStationary && needsStream) {
+            TraceletLog.lifecycle(
+                "motion (killed-state): staying continuous — an in-app-evaluated " +
+                    "geofence needs the location stream, so the #319 throttle to " +
+                    "stationary periodic does not apply (#356)"
+            )
+            return
+        }
 
         if (wantsStationary) {
             TraceletLog.lifecycle(

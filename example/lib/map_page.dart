@@ -512,7 +512,102 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     setState(() => _followMode = false);
   }
 
+  /// Last radius chosen in the picker, reused as the next default so repeated
+  /// drops don't force re-picking.
+  double _lastCircularRadius = 200;
+
+  /// Drops a circular geofence at the current fix, falling back to the map
+  /// centre when there is no fix yet.
+  ///
+  /// The fallback matters: without a location the button would simply do
+  /// nothing indoors or before the first fix, which reads as "the feature is
+  /// broken" rather than "wait for GPS".
+  Future<void> _addCircularGeofenceAtCurrentLocation() async {
+    final pos = _currentPosition ?? _mapController.camera.center;
+    if (!pos.isSafe) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No position available yet')),
+        );
+      }
+      return;
+    }
+    if (_currentPosition == null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No GPS fix yet — using map centre'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+    await _addCircularGeofenceAt(pos);
+  }
+
+  /// Removes every geofence, circular and polygon, after confirming.
+  Future<void> _clearAllGeofences() async {
+    final count = _geofences.length;
+    if (count == 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('No geofences to clear')));
+      }
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear all geofences?'),
+        content: Text(
+          'Removes all $count geofence(s) from the SDK and unregisters them '
+          'from the platform.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Clear all'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await tl.Tracelet.removeGeofences();
+      final fences = await tl.Tracelet.getGeofences();
+      setState(() => _geofences = fences);
+      _addMapEvent(
+        _MapEvent(
+          icon: Icons.delete_sweep,
+          color: Colors.red,
+          title: 'Geofences cleared',
+          subtitle: '$count removed, ${fences.length} remaining',
+          time: DateTime.now(),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to clear: $e')));
+      }
+    }
+  }
+
+  /// Asks for a radius, then drops a circular geofence at [pos].
+  ///
+  /// The radius is picked rather than hardcoded because it is the variable that
+  /// decides whether a crossing is observable at all: a 100 m fence is crossed
+  /// by walking out of a building, while GPS noise alone can cross a 20 m one.
+  /// Being able to try both on the map is the point.
   Future<void> _addCircularGeofenceAt(LatLng pos) async {
+    final radius = await _promptForRadius();
+    if (radius == null) return; // cancelled
+
     try {
       final id = 'map_geo_${DateTime.now().millisecondsSinceEpoch}';
       await tl.Tracelet.addGeofence(
@@ -520,17 +615,31 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
           identifier: id,
           latitude: pos.latitude,
           longitude: pos.longitude,
-          radius: 200,
+          radius: radius,
           notifyOnDwell: true,
           loiteringDelay: 30000,
         ),
       );
       final fences = await tl.Tracelet.getGeofences();
-      setState(() => _geofences = fences);
+      setState(() {
+        _geofences = fences;
+        _lastCircularRadius = radius;
+      });
+      _addMapEvent(
+        _MapEvent(
+          icon: Icons.add_circle_outline,
+          color: Colors.orange,
+          title: 'Geofence added',
+          subtitle: '$id — r=${radius.toStringAsFixed(0)}m',
+          time: DateTime.now(),
+        ),
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Geofence "$id" added (r=200m)'),
+            content: Text(
+              'Geofence "$id" added (r=${radius.toStringAsFixed(0)}m)',
+            ),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -542,6 +651,117 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
         ).showSnackBar(SnackBar(content: Text('Failed: $e')));
       }
     }
+  }
+
+  /// Radius picker: presets for the common cases plus a free-text field.
+  ///
+  /// Returns null if the user cancels.
+  Future<double?> _promptForRadius() async {
+    final controller = TextEditingController(
+      text: _lastCircularRadius.toStringAsFixed(0),
+    );
+    // Small radii are offered again: since #356 a fence the OS cannot resolve
+    // is evaluated in-app at its true radius, so 10 m is a supported choice
+    // rather than a trap.
+    const presets = <double>[10, 25, 50, 100, 200, 500];
+    // Mirrors GeofenceManager.OS_MIN_RESOLVABLE_RADIUS_METERS on both platforms.
+    const osMinResolvableRadius = 100.0;
+
+    final result = await showDialog<double>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final typed = double.tryParse(controller.text.trim());
+          final inApp =
+              typed != null && typed > 0 && typed < osMinResolvableRadius;
+          // radius + max(radius * 0.1, clamp(accuracy, 3, 20)) — the separation
+          // EXIT needs. Shown for a typical 4 m-accurate handset fix, which is
+          // what the band is now scaled to.
+          const typicalAccuracy = 4.0;
+          final exitDistance = inApp
+              ? typed +
+                    (typed * 0.1 > typicalAccuracy
+                        ? typed * 0.1
+                        : typicalAccuracy)
+              : 0.0;
+
+          return AlertDialog(
+            title: const Text('Circular geofence radius'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final p in presets)
+                      ActionChip(
+                        label: Text('${p.toStringAsFixed(0)}m'),
+                        onPressed: () => Navigator.pop(ctx, p),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  autofocus: true,
+                  onChanged: (_) => setDialogState(() {}),
+                  decoration: const InputDecoration(
+                    labelText: 'Custom radius',
+                    suffixText: 'm',
+                    border: OutlineInputBorder(),
+                  ),
+                  onSubmitted: (v) {
+                    final parsed = double.tryParse(v.trim());
+                    if (parsed != null && parsed > 0) {
+                      Navigator.pop(ctx, parsed);
+                    }
+                  },
+                ),
+                const SizedBox(height: 8),
+                // Below the OS floor the SDK takes over rather than giving
+                // up, so this says which component will decide the fence and
+                // what that costs — in-app evaluation needs the location
+                // stream running, which OS-resolvable fences do not (#356).
+                if (inApp)
+                  Text(
+                    'ℹ️ Below ${osMinResolvableRadius.toStringAsFixed(0)}m the OS '
+                    'cannot resolve the fence, so Tracelet evaluates it in-app at '
+                    'the true radius. EXIT needs roughly '
+                    '~${exitDistance.toStringAsFixed(0)}m of travel on a '
+                    '${typicalAccuracy.toStringAsFixed(0)}m-accurate fix. Requires '
+                    'location updates to be running.',
+                    style: TextStyle(fontSize: 11, color: Colors.blue.shade900),
+                  )
+                else
+                  const Text(
+                    '100m+ is decided by the OS, with no location stream needed.',
+                    style: TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final parsed = double.tryParse(controller.text.trim());
+                  if (parsed != null && parsed > 0) {
+                    Navigator.pop(ctx, parsed);
+                  }
+                },
+                child: const Text('Add'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    controller.dispose();
+    return result;
   }
 
   Future<void> _finishPolygonDrawing() async {
@@ -751,8 +971,8 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                   Icons.circle_outlined,
                   color: Colors.orange,
                 ),
-                title: const Text('Circular Geofence (200m)'),
-                subtitle: const Text('Entry + exit + dwell monitoring'),
+                title: const Text('Circular Geofence…'),
+                subtitle: const Text('Pick a radius — entry, exit and dwell'),
                 onTap: () {
                   Navigator.pop(ctx);
                   _addCircularGeofenceAt(pos);
@@ -1562,14 +1782,75 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
 
   // ── Event log overlay ──────────────────────────────────────────────────
 
+  /// Whether the bottom log panel is expanded. Collapsed by default so it does
+  /// not cover the map until asked for.
+  bool _logPanelExpanded = false;
+
+  /// Which view the panel shows: in-app events, or the native SDK log.
+  bool _showSdkLogs = false;
+
+  /// Native SDK log lines, newest first.
+  List<tl.LogEntry> _sdkLogs = [];
+  bool _sdkLogsLoading = false;
+
+  /// Show only `[geofence]`-tagged and geofence-lifecycle lines.
+  ///
+  /// The SDK log is dominated by per-sample motion and location chatter, so a
+  /// crossing is easy to lose in it. These are the lines that explain why a
+  /// crossing did or did not fire.
+  bool _geofenceLogsOnly = true;
+
+  bool _isGeofenceLogLine(tl.LogEntry e) {
+    final m = e.message.toLowerCase();
+    return m.contains('[geofence]') ||
+        m.contains('geofence') ||
+        m.contains('geofences:');
+  }
+
+  Future<void> _refreshSdkLogs() async {
+    setState(() => _sdkLogsLoading = true);
+    try {
+      // Scan deep: crossings are rare while motion/location chatter is not, so
+      // a small window can contain none of them. Mirrors the Doctor report's
+      // geofenceTraceLimit for the same reason.
+      final logs = await tl.Tracelet.getLogs(2000);
+      if (!mounted) return;
+      setState(() {
+        _sdkLogs = logs.reversed.toList(growable: false);
+        _sdkLogsLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _sdkLogs = [];
+        _sdkLogsLoading = false;
+      });
+      _addMapEvent(
+        _MapEvent(
+          icon: Icons.error_outline,
+          color: Colors.red,
+          title: 'getLogs() failed',
+          subtitle: '$e',
+          time: DateTime.now(),
+        ),
+      );
+    }
+  }
+
   Widget _buildEventLog() {
-    if (!_showEventLog || _eventLog.isEmpty) return const SizedBox.shrink();
+    if (!_showEventLog) return const SizedBox.shrink();
+
+    final visibleSdkLogs = _geofenceLogsOnly
+        ? _sdkLogs.where(_isGeofenceLogLine).toList(growable: false)
+        : _sdkLogs;
+    final count = _showSdkLogs ? visibleSdkLogs.length : _eventLog.length;
+
     return Positioned(
       bottom: 8,
       left: 8,
       right: 70,
       child: Container(
-        constraints: const BoxConstraints(maxHeight: 180),
+        constraints: BoxConstraints(maxHeight: _logPanelExpanded ? 260 : 44),
         decoration: BoxDecoration(
           color: Colors.white.withAlpha(230),
           borderRadius: BorderRadius.circular(10),
@@ -1580,94 +1861,262 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              child: Row(
-                children: [
-                  const Icon(Icons.list_alt, size: 14, color: Colors.indigo),
-                  const SizedBox(width: 4),
-                  const Text(
-                    'Events',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
+            // ── Collapsible header ──
+            InkWell(
+              onTap: () {
+                setState(() => _logPanelExpanded = !_logPanelExpanded);
+                if (_logPanelExpanded && _showSdkLogs && _sdkLogs.isEmpty) {
+                  _refreshSdkLogs();
+                }
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _logPanelExpanded
+                          ? Icons.expand_more
+                          : Icons.chevron_right,
+                      size: 16,
                       color: Colors.indigo,
                     ),
-                  ),
-                  const Spacer(),
-                  GestureDetector(
-                    onTap: () => setState(_eventLog.clear),
-                    child: const Text(
-                      'Clear',
-                      style: TextStyle(fontSize: 10, color: Colors.red),
+                    const SizedBox(width: 2),
+                    Icon(
+                      _showSdkLogs ? Icons.bug_report : Icons.list_alt,
+                      size: 14,
+                      color: Colors.indigo,
                     ),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            Flexible(
-              child: ListView.builder(
-                shrinkWrap: true,
-                padding: EdgeInsets.zero,
-                itemCount: _eventLog.length > 10 ? 10 : _eventLog.length,
-                itemBuilder: (_, i) {
-                  final e = _eventLog[i];
-                  final ago = DateTime.now().difference(e.time);
-                  String agoStr;
-                  if (ago.inSeconds < 60) {
-                    agoStr = '${ago.inSeconds}s ago';
-                  } else if (ago.inMinutes < 60) {
-                    agoStr = '${ago.inMinutes}m ago';
-                  } else {
-                    agoStr = '${ago.inHours}h ago';
-                  }
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
+                    const SizedBox(width: 4),
+                    Text(
+                      _showSdkLogs ? 'SDK Logs ($count)' : 'Events ($count)',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.indigo,
+                      ),
                     ),
-                    child: Row(
-                      children: [
-                        Icon(e.icon, size: 14, color: e.color),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                e.title,
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: e.color,
-                                ),
-                              ),
-                              Text(
-                                e.subtitle,
-                                style: const TextStyle(
-                                  fontSize: 9,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Text(
-                          agoStr,
+                    const Spacer(),
+                    if (_logPanelExpanded) ...[
+                      // Switch between the in-app event stream and the native
+                      // SDK log. The SDK log is the one that survives a
+                      // background/killed-state crossing, so it is what a
+                      // "geofence never fired" report needs.
+                      GestureDetector(
+                        onTap: () {
+                          setState(() => _showSdkLogs = !_showSdkLogs);
+                          if (_showSdkLogs && _sdkLogs.isEmpty) {
+                            _refreshSdkLogs();
+                          }
+                        },
+                        child: Text(
+                          _showSdkLogs ? 'Events' : 'SDK',
                           style: const TextStyle(
-                            fontSize: 9,
-                            color: Colors.grey,
+                            fontSize: 10,
+                            color: Colors.indigo,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                      ],
-                    ),
-                  );
-                },
+                      ),
+                      const SizedBox(width: 10),
+                      if (_showSdkLogs) ...[
+                        GestureDetector(
+                          onTap: () => setState(
+                            () => _geofenceLogsOnly = !_geofenceLogsOnly,
+                          ),
+                          child: Text(
+                            _geofenceLogsOnly ? 'geofence' : 'all',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: _geofenceLogsOnly
+                                  ? Colors.orange.shade800
+                                  : Colors.grey,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        GestureDetector(
+                          onTap: _refreshSdkLogs,
+                          child: const Icon(
+                            Icons.refresh,
+                            size: 14,
+                            color: Colors.indigo,
+                          ),
+                        ),
+                      ] else
+                        GestureDetector(
+                          onTap: () => setState(_eventLog.clear),
+                          child: const Text(
+                            'Clear',
+                            style: TextStyle(fontSize: 10, color: Colors.red),
+                          ),
+                        ),
+                    ],
+                  ],
+                ),
               ),
             ),
+            if (_logPanelExpanded) ...[
+              const Divider(height: 1),
+              Flexible(
+                child: _showSdkLogs
+                    ? _buildSdkLogList(visibleSdkLogs)
+                    : _buildInAppEventList(),
+              ),
+            ],
           ],
         ),
+      ),
+    );
+  }
+
+  /// The native SDK log view — the one that survives a background or
+  /// killed-state crossing.
+  Widget _buildSdkLogList(List<tl.LogEntry> logs) {
+    if (_sdkLogsLoading) {
+      return const Padding(
+        padding: EdgeInsets.all(12),
+        child: Center(
+          child: SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+    if (logs.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(10),
+        child: Text(
+          _geofenceLogsOnly
+              ? 'No geofence log lines in the last 2000 entries.\n'
+                    'Crossings log at INFO — if tracking is running and you '
+                    'have crossed a fence, their absence is the finding.'
+              : 'No SDK logs. Enable logging in config (logLevel).',
+          style: const TextStyle(fontSize: 10, color: Colors.grey),
+        ),
+      );
+    }
+    return ListView.builder(
+      shrinkWrap: true,
+      padding: EdgeInsets.zero,
+      itemCount: logs.length,
+      itemBuilder: (_, i) {
+        final e = logs[i];
+        // ENTER/EXIT are the payload; colour them so they stand out from the
+        // surrounding registration/scope chatter.
+        final msg = e.message;
+        final isEnter = msg.contains('ENTER');
+        final isExit = msg.contains('EXIT');
+        final color = isEnter
+            ? Colors.green.shade700
+            : isExit
+            ? Colors.red.shade700
+            : Colors.blueGrey;
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 3),
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      msg,
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontFamily: 'monospace',
+                        color: color,
+                        fontWeight: (isEnter || isExit)
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                      ),
+                    ),
+                    Text(
+                      '${e.level}  ${e.timestamp}',
+                      style: const TextStyle(fontSize: 8, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildInAppEventList() {
+    if (_eventLog.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(10),
+        child: Text(
+          'No events yet.',
+          style: TextStyle(fontSize: 10, color: Colors.grey),
+        ),
+      );
+    }
+    return Builder(
+      builder: (_) => ListView.builder(
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        itemCount: _eventLog.length > 10 ? 10 : _eventLog.length,
+        itemBuilder: (_, i) {
+          final e = _eventLog[i];
+          final ago = DateTime.now().difference(e.time);
+          String agoStr;
+          if (ago.inSeconds < 60) {
+            agoStr = '${ago.inSeconds}s ago';
+          } else if (ago.inMinutes < 60) {
+            agoStr = '${ago.inMinutes}m ago';
+          } else {
+            agoStr = '${ago.inHours}h ago';
+          }
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            child: Row(
+              children: [
+                Icon(e.icon, size: 14, color: e.color),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        e.title,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: e.color,
+                        ),
+                      ),
+                      Text(
+                        e.subtitle,
+                        style: const TextStyle(fontSize: 9, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  agoStr,
+                  style: const TextStyle(fontSize: 9, color: Colors.grey),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -2037,6 +2486,9 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                     _tripStart = null;
                     _tripEnd = null;
                     _lastTrip = null;
+                  case 'clearGeofences':
+                    // Async + confirmed, so it runs outside this setState.
+                    _clearAllGeofences();
                 }
               });
             },
@@ -2074,6 +2526,19 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                 _showPrivacyZones,
               ),
               const PopupMenuDivider(),
+              PopupMenuItem(
+                value: 'clearGeofences',
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.delete_sweep,
+                    size: 20,
+                    color: Colors.orange,
+                  ),
+                  title: Text('Clear geofences (${_geofences.length})'),
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
               const PopupMenuItem(
                 value: 'clearTrail',
                 child: ListTile(
@@ -2213,9 +2678,23 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
             ),
           ),
           const SizedBox(height: 8),
+          // Circular geofence at the current location.
+          //
+          // Long-pressing the map has always offered this, but that is not
+          // discoverable — the polygon tool had a button and circles did not,
+          // so the map looked polygon-only. Circles are the common case (and
+          // the only shape the OS itself monitors), so they get a button too.
+          FloatingActionButton.small(
+            heroTag: 'circleGeo',
+            tooltip: 'Add circular geofence here',
+            onPressed: _addCircularGeofenceAtCurrentLocation,
+            child: const Icon(Icons.add_circle_outline, color: Colors.orange),
+          ),
+          const SizedBox(height: 8),
           // Polygon draw toggle
           FloatingActionButton.small(
             heroTag: 'polygon',
+            tooltip: 'Draw polygon geofence',
             backgroundColor: _polygonDrawMode ? Colors.deepOrange : null,
             onPressed: () {
               setState(() {

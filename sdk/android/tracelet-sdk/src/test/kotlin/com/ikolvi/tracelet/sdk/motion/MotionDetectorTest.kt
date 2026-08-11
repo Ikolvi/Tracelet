@@ -132,6 +132,60 @@ class MotionDetectorTest {
         assertFalse(state.isMoving, "Detector must transition to stationary when the timeout fires")
     }
 
+    /**
+     * #357: a phone carried at a tilt while walking must not be declared
+     * stationary.
+     *
+     * These are real samples from the field report, replayed in the order they
+     * were logged. Every one of them passes the `|‖a‖ - g| < 0.4` test — the
+     * norms are 9.64–9.71, so the scalar deviation never exceeds 0.17 — because
+     * a scalar norm cannot see a vector that is rotating rather than growing.
+     * Under the old test they accumulated a 25-sample still streak, started the
+     * countdown, and turned a walking user stationary a minute later.
+     */
+    @Test
+    fun `a tilted phone carried while walking never starts the stop countdown`() {
+        val listener = getAccelerometerListener()!!
+
+        val walking = listOf(
+            floatArrayOf(-0.418f, 6.349f, 7.244f), // ‖a‖ = 9.64 → mag -0.17
+            floatArrayOf(0.163f, 6.234f, 7.426f),  // ‖a‖ = 9.70 → mag -0.11
+            floatArrayOf(-0.126f, 5.527f, 7.933f), // ‖a‖ = 9.67 → mag -0.14
+            floatArrayOf(0.754f, 4.907f, 8.345f),  // ‖a‖ = 9.71 → mag -0.10
+        )
+        repeat(10) { i -> sendSensorEvent(listener, walking[i % walking.size]) }
+
+        assertNull(
+            getStopTimeoutRunnable(),
+            "samples whose norm sits at g but whose direction swings are motion, not stillness",
+        )
+
+        // And it must still be moving after the timeout would have elapsed.
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMinutes(2))
+        assertTrue(state.isMoving, "a walking device must not be declared stationary (#357)")
+    }
+
+    /**
+     * The other half of #357: tightening the stillness test must not break stop
+     * detection for a device that is genuinely at rest but not lying flat — a
+     * phone face-up on a desk at a slight angle, or propped in a holder.
+     */
+    @Test
+    fun `a resting phone at a tilt still detects stillness`() {
+        val listener = getAccelerometerListener()!!
+
+        // Steady tilt: a non-trivial orientation whose norm is g and whose
+        // direction does not change. Deviation and delta are both ~0.
+        repeat(25) { sendSensorEvent(listener, floatArrayOf(0f, 6.937f, 6.937f)) }
+
+        assertNotNull(
+            getStopTimeoutRunnable(),
+            "a steady vector at any orientation is stillness, whatever the tilt",
+        )
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMinutes(2))
+        assertFalse(state.isMoving, "a resting device must still go stationary")
+    }
+
     // =========================================================================
     // Reflection Helpers
     // =========================================================================
