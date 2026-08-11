@@ -151,6 +151,19 @@ class HeadlessTaskService(
     }
 
     /**
+     * Whether `registerHeadlessSyncBodyBuilder` has persisted a callback pair.
+     *
+     * A SharedPreferences read and nothing else (#340): it is consulted from
+     * `requestSyncBody`'s earliest branch, which must stay cheap and must not
+     * reach into the SDK.
+     */
+    fun isSyncBodyBuilderRegistered(): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getLong(CallbackType.SYNC_BODY.regKey, -1L) != -1L &&
+            prefs.getLong(CallbackType.SYNC_BODY.dispatchKey, -1L) != -1L
+    }
+
+    /**
      * Dispatch a headless event. If no UI engine is available, creates
      * a new FlutterEngine to handle the event.
      *
