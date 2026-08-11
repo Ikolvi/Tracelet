@@ -32,7 +32,10 @@ import kotlin.test.assertTrue
  * actually reaches an exported report, not just logcat.
  *
  * Pinned properties:
- *  1. transitions are logged at INFO, because production apps run at INFO
+ *  1. transitions are logged on the always-on **lifecycle** channel, so they
+ *     survive any `logLevel` — including the `off`/`error` a release build may
+ *     ship with, which used to drop the INFO line and leave the later bug
+ *     report with no trace of the crossing it was meant to explain (#352)
  *  2. the line carries every input to the accuracy-aware EXIT test (#274/#276)
  *  3. it never carries raw coordinates, so it is safe to paste into an issue
  */
@@ -61,7 +64,8 @@ class GeofenceManagerTransitionLogTest {
     private fun linesAt(level: String): List<String> =
         geofenceLines().filter { it.first == level }.map { it.second }
 
-    private fun firstExitAtInfo(): String? = linesAt("INFO").firstOrNull { it.contains("EXIT") }
+    private fun firstExitLine(): String? =
+        linesAt(TraceletLogger.LEVEL_NAME_LIFECYCLE).firstOrNull { it.contains("EXIT") }
 
     private fun configureLogLevel(level: Int) {
         config.setConfig(mapOf("logLevel" to level))
@@ -102,28 +106,29 @@ class GeofenceManagerTransitionLogTest {
         context.filesDir.resolve("test_geofence_transition_log.db").delete()
     }
 
-    // ── Transitions must be visible at INFO ─────────────────────────────────
+    // ── Transitions must be visible at ANY log level ───────────────────────
 
     @Test
-    fun `ENTER is logged at INFO with the geofence category tag`() {
+    fun `ENTER is logged on the lifecycle channel with the geofence category tag`() {
         geoManager.evaluateHighAccuracyProximity(centerLat, centerLng, 8.0)
 
         assertTrue(
-            linesAt("INFO").any { it.contains("ENTER") && it.contains("ZONE_LOG") },
-            "expected an INFO [geofence] ENTER line, got: ${geofenceLines()}",
+            linesAt(TraceletLogger.LEVEL_NAME_LIFECYCLE)
+                .any { it.contains("ENTER") && it.contains("ZONE_LOG") },
+            "expected a lifecycle [geofence] ENTER line, got: ${geofenceLines()}",
         )
     }
 
     @Test
-    fun `EXIT is logged at INFO carrying every input to the accuracy-aware test`() {
+    fun `EXIT is logged carrying every input to the accuracy-aware test`() {
         geoManager.evaluateHighAccuracyProximity(centerLat, centerLng, 8.0)
         // Genuine, sustained departure: 200 m out with a tight ±10 m fix ->
         // 190 > 70. Two consecutive fixes confirm the EXIT.
         geoManager.evaluateHighAccuracyProximity(north(200.0), centerLng, 10.0)
         geoManager.evaluateHighAccuracyProximity(north(200.0), centerLng, 10.0)
 
-        val exit = firstExitAtInfo()
-        requireNotNull(exit) { "expected an INFO [geofence] EXIT line, got: ${geofenceLines()}" }
+        val exit = firstExitLine()
+        requireNotNull(exit) { "expected a lifecycle [geofence] EXIT line, got: ${geofenceLines()}" }
 
         // Without these fields a reader cannot tell drift from a real departure.
         for (field in listOf("dist=", "radius=", "buffer=", "thr=", "accRaw=", "accEff=")) {
@@ -133,15 +138,32 @@ class GeofenceManagerTransitionLogTest {
 
     @Test
     fun `transitions survive at logLevel INFO`() {
-        // Regression guard for the level choice. If these move to DEBUG,
+        // Regression guard for the level choice. If these move back to DEBUG,
         // production apps at INFO go back to reporting undiagnosable EXITs.
         db.clearLogs()
         configureLogLevel(TraceletLogger.LEVEL_INFO)
         geoManager.evaluateHighAccuracyProximity(centerLat, centerLng, 8.0)
 
         assertTrue(
-            linesAt("INFO").isNotEmpty(),
+            linesAt(TraceletLogger.LEVEL_NAME_LIFECYCLE).isNotEmpty(),
             "transitions must survive at logLevel=INFO, got: ${geofenceLines()}",
+        )
+    }
+
+    @Test
+    fun `transitions survive at logLevel OFF`() {
+        // The guarantee the lifecycle channel exists for (#352). A release build
+        // may ship with logging off or at error; a crossing is the SDK's primary
+        // product event and is precisely what the bug report filed days later
+        // needs. At INFO this line was dropped and the report showed nothing —
+        // indistinguishable from "the geofence never fired".
+        db.clearLogs()
+        configureLogLevel(TraceletLogger.LEVEL_OFF)
+        geoManager.evaluateHighAccuracyProximity(centerLat, centerLng, 8.0)
+
+        assertTrue(
+            linesAt(TraceletLogger.LEVEL_NAME_LIFECYCLE).any { it.contains("ENTER") },
+            "a crossing must be persisted even at logLevel=OFF, got: ${geofenceLines()}",
         )
     }
 
@@ -173,7 +195,7 @@ class GeofenceManagerTransitionLogTest {
         geoManager.evaluateHighAccuracyProximity(north(200.0), centerLng, 150.0)
         geoManager.evaluateHighAccuracyProximity(north(200.0), centerLng, 150.0)
 
-        val exit = firstExitAtInfo()
+        val exit = firstExitLine()
         requireNotNull(exit) { "expected an EXIT line, got: ${geofenceLines()}" }
         assertTrue(exit.contains("accRaw=150.0"), "raw accuracy must be reported: $exit")
         assertTrue(exit.contains("accEff=20.0"), "clamped accuracy must be reported: $exit")
@@ -191,7 +213,7 @@ class GeofenceManagerTransitionLogTest {
         geoManager.evaluateHighAccuracyProximity(north(200.0), centerLng, 0.0)
         geoManager.evaluateHighAccuracyProximity(north(200.0), centerLng, 0.0)
 
-        val exit = firstExitAtInfo()
+        val exit = firstExitLine()
         requireNotNull(exit) { "expected an EXIT line, got: ${geofenceLines()}" }
         assertTrue(exit.contains("accuracyInvalid=true"), "invalid accuracy must be flagged: $exit")
         assertTrue(exit.contains("gatingDisabled=true"), "disabled gating must be flagged: $exit")
@@ -204,7 +226,7 @@ class GeofenceManagerTransitionLogTest {
         geoManager.evaluateHighAccuracyProximity(north(200.0), centerLng, 12.0)
         geoManager.evaluateHighAccuracyProximity(north(200.0), centerLng, 12.0)
 
-        val exit = firstExitAtInfo()
+        val exit = firstExitLine()
         requireNotNull(exit) { "expected an EXIT line, got: ${geofenceLines()}" }
         assertTrue(exit.contains("accRaw=12.0") && exit.contains("accEff=12.0"), exit)
         assertFalse(exit.contains("clampApplied=true"), "no clamp should be flagged at -1: $exit")
@@ -223,7 +245,7 @@ class GeofenceManagerTransitionLogTest {
         // Just inside the logged threshold (70 m) with a perfect fix -> held.
         geoManager.evaluateHighAccuracyProximity(north(69.0), centerLng, 0.0)
         assertTrue(
-            firstExitAtInfo() == null,
+            firstExitLine() == null,
             "69 m must not exit a 70 m threshold: ${geofenceLines()}",
         )
 
@@ -231,7 +253,7 @@ class GeofenceManagerTransitionLogTest {
         // report thr=70.0.
         geoManager.evaluateHighAccuracyProximity(north(71.0), centerLng, 0.0)
         geoManager.evaluateHighAccuracyProximity(north(71.0), centerLng, 0.0)
-        val exit = firstExitAtInfo()
+        val exit = firstExitLine()
         requireNotNull(exit) { "71 m must exit a 70 m threshold: ${geofenceLines()}" }
         assertTrue(
             exit.contains("thr=70.0") && exit.contains("buffer=20.0"),

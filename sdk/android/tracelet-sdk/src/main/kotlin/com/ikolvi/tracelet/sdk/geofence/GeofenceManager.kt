@@ -452,7 +452,15 @@ class GeofenceManager(
             // The OS/AOSP path has no accuracy gating at all — the platform owns
             // debouncing. Log it distinctly so a bug report makes clear which
             // path produced the transition (source=os vs the in-app evaluator).
-            TraceletLog.info(
+            //
+            // On the always-on lifecycle channel (#318), not INFO: a crossing is
+            // the SDK's primary product event and is exactly what a "geofences
+            // stopped firing" report needs, but it arrives days later from a
+            // release build whose logLevel may be `error` or `off` — which
+            // dropped the INFO line and left the report with nothing to show
+            // either way. Crossings are a handful a day, so the row budget is
+            // unaffected (#352).
+            TraceletLog.lifecycle(
                 "$GEOFENCE_LOG_TAG $action $identifier source=os " +
                     "transitionType=$transitionType (no accuracy gating on this path)"
             )
@@ -653,10 +661,13 @@ class GeofenceManager(
 
             val gfMap = geofenceMapById[t.identifier]
 
-            // Logged at INFO, not DEBUG: production apps run at INFO, and a
-            // false EXIT is reported days later by an end user. Volume is a
-            // handful of lines per day, and the line carries no coordinates.
-            TraceletLog.info(
+            // On the always-on lifecycle channel (#318), not INFO or DEBUG: a
+            // false EXIT is reported days later by an end user, from a release
+            // build whose logLevel may be `error` or `off` — which dropped even
+            // the INFO line, so the bug report that was supposed to explain the
+            // crossing contained no trace of it. Volume is a handful of lines
+            // per day, and the line carries no coordinates (#352).
+            TraceletLog.lifecycle(
                 transitionTrace(
                     action = t.action,
                     identifier = t.identifier,

@@ -100,26 +100,31 @@ final class GeofenceManagerTransitionLogTests: XCTestCase {
         return found
     }
 
+    /// Crossings are persisted on the always-on lifecycle channel so they
+    /// survive any `logLevel`, including the `off`/`error` a release build may
+    /// ship with (#352).
     private func infoLines() -> [String] {
-        geofenceLines().filter { $0.level == "INFO" }.map { $0.message }
+        geofenceLines()
+            .filter { $0.level == TraceletLogger.lifecycleLevelName }
+            .map { $0.message }
     }
 
     private func firstExitAtInfo() -> String? {
         geofenceLines(until: { lines in
-            lines.contains { $0.level == "INFO" && $0.message.contains("EXIT") }
+            lines.contains { $0.level == TraceletLogger.lifecycleLevelName && $0.message.contains("EXIT") }
         })
-        .first { $0.level == "INFO" && $0.message.contains("EXIT") }?
+        .first { $0.level == TraceletLogger.lifecycleLevelName && $0.message.contains("EXIT") }?
         .message
     }
 
-    // MARK: - Transitions must be visible at INFO
+    // MARK: - Transitions must be visible at ANY log level
 
     func testEnterIsLoggedAtInfoWithTheGeofenceCategoryTag() {
         manager.evaluateHighAccuracyProximity(latitude: centerLat, longitude: centerLng, accuracy: 8.0)
 
         XCTAssertTrue(
             infoLines().contains { $0.contains("ENTER") && $0.contains("ZONE_LOG") },
-            "expected an INFO [geofence] ENTER line, got: \(geofenceLines())"
+            "expected a lifecycle [geofence] ENTER line, got: \(geofenceLines())"
         )
     }
 
@@ -131,7 +136,7 @@ final class GeofenceManagerTransitionLogTests: XCTestCase {
         manager.evaluateHighAccuracyProximity(latitude: north(200.0), longitude: centerLng, accuracy: 10.0)
 
         guard let exit = firstExitAtInfo() else {
-            return XCTFail("expected an INFO [geofence] EXIT line, got: \(geofenceLines())")
+            return XCTFail("expected a lifecycle [geofence] EXIT line, got: \(geofenceLines())")
         }
 
         // Field names must match Android exactly — a bug report should read the

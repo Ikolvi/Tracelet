@@ -516,10 +516,13 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
 
             let gfMap = geofenceMapById[t.identifier]
 
-            // Logged at INFO, not DEBUG: production apps run at INFO, and a
-            // false EXIT is reported days later by an end user. Volume is a
-            // handful of lines per day, and the line carries no coordinates.
-            TraceletLog.info(
+            // On the always-on lifecycle channel (#318), not INFO or DEBUG: a
+            // false EXIT is reported days later by an end user, from a release
+            // build whose logLevel may be `error` or `off` — which dropped even
+            // the INFO line, so the bug report that was supposed to explain the
+            // crossing contained no trace of it. Volume is a handful of lines
+            // per day, and the line carries no coordinates (#352).
+            TraceletLog.lifecycle(
                 transitionTrace(
                     action: t.action,
                     identifier: t.identifier,
@@ -809,7 +812,10 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         // The OS region-monitoring path has no accuracy gating — CoreLocation
         // owns the debouncing. Log it distinctly so a bug report makes clear
         // which path produced the transition.
-        TraceletLog.info(
+        // On the always-on lifecycle channel (#318), not INFO — see the
+        // high-accuracy path above: a release build may run logLevel `off` and
+        // a crossing is exactly what the later bug report needs (#352).
+        TraceletLog.lifecycle(
             "\(GeofenceManager.logTag) \(action) \(region.identifier) source=os " +
             "radius=\(fmt1(region.radius)) (no accuracy gating on this path)"
         )
