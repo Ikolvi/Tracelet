@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
@@ -55,7 +57,16 @@ import 'package:tracelet_example/issues/issue_card_shell.dart';
 ///
 /// It is written on *transition*, so the card establishes a known source first
 /// and then asserts that clearing the foreground builder does not flip it to
-/// the default payload.
+/// the default payload. Whether a sync ran at all is taken from `onHttp`, which
+/// fires per attempt regardless of the outcome — the transition line cannot
+/// answer that, and reading it as if it could made an ordinary "source did not
+/// change" run look like a failure.
+///
+/// Building this card surfaced a second gap: on Android only `triggerSync` —
+/// the debounced auto-sync — reported the source. `syncBatchBlocking`, which is
+/// what a manual `sync()` and the killed-state paths call, reported nothing at
+/// all, so those syncs left no trail on Android while iOS (which reports from
+/// inside its own `syncBatchBlocking`) did. Both entry points report now.
 ///
 /// **What it does not prove.** That a real iOS background relaunch behaves this
 /// way — no foreground card can relaunch itself. It reproduces the *state* that
@@ -91,7 +102,8 @@ class _Issue340CardState extends State<Issue340Card> {
       };
 
   static const _defaultPayloadMarker = 'posting the DEFAULT payload';
-  static const _customMarker = "posting the app's custom sync body";
+
+  var _httpEvents = 0;
 
   /// Persists one location and syncs, so a body is actually built.
   Future<void> _syncOnce() async {
@@ -106,7 +118,7 @@ class _Issue340CardState extends State<Issue340Card> {
       // The body is chosen and reported before the POST, which is all this
       // card reads.
     }
-    await Future<void>.delayed(const Duration(seconds: 2));
+    await Future<void>.delayed(const Duration(seconds: 3));
   }
 
   Future<List<String>> _syncBodyLines() async {
@@ -128,6 +140,8 @@ class _Issue340CardState extends State<Issue340Card> {
       if (!pass) allPass = false;
     }
 
+    StreamSubscription<HttpEvent>? httpSub;
+
     try {
       if (kIsWeb) {
         _set(
@@ -139,6 +153,14 @@ class _Issue340CardState extends State<Issue340Card> {
 
       await Tracelet.clearLogs();
 
+      // A sync attempt emits an http event whether the POST succeeds or not,
+      // which is how this card knows a sync actually ran. The `sync-body:` line
+      // cannot serve as that precondition: it is written only when the source
+      // *changes*, so a process already posting the custom body says nothing —
+      // "no entry" would then mean both "nothing synced" and "nothing changed".
+      _httpEvents = 0;
+      httpSub = Tracelet.onHttp((_) => _httpEvents++);
+
       // 1. Establish a known source: a foreground builder, registered here so
       //    the card does not depend on the Initialize button having been
       //    pressed.
@@ -147,26 +169,28 @@ class _Issue340CardState extends State<Issue340Card> {
       );
       await _syncOnce();
 
-      final afterForeground = await _syncBodyLines();
-      final sawCustom = afterForeground.any((m) => m.contains(_customMarker));
+      final syncsRan = _httpEvents;
       check(
-        'a sync reports which body it posted',
-        afterForeground.isNotEmpty,
-        afterForeground.isNotEmpty
-            ? 'sync-body: "${afterForeground.last}"'
-            : 'no sync-body entry at all. Nothing below is conclusive: either '
-                  'no sync ran (is there an http.url configured, and did the '
-                  'insert land?) or the #341 reporting is not reaching the log '
-                  'store.',
+        'a sync actually ran',
+        syncsRan > 0,
+        syncsRan > 0
+            ? '$syncsRan sync attempt(s) reported over onHttp — a body was '
+                  'built, so the rows below are about which one'
+            : 'no sync attempt at all, so nothing below is conclusive. Check '
+                  'that http.url is configured and that the inserted location '
+                  'landed in the database.',
       );
-      if (!sawCustom && afterForeground.isNotEmpty) {
-        results.add(
-          'ℹ️ the source did not transition to "custom" on this run. The line '
-          'is written only when the source *changes*, so a process that was '
-          'already posting the custom body says nothing here — that is '
-          'expected, not a failure.',
-        );
-      }
+
+      final afterForeground = await _syncBodyLines();
+      results.add(
+        afterForeground.isEmpty
+            ? 'ℹ️ no sync-body transition recorded while the foreground builder '
+                  'was registered — expected when the process was already '
+                  'posting the custom body, since the line marks a change of '
+                  'source rather than each sync.'
+            : 'ℹ️ source with the foreground builder registered: '
+                  '"${afterForeground.last}"',
+      );
 
       // 2. Reproduce the relaunched-process state: no foreground builder, the
       //    headless one still registered from main().
@@ -230,6 +254,7 @@ class _Issue340CardState extends State<Issue340Card> {
     } catch (e) {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
+      await httpSub?.cancel();
       if (mounted) setState(() => _running = false);
     }
   }
