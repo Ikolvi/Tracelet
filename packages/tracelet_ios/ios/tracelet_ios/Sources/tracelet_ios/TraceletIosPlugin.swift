@@ -121,9 +121,21 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin, DartSyncInterceptor {
             }
             TraceletBootstrapIOS.headlessDispatcherFactory = { HeadlessRunner() }
 
-            // Wire headless fallback — when no Dart UI listener, route to HeadlessRunner
-            instance.eventDispatcher.headlessFallback = { [weak instance] eventName, eventData in
-                guard let runner = instance?.headlessRunner else { return }
+            // Wire headless fallback — when no Dart UI listener, route to HeadlessRunner.
+            //
+            // The runner is captured directly rather than reached through a weak
+            // `instance`, because the moment this fallback exists to serve is
+            // exactly the moment that reference dies: after `detachFromEngine`
+            // nothing retains the plugin instance — the engine's registry was
+            // its owner — while the SDK keeps tracking (`stopOnTerminate:
+            // false`) and keeps this dispatcher as its event sender. A weak hop
+            // through the deallocated instance turned every one of those events
+            // into a silent no-op, which is the same "an engine that can no
+            // longer deliver still claims to" failure as #364 on Android. The
+            // dispatcher owns the runner and the runner does not refer back, so
+            // there is no cycle.
+            let runner = instance.headlessRunner!
+            instance.eventDispatcher.headlessFallback = { eventName, eventData in
                 runner.dispatchEvent(["name": eventName, "event": eventData])
             }
 
@@ -148,8 +160,20 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin, DartSyncInterceptor {
         if TraceletIosPlugin.primaryInstance === self {
             TraceletIosPlugin.primaryInstance = nil
 
+            // Drop the Pigeon event API before anything else: `PluginEventDispatcher`
+            // decides "can a Flutter engine receive this?" by whether `eventApi`
+            // is non-nil, and this engine's messenger is gone. Leaving it set
+            // left the SDK — which keeps tracking under `stopOnTerminate: false`
+            // — posting every subsequent event into a dead engine instead of
+            // falling through to the HeadlessRunner, so the registered headless
+            // task heard nothing for the rest of the process. Same defect as
+            // #364 on Android, reached by detach rather than by a foreign
+            // engine. A later `register(with:)` installs a fresh dispatcher, so
+            // this only ever affects the engine that just went away.
+            eventDispatcher?.unregister()
+
             sdk.destroyAll()
-            TraceletSdk.shared.logger.debug("detachFromEngine: primary instance — destroyAll() called")
+            TraceletSdk.shared.logger.debug("detachFromEngine: primary instance — event API unregistered, destroyAll() called")
         } else {
             TraceletSdk.shared.logger.debug("detachFromEngine: secondary instance — skipping SDK destroy")
         }

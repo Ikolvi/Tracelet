@@ -329,10 +329,64 @@ class MainActivity : FlutterActivity() {
                     } catch (e: Throwable) {
                         result.error("ISSUE_286_ERROR", e.toString(), null)
                     }
+                } else if (call.method == "debugIssue364ForeignEngine") {
+                    // #364: a FlutterEngine created by ANOTHER plugin must not be
+                    // treated as an event receiver.
+                    //
+                    // `FlutterEngine(applicationContext)` is exactly what
+                    // firebase_messaging's FlutterFirebaseMessagingBackgroundService
+                    // does: the constructor auto-registers every plugin, so
+                    // TraceletAndroidPlugin attaches to an isolate that will never
+                    // call `Tracelet.onLocation`. The observable consequence is
+                    // fan-out membership — before the fix that engine's dispatcher
+                    // joined `globalEventSender` with a live Pigeon `eventApi`, and
+                    // `EventDispatcher` reads a non-null `eventApi` as "a Flutter
+                    // engine can receive this", so events stopped falling through to
+                    // the headless task for the rest of the process.
+                    //
+                    // Reflection because the fan-out is a private companion field
+                    // with no Dart-visible API — same approach as #286 above.
+                    try {
+                        val before = fanOutSize()
+                        val foreign = FlutterEngine(applicationContext)
+                        val afterAttach = fanOutSize()
+                        foreign.destroy()
+                        val afterDestroy = fanOutSize()
+                        result.success(
+                            mapOf(
+                                "platform" to "android",
+                                "fanOutBefore" to before,
+                                "fanOutAfterAttach" to afterAttach,
+                                "fanOutAfterDestroy" to afterDestroy,
+                            ),
+                        )
+                    } catch (e: Throwable) {
+                        result.error("ISSUE_364_ERROR", e.toString(), null)
+                    }
                 } else {
                     result.notImplemented()
                 }
             }
+    }
+
+    /**
+     * Number of EventDispatchers in `TraceletAndroidPlugin`'s global event
+     * fan-out, or -1 when it cannot be read (#364).
+     *
+     * This is the list every SDK event is broadcast to, so its membership is
+     * the direct measure of "which engines does Tracelet believe can receive
+     * events".
+     */
+    private fun fanOutSize(): Int = try {
+        val pluginClass =
+            Class.forName("com.ikolvi.tracelet.flutter.TraceletAndroidPlugin")
+        val sender = pluginClass.getDeclaredField("globalEventSender")
+            .apply { isAccessible = true }.get(null)
+        val dispatchers = sender.javaClass.getDeclaredField("dispatchers")
+            .apply { isAccessible = true }.get(sender) as? List<*>
+        dispatchers?.size ?: -1
+    } catch (e: Throwable) {
+        -1
     }
 
     // ==== #286 verification helpers (reflection: internals are not public) ====

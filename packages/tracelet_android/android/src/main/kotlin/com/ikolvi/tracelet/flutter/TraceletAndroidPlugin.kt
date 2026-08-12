@@ -15,6 +15,7 @@ import com.ikolvi.tracelet.flutter.service.HeadlessTaskService
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
+import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.PluginRegistry
 import java.util.concurrent.atomic.AtomicInteger
@@ -109,6 +110,17 @@ class TraceletAndroidPlugin :
     private var syncBodyChannel: MethodChannel? = null
     @Volatile private var isEngineAttached = false
 
+    /**
+     * Messenger of a secondary **UI** engine that has not yet shown that its
+     * Dart side listens for events (#364).
+     *
+     * Non-null only between this engine's attach and the
+     * [onDartEventsSubscribed] handshake that lets it join the fan-out; null on
+     * the primary instance and on every headless engine, both of which must
+     * never take this path.
+     */
+    @Volatile private var pendingUiMessenger: BinaryMessenger? = null
+
     private val sdk: TraceletSdk get() = TraceletSdk.getInstance(context)
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -196,8 +208,11 @@ class TraceletAndroidPlugin :
             // handful per process (the headless spawn beside it is already
             // lifecycle), so the row budget is unaffected (#358).
             val kind = if (isUiEngine) "UI" else "headless"
-            val delivery =
-                if (isUiEngine) "delivered to it" else "routed to the headless task"
+            val delivery = if (isUiEngine) {
+                "delivered to it once its Dart side subscribes"
+            } else {
+                "routed to the headless task"
+            }
             TraceletLog.lifecycle(
                 "engines: secondary attach — $kind (engineCount=$count); " +
                     "events $delivery"
@@ -206,9 +221,29 @@ class TraceletAndroidPlugin :
             eventDispatcher = EventDispatcher()
 
             if (isUiEngine) {
-                // A real UI engine can display events, so let it receive them.
-                eventDispatcher.register(binding.binaryMessenger)
-                globalEventSender.add(eventDispatcher)
+                // A real UI engine can display events — but only if its Dart
+                // side is actually listening, and "not spawned by us" is not
+                // evidence that it is. Any plugin may create a FlutterEngine in
+                // this process (firebase_messaging's background message service,
+                // flutter_local_notifications, background_downloader…), plugin
+                // auto-registration attaches Tracelet to it, and none of those
+                // isolates ever calls `Tracelet.onLocation`. Registering such an
+                // engine here gave its dispatcher a non-null Pigeon `eventApi`,
+                // which `EventDispatcher` reads as "a Flutter engine can receive
+                // this" — so every event was posted into an isolate with no
+                // listeners instead of falling through to `headlessFallback`,
+                // and after task removal the app got nothing at all for the rest
+                // of the process (#364, the foreign-engine half of #358).
+                //
+                // So hold the messenger and wait for evidence:
+                // [onDartEventsSubscribed] fires when this engine's Dart side
+                // registers its Pigeon event receiver, which is exactly the
+                // moment it becomes able to receive. An engine that never
+                // subscribes never joins the fan-out, and events keep reaching
+                // the registered headless task. Waiting costs nothing: before
+                // Dart subscribes there is no handler on the other end, so the
+                // events this defers were being dropped by the engine anyway.
+                pendingUiMessenger = binding.binaryMessenger
                 primaryInstance?.headlessService?.let { hs ->
                     eventDispatcher.headlessFallback = { name, data ->
                         dispatchToHeadless(hs, name, data)
@@ -236,7 +271,48 @@ class TraceletAndroidPlugin :
         val apiHeadless = headlessService ?: HeadlessTaskService(context)
         TraceletHostApi.setUp(
             binding.binaryMessenger,
-            TraceletHostApiImpl(context, apiHeadless),
+            // The HostApi is set up per messenger, so a call arriving on this
+            // one came from *this* engine's Dart side — which is what makes
+            // `requestStateFlush` usable as the per-engine subscription
+            // handshake (#364).
+            TraceletHostApiImpl(context, apiHeadless, ::onDartEventsSubscribed),
+        )
+    }
+
+    /**
+     * This engine's Dart side registered its Pigeon event receiver (#364).
+     *
+     * `PigeonTracelet._ensureEventsRegistered()` calls `requestStateFlush()`
+     * once per isolate, immediately after `TraceletEventApi.setUp(...)`, on the
+     * first access to any event stream — so this is the native side's only
+     * evidence that a given engine can actually receive events, rather than
+     * merely existing.
+     *
+     * Only a secondary UI engine waiting in [pendingUiMessenger] acts on it:
+     *
+     * - the **primary** already registered at attach and is unaffected — its
+     *   dispatcher must be live before Dart subscribes, since `ready()` and the
+     *   state flush it triggers both run through it;
+     * - a **headless** engine leaves [pendingUiMessenger] null and is ignored
+     *   here, so an app whose headless task subscribes to a stream cannot pull
+     *   the headless engine into the fan-out and re-break #358.
+     *
+     * Idempotent: `_eventsRegistered` makes Dart send this once per isolate,
+     * but a re-entrant or duplicated call must not double-register, so the
+     * messenger is consumed under the lock and `addIfAbsent` guards the fan-out.
+     */
+    @Synchronized
+    internal fun onDartEventsSubscribed() {
+        val messenger = pendingUiMessenger ?: return
+        pendingUiMessenger = null
+        eventDispatcher.register(messenger)
+        globalEventSender.add(eventDispatcher)
+        // Lifecycle, not debug, for the same reason the attach decision above is
+        // (#318/#358): this is the moment a secondary engine starts receiving
+        // events, and its absence from a report is the finding.
+        TraceletLog.lifecycle(
+            "engines: secondary UI engine subscribed — joining the event " +
+                "fan-out (#364)"
         )
     }
 
@@ -246,6 +322,10 @@ class TraceletAndroidPlugin :
         
         isEngineAttached = false
         TraceletHostApi.setUp(binding.binaryMessenger, null)
+        // A secondary UI engine that detached before its Dart side ever
+        // subscribed must not be able to join the fan-out afterwards on a late
+        // handshake, holding a messenger whose engine is gone (#364).
+        pendingUiMessenger = null
 
         if (primaryInstance === this) {
             sdk.logger.debug("onDetachedFromEngine: primary instance detaching")
