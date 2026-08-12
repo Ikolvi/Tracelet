@@ -1,4 +1,6 @@
-## Unreleased
+## 3.8.3
+
+**FEAT**: the telematics host API carries `speed` and `value` through to Dart, so `Tracelet.getTelematicsEvents()` returns the magnitudes behind each event's normalized severity rather than dropping them at the platform boundary ([#367](https://github.com/Ikolvi/Tracelet/issues/367)).
 
 **FIX**: events reach the registered headless task after the Flutter engine detaches. `PluginEventDispatcher` decides "can a Flutter engine receive this?" by whether its Pigeon `eventApi` is non-nil, and `detachFromEngine` never cleared it — so the SDK, which keeps that dispatcher as its event sender and keeps tracking under `stopOnTerminate: false`, went on posting every event into an engine that was gone instead of falling through to the `HeadlessRunner`. The dispatcher's fallback could not have run either way: it reached the runner through a weak reference to the plugin instance, and after detach nothing retains that instance — the engine's registry was its owner — so the closure the fallback exists for was a no-op by the time it was needed. The event API is now dropped on detach and the runner is captured directly (the dispatcher owns it and it does not refer back, so there is no cycle). This is the iOS half of the Android foreign-engine defect: an engine that can no longer deliver must stop claiming it can. The foreign-engine path itself does not exist here — `register(with:)` gives a secondary registrar the Pigeon HostApi only and never wires it into event delivery ([#364](https://github.com/Ikolvi/Tracelet/issues/364)).
 

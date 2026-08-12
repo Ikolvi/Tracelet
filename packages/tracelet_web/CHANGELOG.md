@@ -1,4 +1,4 @@
-## Unreleased
+## 3.8.3
 
 **FIX**: `maxRecordsToPersist: -1` no longer throws `RangeError` on every insert. `-1` is the documented "unlimited" sentinel, and because `ready()` resolves every field before it crosses the channel it is what the *default* configuration sends — so the unguarded `while (_locations.length > _maxRecords) removeAt(0)` emptied the store and then ran off the end of it on the first insert of every web session. A non-positive cap now means unlimited, as it already did on the native platforms ([#362](https://github.com/Ikolvi/Tracelet/issues/362)).
 

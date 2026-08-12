@@ -1,12 +1,13 @@
 import os
 import re
 
-version_from = "3.8.1"
-version_to = "3.8.2"
+version_from = "3.8.2"
+version_to = "3.8.3"
 
-# Patch release: the geofence cycle — #352, #353, #355, #357, #358 — landed as
-# hand-written `## Unreleased` entries since 3.8.1 shipped. This run promotes
-# them rather than writing new ones.
+# Patch release: the telematics cycle — #366, #367, #368, #370 — plus the
+# persistence retention work (#361, #362) and the foreign-engine event capture
+# fix (#364), all landed as hand-written `## Unreleased` entries since 3.8.2
+# shipped. This run promotes them rather than writing new ones.
 
 # 1. Bump version strings
 exact_replacements = [
