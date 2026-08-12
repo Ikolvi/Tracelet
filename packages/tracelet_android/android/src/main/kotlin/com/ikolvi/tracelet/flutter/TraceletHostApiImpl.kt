@@ -42,6 +42,15 @@ import com.ikolvi.tracelet.sdk.util.OemCompat
 class TraceletHostApiImpl(
     private val context: Context,
     private val headlessService: HeadlessTaskService,
+    /**
+     * Invoked when the Dart side of the engine this instance is registered on
+     * subscribes to Tracelet's events (#364).
+     *
+     * Optional so the existing two-argument construction keeps working; the
+     * plugin passes it for every engine, and only a secondary UI engine acts
+     * on it. See [TraceletAndroidPlugin.onDartEventsSubscribed].
+     */
+    private val onDartEventsSubscribed: (() -> Unit)? = null,
 ) : TraceletHostApi {
 
     companion object {
@@ -386,6 +395,14 @@ class TraceletHostApiImpl(
 
     @Suppress("UNCHECKED_CAST")
     override fun requestStateFlush() {
+        // `PigeonTracelet._ensureEventsRegistered()` calls this once per isolate,
+        // immediately after `TraceletEventApi.setUp(...)`, on the first access to
+        // any event stream. Since the HostApi is registered per messenger, its
+        // arrival here is the native side's evidence that *this* engine's Dart
+        // side is listening — which is what decides whether a secondary engine
+        // may join the event fan-out (#364). Signalled before the flush so the
+        // re-emitted state reaches an engine that just subscribed.
+        onDartEventsSubscribed?.invoke()
         sdk.requestStateFlush()
     }
 
