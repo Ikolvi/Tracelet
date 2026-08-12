@@ -754,6 +754,8 @@ external fun uniffi_tracelet_core_checksum_method_databasemanager_destroy_locati
 ): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_encrypt_payload(
 ): Short
+external fun uniffi_tracelet_core_checksum_method_databasemanager_enforce_max_location_records(
+): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_get_audit_trail(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_get_geofences(
@@ -787,6 +789,8 @@ external fun uniffi_tracelet_core_checksum_method_databasemanager_insert_telemat
 external fun uniffi_tracelet_core_checksum_method_databasemanager_is_empty(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_mark_telematics_synced(
+): Short
+external fun uniffi_tracelet_core_checksum_method_databasemanager_prune_locations_older_than(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_prune_logs(
 ): Short
@@ -1076,6 +1080,8 @@ external fun uniffi_tracelet_core_fn_method_databasemanager_destroy_locations(`p
 ): Unit
 external fun uniffi_tracelet_core_fn_method_databasemanager_encrypt_payload(`ptr`: Long,`plaintext`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+external fun uniffi_tracelet_core_fn_method_databasemanager_enforce_max_location_records(`ptr`: Long,`maxRecords`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Int
 external fun uniffi_tracelet_core_fn_method_databasemanager_get_audit_trail(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun uniffi_tracelet_core_fn_method_databasemanager_get_geofences(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1110,6 +1116,8 @@ external fun uniffi_tracelet_core_fn_method_databasemanager_is_empty(`ptr`: Long
 ): Byte
 external fun uniffi_tracelet_core_fn_method_databasemanager_mark_telematics_synced(`ptr`: Long,`maxId`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+external fun uniffi_tracelet_core_fn_method_databasemanager_prune_locations_older_than(`ptr`: Long,`maxDays`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Int
 external fun uniffi_tracelet_core_fn_method_databasemanager_prune_logs(`ptr`: Long,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 external fun uniffi_tracelet_core_fn_method_databasemanager_prune_logs_older_than(`ptr`: Long,`maxDays`: Int,uniffi_out_err: UniffiRustCallStatus, 
@@ -1518,6 +1526,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_encrypt_payload() != 52269.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_tracelet_core_checksum_method_databasemanager_enforce_max_location_records() != 54354.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_get_audit_trail() != 59184.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1567,6 +1578,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_mark_telematics_synced() != 38059.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tracelet_core_checksum_method_databasemanager_prune_locations_older_than() != 38098.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_prune_logs() != 51361.toShort()) {
@@ -3517,6 +3531,26 @@ public interface DatabaseManagerInterface {
     fun `encryptPayload`(`plaintext`: kotlin.ByteArray): kotlin.ByteArray?
     
     /**
+     * Caps `location_events` at `max_records` rows, deleting the oldest first
+     * and reporting how many went (#361).
+     *
+     * The count companion to
+     * [`prune_locations_older_than`](Self::prune_locations_older_than), and the
+     * bound that actually holds during a long offline stretch: an age window
+     * alone cannot express "never queue more than N", because how many rows a
+     * day is depends entirely on the sampling cadence in force.
+     *
+     * `max_records <= 0` is a no-op, carrying the `-1` unlimited sentinel.
+     *
+     * Oldest is decided by `id`, not by any timestamp: `id` is the insertion
+     * order the sync batcher already uploads and acknowledges in, and it stays
+     * correct when fixes arrive out of order or carry a spoofed clock — a
+     * timestamp-ordered cap would let one bogus future fix pin itself in the
+     * queue and evict every real record around it.
+     */
+    fun `enforceMaxLocationRecords`(`maxRecords`: kotlin.Int): kotlin.UInt
+    
+    /**
      * Retrieves all audit trail records, ordered sequentially by their chain index.
      */
     fun `getAuditTrail`(): List<DbAuditRecord>
@@ -3623,6 +3657,34 @@ public interface DatabaseManagerInterface {
      * Marks telematics events up to max_id as synced.
      */
     fun `markTelematicsSynced`(`maxId`: kotlin.Long)
+    
+    /**
+     * Deletes location rows older than `max_days`, reporting how many went
+     * (#361).
+     *
+     * `maxDaysToPersist` was enforced up to 3.0 by `pruneOldLocations` in the
+     * platform-native `TraceletDatabase` classes. The 3.1.0 migration onto this
+     * shared core replaced the whole persist body with a sink fan-out and took
+     * the retention calls with it; no equivalent was ever added here, so the
+     * documented 1-day default and every explicit override silently did nothing
+     * while the local queue grew without bound.
+     *
+     * `max_days <= 0` is a no-op rather than an error, so callers can pass the
+     * config value straight through to mean "no age-based retention" — matching
+     * [`prune_logs_older_than`](Self::prune_logs_older_than) and the `-1`
+     * unlimited sentinel the public config documents.
+     *
+     * Age is taken from `timestamp_ms`, which is indexed and which
+     * [`insert_location`](Self::insert_location) always populates. Rows written
+     * before that column existed default to `0`; they are aged off the TEXT
+     * `timestamp` instead rather than being read as epoch-old and destroyed on
+     * the first prune. A row whose `timestamp` SQLite cannot parse yields NULL,
+     * compares false, and is kept — retention must never be the reason data
+     * disappears on a guess. Those rows are still bounded by
+     * [`enforce_max_location_records`](Self::enforce_max_location_records),
+     * which orders by `id` and so needs no timestamp at all.
+     */
+    fun `pruneLocationsOlderThan`(`maxDays`: kotlin.Int): kotlin.UInt
     
     /**
      * Prunes the logs to retain only the specified limit of latest entries.
@@ -3949,6 +4011,38 @@ open class DatabaseManager: Disposable, AutoCloseable, DatabaseManagerInterface
 
     
     /**
+     * Caps `location_events` at `max_records` rows, deleting the oldest first
+     * and reporting how many went (#361).
+     *
+     * The count companion to
+     * [`prune_locations_older_than`](Self::prune_locations_older_than), and the
+     * bound that actually holds during a long offline stretch: an age window
+     * alone cannot express "never queue more than N", because how many rows a
+     * day is depends entirely on the sampling cadence in force.
+     *
+     * `max_records <= 0` is a no-op, carrying the `-1` unlimited sentinel.
+     *
+     * Oldest is decided by `id`, not by any timestamp: `id` is the insertion
+     * order the sync batcher already uploads and acknowledges in, and it stays
+     * correct when fixes arrive out of order or carry a spoofed clock — a
+     * timestamp-ordered cap would let one bogus future fix pin itself in the
+     * queue and evict every real record around it.
+     */
+    @Throws(TraceletException::class)override fun `enforceMaxLocationRecords`(`maxRecords`: kotlin.Int): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithHandle {
+    uniffiRustCallWithError(TraceletException) { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_databasemanager_enforce_max_location_records(
+        it,
+        FfiConverterInt.lower(`maxRecords`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Retrieves all audit trail records, ordered sequentially by their chain index.
      */
     @Throws(TraceletException::class)override fun `getAuditTrail`(): List<DbAuditRecord> {
@@ -4252,6 +4346,46 @@ open class DatabaseManager: Disposable, AutoCloseable, DatabaseManagerInterface
 }
     }
     
+    
+
+    
+    /**
+     * Deletes location rows older than `max_days`, reporting how many went
+     * (#361).
+     *
+     * `maxDaysToPersist` was enforced up to 3.0 by `pruneOldLocations` in the
+     * platform-native `TraceletDatabase` classes. The 3.1.0 migration onto this
+     * shared core replaced the whole persist body with a sink fan-out and took
+     * the retention calls with it; no equivalent was ever added here, so the
+     * documented 1-day default and every explicit override silently did nothing
+     * while the local queue grew without bound.
+     *
+     * `max_days <= 0` is a no-op rather than an error, so callers can pass the
+     * config value straight through to mean "no age-based retention" — matching
+     * [`prune_logs_older_than`](Self::prune_logs_older_than) and the `-1`
+     * unlimited sentinel the public config documents.
+     *
+     * Age is taken from `timestamp_ms`, which is indexed and which
+     * [`insert_location`](Self::insert_location) always populates. Rows written
+     * before that column existed default to `0`; they are aged off the TEXT
+     * `timestamp` instead rather than being read as epoch-old and destroyed on
+     * the first prune. A row whose `timestamp` SQLite cannot parse yields NULL,
+     * compares false, and is kept — retention must never be the reason data
+     * disappears on a guess. Those rows are still bounded by
+     * [`enforce_max_location_records`](Self::enforce_max_location_records),
+     * which orders by `id` and so needs no timestamp at all.
+     */
+    @Throws(TraceletException::class)override fun `pruneLocationsOlderThan`(`maxDays`: kotlin.Int): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithHandle {
+    uniffiRustCallWithError(TraceletException) { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_databasemanager_prune_locations_older_than(
+        it,
+        FfiConverterInt.lower(`maxDays`),_status)
+}
+    }
+    )
+    }
     
 
     

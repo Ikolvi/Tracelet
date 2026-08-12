@@ -20,8 +20,12 @@ class WebStorageEngine {
   /// In-memory log store.
   final List<String> _logs = <String>[];
 
-  /// Max records to persist (from config).
+  /// Max records to persist (from config). `<= 0` means unlimited.
   int _maxRecords = 10000;
+
+  /// Max age in days for persisted locations (from config). `<= 0` means
+  /// unlimited (#361).
+  int _maxDays = -1;
   int _maxLogDays = 7;
 
   /// Applies the given configuration to the storage engine.
@@ -30,6 +34,7 @@ class WebStorageEngine {
     if (persistence is Map) {
       final pm = Map<String, Object?>.from(persistence);
       _maxRecords = (pm['maxRecordsToPersist'] as int?) ?? _maxRecords;
+      _maxDays = (pm['maxDaysToPersist'] as int?) ?? _maxDays;
     }
     final logger = config['logger'];
     if (logger is Map) {
@@ -176,13 +181,40 @@ class WebStorageEngine {
     }
 
     _locations.add(record);
-
-    // Enforce max records.
-    while (_locations.length > _maxRecords) {
-      _locations.removeAt(0);
-    }
+    _enforceRetentionCaps();
 
     return uuid;
+  }
+
+  /// Applies `maxRecordsToPersist` and `maxDaysToPersist` to the store (#361,
+  /// #362).
+  ///
+  /// The record cap was previously `while (length > _maxRecords) removeAt(0)`,
+  /// which read the documented `-1` "unlimited" sentinel as a cap of minus one:
+  /// it emptied the store and then threw `RangeError` off the end of it. Because
+  /// `ready()` resolves every field before it crosses the channel, `-1` is what
+  /// the default config actually sends — so the cap crashed the first insert of
+  /// every web session rather than merely being ignored. Non-positive now means
+  /// unlimited on both caps, matching the native side and the public docs.
+  ///
+  /// Age pruning is new here: `maxDaysToPersist` was read by nothing on web.
+  /// Records with an unparseable or absent `timestamp` are kept, not guessed at;
+  /// the record cap bounds those.
+  void _enforceRetentionCaps() {
+    if (_maxDays > 0) {
+      final cutoff = DateTime.now().toUtc().subtract(Duration(days: _maxDays));
+      _locations.removeWhere((loc) {
+        final raw = loc['timestamp'];
+        if (raw is! String) return false;
+        final ts = DateTime.tryParse(raw);
+        return ts != null && ts.toUtc().isBefore(cutoff);
+      });
+    }
+    if (_maxRecords > 0) {
+      while (_locations.length > _maxRecords) {
+        _locations.removeAt(0);
+      }
+    }
   }
 
   /// Persist a location from the tracking engine if configured to persist.

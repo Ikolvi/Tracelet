@@ -1351,6 +1351,26 @@ public protocol DatabaseManagerProtocol: AnyObject, Sendable {
     func encryptPayload(plaintext: Data)  -> Data?
     
     /**
+     * Caps `location_events` at `max_records` rows, deleting the oldest first
+     * and reporting how many went (#361).
+     *
+     * The count companion to
+     * [`prune_locations_older_than`](Self::prune_locations_older_than), and the
+     * bound that actually holds during a long offline stretch: an age window
+     * alone cannot express "never queue more than N", because how many rows a
+     * day is depends entirely on the sampling cadence in force.
+     *
+     * `max_records <= 0` is a no-op, carrying the `-1` unlimited sentinel.
+     *
+     * Oldest is decided by `id`, not by any timestamp: `id` is the insertion
+     * order the sync batcher already uploads and acknowledges in, and it stays
+     * correct when fixes arrive out of order or carry a spoofed clock — a
+     * timestamp-ordered cap would let one bogus future fix pin itself in the
+     * queue and evict every real record around it.
+     */
+    func enforceMaxLocationRecords(maxRecords: Int32) throws  -> UInt32
+    
+    /**
      * Retrieves all audit trail records, ordered sequentially by their chain index.
      */
     func getAuditTrail() throws  -> [DbAuditRecord]
@@ -1457,6 +1477,34 @@ public protocol DatabaseManagerProtocol: AnyObject, Sendable {
      * Marks telematics events up to max_id as synced.
      */
     func markTelematicsSynced(maxId: Int64) throws 
+    
+    /**
+     * Deletes location rows older than `max_days`, reporting how many went
+     * (#361).
+     *
+     * `maxDaysToPersist` was enforced up to 3.0 by `pruneOldLocations` in the
+     * platform-native `TraceletDatabase` classes. The 3.1.0 migration onto this
+     * shared core replaced the whole persist body with a sink fan-out and took
+     * the retention calls with it; no equivalent was ever added here, so the
+     * documented 1-day default and every explicit override silently did nothing
+     * while the local queue grew without bound.
+     *
+     * `max_days <= 0` is a no-op rather than an error, so callers can pass the
+     * config value straight through to mean "no age-based retention" — matching
+     * [`prune_logs_older_than`](Self::prune_logs_older_than) and the `-1`
+     * unlimited sentinel the public config documents.
+     *
+     * Age is taken from `timestamp_ms`, which is indexed and which
+     * [`insert_location`](Self::insert_location) always populates. Rows written
+     * before that column existed default to `0`; they are aged off the TEXT
+     * `timestamp` instead rather than being read as epoch-old and destroyed on
+     * the first prune. A row whose `timestamp` SQLite cannot parse yields NULL,
+     * compares false, and is kept — retention must never be the reason data
+     * disappears on a guess. Those rows are still bounded by
+     * [`enforce_max_location_records`](Self::enforce_max_location_records),
+     * which orders by `id` and so needs no timestamp at all.
+     */
+    func pruneLocationsOlderThan(maxDays: Int32) throws  -> UInt32
     
     /**
      * Prunes the logs to retain only the specified limit of latest entries.
@@ -1668,6 +1716,33 @@ open func encryptPayload(plaintext: Data) -> Data?  {
     uniffi_tracelet_core_fn_method_databasemanager_encrypt_payload(
             self.uniffiCloneHandle(),
         FfiConverterData.lower(plaintext),$0
+    )
+})
+}
+    
+    /**
+     * Caps `location_events` at `max_records` rows, deleting the oldest first
+     * and reporting how many went (#361).
+     *
+     * The count companion to
+     * [`prune_locations_older_than`](Self::prune_locations_older_than), and the
+     * bound that actually holds during a long offline stretch: an age window
+     * alone cannot express "never queue more than N", because how many rows a
+     * day is depends entirely on the sampling cadence in force.
+     *
+     * `max_records <= 0` is a no-op, carrying the `-1` unlimited sentinel.
+     *
+     * Oldest is decided by `id`, not by any timestamp: `id` is the insertion
+     * order the sync batcher already uploads and acknowledges in, and it stays
+     * correct when fixes arrive out of order or carry a spoofed clock — a
+     * timestamp-ordered cap would let one bogus future fix pin itself in the
+     * queue and evict every real record around it.
+     */
+open func enforceMaxLocationRecords(maxRecords: Int32)throws  -> UInt32  {
+    return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeTraceletError_lift) {
+    uniffi_tracelet_core_fn_method_databasemanager_enforce_max_location_records(
+            self.uniffiCloneHandle(),
+        FfiConverterInt32.lower(maxRecords),$0
     )
 })
 }
@@ -1924,6 +1999,41 @@ open func markTelematicsSynced(maxId: Int64)throws   {try rustCallWithError(FfiC
         FfiConverterInt64.lower(maxId),$0
     )
 }
+}
+    
+    /**
+     * Deletes location rows older than `max_days`, reporting how many went
+     * (#361).
+     *
+     * `maxDaysToPersist` was enforced up to 3.0 by `pruneOldLocations` in the
+     * platform-native `TraceletDatabase` classes. The 3.1.0 migration onto this
+     * shared core replaced the whole persist body with a sink fan-out and took
+     * the retention calls with it; no equivalent was ever added here, so the
+     * documented 1-day default and every explicit override silently did nothing
+     * while the local queue grew without bound.
+     *
+     * `max_days <= 0` is a no-op rather than an error, so callers can pass the
+     * config value straight through to mean "no age-based retention" — matching
+     * [`prune_logs_older_than`](Self::prune_logs_older_than) and the `-1`
+     * unlimited sentinel the public config documents.
+     *
+     * Age is taken from `timestamp_ms`, which is indexed and which
+     * [`insert_location`](Self::insert_location) always populates. Rows written
+     * before that column existed default to `0`; they are aged off the TEXT
+     * `timestamp` instead rather than being read as epoch-old and destroyed on
+     * the first prune. A row whose `timestamp` SQLite cannot parse yields NULL,
+     * compares false, and is kept — retention must never be the reason data
+     * disappears on a guess. Those rows are still bounded by
+     * [`enforce_max_location_records`](Self::enforce_max_location_records),
+     * which orders by `id` and so needs no timestamp at all.
+     */
+open func pruneLocationsOlderThan(maxDays: Int32)throws  -> UInt32  {
+    return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeTraceletError_lift) {
+    uniffi_tracelet_core_fn_method_databasemanager_prune_locations_older_than(
+            self.uniffiCloneHandle(),
+        FfiConverterInt32.lower(maxDays),$0
+    )
+})
 }
     
     /**
@@ -10173,6 +10283,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_tracelet_core_checksum_method_databasemanager_encrypt_payload() != 52269) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_tracelet_core_checksum_method_databasemanager_enforce_max_location_records() != 54354) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_tracelet_core_checksum_method_databasemanager_get_audit_trail() != 59184) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -10222,6 +10335,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_databasemanager_mark_telematics_synced() != 38059) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tracelet_core_checksum_method_databasemanager_prune_locations_older_than() != 38098) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_databasemanager_prune_logs() != 51361) {

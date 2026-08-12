@@ -389,7 +389,10 @@ pub struct PersistenceConfig {
     pub max_records_to_persist: i32,
 }
 
-fn default_max_days_to_persist() -> i32 { 1 }
+/// Kept in step with Dart's `PersistenceConfig.maxDaysToPersist` default. Was
+/// `1` while the window was enforced by nothing; widened with #361, which made
+/// it real, because a one-day window is too tight to switch on unannounced.
+fn default_max_days_to_persist() -> i32 { 3 }
 fn default_max_records_to_persist() -> i32 { -1 }
 
 impl Default for PersistenceConfig {

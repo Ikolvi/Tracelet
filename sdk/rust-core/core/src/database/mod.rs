@@ -584,6 +584,80 @@ impl DatabaseManager {
         Ok(())
     }
 
+    /// Deletes location rows older than `max_days`, reporting how many went
+    /// (#361).
+    ///
+    /// `maxDaysToPersist` was enforced up to 3.0 by `pruneOldLocations` in the
+    /// platform-native `TraceletDatabase` classes. The 3.1.0 migration onto this
+    /// shared core replaced the whole persist body with a sink fan-out and took
+    /// the retention calls with it; no equivalent was ever added here, so the
+    /// documented 1-day default and every explicit override silently did nothing
+    /// while the local queue grew without bound.
+    ///
+    /// `max_days <= 0` is a no-op rather than an error, so callers can pass the
+    /// config value straight through to mean "no age-based retention" — matching
+    /// [`prune_logs_older_than`](Self::prune_logs_older_than) and the `-1`
+    /// unlimited sentinel the public config documents.
+    ///
+    /// Age is taken from `timestamp_ms`, which is indexed and which
+    /// [`insert_location`](Self::insert_location) always populates. Rows written
+    /// before that column existed default to `0`; they are aged off the TEXT
+    /// `timestamp` instead rather than being read as epoch-old and destroyed on
+    /// the first prune. A row whose `timestamp` SQLite cannot parse yields NULL,
+    /// compares false, and is kept — retention must never be the reason data
+    /// disappears on a guess. Those rows are still bounded by
+    /// [`enforce_max_location_records`](Self::enforce_max_location_records),
+    /// which orders by `id` and so needs no timestamp at all.
+    pub fn prune_locations_older_than(&self, max_days: i32) -> Result<u32, TraceletError> {
+        if max_days <= 0 {
+            return Ok(0);
+        }
+        let cutoff_ms = (Utc::now() - chrono::Duration::days(i64::from(max_days))).timestamp_millis();
+        let conn = self.conn.lock().unwrap();
+        // Split rather than OR'd so the common case stays a range scan on
+        // idx_location_events_timestamp_ms; the strftime branch cannot use an
+        // index and only ever matches pre-`timestamp_ms` rows.
+        let mut removed = Self::delete_locations_where(
+            &conn,
+            "timestamp_ms > 0 AND timestamp_ms < ?1",
+            cutoff_ms,
+        )?;
+        removed += Self::delete_locations_where(
+            &conn,
+            "timestamp_ms <= 0 AND CAST(strftime('%s', timestamp) AS INTEGER) * 1000 < ?1",
+            cutoff_ms,
+        )?;
+        Ok(removed)
+    }
+
+    /// Caps `location_events` at `max_records` rows, deleting the oldest first
+    /// and reporting how many went (#361).
+    ///
+    /// The count companion to
+    /// [`prune_locations_older_than`](Self::prune_locations_older_than), and the
+    /// bound that actually holds during a long offline stretch: an age window
+    /// alone cannot express "never queue more than N", because how many rows a
+    /// day is depends entirely on the sampling cadence in force.
+    ///
+    /// `max_records <= 0` is a no-op, carrying the `-1` unlimited sentinel.
+    ///
+    /// Oldest is decided by `id`, not by any timestamp: `id` is the insertion
+    /// order the sync batcher already uploads and acknowledges in, and it stays
+    /// correct when fixes arrive out of order or carry a spoofed clock — a
+    /// timestamp-ordered cap would let one bogus future fix pin itself in the
+    /// queue and evict every real record around it.
+    pub fn enforce_max_location_records(&self, max_records: i32) -> Result<u32, TraceletError> {
+        if max_records <= 0 {
+            return Ok(0);
+        }
+        let conn = self.conn.lock().unwrap();
+        Self::delete_locations_where(
+            &conn,
+            "id NOT IN (SELECT id FROM location_events ORDER BY id DESC LIMIT ?1)",
+            i64::from(max_records),
+        )
+    }
+
     // --- Geofences ---
     
     pub fn insert_geofence(
@@ -986,6 +1060,42 @@ impl DatabaseManager {
         }
         Ok(records)
     }
+
+    /// Deletes the `location_events` rows matching `predicate` — a `WHERE`
+    /// fragment binding exactly one `?1` — and reports how many went (#361).
+    ///
+    /// Takes the audit-chain rows with them, the way
+    /// [`clear_locations_up_to`](Self::clear_locations_up_to) does on the sync
+    /// path. Retention that dropped locations but left `audit_trail` behind
+    /// would just move the unbounded growth into a table with no cap of its own
+    /// and no way to reach the orphans, since that table is keyed by a `uuid`
+    /// which no longer resolves.
+    ///
+    /// Both statements bind the same value, so the caller passes it once. Takes
+    /// the already-locked `conn` rather than re-locking, which lets a caller run
+    /// several predicates inside one critical section.
+    fn delete_locations_where(
+        conn: &Connection,
+        predicate: &str,
+        bind: i64,
+    ) -> Result<u32, TraceletError> {
+        conn.execute(
+            &format!(
+                "DELETE FROM audit_trail WHERE uuid IN \
+                 (SELECT uuid FROM location_events WHERE ({predicate}) AND uuid IS NOT NULL)"
+            ),
+            params![bind],
+        )
+        .map_err(|e| TraceletError::Database(e.to_string()))?;
+
+        let removed = conn
+            .execute(
+                &format!("DELETE FROM location_events WHERE {predicate}"),
+                params![bind],
+            )
+            .map_err(|e| TraceletError::Database(e.to_string()))?;
+        Ok(removed as u32)
+    }
 }
 
 #[cfg(test)]
@@ -1259,6 +1369,154 @@ mod tests {
         db.prune_logs_older_than(-1).unwrap();
 
         assert_eq!(db.get_logs(10).unwrap().len(), 1);
+    }
+
+    /// Inserts a location whose fix time is `days_ago` days in the past.
+    fn insert_location_aged(db: &DatabaseManager, activity: &str, days_ago: i64) {
+        let ts = (Utc::now() - chrono::Duration::days(days_ago)).to_rfc3339();
+        db.insert_location(
+            Some(format!("uuid-{activity}")), 1.0, 2.0, 5.0, 0.0, 0.0, 0.0, false, false,
+            activity, -1, None, Some(ts), None, None, None,
+        )
+        .unwrap();
+    }
+
+    fn activities(db: &DatabaseManager) -> Vec<String> {
+        db.get_locations_batch(None)
+            .unwrap()
+            .into_iter()
+            .map(|r| r.activity)
+            .collect()
+    }
+
+    /// The reporter's `maxDaysToPersist` case: a fixture two days old must not
+    /// survive a one-day window, and today's fix must (#361).
+    #[test]
+    fn test_prune_locations_older_than_deletes_only_aged_rows() {
+        let db = DatabaseManager::new(":memory:").expect("Failed to create in-memory db");
+        insert_location_aged(&db, "fresh", 0);
+        insert_location_aged(&db, "stale", 2);
+
+        assert_eq!(db.prune_locations_older_than(1).unwrap(), 1);
+
+        assert_eq!(activities(&db), vec!["fresh".to_string()]);
+    }
+
+    /// A non-positive window means "no age-based retention", not "delete all" —
+    /// `-1` is the documented unlimited sentinel and is passed through verbatim.
+    #[test]
+    fn test_prune_locations_older_than_is_a_no_op_for_non_positive_windows() {
+        let db = DatabaseManager::new(":memory:").expect("Failed to create in-memory db");
+        insert_location_aged(&db, "ancient", 999);
+
+        assert_eq!(db.prune_locations_older_than(0).unwrap(), 0);
+        assert_eq!(db.prune_locations_older_than(-1).unwrap(), 0);
+
+        assert_eq!(db.get_locations_count().unwrap(), 1);
+    }
+
+    /// Rows predating the `timestamp_ms` column carry the `0` default and must
+    /// age off the TEXT `timestamp` instead of reading as epoch-old — otherwise
+    /// the first prune after an upgrade wipes the queue. Also pins that the
+    /// bundled SQLite parses what `to_rfc3339()` writes (offset plus a
+    /// nanosecond fraction), since the fallback is a text parse.
+    #[test]
+    fn test_prune_locations_older_than_ages_legacy_rows_off_the_text_timestamp() {
+        let db = DatabaseManager::new(":memory:").expect("Failed to create in-memory db");
+        let stale = (Utc::now() - chrono::Duration::days(30)).to_rfc3339();
+        let fresh = Utc::now().to_rfc3339();
+        for (activity, ts) in [("legacy-stale", &stale), ("legacy-fresh", &fresh)] {
+            db.conn.lock().unwrap().execute(
+                "INSERT INTO location_events (timestamp, latitude, longitude, accuracy, speed, heading, altitude, is_mock, activity)
+                 VALUES (?1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, ?2)",
+                params![ts, activity],
+            ).unwrap();
+        }
+
+        assert_eq!(db.prune_locations_older_than(7).unwrap(), 1);
+
+        assert_eq!(activities(&db), vec!["legacy-fresh".to_string()]);
+    }
+
+    /// An unusable timestamp is kept, not guessed at: retention must never be
+    /// the reason a record disappears. The count cap still bounds these.
+    #[test]
+    fn test_prune_locations_older_than_keeps_rows_it_cannot_date() {
+        let db = DatabaseManager::new(":memory:").expect("Failed to create in-memory db");
+        db.conn.lock().unwrap().execute(
+            "INSERT INTO location_events (timestamp, latitude, longitude, accuracy, speed, heading, altitude, is_mock, activity)
+             VALUES ('not a date', 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 'undateable')",
+            [],
+        ).unwrap();
+
+        assert_eq!(db.prune_locations_older_than(1).unwrap(), 0);
+
+        assert_eq!(db.get_locations_count().unwrap(), 1);
+    }
+
+    /// The reporter's `maxRecordsToPersist: 3` case: the queue is capped and the
+    /// oldest go first, whatever the fixes claim their time is (#361).
+    #[test]
+    fn test_enforce_max_location_records_keeps_the_newest_by_insertion_order() {
+        let db = DatabaseManager::new(":memory:").expect("Failed to create in-memory db");
+        // Deliberately descending fix times: the newest row by id claims to be
+        // the oldest, so an ORDER BY timestamp cap would evict the wrong rows.
+        for (i, activity) in ["first", "second", "third", "fourth", "fifth"].iter().enumerate() {
+            insert_location_aged(&db, activity, i as i64);
+        }
+
+        assert_eq!(db.enforce_max_location_records(3).unwrap(), 2);
+
+        assert_eq!(db.get_locations_count().unwrap(), 3);
+        let kept = activities(&db);
+        assert!(!kept.contains(&"first".to_string()));
+        assert!(!kept.contains(&"second".to_string()));
+        assert!(kept.contains(&"fifth".to_string()));
+    }
+
+    #[test]
+    fn test_enforce_max_location_records_is_a_no_op_for_non_positive_caps() {
+        let db = DatabaseManager::new(":memory:").expect("Failed to create in-memory db");
+        insert_location_aged(&db, "keep", 0);
+
+        assert_eq!(db.enforce_max_location_records(0).unwrap(), 0);
+        assert_eq!(db.enforce_max_location_records(-1).unwrap(), 0);
+
+        assert_eq!(db.get_locations_count().unwrap(), 1);
+    }
+
+    /// Both caps must take the audit-chain rows with them. Leaving them behind
+    /// moves the unbounded growth into a table with no cap of its own, whose
+    /// orphans nothing can reach — they are keyed by a `uuid` that no longer
+    /// resolves to a location.
+    #[test]
+    fn test_retention_takes_the_audit_chain_with_the_locations() {
+        let db = DatabaseManager::new(":memory:").expect("Failed to create in-memory db");
+        for (index, (activity, days_ago)) in
+            [("aged", 5), ("mid", 0), ("newest", 0)].iter().enumerate()
+        {
+            insert_location_aged(&db, activity, *days_ago);
+            db.insert_audit_trail(&format!("uuid-{activity}"), "hash", "prev", index as i32)
+                .unwrap();
+        }
+        assert_eq!(db.get_audit_trail().unwrap().len(), 3);
+
+        // Age path: only the aged row's chain entry goes.
+        db.prune_locations_older_than(1).unwrap();
+        let chain = db.get_audit_trail().unwrap();
+        assert_eq!(chain.len(), 2);
+        assert!(chain.iter().all(|r| r.uuid != "uuid-aged"));
+
+        // A no-op cap must leave the chain alone.
+        db.enforce_max_location_records(-1).unwrap();
+        assert_eq!(db.get_audit_trail().unwrap().len(), 2);
+
+        // Count path: capping to the newest row drops the other chain entry too.
+        db.enforce_max_location_records(1).unwrap();
+        assert_eq!(db.get_locations_count().unwrap(), 1);
+        let chain = db.get_audit_trail().unwrap();
+        assert_eq!(chain.len(), 1);
+        assert_eq!(chain[0].uuid, "uuid-newest");
     }
 
     #[test]
