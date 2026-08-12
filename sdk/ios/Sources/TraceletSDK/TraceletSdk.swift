@@ -1717,6 +1717,7 @@ public final class TraceletSdk {
                 eventPayload: eventPayload,
                 address: address
             )
+            enforceRetentionCaps(db)
             // Notify the sync plugin so it can trigger auto-sync
             if let sink = syncProvider as? LocationDataSink {
                 sink.insertLocation(params)
@@ -1725,6 +1726,68 @@ public final class TraceletSdk {
         } catch {
             TraceletLog.error("insertLocation failed: \(error)")
             return ""
+        }
+    }
+
+    /// Location inserts seen this process. See ``enforceRetentionCaps(_:)``.
+    private var locationInsertsSeen = 0
+
+    /// Retention pruning runs on the first location insert and every N-th
+    /// thereafter, instead of on every insert (#361).
+    private static let pruneEveryNInserts = 100
+
+    /// Applies `maxDaysToPersist` and `maxRecordsToPersist` to `location_events`
+    /// (#361).
+    ///
+    /// Both caps were accepted by `ready()`/`setConfig()`, echoed back in
+    /// `State.config` — and enforced by nothing, so the local queue grew without
+    /// bound however they were set. They were real up to 3.0 via `pruneOldLocations`
+    /// / `enforceMaxRecords` on the Swift `TraceletDatabase`; the 3.1.0 migration
+    /// onto the Rust core replaced the persist body with a sink fan-out and deleted
+    /// the retention calls with it, leaving an unread counter and a docstring behind
+    /// as the only trace.
+    ///
+    /// Deliberately here rather than back in `LocationEngine.persistLocationIfAllowed`,
+    /// where the leftover counter sat: this is the single funnel every location
+    /// reaches the DB through. The engine's persist path is only one caller — the
+    /// public `insertLocation` API, the geofence writers and the killed-state
+    /// relaunch path insert straight through here, and pruning in the engine would
+    /// have left the reporter's own repro (100+ explicit `insertLocation` calls)
+    /// still unbounded.
+    ///
+    /// Amortized over ``pruneEveryNInserts`` inserts rather than run on each one, so
+    /// a COUNT-and-DELETE is not attached to every GPS fix. The queue can therefore
+    /// sit up to that many records above `maxRecordsToPersist` between prunes; the
+    /// cap bounds growth, it is not a per-insert invariant. The first insert of the
+    /// process prunes, so a cap tightened while stopped — or a backlog inherited
+    /// from a build that never enforced one — is cut down without waiting out a
+    /// whole window.
+    ///
+    /// A retention failure must not fail the insert: the record is already committed
+    /// and losing it to a prune error would be strictly worse than an oversized
+    /// queue.
+    ///
+    /// The counter is deliberately unsynchronized, like ``lastInsertedTimestamp``
+    /// above it. Inserts arrive from both the CoreLocation delegate and the public
+    /// API, so a racy increment can make a prune land an insert early or late —
+    /// which costs nothing, and is cheaper than serializing every insert behind a
+    /// lock to schedule a periodic DELETE precisely.
+    private func enforceRetentionCaps(_ db: DatabaseManager) {
+        defer { locationInsertsSeen += 1 }
+        guard locationInsertsSeen % TraceletSdk.pruneEveryNInserts == 0 else { return }
+        do {
+            let maxDays = Int32(clamping: configManager.getMaxDaysToPersist())
+            let maxRecords = Int32(clamping: configManager.getMaxRecordsToPersist())
+            let byAge = try db.pruneLocationsOlderThan(maxDays: maxDays)
+            let byCount = try db.enforceMaxLocationRecords(maxRecords: maxRecords)
+            if byAge > 0 || byCount > 0 {
+                TraceletLog.debug(
+                    "Retention: pruned \(byAge) location(s) older than \(maxDays) day(s), "
+                        + "\(byCount) over the \(maxRecords)-record cap."
+                )
+            }
+        } catch {
+            TraceletLog.error("Retention pruning failed: \(error)")
         }
     }
 

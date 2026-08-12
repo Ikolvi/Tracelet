@@ -75,7 +75,42 @@ Both accept an optional `SQLQuery` for time-range filtering, exactly like `getLo
 
 ---
 
-## 4. Destroying Data
+## 4. Automatic Retention
+
+**Fixed in 3.8.3.** Two `PersistenceConfig` keys bound how much the local queue is allowed to hold, so a long offline stretch cannot grow the database without limit.
+
+```dart
+await tl.Tracelet.ready(tl.Config(
+  persistence: tl.PersistenceConfig(
+    // Purge records older than this many days. -1 retains forever.
+    maxDaysToPersist: 3,
+    // Never hold more than this many records; the oldest go first.
+    // -1 is unlimited.
+    maxRecordsToPersist: 5000,
+  ),
+));
+```
+
+| Key | Default | `-1` means |
+| --- | --- | --- |
+| `maxDaysToPersist` | `3` | retain forever |
+| `maxRecordsToPersist` | `-1` | unlimited |
+
+Records are evicted **oldest first**, by insertion order — the same order the sync engine uploads them in, so the queue always keeps the freshest data. The two caps are independent: whichever is reached first applies, and either can be switched off with `-1` while the other stays in force.
+
+<Callout type="warning">
+Both keys were accepted and reported back correctly in earlier versions but were **enforced by nothing** — the queue grew without bound however they were set. If your app relied on that, set `maxDaysToPersist: -1` explicitly to keep the old behavior. `maxDaysToPersist` also now defaults to `3` rather than the previously documented `1`, so that turning enforcement on does not cut an offline weekend's data down to its last day.
+</Callout>
+
+<Callout type="info">
+Pruning is amortized over 100 inserts rather than run on every fix, so a `DELETE` is not attached to every location. The queue is therefore bounded by `maxRecordsToPersist + 100` and is cut back to the cap itself at each prune — it bounds growth, it is not a per-insert ceiling. The first insert after launch prunes, so a backlog carried over from an earlier version is cleared on the next fix.
+</Callout>
+
+Retention deletes a location's audit-trail entry along with it, so pruning cannot leave orphaned chain rows behind. Age is taken from each record's own timestamp; a record whose timestamp cannot be read is kept rather than assumed old, and is bounded by the record cap instead.
+
+---
+
+## 5. Destroying Data
 
 If the user logs out, or explicitly deletes their account, you must destroy their location history to comply with GDPR/HIPAA.
 

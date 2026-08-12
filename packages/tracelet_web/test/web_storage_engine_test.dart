@@ -142,5 +142,68 @@ void main() {
 
       expect(await storage.getCount(), 3);
     });
+
+    // #361: `-1` is the documented "unlimited" sentinel, and `ready()` resolves
+    // it onto the wire for every app that never set the key — so the old
+    // `while (length > _maxRecords)` cap drained the store and then threw
+    // RangeError off the end of it on the first insert of every session.
+    test('a -1 record cap means unlimited, not a crash', () async {
+      storage.applyConfig(<String, Object?>{
+        'persistence': <String, Object?>{
+          'maxRecordsToPersist': -1,
+          'maxDaysToPersist': -1,
+        },
+      });
+
+      for (var i = 0; i < 5; i++) {
+        await storage.insertLocation(<String, Object?>{'uuid': 'unlimited-$i'});
+      }
+
+      expect(await storage.getCount(), 5);
+    });
+
+    test('a 0 record cap means unlimited too', () async {
+      storage.applyConfig(<String, Object?>{
+        'persistence': <String, Object?>{'maxRecordsToPersist': 0},
+      });
+
+      await storage.insertLocation(<String, Object?>{'uuid': 'zero-cap'});
+
+      expect(await storage.getCount(), 1);
+    });
+
+    // #361: maxDaysToPersist was read by nothing on web.
+    test('applyConfig enforces maxDaysToPersist', () async {
+      storage.applyConfig(<String, Object?>{
+        'persistence': <String, Object?>{'maxDaysToPersist': 1},
+      });
+
+      await storage.insertLocation(<String, Object?>{
+        'uuid': 'aged',
+        'timestamp': DateTime.now()
+            .toUtc()
+            .subtract(const Duration(days: 2))
+            .toIso8601String(),
+      });
+      await storage.insertLocation(<String, Object?>{'uuid': 'fresh'});
+
+      final kept = await storage.getLocations();
+      expect(kept.map((Map<String, Object?> l) => l['uuid']), <String>[
+        'fresh',
+      ]);
+    });
+
+    test('a record with no usable timestamp is kept, not guessed at', () async {
+      storage.applyConfig(<String, Object?>{
+        'persistence': <String, Object?>{'maxDaysToPersist': 1},
+      });
+
+      await storage.insertLocation(<String, Object?>{
+        'uuid': 'undateable',
+        'timestamp': 'not a date',
+      });
+
+      expect(await storage.getCount(), 1);
+    });
   });
 }

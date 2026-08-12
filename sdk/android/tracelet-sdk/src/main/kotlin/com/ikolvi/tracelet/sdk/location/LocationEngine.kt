@@ -67,9 +67,6 @@ class LocationEngine(
             timeZone = TimeZone.getTimeZone("UTC")
         }
 
-        /** Retention pruning runs every N inserts instead of on every insert. */
-        private const val PRUNE_EVERY_N_INSERTS = 100
-
         /** Maximum accuracy (meters) to consider a fused fix as GPS-sourced. */
         const val GPS_ACCURACY_THRESHOLD = 50f
 
@@ -163,9 +160,6 @@ class LocationEngine(
 
     /** Force accept the next location (even if distance is 0) to guarantee a motion change sync on wakeup. */
     var forcePersistNextFilteredLocation = false
-
-    /** Counter for throttling DB retention pruning — runs every N inserts. */
-    private var insertCountSincePrune = 0
 
     /** Native data sinks for DB persistence and auto HTTP sync. */
     private val sinks: MutableList<LocationDataSink> = mutableListOf()
@@ -1731,7 +1725,10 @@ class LocationEngine(
 
     /**
      * Persists a location to the database only if allowed by persistMode.
-     * Also runs retention pruning (maxDaysToPersist / maxRecordsToPersist).
+     *
+     * Retention pruning (`maxDaysToPersist` / `maxRecordsToPersist`) is applied by
+     * `TraceletSdk.enforceRetentionCaps`, at the DB insert itself — this is only
+     * one of the paths that reaches it (#361).
      *
      * persistMode: 0 = all, 1 = location only, 2 = geofence only, 3 = none
      */

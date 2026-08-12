@@ -248,7 +248,7 @@ Future<tl.Location?> bestPosition() async {
 
 **Nothing is lost.** Every fix is written to the on-device database (encrypted when `encryptDatabase: true`) the instant it's captured — independent of the network. Auto-sync uploads them when connectivity returns, retrying with exponential backoff (`maxRetries`, `retryBackoffBase`, `retryBackoffCap`). A batch is deleted from the database **only after the server confirms receipt**, so a failed or interrupted upload is simply retried, never dropped.
 
-Locations buffer within your retention limits (`maxDaysToPersist`, `maxRecordsToPersist`); the oldest are pruned once those are exceeded. You can also hold uploads off cellular with `disableAutoSyncOnCellular: true`.
+Locations buffer within your retention limits (`maxDaysToPersist`, defaulting to 3 days, and `maxRecordsToPersist`, unlimited by default); the oldest are pruned once those are exceeded. Set either to `-1` to switch that limit off — worth doing deliberately if you expect offline stretches longer than the default window, since a record dropped by retention was never uploaded. Before 3.8.3 neither limit was actually enforced, so the queue grew without bound. You can also hold uploads off cellular with `disableAutoSyncOnCellular: true`.
 
 ### Will tracelet_sync automatically push to my backend when the internet comes back?
 

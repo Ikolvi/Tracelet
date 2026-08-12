@@ -2675,7 +2675,7 @@ class PersistenceConfig {
   factory PersistenceConfig.fromMap(Map<String, Object?> map) {
     return PersistenceConfig(
       maxDaysToPersist: map.containsKey('maxDaysToPersist')
-          ? ensureInt(map['maxDaysToPersist'], fallback: 1)
+          ? ensureInt(map['maxDaysToPersist'], fallback: 3)
           : null,
       maxRecordsToPersist: map.containsKey('maxRecordsToPersist')
           ? ensureInt(map['maxRecordsToPersist'], fallback: -1)
@@ -2702,8 +2702,15 @@ class PersistenceConfig {
   final bool? _disableProviderChangeRecord;
 
   /// The maximum number of days to retain tracked locations and geofence events in the database.
-  /// Set to `-1` for unlimited retention. Defaults to `1`.
-  int get maxDaysToPersist => _maxDaysToPersist ?? 1;
+  /// Set to `-1` for unlimited retention. Defaults to `3`.
+  ///
+  /// This window is enforced against the local queue as of #361; before that it
+  /// was accepted and applied by nothing. The default was `1` while it did
+  /// nothing, which is too tight to switch on unannounced — an app offline over
+  /// a weekend would have lost everything but the last day. `3` matches
+  /// `logMaxDays` and leaves room for a normal offline stretch; pass `-1` to
+  /// retain indefinitely and rely on [maxRecordsToPersist] alone.
+  int get maxDaysToPersist => _maxDaysToPersist ?? 3;
 
   /// The maximum number of location records to keep in the database.
   /// Set to `-1` for unlimited. Defaults to `-1`.
