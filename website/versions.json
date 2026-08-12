@@ -21,28 +21,24 @@
     "real committed value here means the fallback is always a version that",
     "actually existed.",
     "",
-    "`current` is the version served at the unprefixed URLs (/en/..., /ja/..., ...).",
-    "`archived` are frozen snapshots served at /<locale>/<slug>/... . Archives are",
-    "never re-translated or edited -- they are a record of what that release",
-    "actually shipped. `scripts/i18n-sync.js` and `scripts/translate.js` skip any",
-    "directory named in `archived[].slug`.",
+    "`archived` is EMPTY BY CHOICE, and the site now ships the current docs",
+    "only. The v3.7 snapshot was removed because it was the only route with its",
+    "own layout, and every flaky prerender failure that blocked the release",
+    "landed on it -- three releases in a row died there while the rest of the",
+    "site built clean. Serving one set of docs is worth more than a frozen copy",
+    "of an old one that nobody could deploy past.",
     "",
-    "To freeze a release: run `node scripts/version-cut.js <tag> <slug> <label>`",
-    "AFTER translations are up to date, so the snapshot captures translated pages",
-    "and never needs translating again."
+    "The machinery still works if archives are ever wanted again: add an entry",
+    "here and run `node scripts/version-cut.js <tag> <slug> <label>` AFTER",
+    "translations are up to date, so the snapshot captures translated pages and",
+    "never needs translating again. `scripts/i18n-sync.js` and",
+    "`scripts/translate.js` skip any directory named in `archived[].slug`, and",
+    "VersionSwitch shows a plain badge while this list is empty rather than a",
+    "dropdown with nothing to switch to."
   ],
   "current": {
     "label": "3.8.0",
     "slug": null
   },
-  "archived": [
-    {
-      "label": "3.7.6",
-      "slug": "v3.7",
-      "tag": "v3.7.6",
-      "locales": [
-        "en"
-      ]
-    }
-  ]
+  "archived": []
 }
