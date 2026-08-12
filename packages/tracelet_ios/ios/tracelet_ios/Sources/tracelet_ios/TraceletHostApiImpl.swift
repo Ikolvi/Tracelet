@@ -871,6 +871,9 @@ class TraceletHostApiImpl: TraceletHostApi {
                 id: e.id,
                 eventType: e.eventType,
                 severity: e.severity,
+                // #367: the magnitudes behind the normalized severity.
+                speed: e.speed,
+                value: e.value,
                 latitude: e.latitude,
                 longitude: e.longitude,
                 timestamp: e.timestamp,

@@ -2823,6 +2823,21 @@ data class TlTelematicsRecord (
   val eventType: String,
   /** The severity of the event. */
   val severity: Double,
+  /**
+   * Speed at the event in m/s — for an impact, the speed going in (#367).
+   *
+   * Nullable so records stored before the magnitudes were persisted decode as
+   * `null` rather than a misleading `0.0`.
+   */
+  val speed: Double? = null,
+  /**
+   * The measured magnitude that triggered the event: g for harsh driving
+   * events and impacts, km/h over the limit for speeding (#367).
+   *
+   * `severity` is the normalized 0–1 flag; this is the physical quantity
+   * behind it. Nullable for the same reason as [speed].
+   */
+  val value: Double? = null,
   /** The latitude. */
   val latitude: Double,
   /** The longitude. */
@@ -2838,11 +2853,13 @@ data class TlTelematicsRecord (
       val id = pigeonVar_list[0] as Long
       val eventType = pigeonVar_list[1] as String
       val severity = pigeonVar_list[2] as Double
-      val latitude = pigeonVar_list[3] as Double
-      val longitude = pigeonVar_list[4] as Double
-      val timestamp = pigeonVar_list[5] as String
-      val synced = pigeonVar_list[6] as Boolean
-      return TlTelematicsRecord(id, eventType, severity, latitude, longitude, timestamp, synced)
+      val speed = pigeonVar_list[3] as Double?
+      val value = pigeonVar_list[4] as Double?
+      val latitude = pigeonVar_list[5] as Double
+      val longitude = pigeonVar_list[6] as Double
+      val timestamp = pigeonVar_list[7] as String
+      val synced = pigeonVar_list[8] as Boolean
+      return TlTelematicsRecord(id, eventType, severity, speed, value, latitude, longitude, timestamp, synced)
     }
   }
   fun toList(): List<Any?> {
@@ -2850,6 +2867,8 @@ data class TlTelematicsRecord (
       id,
       eventType,
       severity,
+      speed,
+      value,
       latitude,
       longitude,
       timestamp,
@@ -2864,7 +2883,7 @@ data class TlTelematicsRecord (
       return true
     }
     val other = other as TlTelematicsRecord
-    return TraceletApiPigeonUtils.deepEquals(this.id, other.id) && TraceletApiPigeonUtils.deepEquals(this.eventType, other.eventType) && TraceletApiPigeonUtils.deepEquals(this.severity, other.severity) && TraceletApiPigeonUtils.deepEquals(this.latitude, other.latitude) && TraceletApiPigeonUtils.deepEquals(this.longitude, other.longitude) && TraceletApiPigeonUtils.deepEquals(this.timestamp, other.timestamp) && TraceletApiPigeonUtils.deepEquals(this.synced, other.synced)
+    return TraceletApiPigeonUtils.deepEquals(this.id, other.id) && TraceletApiPigeonUtils.deepEquals(this.eventType, other.eventType) && TraceletApiPigeonUtils.deepEquals(this.severity, other.severity) && TraceletApiPigeonUtils.deepEquals(this.speed, other.speed) && TraceletApiPigeonUtils.deepEquals(this.value, other.value) && TraceletApiPigeonUtils.deepEquals(this.latitude, other.latitude) && TraceletApiPigeonUtils.deepEquals(this.longitude, other.longitude) && TraceletApiPigeonUtils.deepEquals(this.timestamp, other.timestamp) && TraceletApiPigeonUtils.deepEquals(this.synced, other.synced)
   }
 
   override fun hashCode(): Int {
@@ -2872,6 +2891,8 @@ data class TlTelematicsRecord (
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.id)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.eventType)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.severity)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.speed)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.value)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.latitude)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.longitude)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.timestamp)

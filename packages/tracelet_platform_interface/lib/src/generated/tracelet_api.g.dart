@@ -3239,6 +3239,8 @@ class TlTelematicsRecord {
     required this.id,
     required this.eventType,
     required this.severity,
+    this.speed,
+    this.value,
     required this.latitude,
     required this.longitude,
     required this.timestamp,
@@ -3253,6 +3255,19 @@ class TlTelematicsRecord {
 
   /// The severity of the event.
   double severity;
+
+  /// Speed at the event in m/s — for an impact, the speed going in (#367).
+  ///
+  /// Nullable so records stored before the magnitudes were persisted decode as
+  /// `null` rather than a misleading `0.0`.
+  double? speed;
+
+  /// The measured magnitude that triggered the event: g for harsh driving
+  /// events and impacts, km/h over the limit for speeding (#367).
+  ///
+  /// `severity` is the normalized 0–1 flag; this is the physical quantity
+  /// behind it. Nullable for the same reason as [speed].
+  double? value;
 
   /// The latitude.
   double latitude;
@@ -3271,6 +3286,8 @@ class TlTelematicsRecord {
       id,
       eventType,
       severity,
+      speed,
+      value,
       latitude,
       longitude,
       timestamp,
@@ -3288,10 +3305,12 @@ class TlTelematicsRecord {
       id: result[0]! as int,
       eventType: result[1]! as String,
       severity: result[2]! as double,
-      latitude: result[3]! as double,
-      longitude: result[4]! as double,
-      timestamp: result[5]! as String,
-      synced: result[6]! as bool,
+      speed: result[3] as double?,
+      value: result[4] as double?,
+      latitude: result[5]! as double,
+      longitude: result[6]! as double,
+      timestamp: result[7]! as String,
+      synced: result[8]! as bool,
     );
   }
 
@@ -3307,6 +3326,8 @@ class TlTelematicsRecord {
     return _deepEquals(id, other.id) &&
         _deepEquals(eventType, other.eventType) &&
         _deepEquals(severity, other.severity) &&
+        _deepEquals(speed, other.speed) &&
+        _deepEquals(value, other.value) &&
         _deepEquals(latitude, other.latitude) &&
         _deepEquals(longitude, other.longitude) &&
         _deepEquals(timestamp, other.timestamp) &&

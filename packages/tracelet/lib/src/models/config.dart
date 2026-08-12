@@ -1550,10 +1550,24 @@ class HttpConfig {
   /// **Enterprise** — Base64 encoded SSL certificates.
   final List<String>? sslPinningCertificates;
 
-  /// Whether to sync telematics events automatically.
+  /// Whether to upload stored telematics events alongside locations.
+  ///
+  /// Defaults to `false`. When enabled, unsynced driving/impact events are
+  /// attached to the sync as a JSON array under `extras.__telematics` — or
+  /// posted to [telematicsUrl] instead, when that is set.
+  ///
+  /// Events are marked synced only when the request carrying them succeeded, so
+  /// an offline device keeps them queued for the next attempt (#366). Uploading
+  /// does not remove them from [Tracelet.getTelematicsEvents] (#313).
   bool get syncTelematics => _syncTelematics ?? false;
 
-  /// The URL to sync telematics events to.
+  /// Optional separate endpoint for telematics events (#368).
+  ///
+  /// When set — and [syncTelematics] is enabled — events are POSTed here as
+  /// `{"telematics": [...]}` on their own request instead of riding the location
+  /// payload, using the same headers, timeouts, retries and SSL pinning as
+  /// [url]. When unset (the default) they stay in `extras.__telematics` on the
+  /// location request, so existing integrations are unaffected.
   final String? telematicsUrl;
 
   /// Converts to Pigeon [TlHttpConfig].
