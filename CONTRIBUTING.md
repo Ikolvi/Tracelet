@@ -41,7 +41,9 @@ cd ../..
 # Run all tests
 melos run test
 
-# Run analyzer
+# Format and analyze — both gate every PR
+melos run format:fix
+melos run format
 melos run analyze
 ```
 
@@ -58,14 +60,17 @@ This is a federated Flutter plugin with 4 packages:
 
 ## Development Workflow
 
-> **Every contribution follows the same six steps, in this order.** Three of them
+> **Every contribution follows the same seven steps, in this order.** Four of them
 > are missed often enough to call out up front, and a PR that skips any of them
 > will be sent back before review rather than reviewed as-is:
 >
 > 1. **An issue exists first**, and the PR closes it with `Fixes #N`.
 > 2. **The example app gets an issue verification card**, so the change can be
 >    exercised on a real device by anyone, forever — not just by you, once.
-> 3. **CI is green** — including the native Kotlin and Swift test jobs, which do
+> 3. **`melos run format` and `melos run analyze` are clean** — run them last,
+>    after every other change including the card, and re-run them after any
+>    amend. This is the single most common reason a PR arrives red.
+> 4. **CI is green** — including the native Kotlin and Swift test jobs, which do
 >    not run under `melos run test` and are the ones most often left red.
 >
 > See the [Pull Request Checklist](#pull-request-checklist) before you open the PR.
@@ -112,8 +117,10 @@ git checkout -b fix/357-geofence-cadence
 - Reference the issue number in comments at non-obvious lines (`(#360)`) — this
   is the existing house style throughout the codebase
 - Ensure all tests pass: `melos run test`
-- Ensure no analyzer issues: `melos run analyze`
-- Format code: `melos run format:fix`
+- Keep formatting and analysis clean as you go: `melos run format:fix`, then
+  `melos run format` and `melos run analyze` (both must exit 0). Step 5 runs the
+  full gate again at the end, but fixing these here keeps the diff clean rather
+  than adding a reformat commit on top of a review.
 
 ### 4. Add an Issue Verification Card to the Example App
 
@@ -189,19 +196,39 @@ Use the existing cards as reference — [`issue_357_card.dart`](example/lib/issu
 is a good example of a card that measures a physical behaviour honestly, and
 documents why the measurement is valid while sitting still.
 
+**d. Format and analyze the new file** before moving on:
+
+```bash
+melos run format:fix
+melos run format
+melos run analyze
+```
+
+A freshly written card is the single most likely thing in your PR to fail the
+`Analyze & Format` CI job — it is new Dart the formatter has never touched, and
+a card that stubs out a code path often leaves an unused field or import behind,
+which `dart analyze --fatal-infos` treats as an error rather than a hint.
+
 ### 5. Run the Full Local Gate
 
 **CI runs more than `melos run test`.** The Kotlin and Swift test suites gate
 every PR, and they are where red builds usually come from — a Dart-only local
-run will pass while `Build Android` fails. Run all of it before you push:
+run will pass while `Build Android` fails. Run all of it before you push,
+**after** the last change you intend to make:
 
 ```bash
 # 1. Format + analyze — the "Analyze & Format" job.
-#    `format` rewrites files and exits non-zero when it changed something,
-#    so run format:fix first, then confirm format is clean.
+#    Run these last: any later edit can undo them.
+#
+#    `format` rewrites files and exits non-zero when it changed something, so
+#    the first run "fails" while reformatting. Run format:fix, then confirm
+#    format is clean, then commit whatever it rewrote.
+#
+#    Never fall back to a bare `dart format .` at the repo root — it walks
+#    example/build/ and reformats vendored packages.
 melos run format:fix
-melos run format
-melos run analyze
+melos run format      # must exit 0
+melos run analyze     # must exit 0 — `--fatal-infos`, so hints fail too
 
 # 2. Dart tests — the "Tests (<package>)" jobs.
 melos run test
@@ -244,6 +271,12 @@ test(dart): add Config serialization round-trip tests
 **Types**: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `perf`, `ci`
 **Scopes**: `dart`, `android`, `ios`, `interface`, `example`, `ci`, or omit for root-level
 
+Include whatever `melos run format:fix` rewrote in the commit — a formatting-only
+follow-up commit means the earlier ones were pushed unformatted. And if you amend
+or add commits after review feedback, run `melos run format` and
+`melos run analyze` again before pushing: they are only as current as your last
+edit.
+
 ### 7. Submit a Pull Request
 
 - **Include a `Fixes #N` line** in the PR body, one per issue the PR closes, so
@@ -268,7 +301,9 @@ first, and a PR missing any of them goes back before it gets a code review.
       top of the list in `recent_issues_tab.dart`, and it passes on a device
 - [ ] The card claims only what it actually observes at runtime
 - [ ] Tests added for the new behaviour (Dart, Kotlin and/or Swift as applicable)
-- [ ] `melos run format` and `melos run analyze` are clean
+- [ ] `melos run format` exits 0 (run `melos run format:fix` first, commit the result)
+- [ ] `melos run analyze` exits 0 — `--fatal-infos`, so hints fail too
+- [ ] Both were re-run after the last commit, including any amend
 - [ ] `melos run test` passes
 - [ ] `cargo test` in `sdk/rust-core` passes
 - [ ] `:tracelet_android:testDebugUnitTest` and
@@ -408,8 +443,9 @@ cd example/android && ./gradlew :tracelet_android:testDebugUnitTest
 cd sdk/ios && swift test
 
 # 5. Validate everything
+melos run format:fix
+melos run format
 melos run analyze
-melos exec -- "dart format --set-exit-if-changed ."
 ```
 
 ### For External Contributors (git-based override)
