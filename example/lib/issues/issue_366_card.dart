@@ -77,6 +77,16 @@ class _Issue366CardState extends State<Issue366Card> {
         const Config(
           http: HttpConfig(
             url: _deadUrl,
+            // Explicitly empty, not omitted. Config merges rather than
+            // replaces, and merge reads `other.telematicsUrl ?? telematicsUrl`
+            // — so passing null means "keep whatever was there", and running
+            // the #368 card first would leave its endpoint set here. This card
+            // is about the *attached* path, and a live telematicsUrl left over
+            // from another run would quietly post the events, succeed, and mark
+            // them synced — which is precisely the assertion below. Blank is
+            // the documented way to unset it: both platforms treat a blank
+            // telematicsUrl as absent.
+            telematicsUrl: '',
             // The sync under test is the explicit one below; auto-sync would
             // race it and could drain the table before the assertion runs.
             autoSync: false,
@@ -87,6 +97,21 @@ class _Issue366CardState extends State<Issue366Card> {
           ),
           logger: LoggerConfig(logLevel: LogLevel.debug),
         ),
+      );
+
+      // Belt and braces: prove the offline phase really is running against the
+      // attached path, so a failure below can only mean what the row says.
+      final readyState = await Tracelet.getState();
+      final leakedUrl = readyState.config?.http.telematicsUrl;
+      check(
+        'The attached path is the one under test',
+        leakedUrl == null || leakedUrl.isEmpty,
+        leakedUrl == null || leakedUrl.isEmpty
+            ? 'no separate telematics endpoint is configured, so the events '
+                  'ride the location payload as intended'
+            : 'a telematicsUrl of "$leakedUrl" survived into this run — the '
+                  'events would be posted there instead, and the rows below '
+                  'would be measuring that instead of the attached path',
       );
 
       await Tracelet.destroyTelematicsEvents();

@@ -1568,6 +1568,10 @@ class HttpConfig {
   /// payload, using the same headers, timeouts, retries and SSL pinning as
   /// [url]. When unset (the default) they stay in `extras.__telematics` on the
   /// location request, so existing integrations are unaffected.
+  ///
+  /// To go back to the attached path after setting this, pass an empty string
+  /// rather than `null`: config is merged, not replaced, so `null` means "leave
+  /// whatever is already there". A blank value is treated as absent.
   final String? telematicsUrl;
 
   /// Converts to Pigeon [TlHttpConfig].
