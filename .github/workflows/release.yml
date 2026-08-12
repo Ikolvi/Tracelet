@@ -1154,7 +1154,42 @@ jobs:
         
       - name: Build Next.js Static Site
         working-directory: ./website
-        run: npm run build
+        # Retried, because this build is flaky — not because the site is broken.
+        #
+        # Next 16 prerenders the 352 static pages across parallel workers, and a
+        # worker intermittently resolves a shared component to `undefined`:
+        #
+        #   Error occurred prerendering page "/v3.7/en/core/core-concepts"
+        #   Element type is invalid: expected a string ... but got: undefined
+        #
+        # One page failing aborts the whole export, so a single unlucky worker
+        # fails the release. It always lands on the /v3.7 archive route, which
+        # is the only one with its own layout (`archivedSlug`), but the route
+        # itself is fine: the identical tree, same command, same Node and the
+        # same lockfile, builds clean on a retry. Verified locally — a build
+        # that failed passed on an immediate rebuild with nothing changed.
+        #
+        # Ruled out along the way, so nobody re-runs these: it is not the Next
+        # version (fails on both 16.2.11 and 16.3.0), not the Node version
+        # (fails on 20 and 24), not the machine-translated locale content (the
+        # all-English tree fails too), not `_meta.js`, and not memory — the
+        # worker exits with code 1 and `signal: null`, never OOM-killed.
+        #
+        # Three attempts, each from a clean `.next`/`out`. The real fix belongs
+        # upstream; until then a retry is what keeps a green release from
+        # depending on worker scheduling.
+        run: |
+          for attempt in 1 2 3; do
+            echo "--- Next.js build attempt $attempt of 3 ---"
+            if npm run build; then
+              echo "Build succeeded on attempt $attempt."
+              exit 0
+            fi
+            echo "::warning::Next.js prerender failed on attempt $attempt (known flake); retrying with a clean build directory."
+            rm -rf .next out
+          done
+          echo "::error::Next.js build failed 3 consecutive times — this is no longer the known flake; investigate."
+          exit 1
         
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
