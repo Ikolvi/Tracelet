@@ -59,10 +59,10 @@ class _Issue368CardState extends State<Issue368Card> {
   String _status = 'Idle';
   bool _running = false;
 
-  /// Two distinct closed ports on loopback: connections are refused at once
-  /// rather than hanging, and the two endpoints stay clearly separate.
-  static const _locationUrl = 'http://127.0.0.1:9/locations';
-  static const _telematicsUrl = 'http://127.0.0.1:9/telematics';
+  /// Two distinct paths on the refused-connection host, so the offline half has
+  /// endpoints that fail fast while staying clearly separate from each other.
+  static final _locationUrl = deadUrl('locations');
+  static final _telematicsUrl = deadUrl('telematics');
 
   void _set(String s) {
     if (mounted) setState(() => _status = s);

@@ -51,10 +51,7 @@ class _Issue366CardState extends State<Issue366Card> {
   String _status = 'Idle';
   bool _running = false;
 
-  /// A closed port on the loopback interface: the connection is refused
-  /// immediately rather than hanging until a timeout, which keeps the card fast
-  /// and makes the failure unambiguous.
-  static const _deadUrl = 'http://127.0.0.1:9/telematics-sync';
+  static final _deadUrl = deadUrl('telematics-sync');
 
   static const _eventCount = 3;
 
@@ -72,9 +69,14 @@ class _Issue366CardState extends State<Issue366Card> {
       if (!pass) allPass = false;
     }
 
+    // Captured before ready() reconfigures the SDK: activeConfig reports what
+    // is active *now*, so reading it after the card has pointed the URL at a
+    // dead port would just read that back and call it a live server.
+    final scanned = scannedSyncUrl();
+
     try {
       await Tracelet.ready(
-        const Config(
+        Config(
           http: HttpConfig(
             url: _deadUrl,
             // Explicitly empty, not omitted. Config merges rather than
@@ -95,7 +97,7 @@ class _Issue366CardState extends State<Issue366Card> {
             // since nothing is listening either way.
             maxRetries: 0,
           ),
-          logger: LoggerConfig(logLevel: LogLevel.debug),
+          logger: const LoggerConfig(logLevel: LogLevel.debug),
         ),
       );
 
@@ -183,7 +185,6 @@ class _Issue366CardState extends State<Issue366Card> {
       // -----------------------------------------------------------------------
       // The success path, which needs something that actually answers 200.
       // -----------------------------------------------------------------------
-      final scanned = scannedSyncUrl();
       if (scanned != null) {
         await Tracelet.setConfig(Config(http: HttpConfig(url: scanned)));
 
@@ -247,6 +248,17 @@ class _Issue366CardState extends State<Issue366Card> {
     } catch (e) {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
+      // Put the paired URL back. Config persists, so a card that leaves the SDK
+      // pointed at a dead port breaks the *next* run — including its own, which
+      // would then read that sentinel back as the "live" server and silently
+      // assert nothing. Cleaning up is part of the test, not politeness.
+      if (scanned != null) {
+        try {
+          await Tracelet.setConfig(Config(http: HttpConfig(url: scanned)));
+        } catch (_) {
+          // Restoring is best-effort: never turn cleanup into the card's result.
+        }
+      }
       if (mounted) setState(() => _running = false);
     }
   }

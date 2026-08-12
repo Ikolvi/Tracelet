@@ -9,13 +9,32 @@ library;
 
 import 'package:tracelet/tracelet.dart';
 
-/// The sync URL the app was paired with, or `null` if no QR has been scanned.
+/// Host:port used by cards that need a request to *fail*.
+///
+/// Port 9 (discard) on loopback refuses immediately rather than hanging until a
+/// timeout, which keeps a card fast and its failure unambiguous.
+const cardDeadHost = '127.0.0.1:9';
+
+/// A URL on [cardDeadHost] with the given [path], for cards asserting failure.
+String deadUrl(String path) => 'http://$cardDeadHost/$path';
+
+/// The sync URL the app was paired with, or `null` if there isn't a usable one.
 ///
 /// Cards treat `null` as "run the offline half instead", never as a failure —
 /// an unpaired app is an unconfigured card, not a broken build.
+///
+/// **Read this before the card calls `ready()`.** It reports the *active*
+/// config, and a card that reconfigures the SDK first will read back its own
+/// URL rather than the paired one.
+///
+/// Sentinel URLs are filtered out. Config persists across runs, so a card that
+/// points the SDK at [cardDeadHost] leaves that behind as the active URL — and
+/// the next run, or the next card, would otherwise treat a deliberately dead
+/// endpoint as a live server and quietly assert nothing.
 String? scannedSyncUrl() {
   final url = Tracelet.activeConfig.http.url;
   if (url == null || url.isEmpty) return null;
+  if (url.contains(cardDeadHost)) return null;
   return url;
 }
 
