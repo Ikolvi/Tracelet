@@ -2339,10 +2339,13 @@ class TraceletSdk private constructor(private val context: Context) {
                     orderDescending = null
                 ))
                 var configHttp = config.http
-                val syncTelematics = configManager.getConfig().let { cfg ->
-                    val http = cfg["http"] as? Map<*,*>
-                    http?.get("syncTelematics") as? Boolean ?: false
-                }
+                // #370: this read `getConfig()["http"]["syncTelematics"]`, but
+                // ConfigManager.setConfig flattens Dart's nested sections into
+                // the top level — so `["http"]` was always null and the flag was
+                // always false. syncTelematics never took effect here, whatever
+                // the app configured. Use the accessor that knows the cache is
+                // flat, as getSyncTelematics/getTelematicsUrl already do.
+                val syncTelematics = configManager.getSyncTelematics()
 
                 // #366: the id range we attach, so a *successful* upload can mark
                 // exactly those synced. This used to be a bare boolean that fed an

@@ -1896,7 +1896,12 @@ public final class TraceletSdk {
                     orderDescending: config.http.locationsOrderDirection == 1
                 ))
                 var configHttp = config.http
-                let syncTelematics = (self.configManager.getConfig()["http"] as? [String: Any])?["syncTelematics"] as? Bool ?? false
+                // #370: this read `getConfig()["http"]["syncTelematics"]`, but the
+                // config cache is flat — Dart's nested sections are flattened on
+                // the way in — so `["http"]` was always nil and the flag always
+                // false. syncTelematics never took effect here, whatever the app
+                // configured. Use the accessor that knows the cache is flat.
+                let syncTelematics = self.configManager.getSyncTelematics()
                 
                 // #366: the id range we attach, so a *successful* upload can mark
                 // exactly those synced. This used to be a bare boolean feeding an

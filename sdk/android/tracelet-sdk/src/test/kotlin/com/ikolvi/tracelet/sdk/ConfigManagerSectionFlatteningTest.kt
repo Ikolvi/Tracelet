@@ -879,4 +879,39 @@ internal class ConfigManagerSectionFlatteningTest {
         assertTrue(config.getAttestationEnabled()) // preserved from before
         assertEquals(900, config.getAttestationRefreshInterval())
     }
+
+    // =========================================================================
+    // Issue #370 — the flattening is exactly why sync() must not read ["http"]
+    // =========================================================================
+
+    @Test
+    fun httpSection_syncTelematics_isReachableOnlyThroughTheFlatAccessor() {
+        config.setConfig(mapOf(
+            "http" to mapOf<String, Any?>(
+                "syncTelematics" to true,
+                "telematicsUrl" to "https://api.example.com/telematics"
+            )
+        ))
+
+        // What sync() must use.
+        assertTrue(config.getSyncTelematics())
+        assertEquals("https://api.example.com/telematics", config.getTelematicsUrl())
+
+        // What sync() used to do. This is the whole bug: the nested lookup
+        // cannot work against a cache the setter flattened, so the flag read
+        // back false however the app configured it — silently, because a false
+        // flag just skips the telematics block instead of erroring.
+        assertNull(
+            config.getConfig()["http"],
+            "the http section is flattened away; indexing it can only ever yield null",
+        )
+    }
+
+    @Test
+    fun httpSection_syncTelematics_defaultsFalseWhenUnset() {
+        config.setConfig(mapOf(
+            "http" to mapOf<String, Any?>("url" to "https://api.example.com/locations")
+        ))
+        assertFalse(config.getSyncTelematics(), "telematics sync stays opt-in")
+    }
 }
