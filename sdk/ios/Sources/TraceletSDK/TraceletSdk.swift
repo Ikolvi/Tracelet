@@ -1952,7 +1952,12 @@ public final class TraceletSdk {
                     )
                 }
 
-                let syncedCount = records.isEmpty
+                // Skipping the location POST is only safe when the telematics
+                // already went somewhere else (#368). On the default path they
+                // ride this request, so it must still be made even with an empty
+                // batch — otherwise they would sit unsynced until a location
+                // happened along.
+                let syncedCount = (records.isEmpty && telematicsUrl != nil)
                     ? 0
                     : try syncProvider.syncBatchBlocking(config: configHttp, records: records)
 

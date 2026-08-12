@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/test_server_endpoint.dart';
 
 /// Issue #366 — a failed telematics sync deleted the events anyway.
 ///
@@ -154,6 +155,46 @@ class _Issue366CardState extends State<Issue366Card> {
             'retries must not erode the queue',
       );
 
+      // -----------------------------------------------------------------------
+      // The success path, which needs something that actually answers 200.
+      // -----------------------------------------------------------------------
+      final scanned = scannedSyncUrl();
+      if (scanned != null) {
+        await Tracelet.setConfig(Config(http: HttpConfig(url: scanned)));
+
+        // With telematicsUrl unset the events ride the *location* payload, so
+        // there has to be a location for them to ride. An empty batch would
+        // leave them queued — correctly, but it would prove nothing here.
+        await Tracelet.insertLocation(<String, Object?>{
+          'uuid': 'issue-366-carrier',
+          'coords': <String, Object?>{
+            'latitude': 24.8607,
+            'longitude': 67.0011,
+            'accuracy': 8.0,
+          },
+        });
+
+        await Tracelet.sync();
+        await Future<void>.delayed(const Duration(milliseconds: 800));
+
+        final delivered = await Tracelet.getTelematicsEvents(50);
+        check(
+          'A delivered event is marked synced, not deleted',
+          delivered.length == before.length,
+          '${delivered.length} of ${before.length} event(s) still readable '
+              'after a successful sync — the old code deleted the table here, '
+              'which is what made #313 fail in practice no matter how the '
+              'history query was written',
+        );
+        check(
+          'Delivered events are not re-sent',
+          delivered.every((TelematicsRecord e) => e.synced),
+          '${delivered.where((TelematicsRecord e) => e.synced).length} of '
+              '${delivered.length} marked synced — settled over the uploaded '
+              'id range, so the next batch does not ship them again',
+        );
+      }
+
       await Tracelet.destroyTelematicsEvents();
       await Tracelet.stop();
 
@@ -161,15 +202,22 @@ class _Issue366CardState extends State<Issue366Card> {
           ? '✅ SUCCESS: a failed telematics sync leaves the events queued.'
           : '❌ FAILED — #366 not satisfied on this build. See the failing rows.';
 
+      final successPath = scanned == null
+          ? 'The success path was skipped: it needs a reachable endpoint. Start '
+                '`dart run example/test_server.dart`, scan its QR, and run this '
+                'card again — it will then also assert that a delivered event '
+                'is marked synced rather than deleted, which is the half that '
+                'makes #313 hold in practice.'
+          : 'The success path ran against $scanned: delivered events are marked '
+                'synced over the uploaded id range instead of the table being '
+                'cleared, so they stay readable through getTelematicsEvents() '
+                '(#313) and are not re-sent.';
+
       _set(
-        '$header\n\n${results.join('\n')}\n\n'
-        'What this card cannot show on its own is the success path, which '
-        'needs a reachable endpoint: on a successful POST the events are '
-        'marked synced over the uploaded id range rather than deleted, so they '
-        'stay readable through getTelematicsEvents() (#313) and are not '
-        're-sent on the next batch. The synced tail is capped at the newest '
-        '1000 rows so that retention cannot grow without bound; unsynced rows '
-        'are exempt from the trim because they are still owed to the server.',
+        '$header\n\n${results.join('\n')}\n\n$successPath\n\n'
+        'The synced tail is capped at the newest 1000 rows so retention cannot '
+        'grow without bound; unsynced rows are exempt from the trim because '
+        'they are still owed to the server.',
       );
     } catch (e) {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');

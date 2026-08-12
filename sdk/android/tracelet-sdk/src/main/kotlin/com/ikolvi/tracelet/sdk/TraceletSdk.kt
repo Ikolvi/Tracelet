@@ -2384,7 +2384,16 @@ class TraceletSdk private constructor(private val context: Context) {
                     false
                 }
 
-                val count = if (records.isEmpty()) 0L else provider.syncBatchBlocking(configHttp, records)
+                // Skipping the location POST is only safe when the telematics
+                // already went somewhere else (#368). On the default path they
+                // ride this request, so it must still be made even with an empty
+                // batch — otherwise they would sit unsynced until a location
+                // happened along.
+                val count = if (records.isEmpty() && telematicsUrl != null) {
+                    0L
+                } else {
+                    provider.syncBatchBlocking(configHttp, records)
+                }
 
                 // #366: telematics are only settled when the request that carried
                 // them actually succeeded. Attached to the location payload, that

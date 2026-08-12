@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/test_server_endpoint.dart';
 
 /// Issue #368 — `telematicsUrl` was accepted everywhere and read nowhere.
 ///
@@ -34,11 +35,19 @@ import 'package:tracelet_example/issues/issue_card_shell.dart';
 /// telematics POST leaves those rows unsynced for the next attempt and does not
 /// take the locations down with it.
 ///
-/// **What this card can and cannot prove.** Without a live endpoint it cannot
-/// observe *which* host received a body — that needs the test server. What it
-/// does prove is that the value survives into the running config, that a
-/// telematics-only sync now issues an HTTP attempt of its own, and that when
-/// that attempt fails the events are kept rather than silently settled.
+/// **Run it against the test server.** Start `dart run example/test_server.dart`
+/// and scan its QR code first. The card then points `url` at the scanned
+/// `/locations` and `telematicsUrl` at `/telematics` on the same server, syncs a
+/// driving event with an empty location queue, and asserts the POST came back
+/// successful — which can only have happened on the telematics endpoint, since
+/// there were no locations to send. The server console shows the body landing on
+/// `/telematics` with its `speed`/`value` intact, which is the half no in-app
+/// assertion can make.
+///
+/// Without a scanned server it still runs, using refused ports: it checks the
+/// config plumbing and that a failed telematics POST keeps the events queued
+/// rather than settling them. That half proves the fix is safe; the live half
+/// proves it is routed.
 class Issue368Card extends StatefulWidget {
   const Issue368Card({super.key});
 
@@ -71,30 +80,46 @@ class _Issue368CardState extends State<Issue368Card> {
     }
 
     try {
+      // Paired with the test server? Then the live half can run. Unpaired is a
+      // configuration state, not a failure — the offline half still proves the
+      // fix is safe.
+      final scanned = scannedSyncUrl();
+      final liveTelematicsUrl = scanned == null
+          ? null
+          : siblingEndpoint(scanned, 'telematics');
+      final live = scanned != null && liveTelematicsUrl != null;
+
+      final locationUrl = live ? scanned : _locationUrl;
+      final telematicsUrl = live ? liveTelematicsUrl : _telematicsUrl;
+
       await Tracelet.ready(
-        const Config(
+        Config(
           http: HttpConfig(
-            url: _locationUrl,
-            telematicsUrl: _telematicsUrl,
+            url: locationUrl,
+            telematicsUrl: telematicsUrl,
             autoSync: false,
             syncTelematics: true,
             maxRetries: 0,
           ),
-          logger: LoggerConfig(logLevel: LogLevel.debug),
+          logger: const LoggerConfig(logLevel: LogLevel.debug),
         ),
       );
 
       final state = await Tracelet.getState();
       check(
         'telematicsUrl reaches the running config',
-        state.config?.http.telematicsUrl == _telematicsUrl,
+        state.config?.http.telematicsUrl == telematicsUrl,
         'State.config reports ${state.config?.http.telematicsUrl} — this much '
             'always passed, including on the broken build, which is exactly '
             'why the gap was invisible',
       );
 
       var httpAttempts = 0;
-      httpSub = Tracelet.onHttp((HttpEvent _) => httpAttempts++);
+      var httpSuccesses = 0;
+      httpSub = Tracelet.onHttp((HttpEvent e) {
+        httpAttempts++;
+        if (e.success) httpSuccesses++;
+      });
 
       await Tracelet.destroyTelematicsEvents();
       await Tracelet.destroyLocations();
@@ -109,7 +134,7 @@ class _Issue368CardState extends State<Issue368Card> {
       // worth sending is the telematics, so any HTTP attempt at all had to have
       // been made on their behalf.
       await Tracelet.sync();
-      await Future<void>.delayed(const Duration(milliseconds: 600));
+      await Future<void>.delayed(const Duration(milliseconds: 800));
 
       check(
         'A telematics-only sync issues its own request',
@@ -120,27 +145,58 @@ class _Issue368CardState extends State<Issue368Card> {
       );
 
       final after = await Tracelet.getTelematicsEvents(50);
-      check(
-        'A failed telematics POST keeps the events',
-        after.length == 1 && !after.first.synced,
-        '${after.length} event(s) still stored and unsynced after the refused '
-            'POST — the dedicated endpoint is accounted for separately, so its '
-            'failure queues rather than discards (#366)',
-      );
+
+      if (live) {
+        // A 200 with nothing but telematics to send is the routing proof: the
+        // location queue was empty, so the request that succeeded was theirs.
+        check(
+          'The telematics endpoint accepted the request',
+          httpSuccesses > 0,
+          '$httpSuccesses successful POST(s) against $telematicsUrl — check '
+              'the server console: the body arrived on /telematics, not on '
+              '/locations, carrying speed and value (#367)',
+        );
+        check(
+          'A delivered event is marked synced, not deleted',
+          after.length == 1 && after.first.synced,
+          '${after.length} event(s) still readable and '
+              '${after.first.synced ? 'marked synced' : 'still unsynced'} — '
+              'uploading must settle the row without removing it from local '
+              'history (#313, #366)',
+        );
+      } else {
+        check(
+          'A failed telematics POST keeps the events',
+          after.length == 1 && !after.first.synced,
+          '${after.length} event(s) still stored and unsynced after the '
+              'refused POST — the dedicated endpoint is accounted for '
+              'separately, so its failure queues rather than discards (#366)',
+        );
+      }
 
       await Tracelet.destroyTelematicsEvents();
       await Tracelet.stop();
 
       final header = allPass
-          ? '✅ SUCCESS: telematicsUrl is honored and fails safely.'
+          ? (live
+                ? '✅ SUCCESS: telematics were routed to telematicsUrl and '
+                      'accepted.'
+                : '✅ SUCCESS (offline half): telematicsUrl is honored and '
+                      'fails safely.')
           : '❌ FAILED — #368 not satisfied on this build. See the failing rows.';
 
+      final mode = live
+          ? 'Ran against the scanned test server: $telematicsUrl. The console '
+                'there is the other half of this proof — the body lands on '
+                '/telematics rather than /locations, which is the thing no '
+                'in-app assertion can see.'
+          : 'Ran offline against refused ports, which is why there is no '
+                'routing row: proving a body reached a particular host needs a '
+                'host that answers. Start `dart run example/test_server.dart`, '
+                'scan its QR, and run this card again for the live half.';
+
       _set(
-        '$header\n\n${results.join('\n')}\n\n'
-        'Confirming the body actually lands on the telematics host, and not '
-        'the location host, needs a reachable endpoint — run the example test '
-        'server and point the two URLs at different paths to watch them '
-        'arrive separately. This card stops where honest local assertions stop. '
+        '$header\n\n${results.join('\n')}\n\n$mode\n\n'
         'Note the default is unchanged: leave telematicsUrl unset and '
         'telematics keep riding the location request in extras.__telematics, '
         'so no existing backend has to move.',
