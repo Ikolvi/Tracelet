@@ -207,6 +207,41 @@ class TraceletSyncSink: LocationDataSink, SyncProvider {
     func cancelPendingSync() {
         Task { await coordinator.cancel() }
     }
+
+    /// POSTs telematics to their own endpoint (#368).
+    ///
+    /// Reuses `executeFallbackHttpSync` so the dedicated endpoint gets the same
+    /// headers, timeouts, retry/backoff and 401 token-refresh handling as the
+    /// location path — the only difference is the URL and the body. Blocks on a
+    /// semaphore like the custom-body path above, since the caller is a
+    /// synchronous sync routine.
+    func postTelematicsBlocking(config: HttpConfig, url: String, body: String) throws -> Bool {
+        var telematicsHttp = config
+        telematicsHttp.url = url
+
+        let sem = DispatchSemaphore(value: 0)
+        var fallbackResult: SyncCoordinator.FallbackSyncResult? = nil
+        Task {
+            fallbackResult = await coordinator.executeFallbackHttpSync(
+                coreHttp: telematicsHttp,
+                customBody: body,
+                interceptor: TraceletSdk.shared.dartSyncInterceptor
+            )
+            sem.signal()
+        }
+        sem.wait()
+
+        let result = fallbackResult ?? SyncCoordinator.FallbackSyncResult(
+            success: false, status: 0, responseText: "Unknown error")
+        TraceletSdk.shared.getEventSender().sendHttp([
+            "success": result.success,
+            "status": result.status,
+            "responseText": result.responseText,
+            "isRetry": false,
+            "retryCount": 0
+        ])
+        return result.success
+    }
     
     func syncBatchBlocking(config: HttpConfig, records: [DbLocationRecord]) throws -> UInt32 {
         let syncRecords: [tracelet_sync.SyncLocationRecord] = records.map { r in

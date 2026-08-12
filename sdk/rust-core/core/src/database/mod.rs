@@ -91,6 +91,11 @@ pub struct DbTelematicsRecord {
     pub id: i64,
     pub event_type: String,
     pub severity: f64,
+    /// Speed at the event (m/s) — 0.0 for rows written before #367.
+    pub speed: f64,
+    /// The measured magnitude that triggered it: g for harsh events, km/h over
+    /// the limit for speeding. 0.0 for rows written before #367.
+    pub value: f64,
     pub latitude: f64,
     pub longitude: f64,
     pub timestamp: String,
@@ -194,6 +199,8 @@ impl DatabaseManager {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 event_type TEXT NOT NULL,
                 severity REAL NOT NULL,
+                speed REAL NOT NULL DEFAULT 0.0,
+                event_value REAL NOT NULL DEFAULT 0.0,
                 latitude REAL NOT NULL,
                 longitude REAL NOT NULL,
                 timestamp TEXT DEFAULT (datetime('now')),
@@ -217,6 +224,13 @@ impl DatabaseManager {
         let _ = conn.execute("ALTER TABLE geofences ADD COLUMN vertices TEXT", []);
         let _ = conn.execute("ALTER TABLE privacy_zones ADD COLUMN pz_action INTEGER NOT NULL DEFAULT 0", []);
         let _ = conn.execute("ALTER TABLE privacy_zones ADD COLUMN pz_degraded_accuracy REAL DEFAULT 1000.0", []);
+
+        // #367: the driving-event magnitudes. `DrivingEvent` has always carried
+        // `speed` and `value` and always delivered them to `onDrivingEvent`, but
+        // the table had nowhere to put them, so stored history and every synced
+        // payload lost them. Rows written before this migration read back as 0.0.
+        let _ = conn.execute("ALTER TABLE tracelet_telematics ADD COLUMN speed REAL NOT NULL DEFAULT 0.0", []);
+        let _ = conn.execute("ALTER TABLE tracelet_telematics ADD COLUMN event_value REAL NOT NULL DEFAULT 0.0", []);
 
         // Migrate and backfill timestamp_ms
         let _ = conn.execute("ALTER TABLE location_events ADD COLUMN timestamp_ms INTEGER DEFAULT 0", []);
@@ -967,11 +981,16 @@ impl DatabaseManager {
     // --- Telematics ---
 
     /// Inserts a telematics event into the database.
-    pub fn insert_telematics_event(&self, event_type: &str, severity: f64, lat: f64, lng: f64) -> Result<i64, TraceletError> {
+    ///
+    /// `speed` (m/s) and `value` (g, or km/h over the limit for speeding) are the
+    /// magnitudes carried by `DrivingEvent`. They used to be dropped here, which
+    /// left stored history and every synced payload with a normalized `severity`
+    /// flag and no physical quantity behind it (#367).
+    pub fn insert_telematics_event(&self, event_type: &str, severity: f64, speed: f64, value: f64, lat: f64, lng: f64) -> Result<i64, TraceletError> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO tracelet_telematics (event_type, severity, latitude, longitude) VALUES (?1, ?2, ?3, ?4)",
-            params![event_type, severity, lat, lng]
+            "INSERT INTO tracelet_telematics (event_type, severity, speed, event_value, latitude, longitude) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![event_type, severity, speed, value, lat, lng]
         ).map_err(|e| TraceletError::Database(e.to_string()))?;
         Ok(conn.last_insert_rowid())
     }
@@ -986,7 +1005,7 @@ impl DatabaseManager {
     /// user-facing (#313).
     pub fn get_telematics_events(&self, limit: i32) -> Result<Vec<DbTelematicsRecord>, TraceletError> {
         self.query_telematics(
-            "SELECT id, event_type, severity, latitude, longitude, timestamp, synced FROM tracelet_telematics WHERE synced = 0 ORDER BY id ASC LIMIT ?1",
+            "SELECT id, event_type, severity, latitude, longitude, timestamp, synced, speed, event_value FROM tracelet_telematics WHERE synced = 0 ORDER BY id ASC LIMIT ?1",
             limit,
         )
     }
@@ -1003,7 +1022,7 @@ impl DatabaseManager {
     /// most recent n it documented.
     pub fn get_telematics_history(&self, limit: i32) -> Result<Vec<DbTelematicsRecord>, TraceletError> {
         self.query_telematics(
-            "SELECT id, event_type, severity, latitude, longitude, timestamp, synced FROM tracelet_telematics ORDER BY id DESC LIMIT ?1",
+            "SELECT id, event_type, severity, latitude, longitude, timestamp, synced, speed, event_value FROM tracelet_telematics ORDER BY id DESC LIMIT ?1",
             limit,
         )
     }
@@ -1014,6 +1033,28 @@ impl DatabaseManager {
         conn.execute("UPDATE tracelet_telematics SET synced = 1 WHERE id <= ?1", params![max_id])
             .map_err(|e| TraceletError::Database(e.to_string()))?;
         Ok(())
+    }
+
+    /// Deletes **synced** telematics rows beyond the newest `keep` of them, and
+    /// reports how many went (#366).
+    ///
+    /// Sync marks rows instead of deleting them, because #313 established that
+    /// uploading an event must not remove it from the app's own history. That
+    /// leaves the table growing for the lifetime of the install, so the synced
+    /// tail is trimmed here. Unsynced rows are never touched — they are still
+    /// owed to the server, and losing them is the bug this accompanies.
+    pub fn prune_synced_telematics(&self, keep: i32) -> Result<u64, TraceletError> {
+        if keep <= 0 {
+            return Ok(0);
+        }
+        let conn = self.conn.lock().unwrap();
+        let removed = conn.execute(
+            "DELETE FROM tracelet_telematics WHERE synced = 1 AND id NOT IN (
+                 SELECT id FROM tracelet_telematics WHERE synced = 1 ORDER BY id DESC LIMIT ?1
+             )",
+            params![keep],
+        ).map_err(|e| TraceletError::Database(e.to_string()))?;
+        Ok(removed as u64)
     }
 
     /// Clears all telematics events from the database.
@@ -1049,6 +1090,10 @@ impl DatabaseManager {
                 longitude: row.get(4)?,
                 timestamp: row.get(5)?,
                 synced: synced_int != 0,
+                // #367: appended after `synced` so both callers' SELECT lists stay
+                // aligned with the pre-existing column order.
+                speed: row.get(7)?,
+                value: row.get(8)?,
             })
         }).map_err(|e| TraceletError::Database(e.to_string()))?;
 
@@ -1776,7 +1821,7 @@ mod tests {
         let db = DatabaseManager::new(":memory:").expect("Failed to create in-memory db");
         db.set_encryption_key("");
         for kind in ["harsh_braking", "harsh_cornering", "speeding", "crash"] {
-            db.insert_telematics_event(kind, 0.5, 1.0, 2.0).unwrap();
+            db.insert_telematics_event(kind, 0.5, 18.4, 0.47, 1.0, 2.0).unwrap();
         }
         db
     }
@@ -1825,5 +1870,76 @@ mod tests {
         let rest = db.get_telematics_events(10).unwrap();
         assert_eq!(rest.len(), 2, "already-synced events must not be re-sent");
         assert_eq!(rest[0].event_type, "speeding");
+    }
+
+    // ── #367: the driving-event magnitudes ──
+
+    #[test]
+    fn telematics_speed_and_value_round_trip_through_both_views() {
+        // `severity` is a normalized 0–1 flag; `value` is the measurement that
+        // triggered the event and `speed` the context that makes it readable.
+        // Dropping them at insert left every stored and synced event with no
+        // physical quantity behind it.
+        let db = telematics_db();
+
+        let synced_view = db.get_telematics_events(1).unwrap();
+        assert_eq!(synced_view[0].speed, 18.4);
+        assert_eq!(synced_view[0].value, 0.47);
+
+        let history = db.get_telematics_history(1).unwrap();
+        assert_eq!(history[0].speed, 18.4, "history must carry the magnitudes too");
+        assert_eq!(history[0].value, 0.47);
+    }
+
+    #[test]
+    fn telematics_rows_predating_the_magnitude_columns_read_back_as_zero() {
+        // Upgrades run ALTER TABLE over a table that already has rows. Those rows
+        // have no magnitudes to recover, so they must read back as 0.0 rather
+        // than failing the query and taking the whole history with them.
+        let db = DatabaseManager::new(":memory:").expect("Failed to create in-memory db");
+        db.set_encryption_key("");
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO tracelet_telematics (event_type, severity, latitude, longitude) \
+                 VALUES ('harsh_braking', 0.5, 1.0, 2.0)",
+                [],
+            )
+            .unwrap();
+        }
+
+        let history = db.get_telematics_history(10).unwrap();
+        assert_eq!(history.len(), 1, "a legacy row must still be readable");
+        assert_eq!(history[0].speed, 0.0);
+        assert_eq!(history[0].value, 0.0);
+    }
+
+    // ── #366: bounding the table that sync no longer empties ──
+
+    #[test]
+    fn prune_synced_telematics_never_takes_unsynced_rows() {
+        // Unsynced rows are still owed to the server. Trimming history must not
+        // become a second way to lose them.
+        let db = telematics_db();
+        let batch = db.get_telematics_events(2).unwrap();
+        db.mark_telematics_synced(batch[1].id).unwrap();
+
+        let removed = db.prune_synced_telematics(1).unwrap();
+        assert_eq!(removed, 1, "only the older of the two synced rows may go");
+
+        let remaining = db.get_telematics_events(10).unwrap();
+        assert_eq!(remaining.len(), 2, "unsynced rows must survive the trim");
+        assert_eq!(remaining[0].event_type, "speeding");
+    }
+
+    #[test]
+    fn prune_synced_telematics_is_a_no_op_for_non_positive_caps() {
+        let db = telematics_db();
+        let batch = db.get_telematics_events(10).unwrap();
+        db.mark_telematics_synced(batch.last().unwrap().id).unwrap();
+
+        assert_eq!(db.prune_synced_telematics(0).unwrap(), 0);
+        assert_eq!(db.prune_synced_telematics(-1).unwrap(), 0);
+        assert_eq!(db.get_telematics_history(10).unwrap().len(), 4);
     }
 }

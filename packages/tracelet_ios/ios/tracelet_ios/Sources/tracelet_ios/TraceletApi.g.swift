@@ -2778,6 +2778,17 @@ struct TlTelematicsRecord: Hashable {
   var eventType: String
   /// The severity of the event.
   var severity: Double
+  /// Speed at the event in m/s — for an impact, the speed going in (#367).
+  ///
+  /// Nullable so records stored before the magnitudes were persisted decode as
+  /// `null` rather than a misleading `0.0`.
+  var speed: Double? = nil
+  /// The measured magnitude that triggered the event: g for harsh driving
+  /// events and impacts, km/h over the limit for speeding (#367).
+  ///
+  /// `severity` is the normalized 0–1 flag; this is the physical quantity
+  /// behind it. Nullable for the same reason as [speed].
+  var value: Double? = nil
   /// The latitude.
   var latitude: Double
   /// The longitude.
@@ -2793,15 +2804,19 @@ struct TlTelematicsRecord: Hashable {
     let id = pigeonVar_list[0] as! Int64
     let eventType = pigeonVar_list[1] as! String
     let severity = pigeonVar_list[2] as! Double
-    let latitude = pigeonVar_list[3] as! Double
-    let longitude = pigeonVar_list[4] as! Double
-    let timestamp = pigeonVar_list[5] as! String
-    let synced = pigeonVar_list[6] as! Bool
+    let speed: Double? = nilOrValue(pigeonVar_list[3])
+    let value: Double? = nilOrValue(pigeonVar_list[4])
+    let latitude = pigeonVar_list[5] as! Double
+    let longitude = pigeonVar_list[6] as! Double
+    let timestamp = pigeonVar_list[7] as! String
+    let synced = pigeonVar_list[8] as! Bool
 
     return TlTelematicsRecord(
       id: id,
       eventType: eventType,
       severity: severity,
+      speed: speed,
+      value: value,
       latitude: latitude,
       longitude: longitude,
       timestamp: timestamp,
@@ -2813,6 +2828,8 @@ struct TlTelematicsRecord: Hashable {
       id,
       eventType,
       severity,
+      speed,
+      value,
       latitude,
       longitude,
       timestamp,
@@ -2823,7 +2840,7 @@ struct TlTelematicsRecord: Hashable {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsTraceletApi(lhs.id, rhs.id) && deepEqualsTraceletApi(lhs.eventType, rhs.eventType) && deepEqualsTraceletApi(lhs.severity, rhs.severity) && deepEqualsTraceletApi(lhs.latitude, rhs.latitude) && deepEqualsTraceletApi(lhs.longitude, rhs.longitude) && deepEqualsTraceletApi(lhs.timestamp, rhs.timestamp) && deepEqualsTraceletApi(lhs.synced, rhs.synced)
+    return deepEqualsTraceletApi(lhs.id, rhs.id) && deepEqualsTraceletApi(lhs.eventType, rhs.eventType) && deepEqualsTraceletApi(lhs.severity, rhs.severity) && deepEqualsTraceletApi(lhs.speed, rhs.speed) && deepEqualsTraceletApi(lhs.value, rhs.value) && deepEqualsTraceletApi(lhs.latitude, rhs.latitude) && deepEqualsTraceletApi(lhs.longitude, rhs.longitude) && deepEqualsTraceletApi(lhs.timestamp, rhs.timestamp) && deepEqualsTraceletApi(lhs.synced, rhs.synced)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -2831,6 +2848,8 @@ struct TlTelematicsRecord: Hashable {
     deepHashTraceletApi(value: id, hasher: &hasher)
     deepHashTraceletApi(value: eventType, hasher: &hasher)
     deepHashTraceletApi(value: severity, hasher: &hasher)
+    deepHashTraceletApi(value: speed, hasher: &hasher)
+    deepHashTraceletApi(value: value, hasher: &hasher)
     deepHashTraceletApi(value: latitude, hasher: &hasher)
     deepHashTraceletApi(value: longitude, hasher: &hasher)
     deepHashTraceletApi(value: timestamp, hasher: &hasher)

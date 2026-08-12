@@ -796,6 +796,8 @@ external fun uniffi_tracelet_core_checksum_method_databasemanager_prune_logs(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_prune_logs_older_than(
 ): Short
+external fun uniffi_tracelet_core_checksum_method_databasemanager_prune_synced_telematics(
+): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_set_encryption_key(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_eventdispatcher_on_location_update(
@@ -1110,7 +1112,7 @@ external fun uniffi_tracelet_core_fn_method_databasemanager_insert_log(`ptr`: Lo
 ): Unit
 external fun uniffi_tracelet_core_fn_method_databasemanager_insert_privacy_zone(`ptr`: Long,`identifier`: RustBuffer.ByValue,`lat`: Double,`lng`: Double,`radius`: Double,`action`: Int,`degradedAccuracy`: Double,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
-external fun uniffi_tracelet_core_fn_method_databasemanager_insert_telematics_event(`ptr`: Long,`eventType`: RustBuffer.ByValue,`severity`: Double,`lat`: Double,`lng`: Double,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_tracelet_core_fn_method_databasemanager_insert_telematics_event(`ptr`: Long,`eventType`: RustBuffer.ByValue,`severity`: Double,`speed`: Double,`value`: Double,`lat`: Double,`lng`: Double,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
 external fun uniffi_tracelet_core_fn_method_databasemanager_is_empty(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
@@ -1122,6 +1124,8 @@ external fun uniffi_tracelet_core_fn_method_databasemanager_prune_logs(`ptr`: Lo
 ): Unit
 external fun uniffi_tracelet_core_fn_method_databasemanager_prune_logs_older_than(`ptr`: Long,`maxDays`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+external fun uniffi_tracelet_core_fn_method_databasemanager_prune_synced_telematics(`ptr`: Long,`keep`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Long
 external fun uniffi_tracelet_core_fn_method_databasemanager_set_encryption_key(`ptr`: Long,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 external fun uniffi_tracelet_core_fn_clone_eventdispatcher(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1571,7 +1575,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_insert_privacy_zone() != 38263.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tracelet_core_checksum_method_databasemanager_insert_telematics_event() != 45369.toShort()) {
+    if (lib.uniffi_tracelet_core_checksum_method_databasemanager_insert_telematics_event() != 45645.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_is_empty() != 5940.toShort()) {
@@ -1587,6 +1591,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_prune_logs_older_than() != 10098.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tracelet_core_checksum_method_databasemanager_prune_synced_telematics() != 11319.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_set_encryption_key() != 2884.toShort()) {
@@ -1930,6 +1937,29 @@ public object FfiConverterInt: FfiConverter<Int, Int> {
 
     override fun write(value: Int, buf: ByteBuffer) {
         buf.putInt(value)
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterULong: FfiConverter<ULong, Long> {
+    override fun lift(value: Long): ULong {
+        return value.toULong()
+    }
+
+    override fun read(buf: ByteBuffer): ULong {
+        return lift(buf.getLong())
+    }
+
+    override fun lower(value: ULong): Long {
+        return value.toLong()
+    }
+
+    override fun allocationSize(value: ULong) = 8UL
+
+    override fun write(value: ULong, buf: ByteBuffer) {
+        buf.putLong(value.toLong())
     }
 }
 
@@ -3645,8 +3675,13 @@ public interface DatabaseManagerInterface {
     
     /**
      * Inserts a telematics event into the database.
+     *
+     * `speed` (m/s) and `value` (g, or km/h over the limit for speeding) are the
+     * magnitudes carried by `DrivingEvent`. They used to be dropped here, which
+     * left stored history and every synced payload with a normalized `severity`
+     * flag and no physical quantity behind it (#367).
      */
-    fun `insertTelematicsEvent`(`eventType`: kotlin.String, `severity`: kotlin.Double, `lat`: kotlin.Double, `lng`: kotlin.Double): kotlin.Long
+    fun `insertTelematicsEvent`(`eventType`: kotlin.String, `severity`: kotlin.Double, `speed`: kotlin.Double, `value`: kotlin.Double, `lat`: kotlin.Double, `lng`: kotlin.Double): kotlin.Long
     
     /**
      * Gets the total count of locations persisted in the database.
@@ -3708,6 +3743,18 @@ public interface DatabaseManagerInterface {
      * so it compares correctly as text against SQLite's own modifier output.
      */
     fun `pruneLogsOlderThan`(`maxDays`: kotlin.Int)
+    
+    /**
+     * Deletes **synced** telematics rows beyond the newest `keep` of them, and
+     * reports how many went (#366).
+     *
+     * Sync marks rows instead of deleting them, because #313 established that
+     * uploading an event must not remove it from the app's own history. That
+     * leaves the table growing for the lifetime of the install, so the synced
+     * tail is trimmed here. Unsynced rows are never touched — they are still
+     * owed to the server, and losing them is the bug this accompanies.
+     */
+    fun `pruneSyncedTelematics`(`keep`: kotlin.Int): kotlin.ULong
     
     /**
      * Sets the encryption key (32 bytes max). If the string is empty or invalid, encryption is disabled.
@@ -4301,14 +4348,19 @@ open class DatabaseManager: Disposable, AutoCloseable, DatabaseManagerInterface
     
     /**
      * Inserts a telematics event into the database.
+     *
+     * `speed` (m/s) and `value` (g, or km/h over the limit for speeding) are the
+     * magnitudes carried by `DrivingEvent`. They used to be dropped here, which
+     * left stored history and every synced payload with a normalized `severity`
+     * flag and no physical quantity behind it (#367).
      */
-    @Throws(TraceletException::class)override fun `insertTelematicsEvent`(`eventType`: kotlin.String, `severity`: kotlin.Double, `lat`: kotlin.Double, `lng`: kotlin.Double): kotlin.Long {
+    @Throws(TraceletException::class)override fun `insertTelematicsEvent`(`eventType`: kotlin.String, `severity`: kotlin.Double, `speed`: kotlin.Double, `value`: kotlin.Double, `lat`: kotlin.Double, `lng`: kotlin.Double): kotlin.Long {
             return FfiConverterLong.lift(
     callWithHandle {
     uniffiRustCallWithError(TraceletException) { _status ->
     UniffiLib.uniffi_tracelet_core_fn_method_databasemanager_insert_telematics_event(
         it,
-        FfiConverterString.lower(`eventType`),FfiConverterDouble.lower(`severity`),FfiConverterDouble.lower(`lat`),FfiConverterDouble.lower(`lng`),_status)
+        FfiConverterString.lower(`eventType`),FfiConverterDouble.lower(`severity`),FfiConverterDouble.lower(`speed`),FfiConverterDouble.lower(`value`),FfiConverterDouble.lower(`lat`),FfiConverterDouble.lower(`lng`),_status)
 }
     }
     )
@@ -4431,6 +4483,30 @@ open class DatabaseManager: Disposable, AutoCloseable, DatabaseManagerInterface
 }
     }
     
+    
+
+    
+    /**
+     * Deletes **synced** telematics rows beyond the newest `keep` of them, and
+     * reports how many went (#366).
+     *
+     * Sync marks rows instead of deleting them, because #313 established that
+     * uploading an event must not remove it from the app's own history. That
+     * leaves the table growing for the lifetime of the install, so the synced
+     * tail is trimmed here. Unsynced rows are never touched — they are still
+     * owed to the server, and losing them is the bug this accompanies.
+     */
+    @Throws(TraceletException::class)override fun `pruneSyncedTelematics`(`keep`: kotlin.Int): kotlin.ULong {
+            return FfiConverterULong.lift(
+    callWithHandle {
+    uniffiRustCallWithError(TraceletException) { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_databasemanager_prune_synced_telematics(
+        it,
+        FfiConverterInt.lower(`keep`),_status)
+}
+    }
+    )
+    }
     
 
     
@@ -9702,6 +9778,17 @@ data class DbTelematicsRecord (
     , 
     var `severity`: kotlin.Double
     , 
+    /**
+     * Speed at the event (m/s) — 0.0 for rows written before #367.
+     */
+    var `speed`: kotlin.Double
+    , 
+    /**
+     * The measured magnitude that triggered it: g for harsh events, km/h over
+     * the limit for speeding. 0.0 for rows written before #367.
+     */
+    var `value`: kotlin.Double
+    , 
     var `latitude`: kotlin.Double
     , 
     var `longitude`: kotlin.Double
@@ -9730,6 +9817,8 @@ public object FfiConverterTypeDbTelematicsRecord: FfiConverterRustBuffer<DbTelem
             FfiConverterDouble.read(buf),
             FfiConverterDouble.read(buf),
             FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
             FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
         )
@@ -9739,6 +9828,8 @@ public object FfiConverterTypeDbTelematicsRecord: FfiConverterRustBuffer<DbTelem
             FfiConverterLong.allocationSize(value.`id`) +
             FfiConverterString.allocationSize(value.`eventType`) +
             FfiConverterDouble.allocationSize(value.`severity`) +
+            FfiConverterDouble.allocationSize(value.`speed`) +
+            FfiConverterDouble.allocationSize(value.`value`) +
             FfiConverterDouble.allocationSize(value.`latitude`) +
             FfiConverterDouble.allocationSize(value.`longitude`) +
             FfiConverterString.allocationSize(value.`timestamp`) +
@@ -9749,6 +9840,8 @@ public object FfiConverterTypeDbTelematicsRecord: FfiConverterRustBuffer<DbTelem
             FfiConverterLong.write(value.`id`, buf)
             FfiConverterString.write(value.`eventType`, buf)
             FfiConverterDouble.write(value.`severity`, buf)
+            FfiConverterDouble.write(value.`speed`, buf)
+            FfiConverterDouble.write(value.`value`, buf)
             FfiConverterDouble.write(value.`latitude`, buf)
             FfiConverterDouble.write(value.`longitude`, buf)
             FfiConverterString.write(value.`timestamp`, buf)

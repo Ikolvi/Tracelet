@@ -1185,6 +1185,8 @@ class TlTelematicsRecord {
     required this.longitude,
     required this.timestamp,
     required this.synced,
+    this.speed,
+    this.value,
   });
 
   /// The primary key.
@@ -1195,6 +1197,19 @@ class TlTelematicsRecord {
 
   /// The severity of the event.
   final double severity;
+
+  /// Speed at the event in m/s — for an impact, the speed going in (#367).
+  ///
+  /// Nullable so a Dart side newer than the native plugin decodes a missing
+  /// field as `null` instead of failing.
+  final double? speed;
+
+  /// The measured magnitude that triggered the event: g for harsh driving
+  /// events and impacts, km/h over the limit for speeding (#367).
+  ///
+  /// `severity` is the normalized 0–1 flag; this is the physical quantity
+  /// behind it. Nullable for the same reason as [speed].
+  final double? value;
 
   /// The latitude.
   final double latitude;

@@ -97,10 +97,19 @@ Future<void> main(List<String> args) async {
           stdout.writeln('  Root Params: ${jsonEncode(json['params'])}');
         }
         if (json.containsKey('extras')) {
-          stdout.writeln('  Root Extras: ${jsonEncode(json['extras'])}');
+          _printExtras(json['extras']);
         }
 
-        if (locationData is Map) {
+        // A dedicated telematicsUrl endpoint posts {"telematics": [...]} on its
+        // own request (#368). Handled before the location fallback below, which
+        // would otherwise take json.values.first and report driving events as
+        // "locations" with their magnitudes mislabelled as routeContext.
+        if (json['telematics'] case final List<dynamic> events) {
+          stdout.writeln('  Batch of ${events.length} telematics event(s):');
+          for (final (i, e) in events.indexed) {
+            _printTelematicsEvent(e, index: i);
+          }
+        } else if (locationData is Map) {
           _printLocation(locationData, requestCount);
         } else if (locationData is List) {
           stdout.writeln('  Batch of ${locationData.length} locations:');
@@ -132,6 +141,85 @@ Future<void> main(List<String> args) async {
 
     stdout.writeln('  → 200 OK');
     stdout.writeln();
+  }
+}
+
+/// Prints root `extras`, decoding `__telematics` rather than dumping it raw.
+///
+/// When `telematicsUrl` is not set, telematics ride the location request as a
+/// JSON *string* under `extras.__telematics` — printing that verbatim gives a
+/// wall of escaped quotes, which is unreadable exactly when you are trying to
+/// confirm what the backend received.
+void _printExtras(dynamic extras) {
+  if (extras is! Map) {
+    stdout.writeln('  Root Extras: ${jsonEncode(extras)}');
+    return;
+  }
+
+  final rest = Map<dynamic, dynamic>.from(extras)..remove('__telematics');
+  if (rest.isNotEmpty) {
+    stdout.writeln('  Root Extras: ${jsonEncode(rest)}');
+  }
+
+  final raw = extras['__telematics'];
+  if (raw == null) return;
+
+  // Tolerate both shapes: a JSON string (what the SDK sends, since extras are
+  // string-valued) and an already-decoded list.
+  dynamic events = raw;
+  if (raw is String) {
+    try {
+      events = jsonDecode(raw);
+    } on FormatException {
+      stdout.writeln('  Extras __telematics (unparseable): $raw');
+      return;
+    }
+  }
+
+  if (events is List) {
+    stdout.writeln(
+      '  Extras __telematics: ${events.length} event(s) '
+      '(attached to the location payload)',
+    );
+    for (final (i, e) in events.indexed) {
+      _printTelematicsEvent(e, index: i);
+    }
+  } else {
+    stdout.writeln('  Extras __telematics: ${jsonEncode(events)}');
+  }
+}
+
+/// Prints one driving/impact event.
+///
+/// `severity` is the normalized 0–1 flag and `value` the measurement behind it
+/// (g, or km/h over the limit) — they are shown side by side because a payload
+/// carrying only the first was the bug in #367.
+void _printTelematicsEvent(dynamic event, {int? index}) {
+  final prefix = index != null ? '    [$index]' : '    ';
+  if (event is! Map) {
+    stdout.writeln('$prefix ${jsonEncode(event)}');
+    return;
+  }
+
+  final type = event['event_type'] ?? event['kind'] ?? '?';
+  stdout.write('$prefix $type');
+  if (event['severity'] != null) stdout.write(', severity=${event['severity']}');
+  if (event['value'] != null) stdout.write(', value=${event['value']}');
+  if (event['speed'] != null) stdout.write(', speed=${event['speed']}');
+  stdout.write(', lat=${event['latitude']}, lng=${event['longitude']}');
+  if (event['id'] != null) stdout.write(', id=${event['id']}');
+  stdout.writeln();
+
+  if (event['timestamp'] != null) {
+    stdout.writeln('$prefix  ts=${event['timestamp']}');
+  }
+
+  // Missing magnitudes are the #367 signature, and worth calling out here
+  // rather than leaving someone to notice two absent keys by eye.
+  if (!event.containsKey('speed') || !event.containsKey('value')) {
+    stdout.writeln(
+      '$prefix  ⚠️  no speed/value on the wire — pre-#367 native build?',
+    );
   }
 }
 
