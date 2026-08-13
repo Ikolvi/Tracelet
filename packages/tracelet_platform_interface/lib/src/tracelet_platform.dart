@@ -522,10 +522,12 @@ abstract class TraceletPlatform extends PlatformInterface {
   /// - `serviceForeground` (`bool`)
   /// - `foregroundNotificationId` (`int?`)
   /// - `lastForegroundPromotionResult` (`String?`): `success` | `deferred` |
-  ///   `failed`
+  ///   `failed` | `suppressed` (hidden on purpose by
+  ///   `showNotificationOnPauseOnly`, tracking unaffected — #378)
   /// - `lastForegroundPromotionFailureClass` (`String?`)
   /// - `lastForegroundPromotionFailureMessage` (`String?`)
-  /// - `lastForegroundTransitionAt` (`int?`): epoch-ms
+  /// - `lastForegroundTransitionAt` (`int?`): epoch-ms of a state *transition*,
+  ///   not of every `startForeground` call (#378)
   /// - `platform` (`String`)
   ///
   /// On iOS the promotion fields are null/false (no foreground service exists),

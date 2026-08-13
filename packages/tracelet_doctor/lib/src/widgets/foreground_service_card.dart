@@ -11,7 +11,7 @@ import 'package:tracelet_doctor/src/widgets/common.dart';
 /// actually operational. This card renders the map returned by
 /// `Tracelet.getForegroundServiceHealth()`, surfacing whether the service is
 /// running and promoted, and the last promotion result (`success` / `deferred`
-/// / `failed`) with its failure class and message.
+/// / `failed` / `suppressed`) with its failure class and message.
 ///
 /// On iOS and web there is no foreground service; the card reflects that.
 class ForegroundServiceCard extends StatelessWidget {
@@ -42,6 +42,13 @@ class ForegroundServiceCard extends StatelessWidget {
     }
     if (_serviceForeground) {
       return (label: 'Healthy', color: DoctorTheme.success);
+    }
+    // Hidden on purpose: `showNotificationOnPauseOnly` demotes the service
+    // while the app is on screen (#378). Tracking is running and the service
+    // is alive — this is not the OS refusing a promotion, and colouring it as
+    // a failure would be crying wolf at a configured behaviour.
+    if (_result == 'suppressed') {
+      return (label: 'Suppressed', color: DoctorTheme.accent);
     }
     if (_result == 'deferred') {
       return (label: 'Deferred', color: DoctorTheme.warning);
@@ -117,7 +124,14 @@ class ForegroundServiceCard extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  _result == 'deferred'
+                  _result == 'suppressed'
+                      ? 'Notification hidden while the app is on screen '
+                            '(showNotificationOnPauseOnly). Tracking continues; '
+                            'the service is promoted again when the app '
+                            'backgrounds. Ignored under stopOnTerminate: false, '
+                            'where the gap would let a swipe from recents kill '
+                            'the process (#378).'
+                      : _result == 'deferred'
                       ? 'Promotion deferred — Android will retry when the app '
                             'returns to the foreground.'
                       : _result == 'failed'

@@ -160,11 +160,41 @@ class LocationService : Service(), DefaultLifecycleObserver {
             failureClass: String? = null,
             failureMessage: String? = null,
         ) {
+            // #378: stamp genuine transitions only. startForeground() is also
+            // called to re-post a notification the service already holds — a
+            // config change, or the background transition in persistent mode —
+            // and counting those as transitions made
+            // lastForegroundTransitionAt useless for the one question it can
+            // answer: how long the process spent with no foreground service,
+            // which is what decides whether a task removal kills it.
+            val transitioned = promoted != foregroundPromoted || result != lastPromotionResult
             lastPromotionResult = result
             foregroundPromoted = promoted
             lastPromotionFailureClass = failureClass
             lastPromotionFailureMessage = failureMessage
-            lastPromotionTimestampMs = System.currentTimeMillis()
+            if (transitioned) lastPromotionTimestampMs = System.currentTimeMillis()
+        }
+
+        /**
+         * Records a *deliberate* demotion — pause-only visibility taking the
+         * notification down while the app is on screen (#378).
+         *
+         * Without this the health snapshot kept reporting `serviceForeground =
+         * true` from the last successful promotion, so the API whose entire
+         * purpose is to say whether background tracking is operational claimed
+         * a foreground service precisely during the window where there was
+         * none. `suppressed` is a fourth `lastForegroundPromotionResult` value
+         * alongside `success`, `deferred` and `failed`, and it separates
+         * "hidden on purpose, still tracking" from "the OS refused" — which
+         * look identical on the boolean alone.
+         */
+        private fun recordDemotion() {
+            val transitioned = foregroundPromoted || lastPromotionResult != "suppressed"
+            lastPromotionResult = "suppressed"
+            foregroundPromoted = false
+            lastPromotionFailureClass = null
+            lastPromotionFailureMessage = null
+            if (transitioned) lastPromotionTimestampMs = System.currentTimeMillis()
         }
 
         /**
@@ -581,6 +611,9 @@ class LocationService : Service(), DefaultLifecycleObserver {
 
     private var isForegroundService = false
     private var lastInForeground: Boolean? = null
+
+    /** One override notice per start, not per transition — see [pauseOnlyVisibilityAllowed] (#378). */
+    private var pauseOnlyOverrideLogged = false
     private var wakeLock: PowerManager.WakeLock? = null
 
     // Renews the OEM-safe wakelock before its auto-expiry timeout so continuous
@@ -686,6 +719,14 @@ class LocationService : Service(), DefaultLifecycleObserver {
         // We set isRunning true immediately so updateNotificationVisibility() works on the first call.
         if (intent?.action == ACTION_START || intent?.action == null) {
             isRunning = true
+            // #378: re-announce the pause-only override once per explicit start
+            // (and per sticky restart), rather than once per service instance.
+            // A service that has been alive since before the config changed
+            // would otherwise never say why the notification is visible, and
+            // that line is the whole difference between this override and the
+            // silent failure it replaces. Bounded by how often an app starts
+            // tracking, not by how often it is backgrounded.
+            pauseOnlyOverrideLogged = false
         }
 
         if (!isForegroundService) {
@@ -821,9 +862,14 @@ class LocationService : Service(), DefaultLifecycleObserver {
             }
 
             // The UI is gone — for foreground-service tracking modes the
-            // persistent notification must now be visible (with
-            // showNotificationOnPauseOnly it was suppressed while the app was
-            // open). Force it on before the process is torn down.
+            // persistent notification must now be visible. Since #378 this is
+            // a backstop, not the guarantee: pause-only visibility no longer
+            // demotes the service while stopOnTerminate is false, so there is
+            // normally nothing to restore here. It cannot be the guarantee,
+            // because ActivityManager has already chosen which processes to
+            // kill by the time this callback runs — see
+            // [pauseOnlyVisibilityAllowed]. It still matters for a service that
+            // was demoted for some other reason before the task was removed.
             lastInForeground = false
             updateNotificationVisibility(forcedForeground = false)
 
@@ -1770,9 +1816,48 @@ class LocationService : Service(), DefaultLifecycleObserver {
         nm.notify(NOTIFICATION_ID, buildNotification())
     }
 
+    /**
+     * Whether `showNotificationOnPauseOnly` may take the notification down
+     * while the app is on screen (#378).
+     *
+     * Hiding it is implemented by *demoting* the service — there is no such
+     * thing as a foreground service without a notification — and a process
+     * whose services are all demoted is one `ActivityManager` kills on task
+     * removal. It picks the processes to kill from `proc.foregroundServices`
+     * under its own lock, **before** [onTaskRemoved] is dispatched to the app's
+     * main thread, so forcing the notification back on there cannot win that
+     * race: the decision is already made. A swipe from recents inside that
+     * window — measured at 285ms on a Pixel Fold and 700-1500ms on the
+     * reporter's API 35 device — therefore killed the process outright, taking
+     * the headless engine, the queued events and the logs with it.
+     *
+     * `stopOnTerminate = false` is a promise that tracking outlives task
+     * removal, and it outranks a cosmetic preference: pause-only visibility is
+     * refused while it is set, once and out loud on the always-on lifecycle
+     * channel, because the failure it replaces was silent. With
+     * `stopOnTerminate = true` nothing is promised past the swipe and the
+     * suppression is honored exactly as before.
+     */
+    private fun pauseOnlyVisibilityAllowed(): Boolean {
+        if (!configManager.getShowNotificationOnPauseOnly()) return false
+        if (configManager.getStopOnTerminate()) return true
+        if (!pauseOnlyOverrideLogged) {
+            pauseOnlyOverrideLogged = true
+            TraceletLog.lifecycle(
+                "notification: showNotificationOnPauseOnly ignored because " +
+                    "stopOnTerminate=false — hiding the notification demotes the " +
+                    "foreground service, and a swipe from recents in that window " +
+                    "kills the process (#378). Set stopOnTerminate=true to hide it " +
+                    "while the app is open, or showNotificationOnPauseOnly=false " +
+                    "to stop asking."
+            )
+        }
+        return false
+    }
+
     private fun updateNotificationVisibility(forcedForeground: Boolean? = null) {
         if (!isRunning) return
-        val showOnPauseOnly = configManager.getShowNotificationOnPauseOnly()
+        val showOnPauseOnly = pauseOnlyVisibilityAllowed()
         // Lifecycle callbacks pass the real UI state; isAppInForeground() is only
         // a fallback for the onStartCommand / boot path where no authoritative
         // signal is available.
@@ -1787,6 +1872,10 @@ class LocationService : Service(), DefaultLifecycleObserver {
                     TraceletLog.debug("Suppressing notification (App in foreground)")
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     isForegroundService = false
+                    // #378: the health snapshot must say the service is no
+                    // longer promoted — this is the state in which a task
+                    // removal is fatal, and it used to report the opposite.
+                    recordDemotion()
                 }
             } else {
                 // Show in background if not already shown OR if we just transitioned.

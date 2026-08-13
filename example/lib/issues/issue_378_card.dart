@@ -11,9 +11,9 @@ import 'package:tracelet_example/issues/issue_card_state.dart';
 ///
 /// Pause-only visibility is implemented by *demoting* the service:
 /// `updateNotificationVisibility` calls `stopForeground(STOP_FOREGROUND_REMOVE)`
-/// while the app is on screen (`LocationService.kt:1784-1790`) and calls
+/// while the app is on screen (`LocationService.kt:1870-1880`) and calls
 /// `startForeground` again when `ProcessLifecycleOwner` reports the app
-/// backgrounded (`:1791-1797`). Between those two points the process is running
+/// backgrounded (`:1881-1887`). Between those two points the process is running
 /// a *plain* started service, not a foreground one.
 ///
 /// That gap is what the report is about. On task removal `ActivityManager`
@@ -25,9 +25,17 @@ import 'package:tracelet_example/issues/issue_card_state.dart';
 /// measured 0.7 s and 1.5 s gaps on an API 35 device and got one kill out of
 /// three swipes.
 ///
-/// The existing mitigation in `onTaskRemoved` (`:823-828`) forces the
-/// notification on when the task is removed. It is not sufficient, and this
-/// card exists partly to show why: it runs after the kill decision.
+/// The mitigation that was already in `onTaskRemoved` forces the notification
+/// on when the task is removed. It cannot work, and this card exists partly to
+/// show why: it runs after the kill decision.
+///
+/// **The fix** is `pauseOnlyVisibilityAllowed` (`LocationService.kt:1842`):
+/// while `stopOnTerminate` is false the service is never demoted, so no window
+/// exists to swipe into, and the refusal is announced once per `start()` on the
+/// always-on lifecycle channel. `stopOnTerminate: true` keeps the feature
+/// unchanged — nothing is promised past the swipe there. The card scores the
+/// announcement too: a fix that traded a silent kill for a silent override
+/// would have solved only half of what was reported.
 ///
 /// **What each row is read from**, tagged in the output the way #376's card
 /// tags its own evidence:
@@ -91,6 +99,12 @@ class _Issue378CardState extends State<Issue378Card>
   /// service — the precondition for the reported kill.
   static const _suppressedMarker =
       'Suppressing notification (App in foreground)';
+
+  /// The fix announcing itself on the always-on lifecycle channel: pause-only
+  /// visibility refused because `stopOnTerminate` is false. Written once per
+  /// explicit `start()`, so it is in the trail of any armed run.
+  static const _overrideMarker =
+      'showNotificationOnPauseOnly ignored because stopOnTerminate=false';
 
   /// The re-promotion on the background transition. Present in the trail, it
   /// corroborates the measured window; the exact instant comes from
@@ -217,6 +231,31 @@ class _Issue378CardState extends State<Issue378Card>
                   'describe #378. The demo baseline sets both; something '
                   'reconfigured the SDK after prepareIssueRun().',
       );
+
+      if (!pauseOnly || stopOnTerminate) {
+        note(
+          '[native log] the override announces itself',
+          'only meaningful for the reported combination, which this run is not',
+        );
+      } else {
+        final announced = trail.where(
+          (e) => e.message.contains(_overrideMarker),
+        );
+        check(
+          '[native log] the override announces itself',
+          announced.isNotEmpty,
+          announced.isNotEmpty
+              ? 'the lifecycle channel carries "${announced.first.message}" — '
+                    'a developer who wonders why the notification is visible '
+                    'has the answer in the log, at every log level, including '
+                    'from a killed-state run'
+              : 'nothing in the trail explains the notification. Either the '
+                    'override is not applied at all (see the rows below) or it '
+                    'is applied silently, which is the half of #378 that made '
+                    'it cost the reporter a debugging session rather than a '
+                    'config change.',
+        );
+      }
 
       final suppressed = trail.where(
         (e) => e.message.contains(_suppressedMarker),
@@ -368,6 +407,13 @@ class _Issue378CardState extends State<Issue378Card>
 
     await Tracelet.clearLogs();
     await _logQuietly('$_armedMarker${DateTime.now().millisecondsSinceEpoch}');
+
+    // stop() before start() on purpose: `start()` while tracking is already
+    // live returns before it ever reaches the service ("start ignored — already
+    // tracking continuously"), so the arm phase would produce no ACTION_START,
+    // no fresh service instance, and none of the entries the verify phase reads.
+    await Tracelet.stop();
+    await Future<void>.delayed(const Duration(milliseconds: 600));
     await Tracelet.start();
 
     setStatus(
