@@ -1,3 +1,9 @@
+## 3.8.4
+
+**FEAT**: `TlForegroundServiceConfig` carries `notificationStartedAt`, `notificationShowTimer` and `notificationOnlyAlertOnce`, and `TlLiveActivityConfig` carries `startedAt` and `showTimer`, for the OS-rendered elapsed timer. The fields are appended at the end of each Pigeon class and the generated decoders read those indices unconditionally, so a native package must resolve against this interface version or newer — the platform packages' constraints move with this release ([#376](https://github.com/Ikolvi/Tracelet/issues/376)).
+
+**FIX**: the method-channel fallback sends `liveActivityConfig`. `_iosToMap` never wrote the key, so a platform implementation on that path saw no Live Activity configuration at all — timer fields or otherwise ([#376](https://github.com/Ikolvi/Tracelet/issues/376)).
+
 ## 3.8.3
 
 **FEAT**: `TlTelematicsRecord` carries `speed` and `value`. Both are nullable, so a Dart side newer than the native plugin decodes a missing field as `null` rather than failing. `severity` is unchanged ([#367](https://github.com/Ikolvi/Tracelet/issues/367)).

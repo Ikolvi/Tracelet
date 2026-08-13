@@ -1,3 +1,7 @@
+## 3.8.4
+
+**FEAT**: the foreground-service card renders `suppressed` as a state of its own. A notification hidden on purpose by `showNotificationOnPauseOnly` used to read as "not confirmed yet", indistinguishable from the OS refusing a promotion; it is now labelled and explained as the configured behaviour it is — tracking continues, the service is promoted again when the app backgrounds, and the setting is ignored entirely under `stopOnTerminate: false` ([#378](https://github.com/Ikolvi/Tracelet/issues/378)).
+
 ## 3.8.3
 
 Version alignment with tracelet 3.8.3.

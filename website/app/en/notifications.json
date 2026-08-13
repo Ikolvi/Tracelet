@@ -1,20 +1,20 @@
 {
-  "badgeTitle": "New in 3.8.3",
+  "badgeTitle": "New in 3.8.4",
   "items": [
     {
-      "title": "Geofences smaller than 100 m now work",
-      "description": "Play Services and CoreLocation both need a radius of roughly 100 m — below that, a fence is smaller than the error of the fixes it is compared against and no crossing is ever reported. A sub-100 m circle, and any polygon, is now evaluated in-app against its true radius instead. Note the cost: such a fence needs the location stream running, which an OS-resolvable fence does not.",
-      "href": "/core/geofencing"
+      "title": "An elapsed timer the OS ticks for you",
+      "description": "notificationStartedAt + notificationShowTimer put a running clock in the Android tracking notification, and startedAt + showTimer do the same for an iOS Live Activity. The system advances both — no reposts, so no once-a-minute rewrite of your own and no alert on each one. notificationOnlyAlertOnce covers the other half: notification text that changes while tracking runs can now update silently.",
+      "href": "/getting-started/platform-setup/android"
     },
     {
-      "title": "ENTER/EXIT no longer stop firing mid-session",
-      "description": "Proximity registration rode the persistence-filtered location stream, so 3.8.0's transport-mode auto-tune could reject every fix and freeze it — after which no crossing was reported again. Geofences added with addGeofence() alongside continuous tracking also survive task removal and a reboot now.",
-      "href": "/core/geofencing"
+      "title": "showNotificationOnPauseOnly no longer defeats stopOnTerminate",
+      "description": "Hiding the notification demotes the foreground service, and Android kills a process holding none when its task is removed — so a swipe from recents in that window took the process with it. The setting is now ignored while stopOnTerminate is false, and says so once in the log. getForegroundServiceHealth() reports a hidden-on-purpose notification as a fourth result, suppressed, instead of claiming a service that is not there.",
+      "href": "/core/foreground-service-health"
     },
     {
-      "title": "notifyOnDwell and loiteringDelay are persisted",
-      "description": "These columns existed but were never written or read, so every fence rebuilt from the database came back with DWELL off and a zero loitering delay — DWELL stopped working permanently after the first restore, and an explicit notifyOnExit: false was silently reverted.",
-      "href": "/core/geofencing"
+      "title": "Events keep reaching your headless task",
+      "description": "With another plugin's background engine in the app — firebase_messaging's, typically — task removal could leave Tracelet broadcasting into an event fan-out with no members at all. Native tracking ran on and Dart received nothing, silently. Events now fall through to the registered headless task whenever no engine can receive them.",
+      "href": "/getting-started/platform-setup/android"
     }
   ]
 }

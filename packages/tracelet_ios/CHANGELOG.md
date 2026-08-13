@@ -1,3 +1,7 @@
+## 3.8.4
+
+**FEAT**: the Live Activity host API carries `startedAt` and `showTimer` through to the SDK, so the Live Activity's OS-rendered count-up timer is configurable from Dart ([#376](https://github.com/Ikolvi/Tracelet/issues/376)).
+
 ## 3.8.3
 
 **FEAT**: the telematics host API carries `speed` and `value` through to Dart, so `Tracelet.getTelematicsEvents()` returns the magnitudes behind each event's normalized severity rather than dropping them at the platform boundary ([#367](https://github.com/Ikolvi/Tracelet/issues/367)).

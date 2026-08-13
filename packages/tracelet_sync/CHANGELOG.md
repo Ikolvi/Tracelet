@@ -1,3 +1,7 @@
+## 3.8.4
+
+Version alignment with tracelet 3.8.4.
+
 ## 3.8.3
 
 **FEAT**: `SyncProvider` gains `postTelematicsBlocking`, used when `HttpConfig.telematicsUrl` is set to send telematics to their own endpoint. It reuses the existing fallback HTTP path, so the dedicated endpoint gets the same headers, timeouts, retry/backoff and 401 token-refresh handling as the location sync. It has a default implementation returning `false` — "not delivered" — so third-party providers keep compiling and cannot settle events they never sent, and it is only reached when `telematicsUrl` is set ([#368](https://github.com/Ikolvi/Tracelet/issues/368), [#366](https://github.com/Ikolvi/Tracelet/issues/366)).

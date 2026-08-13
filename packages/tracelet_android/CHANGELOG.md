@@ -1,3 +1,9 @@
+## 3.8.4
+
+**FEAT**: the foreground-service host API carries `notificationStartedAt`, `notificationShowTimer` and `notificationOnlyAlertOnce` through to the SDK, so the notification's OS-rendered elapsed timer and its alert-once behaviour are configurable from Dart ([#376](https://github.com/Ikolvi/Tracelet/issues/376)).
+
+**FIX**: events reach the registered headless task when no member of the event fan-out can receive them. After #364 a foreign plugin's FlutterEngine correctly stays out of `MultiEventSender` — and `onDetachedFromEngine` then removes the primary's own dispatcher, leaving the SDK holding a composite with no members at all while the other plugin's background engine keeps the process alive. Every `send*` was `dispatchers.forEach { … }`, a no-op on an empty list, and `headlessFallback` belonged to `EventDispatcher`, i.e. to the members that had just left: native tracking kept running, Dart received nothing after task removal, and no log line said so. `MultiEventSender` now takes the routing decision itself — broadcast when any member can receive, otherwise a single dispatch to the same `HeadlessTaskService` instance the per-dispatcher fallbacks use, which also de-duplicates the case where several members hold a dead `eventApi` — and both transitions are logged on the always-on lifecycle channel. Reproduced with the plugin that actually causes it: firebase_messaging's own background service, whose engine survives task removal ([#371](https://github.com/Ikolvi/Tracelet/issues/371)).
+
 ## 3.8.3
 
 **FEAT**: the telematics host API carries `speed` and `value` through to Dart, so `Tracelet.getTelematicsEvents()` returns the magnitudes behind each event's normalized severity rather than dropping them at the platform boundary ([#367](https://github.com/Ikolvi/Tracelet/issues/367)).

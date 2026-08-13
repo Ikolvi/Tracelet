@@ -1,13 +1,21 @@
 import os
 import re
 
-version_from = "3.8.2"
-version_to = "3.8.3"
+version_from = "3.8.3"
+version_to = "3.8.4"
 
-# Patch release: the telematics cycle — #366, #367, #368, #370 — plus the
-# persistence retention work (#361, #362) and the foreign-engine event capture
-# fix (#364), all landed as hand-written `## Unreleased` entries since 3.8.2
-# shipped. This run promotes them rather than writing new ones.
+# Patch release: the notification/Live Activity elapsed timer (#376), the
+# pause-only-vs-stopOnTerminate arbitration and its health-snapshot fallout
+# (#378), and the empty-fan-out headless routing fix (#371). Everything in #376
+# is additive — new nullable config fields, no signature or default changed —
+# so a patch is the right step.
+#
+# The dependency bumps below are load-bearing this cycle, not bookkeeping: #376
+# appends fields to TlForegroundServiceConfig and TlLiveActivityConfig, and
+# Pigeon serialises those as positional lists whose decoders read the appended
+# indices unconditionally. A native package resolved against the older
+# interface would read past the end of the list and throw during ready(), so
+# the `tracelet_platform_interface: ^` constraints must land on this version.
 
 # 1. Bump version strings
 exact_replacements = [
