@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #297 — high-accuracy geofence ENTER/EXIT intermittently not firing
 /// (location starvation on stable providers).
@@ -32,13 +33,12 @@ class Issue297Card extends StatefulWidget {
   State<Issue297Card> createState() => _Issue297CardState();
 }
 
-class _Issue297CardState extends State<Issue297Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue297CardState extends State<Issue297Card>
+    with IssueCardRun<Issue297Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _run;
 
   static const _lat = 10.787929;
   static const _lng = 76.684183;
@@ -103,7 +103,7 @@ class _Issue297CardState extends State<Issue297Card> {
   }
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     try {
       final results = <String>[];
       var allPass = true;
@@ -175,7 +175,7 @@ class _Issue297CardState extends State<Issue297Card> {
     } catch (e) {
       _set('❌ FAILED: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -195,8 +195,8 @@ class _Issue297CardState extends State<Issue297Card> {
           'raw-stream path fires exactly one EXIT — and the persisted fix count '
           'is identical, so location volume is unchanged. Runs in-process; no '
           'permissions or device movement required.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

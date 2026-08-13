@@ -1,5 +1,94 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:tracelet_example/issues/issue_run_harness.dart';
+
+/// The monospace result box every issue card prints into.
+///
+/// Selectable, and with a one-tap copy of the whole message (#374). Cards are
+/// the only place the SDK's actual answer is shown — several print multi-line
+/// reports with per-assertion detail, exception text and payload keys — and
+/// pasting a red one into an issue is the normal next step, which a plain [Text]
+/// made impossible.
+class IssueStatusBox extends StatelessWidget {
+  const IssueStatusBox({required this.status, this.label, super.key});
+
+  final String status;
+
+  /// Named in the "copied" confirmation, so it is clear which card was copied
+  /// when several are on screen.
+  final String? label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 12, 4, 12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: SelectableText(
+              status,
+              // Explicit dark text: the box background is always light
+              // (grey.shade100), so without this the status is invisible in
+              // dark mode (default text color becomes light → white-on-white).
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 13,
+                color: Colors.black87,
+              ),
+            ),
+          ),
+          IssueCopyButton(text: status, label: label),
+        ],
+      ),
+    );
+  }
+}
+
+/// Copies a card's result to the clipboard and says so.
+///
+/// Selection alone is awkward on a phone for a report that runs past the fold,
+/// so every status box carries one of these.
+class IssueCopyButton extends StatelessWidget {
+  const IssueCopyButton({
+    required this.text,
+    this.label,
+    this.color = Colors.black54,
+    super.key,
+  });
+
+  final String text;
+
+  /// Named in the confirmation, so it is clear which card was copied when
+  /// several are on screen.
+  final String? label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: Icon(Icons.copy, size: 18, color: color),
+      tooltip: 'Copy result',
+      visualDensity: VisualDensity.compact,
+      onPressed: () async {
+        await Clipboard.setData(ClipboardData(text: text));
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            duration: const Duration(seconds: 2),
+            content: Text(label == null ? 'Result copied' : 'Copied: $label'),
+          ),
+        );
+      },
+    );
+  }
+}
 
 /// Propagates the current issue-search query down to every [IssueCardShell] so
 /// each card can filter itself against its own on-screen text (title +
@@ -102,25 +191,7 @@ class IssueCardShell extends StatelessWidget {
             const SizedBox(height: 8),
             Text(description),
             const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: Text(
-                status,
-                // Explicit dark text: the box background is always light
-                // (grey.shade100), so without this the status is invisible in
-                // dark mode (default text color becomes light → white-on-white).
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 13,
-                  color: Colors.black87,
-                ),
-              ),
-            ),
+            IssueStatusBox(status: status, label: title),
             const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: running

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #357 — a geofence added *after* `start()` must still get the fix
 /// cadence it is decided from.
@@ -33,10 +34,8 @@ class Issue357Card extends StatefulWidget {
   State<Issue357Card> createState() => _Issue357CardState();
 }
 
-class _Issue357CardState extends State<Issue357Card> {
-  String _status = 'Idle';
-  bool _running = false;
-
+class _Issue357CardState extends State<Issue357Card>
+    with IssueCardRun<Issue357Card> {
   static const _fenceId = 'issue-357-cadence';
   static const _radiusMeters = 10.0;
 
@@ -65,9 +64,10 @@ class _Issue357CardState extends State<Issue357Card> {
   /// what the location cadence has to be.
   static const _realignMarker = 'realigning the location cadence';
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  void _set(String s) => setStatus(s);
+
+  @override
+  IssueRunner? get cardRunner => _run;
 
   /// Highest log id currently stored — the window boundary.
   ///
@@ -92,7 +92,7 @@ class _Issue357CardState extends State<Issue357Card> {
   }
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -232,7 +232,7 @@ class _Issue357CardState extends State<Issue357Card> {
     } catch (e) {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -251,8 +251,8 @@ class _Issue357CardState extends State<Issue357Card> {
           'Previously the SDK settled that question at start() and never '
           'revisited it, so a fence added afterwards was judged from one fix '
           'per distanceFilter metres travelled and EXIT fired late or never.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

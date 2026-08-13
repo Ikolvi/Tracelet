@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #324 — the always-on lifecycle channel never recorded a tracking
 /// session's own start or stop, so a foreground run left evidence only on the
@@ -41,13 +42,12 @@ class Issue324Card extends StatefulWidget {
   State<Issue324Card> createState() => _Issue324CardState();
 }
 
-class _Issue324CardState extends State<Issue324Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue324CardState extends State<Issue324Card>
+    with IssueCardRun<Issue324Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _run;
 
   /// Clears the log, runs one `start()`/`stop()` cycle, and returns the
   /// `LIFECYCLE` messages it produced.
@@ -69,7 +69,7 @@ class _Issue324CardState extends State<Issue324Card> {
   }
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -265,7 +265,7 @@ class _Issue324CardState extends State<Issue324Card> {
     } catch (e) {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -283,8 +283,8 @@ class _Issue324CardState extends State<Issue324Card> {
           'logged at info only, so the trail could not say that tracking was '
           'stopped — and the only entries a foreground run produced were '
           'one-shots that fire once per process launch.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

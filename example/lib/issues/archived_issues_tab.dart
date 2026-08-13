@@ -6,6 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:crypto/crypto.dart';
 import 'package:tracelet/tracelet.dart' hide State;
+import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
+import 'package:tracelet_example/issues/issue_sweep.dart';
 
 @pragma('vm:entry-point')
 void headlessSyncBodyBuilder136(HeadlessEvent event) {
@@ -26,6 +29,11 @@ class ArchivedIssuesTab extends StatefulWidget {
 class _ArchivedIssuesTabState extends State<ArchivedIssuesTab> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
+  static const _scope = 'archived';
+  late final IssueSweep _sweep = IssueSweep(
+    scrollController: _scrollController,
+    scope: _scope,
+  );
   String _searchQuery = '';
 
   bool _isTracking = false;
@@ -88,10 +96,18 @@ class _ArchivedIssuesTabState extends State<ArchivedIssuesTab> {
         _searchQuery = _searchController.text;
       });
     });
+    _sweep.addListener(_onSweepChanged);
+  }
+
+  void _onSweepChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    _sweep
+      ..removeListener(_onSweepChanged)
+      ..dispose();
     _scrollController.dispose();
     _searchController.dispose();
     _issue140Timer?.cancel();
@@ -108,18 +124,6 @@ class _ArchivedIssuesTabState extends State<ArchivedIssuesTab> {
       setState(() {
         _statuses[issue] = status;
       });
-    }
-  }
-
-  void _scrollTo(int issue) {
-    final key = _keys[issue];
-    if (key != null && key.currentContext != null) {
-      Scrollable.ensureVisible(
-        key.currentContext!,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-        alignment: 0.1,
-      );
     }
   }
 
@@ -810,50 +814,28 @@ class _ArchivedIssuesTabState extends State<ArchivedIssuesTab> {
     }
   }
 
+  /// Runs every card on the tab (#372).
+  ///
+  /// This used to be a hand-maintained `if` ladder over [_allIssues] that
+  /// scrolled with [Scrollable.ensureVisible] on off-screen cards — which does
+  /// nothing, because a lazy list has not built them — and awaited each test
+  /// with no timeout, so one card that never returned hung the whole run with no
+  /// way to stop it. [IssueSweep] walks the list instead, running whatever has
+  /// mounted, bounding each card and staying cancellable.
   Future<void> _executeAll() async {
-    for (final issue in _allIssues) {
-      // Issues 134, 136 & 140 are manual, long-running background/motion repros —
-      // not part of the automated sweep.
-      if (issue == 134 || issue == 136 || issue == 140) continue;
-      _scrollTo(issue);
-      if (issue == 115) {
-        await _startIssue115Tracking();
-        await Future.delayed(const Duration(seconds: 3));
-        await _stopTracking();
-      } else if (issue == 117) {
-        await _testIssue117();
-        await Future.delayed(const Duration(seconds: 2));
-      } else if (issue == 118) {
-        await _runIssue118All();
-      } else if (issue == 119) {
-        await _testIssue119();
-      } else if (issue == 120) {
-        await _testIssue120();
-      } else if (issue == 124) {
-        await _testIssue124HeaderCrash();
-      } else if (issue == 125) {
-        await _testIssue125();
-      } else if (issue == 126) {
-        await _testIssue126();
-      } else if (issue == 137) {
-        await _testIssue137();
-      } else if (issue == 138) {
-        await _testIssue138();
-      } else if (issue == 139) {
-        await _testIssue139();
-      } else if (issue == 147) {
-        await _testIssue147();
-      } else if (issue == 149) {
-        await _testIssue149();
-      } else if (issue == 154) {
-        await _testIssue154();
-      } else if (issue == 159) {
-        await _testIssue159();
-      } else if (issue == 175) {
-        await _testIssue175();
-      }
-      await Future.delayed(const Duration(seconds: 2));
-    }
+    // Sweeping means "run everything", so a filter left in the search box would
+    // silently make it a lie.
+    _searchController.clear();
+    await _sweep.start();
+  }
+
+  /// Issue #115 in one call, for the sweep: its card drives tracking with
+  /// separate Start and Stop buttons, so the sweep needs the pair plus the
+  /// window in between that the old ladder hard-coded.
+  Future<void> _sweepIssue115() async {
+    await _startIssue115Tracking();
+    await Future<void>.delayed(const Duration(seconds: 3));
+    await _stopTracking();
   }
 
   // ==== ISSUE 137: deltaCoordinatePrecision default ====
@@ -1526,6 +1508,7 @@ class _ArchivedIssuesTabState extends State<ArchivedIssuesTab> {
     required String title,
     required String description,
     required List<Widget> actions,
+    IssueRunner? sweepAction,
   }) {
     if (_searchQuery.isNotEmpty) {
       final query = _searchQuery.toLowerCase();
@@ -1551,41 +1534,63 @@ class _ArchivedIssuesTabState extends State<ArchivedIssuesTab> {
     if (isFailure) statusColor = Colors.red.shade700;
     if (isRunning) statusColor = Colors.blue.shade700;
 
-    return Card(
-      key: _keys[issueNumber],
-      margin: const EdgeInsets.only(bottom: 16),
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Issue #$issueNumber: $title',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(description),
-            const SizedBox(height: 16),
-            Wrap(spacing: 8, runSpacing: 8, children: actions),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: statusColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: statusColor.withValues(alpha: 0.3)),
-              ),
-              child: Text(
-                'Status: $status',
-                style: TextStyle(
-                  color: statusColor,
+    // Enlists the card in Execute All for as long as it is mounted, the same
+    // deal the card widgets get from IssueCardRun. A null [sweepAction] keeps a
+    // card manual — a start/stop toggle, or a repro that needs the app killed.
+    return IssueRunnerScope(
+      id: 'issue-$issueNumber',
+      run: sweepAction,
+      child: Card(
+        key: _keys[issueNumber],
+        margin: const EdgeInsets.only(bottom: 16),
+        elevation: 2,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Issue #$issueNumber: $title',
+                style: const TextStyle(
+                  fontSize: 18,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(description),
+              const SizedBox(height: 16),
+              Wrap(spacing: 8, runSpacing: 8, children: actions),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: SelectableText(
+                        'Status: $status',
+                        style: TextStyle(
+                          color: statusColor,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    IssueCopyButton(
+                      text: status,
+                      label: 'Issue #$issueNumber',
+                      color: statusColor,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1619,9 +1624,9 @@ class _ArchivedIssuesTabState extends State<ArchivedIssuesTab> {
                 ),
                 const SizedBox(width: 12),
                 FilledButton.icon(
-                  onPressed: _executeAll,
-                  icon: const Icon(Icons.play_arrow),
-                  label: const Text('Execute All'),
+                  onPressed: _sweep.active ? _sweep.cancel : _executeAll,
+                  icon: Icon(_sweep.active ? Icons.stop : Icons.play_arrow),
+                  label: Text(_sweep.active ? 'Stop' : 'Execute All'),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 20,
@@ -1635,440 +1640,455 @@ class _ArchivedIssuesTabState extends State<ArchivedIssuesTab> {
               ],
             ),
           ),
+          IssueSweepBanner(sweep: _sweep),
           Expanded(
-            child: ListView(
-              controller: _scrollController,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              children: [
-                _buildIssueCard(
-                  issueNumber: 115,
-                  title: 'Battery Drain Test',
-                  description:
-                      'Tests iOS SDK with pausesLocationUpdatesAutomatically = false.',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _isTracking ? null : _startIssue115Tracking,
-                      icon: const Icon(Icons.battery_alert),
-                      label: const Text('Start Tracking'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: _isTracking ? _stopTracking : null,
-                      icon: const Icon(Icons.stop),
-                      label: const Text('Stop Tracking'),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 117,
-                  title: 'Custom Sync Body Bypass',
-                  description:
-                      'Tests that TraceletSync intercepts the batch correctly and uses the custom body builder instead of the default structure.',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _testIssue117,
-                      icon: const Icon(Icons.cloud_sync),
-                      label: const Text('Test Custom Sync Body'),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 118,
-                  title: 'SSL Pinning Fingerprints',
-                  description:
-                      'Verifies that sync correctly validates against SHA-256 certificate fingerprints and blocks invalid connections natively.',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _testIssue118Valid,
-                      icon: const Icon(Icons.lock_open),
-                      label: const Text('Test Valid Fingerprint'),
-                    ),
-                    FilledButton.icon(
-                      onPressed: _testIssue118Invalid,
-                      icon: const Icon(Icons.lock),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.red,
+            child: IssueCardScope(
+              name: _scope,
+              child: ListView(
+                controller: _scrollController,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: [
+                  _buildIssueCard(
+                    issueNumber: 115,
+                    sweepAction: _sweepIssue115,
+                    title: 'Battery Drain Test',
+                    description:
+                        'Tests iOS SDK with pausesLocationUpdatesAutomatically = false.',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _isTracking ? null : _startIssue115Tracking,
+                        icon: const Icon(Icons.battery_alert),
+                        label: const Text('Start Tracking'),
                       ),
-                      label: const Text('Test Invalid Fingerprint'),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 120,
-                  title: 'Rust Core Parity',
-                  description:
-                      'Verifies that UniFFI Rust classes have all properties required by the Dart Config models to prevent silent dropping during serialization.',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _testIssue120,
-                      icon: const Icon(Icons.sync_problem),
-                      label: const Text('Test Config Parity'),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 119,
-                  title: 'Database Timestamp Optimization',
-                  description:
-                      'Verifies that timestamp_ms filters properly constrain results for O(log N) DB query performance.',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _testIssue119,
-                      icon: const Icon(Icons.timer),
-                      label: const Text('Test Timestamp Filter'),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 124,
-                  title: 'Header Parsing & Fallback',
-                  description:
-                      'Reproduces the Header Parse Crash and Headless Timeout bugs.',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _testIssue124HeaderCrash,
-                      icon: const Icon(Icons.http),
-                      label: const Text('Reproduce Header Crash'),
-                    ),
-                    FilledButton.icon(
-                      onPressed: _testIssue124Timeout,
-                      icon: const Icon(Icons.timer_off),
-                      label: const Text('Reproduce Timeout Bug'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.red,
+                      OutlinedButton.icon(
+                        onPressed: _isTracking ? _stopTracking : null,
+                        icon: const Icon(Icons.stop),
+                        label: const Text('Stop Tracking'),
                       ),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 125,
-                  title: 'Timeout Payload Abort',
-                  description:
-                      'Verifies that if the custom sync body builder times out, the native SDK aborts the sync and does NOT post an error payload to the backend.',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _testIssue125,
-                      icon: const Icon(Icons.timer_off),
-                      label: const Text('Test Timeout Abort'),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 134,
-                  title: 'Background Auto-Sync Stalls',
-                  description:
-                      'Reproduces the reporter setup: continuous GPS tracking + '
-                      'autoSync to the scanned backend with a custom sync-body '
-                      'builder. Start, then background the app (do NOT kill it) '
-                      'and move — watch the test server to see if on-the-fly '
-                      'sync keeps firing or stalls ("synced 0 locations").',
-                  actions: [
-                    Row(
-                      children: [
-                        FilledButton.icon(
-                          onPressed: _isIssue134Tracking
-                              ? null
-                              : _startIssue134Repro,
-                          icon: const Icon(Icons.directions_car),
-                          label: const Text('Start Repro'),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 117,
+                    sweepAction: _testIssue117,
+                    title: 'Custom Sync Body Bypass',
+                    description:
+                        'Tests that TraceletSync intercepts the batch correctly and uses the custom body builder instead of the default structure.',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _testIssue117,
+                        icon: const Icon(Icons.cloud_sync),
+                        label: const Text('Test Custom Sync Body'),
+                      ),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 118,
+                    sweepAction: _runIssue118All,
+                    title: 'SSL Pinning Fingerprints',
+                    description:
+                        'Verifies that sync correctly validates against SHA-256 certificate fingerprints and blocks invalid connections natively.',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _testIssue118Valid,
+                        icon: const Icon(Icons.lock_open),
+                        label: const Text('Test Valid Fingerprint'),
+                      ),
+                      FilledButton.icon(
+                        onPressed: _testIssue118Invalid,
+                        icon: const Icon(Icons.lock),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.red,
                         ),
-                        const SizedBox(width: 8),
-                        OutlinedButton(
-                          onPressed: _verifyIssue134,
-                          child: const Text('Verify Auto'),
+                        label: const Text('Test Invalid Fingerprint'),
+                      ),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 120,
+                    sweepAction: _testIssue120,
+                    title: 'Rust Core Parity',
+                    description:
+                        'Verifies that UniFFI Rust classes have all properties required by the Dart Config models to prevent silent dropping during serialization.',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _testIssue120,
+                        icon: const Icon(Icons.sync_problem),
+                        label: const Text('Test Config Parity'),
+                      ),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 119,
+                    sweepAction: _testIssue119,
+                    title: 'Database Timestamp Optimization',
+                    description:
+                        'Verifies that timestamp_ms filters properly constrain results for O(log N) DB query performance.',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _testIssue119,
+                        icon: const Icon(Icons.timer),
+                        label: const Text('Test Timestamp Filter'),
+                      ),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 124,
+                    sweepAction: _testIssue124HeaderCrash,
+                    title: 'Header Parsing & Fallback',
+                    description:
+                        'Reproduces the Header Parse Crash and Headless Timeout bugs.',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _testIssue124HeaderCrash,
+                        icon: const Icon(Icons.http),
+                        label: const Text('Reproduce Header Crash'),
+                      ),
+                      FilledButton.icon(
+                        onPressed: _testIssue124Timeout,
+                        icon: const Icon(Icons.timer_off),
+                        label: const Text('Reproduce Timeout Bug'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.red,
                         ),
-                      ],
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: _isIssue134Tracking
-                          ? _stopIssue134Repro
-                          : null,
-                      icon: const Icon(Icons.stop),
-                      label: const Text('Stop'),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 136,
-                  title: 'Background Sync Body Interceptor',
-                  description:
-                      'Verifies that when the app UI is killed, background syncs still correctly call the headless sync body builder instead of falling back to the default payload. Click test, then kill the app from recents.',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _testIssue136,
-                      icon: const Icon(Icons.sync_problem),
-                      label: const Text('Test Headless Sync'),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 126,
-                  title: 'Sync Payload Schema Alignment',
-                  description:
-                      'Verifies DB-sourced locations passed to setSyncBodyBuilder '
-                      'use the same nested schema as live onLocation events '
-                      '(nested coords/activity/battery) and preserve route_context.',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _testIssue126,
-                      icon: const Icon(Icons.schema),
-                      label: const Text('Test Schema Alignment'),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 137,
-                  title: 'deltaCoordinatePrecision Default',
-                  description:
-                      'Verifies the delta-compression precision default matches the '
-                      'Dart layer (5). A native fallback of 6 produced a finer grid '
-                      'and larger payloads when the value was not set.',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _testIssue137,
-                      icon: const Icon(Icons.compress),
-                      label: const Text('Verify Default (5)'),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 138,
-                  title: 'locationsOrderDirection Honored on Sync',
-                  description:
-                      'Configures descending sync order, records 3 points and syncs. '
-                      'Verify your backend receives the batch in descending order '
-                      '(the sync path previously always uploaded ascending).',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _testIssue138,
-                      icon: const Icon(Icons.sort),
-                      label: const Text('Sync Descending'),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 139,
-                  title: 'Unbounded getLocations() (no 1000 cap)',
-                  description:
-                      'Inserts 1100 rows and reads them back with getLocations(). '
-                      'Previously an unspecified limit silently capped reads at 1000, '
-                      'truncating full-history reads and getCarbonReport().',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _testIssue139,
-                      icon: const Icon(Icons.all_inbox),
-                      label: const Text('Read 1100 Rows'),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 140,
-                  title: 'Motion Resumes During Stop-Timeout',
-                  description:
-                      'Starts smart-motion tracking with a short stop-timeout. '
-                      'Walk for a few seconds, stay still until the countdown starts, '
-                      'then move again BEFORE it elapses — tracking should stay in the '
-                      'moving state (iOS keeps the accelerometer active during the '
-                      'countdown; see issue for the Android behavior).',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _isIssue140Tracking ? null : _startIssue140,
-                      icon: const Icon(Icons.directions_walk),
-                      label: const Text('Start'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: _isIssue140Tracking ? _stopIssue140 : null,
-                      icon: const Icon(Icons.stop),
-                      label: const Text('Stop'),
-                    ),
-                    if (_isIssue140Tracking)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8, left: 8),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '⏱️ Stopwatch: $_issue140ElapsedSeconds s (Test your stop-timeout!)',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _issue140IsMoving
-                                    ? Colors.green.shade100
-                                    : Colors.red.shade100,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: _issue140IsMoving
-                                      ? Colors.green
-                                      : Colors.red,
-                                ),
-                              ),
-                              child: Text(
-                                'Current State: ${_issue140IsMoving ? 'Moving 🏃' : 'Stationary 🛑'}',
-                                style: TextStyle(
+                      ),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 125,
+                    sweepAction: _testIssue125,
+                    title: 'Timeout Payload Abort',
+                    description:
+                        'Verifies that if the custom sync body builder times out, the native SDK aborts the sync and does NOT post an error payload to the backend.',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _testIssue125,
+                        icon: const Icon(Icons.timer_off),
+                        label: const Text('Test Timeout Abort'),
+                      ),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 134,
+                    title: 'Background Auto-Sync Stalls',
+                    description:
+                        'Reproduces the reporter setup: continuous GPS tracking + '
+                        'autoSync to the scanned backend with a custom sync-body '
+                        'builder. Start, then background the app (do NOT kill it) '
+                        'and move — watch the test server to see if on-the-fly '
+                        'sync keeps firing or stalls ("synced 0 locations").',
+                    actions: [
+                      Row(
+                        children: [
+                          FilledButton.icon(
+                            onPressed: _isIssue134Tracking
+                                ? null
+                                : _startIssue134Repro,
+                            icon: const Icon(Icons.directions_car),
+                            label: const Text('Start Repro'),
+                          ),
+                          const SizedBox(width: 8),
+                          OutlinedButton(
+                            onPressed: _verifyIssue134,
+                            child: const Text('Verify Auto'),
+                          ),
+                        ],
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _isIssue134Tracking
+                            ? _stopIssue134Repro
+                            : null,
+                        icon: const Icon(Icons.stop),
+                        label: const Text('Stop'),
+                      ),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 136,
+                    title: 'Background Sync Body Interceptor',
+                    description:
+                        'Verifies that when the app UI is killed, background syncs still correctly call the headless sync body builder instead of falling back to the default payload. Click test, then kill the app from recents.',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _testIssue136,
+                        icon: const Icon(Icons.sync_problem),
+                        label: const Text('Test Headless Sync'),
+                      ),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 126,
+                    sweepAction: _testIssue126,
+                    title: 'Sync Payload Schema Alignment',
+                    description:
+                        'Verifies DB-sourced locations passed to setSyncBodyBuilder '
+                        'use the same nested schema as live onLocation events '
+                        '(nested coords/activity/battery) and preserve route_context.',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _testIssue126,
+                        icon: const Icon(Icons.schema),
+                        label: const Text('Test Schema Alignment'),
+                      ),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 137,
+                    sweepAction: _testIssue137,
+                    title: 'deltaCoordinatePrecision Default',
+                    description:
+                        'Verifies the delta-compression precision default matches the '
+                        'Dart layer (5). A native fallback of 6 produced a finer grid '
+                        'and larger payloads when the value was not set.',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _testIssue137,
+                        icon: const Icon(Icons.compress),
+                        label: const Text('Verify Default (5)'),
+                      ),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 138,
+                    sweepAction: _testIssue138,
+                    title: 'locationsOrderDirection Honored on Sync',
+                    description:
+                        'Configures descending sync order, records 3 points and syncs. '
+                        'Verify your backend receives the batch in descending order '
+                        '(the sync path previously always uploaded ascending).',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _testIssue138,
+                        icon: const Icon(Icons.sort),
+                        label: const Text('Sync Descending'),
+                      ),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 139,
+                    sweepAction: _testIssue139,
+                    title: 'Unbounded getLocations() (no 1000 cap)',
+                    description:
+                        'Inserts 1100 rows and reads them back with getLocations(). '
+                        'Previously an unspecified limit silently capped reads at 1000, '
+                        'truncating full-history reads and getCarbonReport().',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _testIssue139,
+                        icon: const Icon(Icons.all_inbox),
+                        label: const Text('Read 1100 Rows'),
+                      ),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 140,
+                    title: 'Motion Resumes During Stop-Timeout',
+                    description:
+                        'Starts smart-motion tracking with a short stop-timeout. '
+                        'Walk for a few seconds, stay still until the countdown starts, '
+                        'then move again BEFORE it elapses — tracking should stay in the '
+                        'moving state (iOS keeps the accelerometer active during the '
+                        'countdown; see issue for the Android behavior).',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _isIssue140Tracking ? null : _startIssue140,
+                        icon: const Icon(Icons.directions_walk),
+                        label: const Text('Start'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _isIssue140Tracking ? _stopIssue140 : null,
+                        icon: const Icon(Icons.stop),
+                        label: const Text('Stop'),
+                      ),
+                      if (_isIssue140Tracking)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8, left: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '⏱️ Stopwatch: $_issue140ElapsedSeconds s (Test your stop-timeout!)',
+                                style: const TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  color: _issue140IsMoving
-                                      ? Colors.green.shade900
-                                      : Colors.red.shade900,
+                                  fontSize: 16,
                                 ),
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _issue140IsMoving
+                                      ? Colors.green.shade100
+                                      : Colors.red.shade100,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: _issue140IsMoving
+                                        ? Colors.green
+                                        : Colors.red,
+                                  ),
+                                ),
+                                child: Text(
+                                  'Current State: ${_issue140IsMoving ? 'Moving 🏃' : 'Stationary 🛑'}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: _issue140IsMoving
+                                        ? Colors.green.shade900
+                                        : Colors.red.shade900,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 141,
+                    title: 'encryptDatabase: true breaks events',
+                    description:
+                        'When encryptDatabase is set to true without an explicit key, '
+                        'the internal DB correctly falls back to unencrypted storage, '
+                        'but the Dart event bridge breaks silently due to Native config bypass. '
+                        'This test ensures we receive location events successfully.',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _isIssue141Tracking ? null : _startIssue141,
+                        icon: const Icon(Icons.security),
+                        label: const Text('Start (Encrypted)'),
                       ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 141,
-                  title: 'encryptDatabase: true breaks events',
-                  description:
-                      'When encryptDatabase is set to true without an explicit key, '
-                      'the internal DB correctly falls back to unencrypted storage, '
-                      'but the Dart event bridge breaks silently due to Native config bypass. '
-                      'This test ensures we receive location events successfully.',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _isIssue141Tracking ? null : _startIssue141,
-                      icon: const Icon(Icons.security),
-                      label: const Text('Start (Encrypted)'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: _isIssue141Tracking ? _stopIssue141 : null,
-                      icon: const Icon(Icons.stop),
-                      label: const Text('Stop'),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 148,
-                  title: 'Kalman Filter silently disabled (key mismatch)',
-                  description:
-                      'Dart writes "useKalmanFilter" but native ConfigManager read '
-                      '"enableKalmanFilter", so the Extended Kalman Filter never '
-                      'initialized. Configures useKalmanFilter:true to confirm it is '
-                      'now wired (observe smoother tracks / native logs while moving).',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _testIssue148,
-                      icon: const Icon(Icons.timeline),
-                      label: const Text('Configure & Verify'),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 150,
-                  title: 'AuditConfig sha384/sha512 fatal RangeError',
-                  description:
-                      'ready() with HashAlgorithm.sha512 crashed with a fatal '
-                      'RangeError (Pigeon enum mismatch). This test confirms ready() '
-                      'no longer crashes (falls back to sha256). Deterministic.',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _testIssue150,
-                      icon: const Icon(Icons.lock_outline),
-                      label: const Text('Run Test'),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 152,
-                  title: 'getCount ignores query filters',
-                  description:
-                      'getCount(SQLQuery) ignored time bounds and returned the '
-                      'whole-DB total. Inserts 2 points (2h ago + now) and asserts a '
-                      'last-hour query counts 1. Deterministic.',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _testIssue152,
-                      icon: const Icon(Icons.numbers),
-                      label: const Text('Run Test'),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 155,
-                  title: 'Activity permanently "unknown"',
-                  description:
-                      'Detected activity was never propagated to the LocationEngine, '
-                      'so every record had "activity":"unknown". Start tracking and '
-                      'move around — the live activity (in Status) should classify '
-                      '(walking / still / in_vehicle). Needs ACTIVITY_RECOGNITION '
-                      'permission + real motion.',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _isIssue155Tracking ? null : _startIssue155,
-                      icon: const Icon(Icons.directions_walk),
-                      label: const Text('Start'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: _isIssue155Tracking ? _stopIssue155 : null,
-                      icon: const Icon(Icons.stop),
-                      label: const Text('Stop'),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 157,
-                  title: 'LocationEngine not rebuilt on ready()',
-                  description:
-                      'ready() with distanceFilter:0 kept the stale default processor, '
-                      'filtering closely-spaced fixes. Start tracking and move slightly '
-                      '— fixes should flow with no distance filtering (live counter in '
-                      'Status).',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _isIssue157Tracking ? null : _startIssue157,
-                      icon: const Icon(Icons.filter_alt_off),
-                      label: const Text('Start (df:0)'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: _isIssue157Tracking ? _stopIssue157 : null,
-                      icon: const Icon(Icons.stop),
-                      label: const Text('Stop'),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 151,
-                  title: 'is_moving missing from sync payload',
-                  description:
-                      'The native SyncLocationRecord omitted the motion state, so '
-                      'the HTTP payload never carried "is_moving". This test syncs a '
-                      'record (is_moving:true) to a loopback server and asserts the '
-                      'payload contains it. Deterministic. (Same test as #156.)',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _testIssue151156,
-                      icon: const Icon(Icons.directions_run),
-                      label: const Text('Run Test'),
-                    ),
-                  ],
-                ),
-                _buildIssueCard(
-                  issueNumber: 156,
-                  title: 'event key missing from sync payload',
-                  description:
-                      'The native SyncLocationRecord omitted the trigger event, so '
-                      'the HTTP payload never carried "event" (location / motionchange '
-                      '/ heartbeat / geofence). This test syncs a record '
-                      '(event:"motionchange") and asserts the payload contains it. '
-                      'Deterministic. (Same test as #151.)',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _testIssue151156,
-                      icon: const Icon(Icons.bolt),
-                      label: const Text('Run Test'),
-                    ),
-                  ],
-                ),
-              ],
+                      OutlinedButton.icon(
+                        onPressed: _isIssue141Tracking ? _stopIssue141 : null,
+                        icon: const Icon(Icons.stop),
+                        label: const Text('Stop'),
+                      ),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 148,
+                    title: 'Kalman Filter silently disabled (key mismatch)',
+                    description:
+                        'Dart writes "useKalmanFilter" but native ConfigManager read '
+                        '"enableKalmanFilter", so the Extended Kalman Filter never '
+                        'initialized. Configures useKalmanFilter:true to confirm it is '
+                        'now wired (observe smoother tracks / native logs while moving).',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _testIssue148,
+                        icon: const Icon(Icons.timeline),
+                        label: const Text('Configure & Verify'),
+                      ),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 150,
+                    title: 'AuditConfig sha384/sha512 fatal RangeError',
+                    description:
+                        'ready() with HashAlgorithm.sha512 crashed with a fatal '
+                        'RangeError (Pigeon enum mismatch). This test confirms ready() '
+                        'no longer crashes (falls back to sha256). Deterministic.',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _testIssue150,
+                        icon: const Icon(Icons.lock_outline),
+                        label: const Text('Run Test'),
+                      ),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 152,
+                    title: 'getCount ignores query filters',
+                    description:
+                        'getCount(SQLQuery) ignored time bounds and returned the '
+                        'whole-DB total. Inserts 2 points (2h ago + now) and asserts a '
+                        'last-hour query counts 1. Deterministic.',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _testIssue152,
+                        icon: const Icon(Icons.numbers),
+                        label: const Text('Run Test'),
+                      ),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 155,
+                    title: 'Activity permanently "unknown"',
+                    description:
+                        'Detected activity was never propagated to the LocationEngine, '
+                        'so every record had "activity":"unknown". Start tracking and '
+                        'move around — the live activity (in Status) should classify '
+                        '(walking / still / in_vehicle). Needs ACTIVITY_RECOGNITION '
+                        'permission + real motion.',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _isIssue155Tracking ? null : _startIssue155,
+                        icon: const Icon(Icons.directions_walk),
+                        label: const Text('Start'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _isIssue155Tracking ? _stopIssue155 : null,
+                        icon: const Icon(Icons.stop),
+                        label: const Text('Stop'),
+                      ),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 157,
+                    title: 'LocationEngine not rebuilt on ready()',
+                    description:
+                        'ready() with distanceFilter:0 kept the stale default processor, '
+                        'filtering closely-spaced fixes. Start tracking and move slightly '
+                        '— fixes should flow with no distance filtering (live counter in '
+                        'Status).',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _isIssue157Tracking ? null : _startIssue157,
+                        icon: const Icon(Icons.filter_alt_off),
+                        label: const Text('Start (df:0)'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _isIssue157Tracking ? _stopIssue157 : null,
+                        icon: const Icon(Icons.stop),
+                        label: const Text('Stop'),
+                      ),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 151,
+                    title: 'is_moving missing from sync payload',
+                    description:
+                        'The native SyncLocationRecord omitted the motion state, so '
+                        'the HTTP payload never carried "is_moving". This test syncs a '
+                        'record (is_moving:true) to a loopback server and asserts the '
+                        'payload contains it. Deterministic. (Same test as #156.)',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _testIssue151156,
+                        icon: const Icon(Icons.directions_run),
+                        label: const Text('Run Test'),
+                      ),
+                    ],
+                  ),
+                  _buildIssueCard(
+                    issueNumber: 156,
+                    title: 'event key missing from sync payload',
+                    description:
+                        'The native SyncLocationRecord omitted the trigger event, so '
+                        'the HTTP payload never carried "event" (location / motionchange '
+                        '/ heartbeat / geofence). This test syncs a record '
+                        '(event:"motionchange") and asserts the payload contains it. '
+                        'Deterministic. (Same test as #151.)',
+                    actions: [
+                      FilledButton.icon(
+                        onPressed: _testIssue151156,
+                        icon: const Icon(Icons.bolt),
+                        label: const Text('Run Test'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ],

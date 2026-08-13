@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
+import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Remote Config → Dart `activeConfig` sync.
 ///
@@ -37,7 +39,8 @@ class BatteryBudgetRemoteConfigCard extends StatefulWidget {
 }
 
 class _BatteryBudgetRemoteConfigCardState
-    extends State<BatteryBudgetRemoteConfigCard> {
+    extends State<BatteryBudgetRemoteConfigCard>
+    with IssueCardRun<BatteryBudgetRemoteConfigCard> {
   /// Gist returning `{"geo":{"batteryBudgetPerHour":1.0}}`.
   static const _remoteUrl =
       'https://gist.githubusercontent.com/MuellerMoritz/'
@@ -46,13 +49,13 @@ class _BatteryBudgetRemoteConfigCardState
   /// The value the gist should apply.
   static const double _expectedBudget = 1;
 
-  String _status = 'Idle';
   bool _busy = false;
   StreamSubscription<Config>? _remoteSub;
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  void _set(String s) => setStatus(s);
+
+  @override
+  IssueRunner? get cardRunner => _run;
 
   @override
   void dispose() {
@@ -178,22 +181,7 @@ class _BatteryBudgetRemoteConfigCardState
               'showing the local value). Requires network.',
             ),
             const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: Text(
-                _status,
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 13,
-                  color: Colors.black87,
-                ),
-              ),
-            ),
+            IssueStatusBox(status: status),
             const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: _busy ? null : _run,

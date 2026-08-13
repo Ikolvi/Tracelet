@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #364 — a FlutterEngine created by *another plugin* must not be
 /// treated as an event receiver.
@@ -51,7 +52,8 @@ class Issue364Card extends StatefulWidget {
   State<Issue364Card> createState() => _Issue364CardState();
 }
 
-class _Issue364CardState extends State<Issue364Card> {
+class _Issue364CardState extends State<Issue364Card>
+    with IssueCardRun<Issue364Card> {
   static const _debug = MethodChannel('com.tracelet/debug');
 
   /// The always-on line the plugin writes when a secondary engine attaches.
@@ -61,12 +63,10 @@ class _Issue364CardState extends State<Issue364Card> {
   /// it is let into the fan-out.
   static const _joinMarker = 'joining the event fan-out';
 
-  String _status = 'Idle';
-  bool _running = false;
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _run;
 
   Future<int> _latestLogId() async {
     final logs = await Tracelet.getLogs(500);
@@ -82,8 +82,8 @@ class _Issue364CardState extends State<Issue364Card> {
   }
 
   Future<void> _run() async {
-    if (_running) return;
-    setState(() => _running = true);
+    if (running) return;
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -193,7 +193,7 @@ class _Issue364CardState extends State<Issue364Card> {
     } catch (e) {
       _set('❌ ERROR: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -205,8 +205,8 @@ class _Issue364CardState extends State<Issue364Card> {
           'Creates a FlutterEngine the way another plugin would and checks it '
           'does not join the event fan-out, so events still reach the headless '
           'task after task removal.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       keywords:
           'foreign engine firebase_messaging headless fan-out secondary '
           'engine task removal eventApi',

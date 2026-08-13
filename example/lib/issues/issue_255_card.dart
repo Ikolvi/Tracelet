@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #255 — authoritative foreground-service health exposed to Dart.
 ///
@@ -30,16 +31,15 @@ class Issue255Card extends StatefulWidget {
   State<Issue255Card> createState() => _Issue255CardState();
 }
 
-class _Issue255CardState extends State<Issue255Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue255CardState extends State<Issue255Card>
+    with IssueCardRun<Issue255Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _run;
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -188,7 +188,7 @@ class _Issue255CardState extends State<Issue255Card> {
     } catch (e) {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -207,8 +207,8 @@ class _Issue255CardState extends State<Issue255Card> {
           'whether the service is running and promoted, and when a promotion '
           'was deferred or failed, the exception class and message behind it. '
           'Android-only fields are skipped on other platforms.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

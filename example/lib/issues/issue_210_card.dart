@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
+import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #210 — In geofence mode the iOS blue "location in use" status-bar
 /// indicator was ALWAYS visible (foreground and background), even with
@@ -30,17 +32,18 @@ class Issue210Card extends StatefulWidget {
   State<Issue210Card> createState() => _Issue210CardState();
 }
 
-class _Issue210CardState extends State<Issue210Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue210CardState extends State<Issue210Card>
+    with IssueCardRun<Issue210Card> {
   bool _tracking = false;
   bool _highAccuracy = false;
   final List<String> _log = [];
   StreamSubscription<GeofenceEvent>? _geofenceSub;
 
-  void _setStatus(String text) {
-    if (mounted) setState(() => _status = text);
-  }
+  void _setStatus(String text) => setStatus(text);
+
+  // Start/stop tracking by hand: a sweep would leave the SDK tracking.
+  @override
+  IssueRunner? get cardRunner => null;
 
   void _appendLog(String line) {
     final stamp = TimeOfDay.now().format(context);
@@ -53,10 +56,8 @@ class _Issue210CardState extends State<Issue210Card> {
   }
 
   Future<void> _start() async {
-    setState(() {
-      _running = true;
-      _log.clear();
-    });
+    setRunning(running: true);
+    setState(_log.clear);
     try {
       _setStatus('Requesting permissions...');
       final auth = await Tracelet.requestLocationAuthorization();
@@ -143,12 +144,12 @@ class _Issue210CardState extends State<Issue210Card> {
     } catch (e) {
       _setStatus('❌ FAILED: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
   Future<void> _stop() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     try {
       await _geofenceSub?.cancel();
       _geofenceSub = null;
@@ -159,12 +160,8 @@ class _Issue210CardState extends State<Issue210Card> {
     } catch (e) {
       _setStatus('❌ Error stopping: $e');
     } finally {
-      if (mounted) {
-        setState(() {
-          _running = false;
-          _tracking = false;
-        });
-      }
+      setRunning(running: false);
+      if (mounted) setState(() => _tracking = false);
     }
   }
 
@@ -197,22 +194,7 @@ class _Issue210CardState extends State<Issue210Card> {
               'stream into the log.',
             ),
             const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: Text(
-                _status,
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 13,
-                  color: Colors.black87,
-                ),
-              ),
-            ),
+            IssueStatusBox(status: status),
             const SizedBox(height: 4),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
@@ -224,7 +206,7 @@ class _Issue210CardState extends State<Issue210Card> {
                     : 'OFF: 100m region monitoring — no iOS indicator.',
               ),
               value: _highAccuracy,
-              onChanged: (_running || _tracking)
+              onChanged: (running || _tracking)
                   ? null
                   : (v) => setState(() => _highAccuracy = v),
             ),
@@ -233,7 +215,7 @@ class _Issue210CardState extends State<Issue210Card> {
               children: [
                 Expanded(
                   child: FilledButton.icon(
-                    onPressed: (_running || _tracking) ? null : _start,
+                    onPressed: (running || _tracking) ? null : _start,
                     icon: const Icon(Icons.play_arrow),
                     label: const Text('Start geofencing'),
                   ),
@@ -241,7 +223,7 @@ class _Issue210CardState extends State<Issue210Card> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: (_running || !_tracking) ? null : _stop,
+                    onPressed: (running || !_tracking) ? null : _stop,
                     icon: const Icon(Icons.stop),
                     label: const Text('Stop'),
                   ),
@@ -263,7 +245,7 @@ class _Issue210CardState extends State<Issue210Card> {
                 ),
                 constraints: const BoxConstraints(maxHeight: 180),
                 child: SingleChildScrollView(
-                  child: Text(
+                  child: SelectableText(
                     _log.join('\n'),
                     style: const TextStyle(
                       fontFamily: 'monospace',

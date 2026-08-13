@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #212 — the reverse-geocoded `address` is saved to SQLite but was dropped
 /// from the **default** (non-custom-builder) sync payload because the Rust
@@ -19,16 +20,15 @@ class Issue212Card extends StatefulWidget {
   State<Issue212Card> createState() => _Issue212CardState();
 }
 
-class _Issue212CardState extends State<Issue212Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue212CardState extends State<Issue212Card>
+    with IssueCardRun<Issue212Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _test;
 
   Future<void> _test() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     HttpServer? server;
     try {
       server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -89,7 +89,7 @@ class _Issue212CardState extends State<Issue212Card> {
       _set('❌ FAILED: $e');
     } finally {
       await server?.close(force: true);
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -101,8 +101,8 @@ class _Issue212CardState extends State<Issue212Card> {
           'Inserts a location with an address, runs a DEFAULT sync (no custom '
           'builder) to a loopback server, and asserts the payload contains the '
           'address as a nested object.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _test,
     );
   }

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #213 — a debounced auto-sync that was already waiting out its
 /// `autoSyncDelay` kept firing up to ~10s after `Tracelet.stop()`, because the
@@ -19,16 +20,15 @@ class Issue213Card extends StatefulWidget {
   State<Issue213Card> createState() => _Issue213CardState();
 }
 
-class _Issue213CardState extends State<Issue213Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue213CardState extends State<Issue213Card>
+    with IssueCardRun<Issue213Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _test;
 
   Future<void> _test() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     HttpServer? server;
     try {
       server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -88,7 +88,7 @@ class _Issue213CardState extends State<Issue213Card> {
       _set('❌ FAILED: $e');
     } finally {
       await server?.close(force: true);
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -100,8 +100,8 @@ class _Issue213CardState extends State<Issue213Card> {
           'Queues a debounced auto-sync, calls stop() before the delay elapses, '
           'then waits past the delay and asserts the loopback server received '
           'NO request. Takes ~7s.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _test,
     );
   }

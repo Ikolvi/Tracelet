@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
+import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #201 — Local extras passed to `getCurrentPosition(extras: ...)` must
 /// survive into the location payload alongside the globally-configured
@@ -17,16 +19,15 @@ class Issue201Card extends StatefulWidget {
   State<Issue201Card> createState() => _Issue201CardState();
 }
 
-class _Issue201CardState extends State<Issue201Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue201CardState extends State<Issue201Card>
+    with IssueCardRun<Issue201Card> {
+  void _setStatus(String text) => setStatus(text);
 
-  void _setStatus(String text) {
-    if (mounted) setState(() => _status = text);
-  }
+  @override
+  IssueRunner? get cardRunner => _test;
 
   Future<void> _test() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     try {
       _setStatus('Requesting permissions...');
       final auth = await Tracelet.requestLocationAuthorization();
@@ -78,7 +79,7 @@ class _Issue201CardState extends State<Issue201Card> {
     } catch (e) {
       _setStatus('❌ FAILED: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -102,25 +103,10 @@ class _Issue201CardState extends State<Issue201Card> {
               'with global HttpConfig.extras instead of being dropped.',
             ),
             const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: Text(
-                _status,
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 13,
-                  color: Colors.black87,
-                ),
-              ),
-            ),
+            IssueStatusBox(status: status),
             const SizedBox(height: 16),
             FilledButton.icon(
-              onPressed: _running ? null : _test,
+              onPressed: running ? null : _test,
               icon: const Icon(Icons.play_arrow),
               label: const Text('Run Test'),
             ),

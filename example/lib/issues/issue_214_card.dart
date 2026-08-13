@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #214 (part 2) — telematics/crash events were omitted from the custom
 /// sync body builder; the builder only received `location_events`, never the
@@ -18,16 +19,15 @@ class Issue214Card extends StatefulWidget {
   State<Issue214Card> createState() => _Issue214CardState();
 }
 
-class _Issue214CardState extends State<Issue214Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue214CardState extends State<Issue214Card>
+    with IssueCardRun<Issue214Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _test;
 
   Future<void> _test() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     HttpServer? server;
     try {
       server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -96,7 +96,7 @@ class _Issue214CardState extends State<Issue214Card> {
       _set('❌ FAILED: $e');
     } finally {
       await server?.close(force: true);
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -108,8 +108,8 @@ class _Issue214CardState extends State<Issue214Card> {
           'Enables syncTelematics, simulates a telematics event, and asserts the '
           'custom body builder receives it via context.telematics (was bypassed). '
           'Set syncTelematics:false to confirm nothing is passed.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _test,
     );
   }

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #326 — `Config.toMap()` emitted sixteen empty sections for a config
 /// that set nothing, because every per-section guard was dead code.
@@ -41,16 +42,15 @@ class Issue326Card extends StatefulWidget {
   State<Issue326Card> createState() => _Issue326CardState();
 }
 
-class _Issue326CardState extends State<Issue326Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue326CardState extends State<Issue326Card>
+    with IssueCardRun<Issue326Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _run;
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -224,7 +224,7 @@ class _Issue326CardState extends State<Issue326Card> {
     } catch (e) {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -241,8 +241,8 @@ class _Issue326CardState extends State<Issue326Card> {
           'not just an unset nested sub-map — while a supplied field still '
           'appears, ready() still sends a complete baseline, and a sparse '
           'payload round-trips without inflating unset fields into defaults.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

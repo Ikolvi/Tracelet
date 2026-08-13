@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #361 — `maxDaysToPersist` / `maxRecordsToPersist` accepted but never
 /// enforced.
@@ -40,22 +41,21 @@ class Issue361Card extends StatefulWidget {
   State<Issue361Card> createState() => _Issue361CardState();
 }
 
-class _Issue361CardState extends State<Issue361Card> {
-  String _status = 'Idle';
-  bool _running = false;
-
+class _Issue361CardState extends State<Issue361Card>
+    with IssueCardRun<Issue361Card> {
   /// The record cap under test — the reporter's own value.
   static const _maxRecords = 3;
 
   /// Must match `PRUNE_EVERY_N_INSERTS` in the native SDKs.
   static const _pruneWindow = 100;
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  void _set(String s) => setStatus(s);
+
+  @override
+  IssueRunner? get cardRunner => _run;
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -236,7 +236,7 @@ class _Issue361CardState extends State<Issue361Card> {
     } catch (e) {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -255,8 +255,8 @@ class _Issue361CardState extends State<Issue361Card> {
           'Pruning is amortized over 100 inserts, so this measures the queue '
           'returning to the cap and staying bounded by cap + window — not a '
           'per-insert ceiling, which was never the promise.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

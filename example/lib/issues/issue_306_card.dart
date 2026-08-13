@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:tracelet_platform_interface/tracelet_platform_interface.dart'
     show GeofenceEvaluator;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #306 — the pure-Dart `GeofenceEvaluator` ignored
 /// `geofenceExitAccuracyMax`, diverging from the native #276 gate.
@@ -31,10 +32,8 @@ class Issue306Card extends StatefulWidget {
   State<Issue306Card> createState() => _Issue306CardState();
 }
 
-class _Issue306CardState extends State<Issue306Card> {
-  String _status = 'Idle';
-  bool _running = false;
-
+class _Issue306CardState extends State<Issue306Card>
+    with IssueCardRun<Issue306Card> {
   /// A 100 m fence. All fixes below are placed due north of its centre.
   static const _lat = 37.4219983;
   static const _lng = -122.084;
@@ -53,9 +52,10 @@ class _Issue306CardState extends State<Issue306Card> {
     'lng': _lng,
   };
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  void _set(String s) => setStatus(s);
+
+  @override
+  IssueRunner? get cardRunner => _run;
 
   /// Drives an evaluator from inside the fence out to [outsideMetres] with the
   /// given [accuracy] and [exitAccuracyMax], and reports whether EXIT fired.
@@ -92,7 +92,7 @@ class _Issue306CardState extends State<Issue306Card> {
   }
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -186,7 +186,7 @@ class _Issue306CardState extends State<Issue306Card> {
     } catch (e) {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -205,8 +205,8 @@ class _Issue306CardState extends State<Issue306Card> {
           'bounds the worst-case EXIT delay without ever loosening gating for '
           'a fix that is already tighter than the cap. Runs in-process; no '
           'movement or permissions needed.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

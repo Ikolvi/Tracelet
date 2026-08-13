@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #257 — expose a public API to refresh the active foreground-service
 /// notification (and its iOS Live Activity analogue).
@@ -39,13 +40,12 @@ class Issue257Card extends StatefulWidget {
   State<Issue257Card> createState() => _Issue257CardState();
 }
 
-class _Issue257CardState extends State<Issue257Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue257CardState extends State<Issue257Card>
+    with IssueCardRun<Issue257Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _test;
 
   /// Keeps tracking alive for [seconds] while updating the status once per
   /// second via [message] (given the remaining seconds), so the live
@@ -63,7 +63,7 @@ class _Issue257CardState extends State<Issue257Card> {
   }
 
   Future<void> _test() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     try {
       if (!Platform.isAndroid && !Platform.isIOS) {
         _set(
@@ -215,7 +215,7 @@ class _Issue257CardState extends State<Issue257Card> {
       try {
         await Tracelet.stop();
       } catch (_) {}
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -231,8 +231,8 @@ class _Issue257CardState extends State<Issue257Card> {
           'to refresh the live indicator without restarting tracking. Asserts '
           'the call completes and tracking stays enabled. Watch the '
           'notification shade (Android) or Dynamic Island / Lock Screen (iOS).',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _test,
     );
   }

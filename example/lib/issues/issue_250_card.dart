@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 import 'package:tracelet_platform_interface/tracelet_platform_interface.dart'
     show TlIosActivityType;
 
@@ -29,17 +30,16 @@ class Issue250Card extends StatefulWidget {
   State<Issue250Card> createState() => _Issue250CardState();
 }
 
-class _Issue250CardState extends State<Issue250Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue250CardState extends State<Issue250Card>
+    with IssueCardRun<Issue250Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _test;
 
   Future<void> _test() async {
-    if (_running) return;
-    setState(() => _running = true);
+    if (running) return;
+    setRunning(running: true);
 
     try {
       // The exact mapping the SDK must produce — by name, never by index.
@@ -103,7 +103,7 @@ class _Issue250CardState extends State<Issue250Card> {
     } catch (e) {
       _set('❌ ERROR: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -118,8 +118,8 @@ class _Issue250CardState extends State<Issue250Card> {
           'it also pushes activityType=automotiveNavigation through ready() so '
           'you can confirm CLLocationManager.activityType now honors the '
           'configured value instead of always falling back to otherNavigation.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _test,
     );
   }

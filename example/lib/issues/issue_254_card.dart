@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #254 — `setConfig()` restart exposed the same foreground-service race
 /// that #237 fixed for `startPeriodic()`.
@@ -36,13 +37,12 @@ class Issue254Card extends StatefulWidget {
   State<Issue254Card> createState() => _Issue254CardState();
 }
 
-class _Issue254CardState extends State<Issue254Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue254CardState extends State<Issue254Card>
+    with IssueCardRun<Issue254Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _test;
 
   Future<void> _test() async {
     if (!Platform.isAndroid) {
@@ -50,7 +50,7 @@ class _Issue254CardState extends State<Issue254Card> {
       return;
     }
 
-    setState(() => _running = true);
+    setRunning(running: true);
     try {
       _set('Requesting permissions...');
       final auth = await Tracelet.requestLocationAuthorization();
@@ -113,7 +113,7 @@ class _Issue254CardState extends State<Issue254Card> {
     } catch (e) {
       _set('❌ FAILED: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -127,8 +127,8 @@ class _Issue254CardState extends State<Issue254Card> {
           'stop()/start() used to race ACTION_STOP against ACTION_START and '
           'could destroy the just-promoted service; the service is now preserved '
           'across the restart. Android-only. Verify via dumpsys.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _test,
     );
   }

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #248 — `insertLocation failed: UNIQUE constraint failed:
 /// location_events.uuid` recurring on a fixed ~2-minute interval while
@@ -30,20 +31,19 @@ class Issue248Card extends StatefulWidget {
   State<Issue248Card> createState() => _Issue248CardState();
 }
 
-class _Issue248CardState extends State<Issue248Card> {
-  String _status = 'Idle';
-  bool _running = false;
-
+class _Issue248CardState extends State<Issue248Card>
+    with IssueCardRun<Issue248Card> {
   static const int _intervalSeconds = 30;
   static const int _waitSeconds = 75; // two ticks + margin
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  void _set(String s) => setStatus(s);
+
+  @override
+  IssueRunner? get cardRunner => _test;
 
   Future<void> _test() async {
-    if (_running) return;
-    setState(() => _running = true);
+    if (running) return;
+    setRunning(running: true);
 
     try {
       if (!Platform.isAndroid) {
@@ -121,7 +121,7 @@ class _Issue248CardState extends State<Issue248Card> {
     } catch (e) {
       _set('❌ ERROR: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -138,8 +138,8 @@ class _Issue248CardState extends State<Issue248Card> {
           'second insert failed with "UNIQUE constraint failed: '
           'location_events.uuid" every ~120s (the default interval). Verifies '
           'ticks now persist exactly once, as "periodic" events.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _test,
     );
   }

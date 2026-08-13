@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #331 — after task removal the headless Dart task was intermittently
 /// never invoked, and the failure was completely silent.
@@ -77,13 +78,12 @@ class Issue331Card extends StatefulWidget {
   State<Issue331Card> createState() => _Issue331CardState();
 }
 
-class _Issue331CardState extends State<Issue331Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue331CardState extends State<Issue331Card>
+    with IssueCardRun<Issue331Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _run;
 
   static const _spawning = 'headless: spawning a FlutterEngine';
   static const _ready = 'headless: engine ready';
@@ -92,7 +92,7 @@ class _Issue331CardState extends State<Issue331Card> {
   static const _bootTracking = 'boot-tracking: bootstrapping';
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -267,7 +267,7 @@ class _Issue331CardState extends State<Issue331Card> {
     } catch (e) {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -284,8 +284,8 @@ class _Issue331CardState extends State<Issue331Card> {
           'error at any level and events piling up unbounded. Arms a task '
           'removal, then reads the lifecycle trail to say whether the engine '
           'came up — or which stage it died at.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }
