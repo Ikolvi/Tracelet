@@ -10,6 +10,12 @@ analyzer:
     - "**/*.freezed.dart"
     - "packages/tracelet_platform_interface/lib/src/rust/**"
     - "**/frb_generated*.dart"
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
 
   language:
     strict-raw-types: false
