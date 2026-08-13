@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 import 'package:tracelet_example/issues/test_server_endpoint.dart';
 
 /// Issue #368 — `telematicsUrl` was accepted everywhere and read nowhere.
@@ -55,21 +56,20 @@ class Issue368Card extends StatefulWidget {
   State<Issue368Card> createState() => _Issue368CardState();
 }
 
-class _Issue368CardState extends State<Issue368Card> {
-  String _status = 'Idle';
-  bool _running = false;
-
+class _Issue368CardState extends State<Issue368Card>
+    with IssueCardRun<Issue368Card> {
   /// Two distinct paths on the refused-connection host, so the offline half has
   /// endpoints that fail fast while staying clearly separate from each other.
   static final _locationUrl = deadUrl('locations');
   static final _telematicsUrl = deadUrl('telematics');
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  void _set(String s) => setStatus(s);
+
+  @override
+  IssueRunner? get cardRunner => _run;
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
     StreamSubscription<HttpEvent>? httpSub;
@@ -205,7 +205,7 @@ class _Issue368CardState extends State<Issue368Card> {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
       await httpSub?.cancel();
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -224,8 +224,8 @@ class _Issue368CardState extends State<Issue368Card> {
           'field was plumbed all the way to the Rust config struct and then '
           'read by nothing, so a separate telematics endpoint silently '
           'received no traffic at all.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

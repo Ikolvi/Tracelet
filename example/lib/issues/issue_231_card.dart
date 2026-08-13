@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #231 — geofence transition events were emitted with hardcoded zero
 /// coordinate metrics (accuracy/speed/heading/altitude) and no `battery` key,
@@ -18,19 +19,19 @@ class Issue231Card extends StatefulWidget {
   State<Issue231Card> createState() => _Issue231CardState();
 }
 
-class _Issue231CardState extends State<Issue231Card> {
+class _Issue231CardState extends State<Issue231Card>
+    with IssueCardRun<Issue231Card> {
   static const _geofenceId = 'issue-231-here';
 
-  String _status = 'Idle';
-  bool _running = false;
   StreamSubscription<GeofenceEvent>? _sub;
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  void _set(String s) => setStatus(s);
+
+  @override
+  IssueRunner? get cardRunner => _test;
 
   Future<void> _test() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final completer = Completer<String>();
     try {
       _set('Requesting permissions...');
@@ -121,7 +122,7 @@ class _Issue231CardState extends State<Issue231Card> {
         await Tracelet.removeGeofence(_geofenceId);
         await Tracelet.stop();
       } catch (_) {}
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -140,8 +141,8 @@ class _Issue231CardState extends State<Issue231Card> {
           'triggers an ENTER, and asserts the event carries a real accuracy and '
           'a valid battery level (previously hardcoded 0.0 / -1.0). Needs a live '
           'GPS fix — run outdoors or with a mock location set.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _test,
     );
   }

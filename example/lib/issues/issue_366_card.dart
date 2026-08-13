@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 import 'package:tracelet_example/issues/test_server_endpoint.dart';
 
 /// Issue #366 — a failed telematics sync deleted the events anyway.
@@ -47,20 +48,19 @@ class Issue366Card extends StatefulWidget {
   State<Issue366Card> createState() => _Issue366CardState();
 }
 
-class _Issue366CardState extends State<Issue366Card> {
-  String _status = 'Idle';
-  bool _running = false;
-
+class _Issue366CardState extends State<Issue366Card>
+    with IssueCardRun<Issue366Card> {
   static final _deadUrl = deadUrl('telematics-sync');
 
   static const _eventCount = 3;
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  void _set(String s) => setStatus(s);
+
+  @override
+  IssueRunner? get cardRunner => _run;
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -259,7 +259,7 @@ class _Issue366CardState extends State<Issue366Card> {
           // Restoring is best-effort: never turn cleanup into the card's result.
         }
       }
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -278,8 +278,8 @@ class _Issue366CardState extends State<Issue366Card> {
           'unpredicated DELETE whenever telematics had been attached, so an '
           'offline device destroyed exactly the data it was meant to be '
           'queueing.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

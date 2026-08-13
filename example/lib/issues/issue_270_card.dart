@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// PR #270 — Android boot/broadcast init race: geofence transitions and
 /// confirmed crash/fall deliveries can be silently dropped right after a cold
@@ -55,15 +56,16 @@ class Issue270Card extends StatefulWidget {
   State<Issue270Card> createState() => _Issue270CardState();
 }
 
-class _Issue270CardState extends State<Issue270Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue270CardState extends State<Issue270Card>
+    with IssueCardRun<Issue270Card> {
   StreamSubscription<GeofenceEvent>? _geofenceSub;
   int _liveTransitions = 0;
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  void _set(String s) => setStatus(s);
+
+  // Two-phase: arm, reboot the device, then check. Not sweepable.
+  @override
+  IssueRunner? get cardRunner => null;
 
   @override
   void dispose() {
@@ -75,7 +77,7 @@ class _Issue270CardState extends State<Issue270Card> {
   /// `GeofenceBroadcastReceiver.onReceive` → `awaitInit()` → `geofenceManager`
   /// path.
   Future<void> _arm() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     try {
       if (!Platform.isAndroid) {
         _set(
@@ -155,7 +157,7 @@ class _Issue270CardState extends State<Issue270Card> {
     } catch (e) {
       _set('❌ FAILED to arm the repro: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -164,7 +166,7 @@ class _Issue270CardState extends State<Issue270Card> {
   /// the receiver waited for init (fixed); zero (with a confirmed crossing)
   /// points at the dropped-transition regression.
   Future<void> _checkTransitions() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     try {
       if (!Platform.isAndroid) {
         _set('ℹ️ PR #270 is Android-only.');
@@ -198,7 +200,7 @@ class _Issue270CardState extends State<Issue270Card> {
     } catch (e) {
       _set('❌ FAILED to read state: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -244,34 +246,19 @@ class _Issue270CardState extends State<Issue270Card> {
             const SizedBox(height: 8),
             const Text(_description),
             const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: Text(
-                _status,
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 13,
-                  color: Colors.black87,
-                ),
-              ),
-            ),
+            IssueStatusBox(status: status),
             const SizedBox(height: 16),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
                 FilledButton.icon(
-                  onPressed: _running ? null : _arm,
+                  onPressed: running ? null : _arm,
                   icon: const Icon(Icons.play_arrow),
                   label: const Text('Arm reboot repro'),
                 ),
                 OutlinedButton.icon(
-                  onPressed: _running ? null : _checkTransitions,
+                  onPressed: running ? null : _checkTransitions,
                   icon: const Icon(Icons.sensors),
                   label: const Text('Check delivered transitions'),
                 ),

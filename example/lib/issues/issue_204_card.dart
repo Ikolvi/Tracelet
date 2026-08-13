@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
+import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #204 — `requestSyncBody` (the custom sync-body builder) must be invoked
 /// exactly ONCE per batch. The bug caused two sync providers to fire
@@ -16,20 +18,18 @@ class Issue204Card extends StatefulWidget {
   State<Issue204Card> createState() => _Issue204CardState();
 }
 
-class _Issue204CardState extends State<Issue204Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue204CardState extends State<Issue204Card>
+    with IssueCardRun<Issue204Card> {
   int _invocations = 0;
 
-  void _setStatus(String text) {
-    if (mounted) setState(() => _status = text);
-  }
+  void _setStatus(String text) => setStatus(text);
+
+  @override
+  IssueRunner? get cardRunner => _test;
 
   Future<void> _test() async {
-    setState(() {
-      _running = true;
-      _invocations = 0;
-    });
+    setRunning(running: true);
+    setState(() => _invocations = 0);
     try {
       // Count every requestSyncBody invocation for ONE batch.
       await Tracelet.setSyncBodyBuilder((ctx) async {
@@ -94,7 +94,7 @@ class _Issue204CardState extends State<Issue204Card> {
     } catch (e) {
       _setStatus('❌ FAILED: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -118,25 +118,16 @@ class _Issue204CardState extends State<Issue204Card> {
               'one batch. Expected exactly 1 (duplicate providers would fire 2).',
             ),
             const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: Text(
-                '$_status\n\nrequestSyncBody invocations: $_invocations',
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 13,
-                  color: Colors.black87,
-                ),
-              ),
+            IssueStatusBox(
+              // The count is repeated live while the test runs; the final
+              // message names it too, which is the copy that survives a scroll.
+              status: running
+                  ? '$status\n\nrequestSyncBody invocations: $_invocations'
+                  : status,
             ),
             const SizedBox(height: 16),
             FilledButton.icon(
-              onPressed: _running ? null : _test,
+              onPressed: running ? null : _test,
               icon: const Icon(Icons.play_arrow),
               label: const Text('Run Test'),
             ),

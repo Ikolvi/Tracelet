@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Mock-location rejection on one-shot APIs (found while auditing #243).
 ///
@@ -24,17 +25,16 @@ class MockRejectionCard extends StatefulWidget {
   State<MockRejectionCard> createState() => _MockRejectionCardState();
 }
 
-class _MockRejectionCardState extends State<MockRejectionCard> {
-  String _status = 'Idle';
-  bool _running = false;
+class _MockRejectionCardState extends State<MockRejectionCard>
+    with IssueCardRun<MockRejectionCard> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _test;
 
   Future<void> _test() async {
-    if (_running) return;
-    setState(() => _running = true);
+    if (running) return;
+    setRunning(running: true);
 
     try {
       if (!Platform.isAndroid) {
@@ -107,7 +107,7 @@ class _MockRejectionCardState extends State<MockRejectionCard> {
     } catch (e) {
       _set('❌ ERROR: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -121,8 +121,8 @@ class _MockRejectionCardState extends State<MockRejectionCard> {
           'delivered spoofed locations. All delivery paths now enforce the '
           'flag. Run once for a baseline genuine fix, then again with a mock '
           'location app active to see the rejection.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _test,
     );
   }

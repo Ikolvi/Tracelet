@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #230 — runtime config changes (setConfig) did not propagate to the
 /// active native tracking/sensor loops. Only a few location keys triggered a
@@ -22,16 +23,15 @@ class Issue230Card extends StatefulWidget {
   State<Issue230Card> createState() => _Issue230CardState();
 }
 
-class _Issue230CardState extends State<Issue230Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue230CardState extends State<Issue230Card>
+    with IssueCardRun<Issue230Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _test;
 
   Future<void> _test() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     try {
       _set('Requesting permissions...');
       final auth = await Tracelet.requestLocationAuthorization();
@@ -100,7 +100,7 @@ class _Issue230CardState extends State<Issue230Card> {
       try {
         await Tracelet.stop();
       } catch (_) {}
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -113,8 +113,8 @@ class _Issue230CardState extends State<Issue230Card> {
           'SPEED mode via setConfig, then asserts the native log shows a '
           'stop→start restart of the pipeline (previously the motion sensors '
           'kept running on stale parameters until the app was force-killed).',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _test,
     );
   }

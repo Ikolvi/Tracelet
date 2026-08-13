@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #267 — expose [Tracelet.requestTermination] on the headless
 /// `com.tracelet/methods` MethodChannel so a killed-app background isolate can
@@ -48,16 +49,15 @@ class Issue267Card extends StatefulWidget {
   State<Issue267Card> createState() => _Issue267CardState();
 }
 
-class _Issue267CardState extends State<Issue267Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue267CardState extends State<Issue267Card>
+    with IssueCardRun<Issue267Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _test;
 
   Future<void> _test() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     try {
       if (!Platform.isAndroid) {
         _set(
@@ -129,7 +129,7 @@ class _Issue267CardState extends State<Issue267Card> {
       try {
         await Tracelet.stop();
       } catch (_) {}
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -154,8 +154,8 @@ class _Issue267CardState extends State<Issue267Card> {
           'headless engine). Trigger it from a real FCM background handler '
           'while the app is killed to see the GPS service stop. Android-only.',
       runLabel: 'Arm headless repro',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _test,
     );
   }

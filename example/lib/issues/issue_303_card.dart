@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #303 — location-filter config never reached the Rust processor.
 ///
@@ -35,16 +36,15 @@ class Issue303Card extends StatefulWidget {
   State<Issue303Card> createState() => _Issue303CardState();
 }
 
-class _Issue303CardState extends State<Issue303Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue303CardState extends State<Issue303Card>
+    with IssueCardRun<Issue303Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _run;
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -216,7 +216,7 @@ class _Issue303CardState extends State<Issue303Card> {
     } catch (e) {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -236,8 +236,8 @@ class _Issue303CardState extends State<Issue303Card> {
           'ignored until the next cold start — and that disabling auto-tuning '
           'restores the values you most recently set, not the ones captured '
           'when the processor was first built.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

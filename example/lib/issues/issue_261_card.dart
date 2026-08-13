@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #261 — `IosConfig.useSignificantChangesOnly` must not open a
 /// `CLBackgroundActivitySession`.
@@ -36,16 +37,15 @@ class Issue261Card extends StatefulWidget {
   State<Issue261Card> createState() => _Issue261CardState();
 }
 
-class _Issue261CardState extends State<Issue261Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue261CardState extends State<Issue261Card>
+    with IssueCardRun<Issue261Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _test;
 
   Future<void> _test() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     try {
       if (!Platform.isIOS) {
         _set(
@@ -148,7 +148,7 @@ class _Issue261CardState extends State<Issue261Card> {
       try {
         await Tracelet.stop();
       } catch (_) {}
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -169,8 +169,8 @@ class _Issue261CardState extends State<Issue261Card> {
           'CLBackgroundActivitySession (which would keep the persistent iOS '
           'location indicator on and defeat significant-change monitoring). '
           'iOS 17+ only; background the app to confirm no ongoing location pill.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _test,
     );
   }

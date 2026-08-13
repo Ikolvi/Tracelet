@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #332 — a location the Rust processor rejected reported
 /// `effectiveSpeed: 0.0`, so the GPS-speed motion machine was told the device
@@ -40,22 +41,21 @@ class Issue332Card extends StatefulWidget {
   State<Issue332Card> createState() => _Issue332CardState();
 }
 
-class _Issue332CardState extends State<Issue332Card> {
+class _Issue332CardState extends State<Issue332Card>
+    with IssueCardRun<Issue332Card> {
   static const _observeWindow = Duration(seconds: 45);
 
   /// The SDK default for `speedMovingThreshold` (m/s). Fixes at or above this
   /// are what the machine must treat as motion.
   static const _movingThreshold = 1.5;
 
-  String _status = 'Idle';
-  bool _running = false;
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _run;
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -196,7 +196,7 @@ class _Issue332CardState extends State<Issue332Card> {
     } finally {
       await locSub?.cancel();
       await smSub?.cancel();
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -213,8 +213,8 @@ class _Issue332CardState extends State<Issue332Card> {
           'fails if the machine declares a stop while the device is above the '
           'moving threshold. Run it while travelling — a stationary run is '
           'reported as inconclusive rather than green.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

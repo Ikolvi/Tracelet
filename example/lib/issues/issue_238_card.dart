@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #238 — `setSyncBodyBuilder` fails with status=0 "Custom body sync failed"
 ///
@@ -18,19 +19,19 @@ class Issue238Card extends StatefulWidget {
   State<Issue238Card> createState() => _Issue238CardState();
 }
 
-class _Issue238CardState extends State<Issue238Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue238CardState extends State<Issue238Card>
+    with IssueCardRun<Issue238Card> {
   HttpServer? _server;
   StreamSubscription? _syncSub;
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  void _set(String s) => setStatus(s);
+
+  @override
+  IssueRunner? get cardRunner => _test;
 
   Future<void> _test() async {
-    if (_running) return;
-    setState(() => _running = true);
+    if (running) return;
+    setRunning(running: true);
     _set('Starting local server...');
 
     try {
@@ -107,7 +108,7 @@ class _Issue238CardState extends State<Issue238Card> {
       _syncSub = null;
       await Tracelet.stop();
       Tracelet.setSyncBodyBuilder(null);
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -127,8 +128,8 @@ class _Issue238CardState extends State<Issue238Card> {
           'sync to a local HttpServer. The server intentionally returns '
           'a 400 Bad Request to simulate rejection. The test asserts that '
           'the SDK correctly reports status=400 instead of masking it as 0.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _test,
     );
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #367 — stored telematics dropped `speed` and `value`.
 ///
@@ -39,16 +40,15 @@ class Issue367Card extends StatefulWidget {
   State<Issue367Card> createState() => _Issue367CardState();
 }
 
-class _Issue367CardState extends State<Issue367Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue367CardState extends State<Issue367Card>
+    with IssueCardRun<Issue367Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _run;
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -139,7 +139,7 @@ class _Issue367CardState extends State<Issue367Card> {
     } catch (e) {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -158,8 +158,8 @@ class _Issue367CardState extends State<Issue367Card> {
           'dropped at the insert, so stored history and every synced payload '
           'kept only a normalized flag. A simulated event has no measurement, '
           'so the values are zero — this proves the wiring, not the capture.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #256 — `setConfig()` could restore a TEMPORARY stationary mode as the
 /// main tracking mode.
@@ -36,16 +37,15 @@ class Issue256Card extends StatefulWidget {
   State<Issue256Card> createState() => _Issue256CardState();
 }
 
-class _Issue256CardState extends State<Issue256Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue256CardState extends State<Issue256Card>
+    with IssueCardRun<Issue256Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _test;
 
   Future<void> _test() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     try {
       _set('Requesting permissions...');
       final auth = await Tracelet.requestLocationAuthorization();
@@ -152,7 +152,7 @@ class _Issue256CardState extends State<Issue256Card> {
       try {
         await Tracelet.stop();
       } catch (_) {}
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -167,8 +167,8 @@ class _Issue256CardState extends State<Issue256Card> {
           'restart-sensitive setConfig(). Asserts the restart went through the '
           'continuous motion-aware start() path and did NOT rebuild a standalone '
           'geofence/periodic mode (which would strand tracking).',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _test,
     );
   }

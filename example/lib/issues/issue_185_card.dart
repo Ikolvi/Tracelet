@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
+import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 class Issue185Card extends StatefulWidget {
   const Issue185Card({super.key});
@@ -9,9 +11,9 @@ class Issue185Card extends StatefulWidget {
   State<Issue185Card> createState() => _Issue185CardState();
 }
 
-class _Issue185CardState extends State<Issue185Card> {
+class _Issue185CardState extends State<Issue185Card>
+    with IssueCardRun<Issue185Card> {
   bool _isTracking = false;
-  String _status = 'Idle';
   StreamSubscription? _sub;
 
   final TextEditingController _latController = TextEditingController(
@@ -33,13 +35,11 @@ class _Issue185CardState extends State<Issue185Card> {
     super.dispose();
   }
 
-  void _setStatus(String text) {
-    if (mounted) {
-      setState(() {
-        _status = text;
-      });
-    }
-  }
+  void _setStatus(String text) => setStatus(text);
+
+  // Start/stop tracking by hand: a sweep would leave the SDK tracking.
+  @override
+  IssueRunner? get cardRunner => null;
 
   Future<void> _start() async {
     _setStatus('Requesting permissions...');
@@ -124,22 +124,7 @@ class _Issue185CardState extends State<Issue185Card> {
               ],
             ),
             const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: Text(
-                _status,
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 13,
-                  color: Colors.black87,
-                ),
-              ),
-            ),
+            IssueStatusBox(status: status),
             const SizedBox(height: 16),
             Row(
               children: [

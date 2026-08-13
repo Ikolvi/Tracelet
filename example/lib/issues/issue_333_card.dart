@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #333 — `SmartMotionCoordinator` read the raw platform speed to decide
 /// whether to overrule a *moving* accelerometer, and an unavailable reading
@@ -43,18 +44,17 @@ class Issue333Card extends StatefulWidget {
   State<Issue333Card> createState() => _Issue333CardState();
 }
 
-class _Issue333CardState extends State<Issue333Card> {
+class _Issue333CardState extends State<Issue333Card>
+    with IssueCardRun<Issue333Card> {
   static const _observeWindow = Duration(seconds: 20);
 
-  String _status = 'Idle';
-  bool _running = false;
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _run;
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -154,7 +154,7 @@ class _Issue333CardState extends State<Issue333Card> {
     } catch (e) {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -174,8 +174,8 @@ class _Issue333CardState extends State<Issue333Card> {
           'speed reading, and a log line calling 40 km/h "walking". Which '
           'branch actually runs depends on the device, so that is reported as '
           'context.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

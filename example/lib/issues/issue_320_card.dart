@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #320 — a partial `setConfig()` overwrote the persisted
 /// foreground-service configuration with defaults.
@@ -43,16 +44,15 @@ class Issue320Card extends StatefulWidget {
   State<Issue320Card> createState() => _Issue320CardState();
 }
 
-class _Issue320CardState extends State<Issue320Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue320CardState extends State<Issue320Card>
+    with IssueCardRun<Issue320Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _run;
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -262,7 +262,7 @@ class _Issue320CardState extends State<Issue320Card> {
     } catch (e) {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -280,8 +280,8 @@ class _Issue320CardState extends State<Issue320Card> {
           'showNotificationOnPauseOnly, title, text and channel — instead of '
           'overwriting them with defaults, while a field that is supplied still '
           'takes effect.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

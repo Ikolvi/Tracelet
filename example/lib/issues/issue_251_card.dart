@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #251 — `destroyLocation(uuid)` could not delete persisted locations
 /// because the native SDK parsed the public UUID as a numeric database id.
@@ -22,17 +23,16 @@ class Issue251Card extends StatefulWidget {
   State<Issue251Card> createState() => _Issue251CardState();
 }
 
-class _Issue251CardState extends State<Issue251Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue251CardState extends State<Issue251Card>
+    with IssueCardRun<Issue251Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _test;
 
   Future<void> _test() async {
-    if (_running) return;
-    setState(() => _running = true);
+    if (running) return;
+    setRunning(running: true);
 
     try {
       _set('Inserting a location to obtain a real UUID...');
@@ -82,7 +82,7 @@ class _Issue251CardState extends State<Issue251Card> {
     } catch (e) {
       _set('❌ ERROR: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -95,8 +95,8 @@ class _Issue251CardState extends State<Issue251Card> {
           '(not a bare number), then deletes it via destroyLocation(uuid) and '
           'verifies it is gone. Both Android and iOS used to parse the UUID as '
           'a numeric database id and return false without deleting anything.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _test,
     );
   }

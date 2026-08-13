@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #305 — the cross-platform geofence high-accuracy flag was dropped on
 /// two of the four config transports.
@@ -33,16 +34,15 @@ class Issue305Card extends StatefulWidget {
   State<Issue305Card> createState() => _Issue305CardState();
 }
 
-class _Issue305CardState extends State<Issue305Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue305CardState extends State<Issue305Card>
+    with IssueCardRun<Issue305Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _run;
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -128,7 +128,7 @@ class _Issue305CardState extends State<Issue305Card> {
     } catch (e) {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -149,8 +149,8 @@ class _Issue305CardState extends State<Issue305Card> {
           'were silently dropped on the method-channel transport, including '
           'the #276 geofenceExitAccuracyMax tunable — and that the deprecated '
           'Android-only flag still works for existing apps.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

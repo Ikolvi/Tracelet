@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #237 — periodic mode with `periodicUseForegroundService: true` did not
 /// start a foreground service, so tracking died the moment the app was swiped
@@ -29,13 +30,12 @@ class Issue237Card extends StatefulWidget {
   State<Issue237Card> createState() => _Issue237CardState();
 }
 
-class _Issue237CardState extends State<Issue237Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue237CardState extends State<Issue237Card>
+    with IssueCardRun<Issue237Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _test;
 
   Future<void> _test() async {
     if (!Platform.isAndroid) {
@@ -43,7 +43,7 @@ class _Issue237CardState extends State<Issue237Card> {
       return;
     }
 
-    setState(() => _running = true);
+    setRunning(running: true);
     try {
       _set('Requesting permissions...');
       final auth = await Tracelet.requestLocationAuthorization();
@@ -86,7 +86,7 @@ class _Issue237CardState extends State<Issue237Card> {
     } catch (e) {
       _set('❌ FAILED: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -99,8 +99,8 @@ class _Issue237CardState extends State<Issue237Card> {
           'interval (the exact reporter setup). The foreground service used to '
           'be stopped-then-restarted, racing itself into oblivion; now it starts '
           'and survives app swipe-away. Android-only. Verify via dumpsys.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _test,
     );
   }

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #282 — iOS periodic fixes now use the shared best-of-N sampling window.
 ///
@@ -26,26 +27,25 @@ class Issue282Card extends StatefulWidget {
   State<Issue282Card> createState() => _Issue282CardState();
 }
 
-class _Issue282CardState extends State<Issue282Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue282CardState extends State<Issue282Card>
+    with IssueCardRun<Issue282Card> {
   bool _tracking = false;
   int _fixCount = 0;
   StreamSubscription<Location>? _sub;
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  void _set(String s) => setStatus(s);
+
+  // Start/stop tracking by hand: a sweep would leave the SDK tracking.
+  @override
+  IssueRunner? get cardRunner => null;
 
   Future<void> _start() async {
     if (!Platform.isIOS) {
       _set('ℹ️ iOS-only repro (#282 changes the iOS periodic fix path).');
       return;
     }
-    setState(() {
-      _running = true;
-      _fixCount = 0;
-    });
+    setRunning(running: true);
+    setState(() => _fixCount = 0);
     try {
       await Tracelet.requestLocationAuthorization();
       await Tracelet.ready(
@@ -88,7 +88,7 @@ class _Issue282CardState extends State<Issue282Card> {
     } catch (e) {
       _set('❌ FAILED: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -122,8 +122,8 @@ class _Issue282CardState extends State<Issue282Card> {
           'accuracy / locationSource. On iOS, periodic fixes now route through '
           'the shared best-of-N window instead of a single requestLocation() '
           'one-shot, so they should be GPS-quality. Manual on-device iOS repro.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       runLabel: _tracking ? 'Stop' : 'Start tracking',
       onRun: _tracking ? _stop : _start,
     );

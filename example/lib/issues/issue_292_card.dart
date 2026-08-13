@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #292 — Geofence high-accuracy mode re-emits ENTER on every
 /// resume/boot for a stationary device inside the fence.
@@ -34,16 +35,15 @@ class Issue292Card extends StatefulWidget {
   State<Issue292Card> createState() => _Issue292CardState();
 }
 
-class _Issue292CardState extends State<Issue292Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue292CardState extends State<Issue292Card>
+    with IssueCardRun<Issue292Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _run;
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     try {
       const centerLat = 10.787929;
       const centerLng = 76.684183;
@@ -144,7 +144,7 @@ class _Issue292CardState extends State<Issue292Card> {
     } catch (e) {
       _set('❌ FAILED: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -165,8 +165,8 @@ class _Issue292CardState extends State<Issue292Card> {
           'false punch-in); applying the shipped persisted known-inside dedup '
           'collapses it to exactly one ENTER and zero EXIT. Runs in-process; no '
           'permissions or device movement required.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

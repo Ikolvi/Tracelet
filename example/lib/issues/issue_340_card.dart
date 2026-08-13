@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #340 — the same app posted its own sync body on Android and the SDK
 /// default on iOS.
@@ -81,13 +82,12 @@ class Issue340Card extends StatefulWidget {
   State<Issue340Card> createState() => _Issue340CardState();
 }
 
-class _Issue340CardState extends State<Issue340Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue340CardState extends State<Issue340Card>
+    with IssueCardRun<Issue340Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _run;
 
   /// Mirrors `buildTraceletSyncBody` in `main.dart` — the same envelope the
   /// app's foreground and headless builders both produce. Kept local rather
@@ -131,7 +131,7 @@ class _Issue340CardState extends State<Issue340Card> {
   }
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -255,7 +255,7 @@ class _Issue340CardState extends State<Issue340Card> {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
       await httpSub?.cancel();
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -273,8 +273,8 @@ class _Issue340CardState extends State<Issue340Card> {
           'relaunched process fell back to the SDK default with a headless '
           'builder registered. Clears the foreground builder and checks which '
           'body the next sync posts.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }
