@@ -240,6 +240,16 @@ Future<tl.Location?> bestPosition() async {
 
 **iOS — it depends on how the app was closed.** If iOS terminates the app for memory/system reasons, it **relaunches** it in the background on the next significant-location-change and resumes. If the **user** force-quits the app (swipe up in the app switcher), iOS deliberately suspends all of its location services until the app is opened again — Apple does not let any SDK override this.
 
+### I set `showNotificationOnPauseOnly: true` but the notification is always visible. Why?
+
+Because `stopOnTerminate` is `false`, and the two settings cannot both be honoured.
+
+Hiding the notification means demoting the foreground service — Android has no foreground service without a notification — and a process holding no foreground service is the one Android kills when the user swipes the app out of recents. So while the notification was hidden, `stopOnTerminate: false` guaranteed nothing: a swipe timed inside the gap (measured at 285 ms on a Pixel Fold, 700–1500 ms on an Android 15 device) killed the process outright, with no headless task, no events and no logs. Nothing an SDK does at task-removal time can prevent it — Android has already chosen which processes to kill before it tells your app the task was removed.
+
+Tracelet resolves it in favour of the survival promise: with `stopOnTerminate: false` the flag is ignored and the notification stays up. It logs the reason once per `start()` on the lifecycle channel, so `Tracelet.getLogs()` will show it.
+
+Set `stopOnTerminate: true` if you would rather have the hidden notification and are happy for tracking to end when the app is swiped away. [Full explanation 📖](/en/getting-started/platform-setup/android#hiding-the-notification-while-the-app-is-open-shownotificationonpauseonly)
+
 ---
 
 ## Offline & Sync
