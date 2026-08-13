@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:tracelet/tracelet.dart' as tl;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #288 — the pace never leaves MOVING in smart motion mode.
 ///
@@ -42,19 +43,18 @@ class Issue288Card extends StatefulWidget {
   State<Issue288Card> createState() => _Issue288CardState();
 }
 
-class _Issue288CardState extends State<Issue288Card> {
+class _Issue288CardState extends State<Issue288Card>
+    with IssueCardRun<Issue288Card> {
   static const _debug = MethodChannel('com.tracelet/debug');
-
-  String _status = 'Idle';
-  bool _running = false;
 
   StreamSubscription<tl.SpeedMotionEvent>? _speedSub;
   StreamSubscription<tl.Location>? _paceSub;
   Timer? _ticker;
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  void _set(String s) => setStatus(s);
+
+  @override
+  IssueRunner? get cardRunner => _test;
 
   @override
   void dispose() {
@@ -65,8 +65,8 @@ class _Issue288CardState extends State<Issue288Card> {
   }
 
   Future<void> _test() async {
-    if (_running) return;
-    setState(() => _running = true);
+    if (running) return;
+    setRunning(running: true);
 
     final timeline = <String>[];
     var slowingToMovingFlips = 0;
@@ -238,7 +238,7 @@ class _Issue288CardState extends State<Issue288Card> {
       await _paceSub?.cancel();
       _speedSub = null;
       _paceSub = null;
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -354,8 +354,8 @@ class _Issue288CardState extends State<Issue288Card> {
           'SDK is actually using, so an unset one must show its platform '
           'default. Start tracking first, put the phone on a desk, and do not '
           'touch it while it runs.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       runLabel: 'Verify',
       onRun: _test,
     );

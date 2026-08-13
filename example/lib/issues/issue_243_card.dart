@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #243 — startPeriodic posts the foreground notification even though
 /// `periodicUseForegroundService: false` and `foregroundService.enabled: false`.
@@ -22,17 +23,16 @@ class Issue243Card extends StatefulWidget {
   State<Issue243Card> createState() => _Issue243CardState();
 }
 
-class _Issue243CardState extends State<Issue243Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue243CardState extends State<Issue243Card>
+    with IssueCardRun<Issue243Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _test;
 
   Future<void> _test() async {
-    if (_running) return;
-    setState(() => _running = true);
+    if (running) return;
+    setRunning(running: true);
 
     try {
       if (!Platform.isAndroid) {
@@ -89,7 +89,7 @@ class _Issue243CardState extends State<Issue243Card> {
     } catch (e) {
       _set('❌ ERROR: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -103,8 +103,8 @@ class _Issue243CardState extends State<Issue243Card> {
           'On aggressive OEMs the old native config layer silently forced '
           'both flags to true, posting the default foreground notification. '
           'Explicit config is now honored (WorkManager strategy, no service).',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _test,
     );
   }

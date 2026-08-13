@@ -25,6 +25,14 @@ dependencies:
   tracelet_doctor:
     path: ../packages/tracelet_doctor
   cupertino_icons: ^1.0.8
+  # #364/#371 — the foreign background FlutterEngine, from the plugin that
+  # actually creates one in the field. firebase_messaging's
+  # FlutterFirebaseMessagingBackgroundService builds an engine in the app
+  # process, plugin auto-registration attaches Tracelet to it, and it outlives
+  # the UI engine on task removal. issue_371_card.dart drives the real service
+  # rather than a look-alike engine, because the failure is conditional on that
+  # engine still being attached when the app is swiped away.
+  firebase_messaging: ^16.0.0
   # Terminated-state geofence testing (#355): a crossing that fires while
   # the app is killed has no UI to land in, so the notification IS the
   # observation. Posted from the headless isolate.

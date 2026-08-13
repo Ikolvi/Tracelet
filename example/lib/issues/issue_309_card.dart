@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issues #309–#314 — crash-ML and telematics wiring fixes.
 ///
@@ -42,10 +43,8 @@ class Issue309Card extends StatefulWidget {
   State<Issue309Card> createState() => _Issue309CardState();
 }
 
-class _Issue309CardState extends State<Issue309Card> {
-  String _status = 'Idle';
-  bool _running = false;
-
+class _Issue309CardState extends State<Issue309Card>
+    with IssueCardRun<Issue309Card> {
   static const _debug = MethodChannel('com.tracelet/debug');
 
   /// Deterministic key shared with the #183 crash-model integration tests.
@@ -71,12 +70,13 @@ class _Issue309CardState extends State<Issue309Card> {
       '2O+cbPWmELO9rmIO90MI8zEKM3CaHhezSAcJb6XkoqviSp1RQ75r2qbqDIXoPuAe/w2U'
       'wVgv6sOuYBf2oiR+tPX45AxdGqMH6r1ph0wV89XcBQ==';
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  void _set(String s) => setStatus(s);
+
+  @override
+  IssueRunner? get cardRunner => _run;
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -236,7 +236,7 @@ class _Issue309CardState extends State<Issue309Card> {
     } catch (e) {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -257,8 +257,8 @@ class _Issue309CardState extends State<Issue309Card> {
           'silently disabling crash detection — while a valid model still '
           'loads and scores. Also checks that getTelematicsEvents() returns '
           'the most recent events rather than the oldest unsynced ones.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

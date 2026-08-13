@@ -202,6 +202,32 @@ export default function VersionSwitch({
 
   const isArchived = Boolean(archivedSlug)
 
+  // With no archives there is nothing to switch *to*, so the control is a
+  // label, not a menu. Rendering the button anyway gave a dropdown whose only
+  // entry was the page you were already on — an affordance that promises a
+  // choice and then offers none. The badge itself still earns its place: it
+  // reports the newest published version from pub.dev.
+  if (archived.length === 0) {
+    return (
+      <span
+        aria-label={`Documentation version: ${activeLabel}`}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          fontSize: '12px',
+          lineHeight: 1.4,
+          background: 'rgba(15, 157, 88, 0.2)',
+          color: '#0F9D58',
+          padding: '2px 6px',
+          borderRadius: '4px',
+          fontWeight: 600
+        }}
+      >
+        {activeLabel}
+      </span>
+    )
+  }
+
   return (
     // Nextra renders the `logo` prop inside `<a href="/" aria-label="Home page">`,
     // so without stopping the event here every click on this control bubbles to

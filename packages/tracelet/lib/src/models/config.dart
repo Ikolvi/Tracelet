@@ -1550,10 +1550,28 @@ class HttpConfig {
   /// **Enterprise** — Base64 encoded SSL certificates.
   final List<String>? sslPinningCertificates;
 
-  /// Whether to sync telematics events automatically.
+  /// Whether to upload stored telematics events alongside locations.
+  ///
+  /// Defaults to `false`. When enabled, unsynced driving/impact events are
+  /// attached to the sync as a JSON array under `extras.__telematics` — or
+  /// posted to [telematicsUrl] instead, when that is set.
+  ///
+  /// Events are marked synced only when the request carrying them succeeded, so
+  /// an offline device keeps them queued for the next attempt (#366). Uploading
+  /// does not remove them from [Tracelet.getTelematicsEvents] (#313).
   bool get syncTelematics => _syncTelematics ?? false;
 
-  /// The URL to sync telematics events to.
+  /// Optional separate endpoint for telematics events (#368).
+  ///
+  /// When set — and [syncTelematics] is enabled — events are POSTed here as
+  /// `{"telematics": [...]}` on their own request instead of riding the location
+  /// payload, using the same headers, timeouts, retries and SSL pinning as
+  /// [url]. When unset (the default) they stay in `extras.__telematics` on the
+  /// location request, so existing integrations are unaffected.
+  ///
+  /// To go back to the attached path after setting this, pass an empty string
+  /// rather than `null`: config is merged, not replaced, so `null` means "leave
+  /// whatever is already there". A blank value is treated as absent.
   final String? telematicsUrl;
 
   /// Converts to Pigeon [TlHttpConfig].
@@ -2675,7 +2693,7 @@ class PersistenceConfig {
   factory PersistenceConfig.fromMap(Map<String, Object?> map) {
     return PersistenceConfig(
       maxDaysToPersist: map.containsKey('maxDaysToPersist')
-          ? ensureInt(map['maxDaysToPersist'], fallback: 1)
+          ? ensureInt(map['maxDaysToPersist'], fallback: 3)
           : null,
       maxRecordsToPersist: map.containsKey('maxRecordsToPersist')
           ? ensureInt(map['maxRecordsToPersist'], fallback: -1)
@@ -2702,8 +2720,15 @@ class PersistenceConfig {
   final bool? _disableProviderChangeRecord;
 
   /// The maximum number of days to retain tracked locations and geofence events in the database.
-  /// Set to `-1` for unlimited retention. Defaults to `1`.
-  int get maxDaysToPersist => _maxDaysToPersist ?? 1;
+  /// Set to `-1` for unlimited retention. Defaults to `3`.
+  ///
+  /// This window is enforced against the local queue as of #361; before that it
+  /// was accepted and applied by nothing. The default was `1` while it did
+  /// nothing, which is too tight to switch on unannounced — an app offline over
+  /// a weekend would have lost everything but the last day. `3` matches
+  /// `logMaxDays` and leaves room for a normal offline stretch; pass `-1` to
+  /// retain indefinitely and rely on [maxRecordsToPersist] alone.
+  int get maxDaysToPersist => _maxDaysToPersist ?? 3;
 
   /// The maximum number of location records to keep in the database.
   /// Set to `-1` for unlimited. Defaults to `-1`.

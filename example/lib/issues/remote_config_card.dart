@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
+import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Remote Config — verifies the native background fetch of `remoteConfigUrl`.
 ///
@@ -35,7 +37,8 @@ class RemoteConfigCard extends StatefulWidget {
   State<RemoteConfigCard> createState() => _RemoteConfigCardState();
 }
 
-class _RemoteConfigCardState extends State<RemoteConfigCard> {
+class _RemoteConfigCardState extends State<RemoteConfigCard>
+    with IssueCardRun<RemoteConfigCard> {
   /// A public, config-shaped JSON fixture served over HTTPS (a GitHub gist,
   /// mirroring `example/assets/remote_config_sample.json`). Editable below.
   static const String _defaultUrl =
@@ -46,12 +49,10 @@ class _RemoteConfigCardState extends State<RemoteConfigCard> {
     text: _defaultUrl,
   );
 
-  String _status = 'Idle';
-  bool _running = false;
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _test;
 
   @override
   void dispose() {
@@ -82,8 +83,8 @@ class _RemoteConfigCardState extends State<RemoteConfigCard> {
   }
 
   Future<void> _test() async {
-    if (_running) return;
-    setState(() => _running = true);
+    if (running) return;
+    setRunning(running: true);
 
     final url = _urlController.text.trim();
     try {
@@ -141,7 +142,7 @@ class _RemoteConfigCardState extends State<RemoteConfigCard> {
     } catch (e) {
       _set('❌ ERROR: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -180,25 +181,10 @@ class _RemoteConfigCardState extends State<RemoteConfigCard> {
               minLines: 1,
             ),
             const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: Text(
-                _status,
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 13,
-                  color: Colors.black87,
-                ),
-              ),
-            ),
+            IssueStatusBox(status: status),
             const SizedBox(height: 16),
             FilledButton.icon(
-              onPressed: _running ? null : _test,
+              onPressed: running ? null : _test,
               icon: const Icon(Icons.cloud_download),
               label: const Text('Fetch & Apply'),
             ),

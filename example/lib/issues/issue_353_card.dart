@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #353 — Android: geofences added alongside continuous tracking (not
 /// `startGeofences()`) were unregistered on task removal and never restored,
@@ -40,18 +41,17 @@ class Issue353Card extends StatefulWidget {
   State<Issue353Card> createState() => _Issue353CardState();
 }
 
-class _Issue353CardState extends State<Issue353Card> {
-  String _status = 'Idle';
-  bool _running = false;
-
+class _Issue353CardState extends State<Issue353Card>
+    with IssueCardRun<Issue353Card> {
   static const _fenceId = 'issue-353-office';
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  void _set(String s) => setStatus(s);
+
+  @override
+  IssueRunner? get cardRunner => _run;
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -134,7 +134,7 @@ class _Issue353CardState extends State<Issue353Card> {
     } catch (e) {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -155,8 +155,8 @@ class _Issue353CardState extends State<Issue353Card> {
           'removal and never restore them, so ENTER/EXIT silently stopped '
           'firing forever. Also documents the manual repro and the new '
           'always-on lifecycle logging.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

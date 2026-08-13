@@ -5,6 +5,7 @@ import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_platform_interface/tracelet_platform_interface.dart'
     show TlLocationTuning, TlModeChangeEvent;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #301 — auto-tune follow-ups to #299.
 ///
@@ -31,10 +32,8 @@ class Issue301Card extends StatefulWidget {
   State<Issue301Card> createState() => _Issue301CardState();
 }
 
-class _Issue301CardState extends State<Issue301Card> {
-  String _status = 'Idle';
-  bool _running = false;
-
+class _Issue301CardState extends State<Issue301Card>
+    with IssueCardRun<Issue301Card> {
   StreamSubscription<ModeChangeEvent>? _sub;
 
   /// How long to watch the live classifier before giving up on a commit. The
@@ -76,9 +75,10 @@ class _Issue301CardState extends State<Issue301Card> {
     ),
   };
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  void _set(String s) => setStatus(s);
+
+  @override
+  IssueRunner? get cardRunner => _run;
 
   @override
   void dispose() {
@@ -87,7 +87,7 @@ class _Issue301CardState extends State<Issue301Card> {
   }
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -240,7 +240,7 @@ class _Issue301CardState extends State<Issue301Card> {
       _sub = null;
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -260,8 +260,8 @@ class _Issue301CardState extends State<Issue301Card> {
           'auto-tuning off restores your configured values instead of leaving '
           'the last mode in force. The contract checks run in-process; the live '
           'section watches the real classifier for 25s, so walk around.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

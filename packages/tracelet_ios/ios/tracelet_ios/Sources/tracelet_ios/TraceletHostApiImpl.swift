@@ -475,19 +475,6 @@ class TraceletHostApiImpl: TraceletHostApi {
         completion(.success(()))
     }
 
-    func setNotification(update: TlNotificationUpdate, completion: @escaping (Result<Void, Error>) -> Void) {
-        let startedAt = update.startedAt.map {
-            Date(timeIntervalSince1970: Double($0) / 1000.0)
-        }
-        sdk.setNotification(
-            title: update.title,
-            text: update.text,
-            startedAt: startedAt,
-            showTimer: update.showTimer
-        )
-        completion(.success(()))
-    }
-
     // MARK: - Location
 
     func getCurrentPosition(options: TlCurrentPositionOptions, completion: @escaping (Result<TlLocation, Error>) -> Void) {
@@ -894,6 +881,9 @@ class TraceletHostApiImpl: TraceletHostApi {
                 id: e.id,
                 eventType: e.eventType,
                 severity: e.severity,
+                // #367: the magnitudes behind the normalized severity.
+                speed: e.speed,
+                value: e.value,
                 latitude: e.latitude,
                 longitude: e.longitude,
                 timestamp: e.timestamp,

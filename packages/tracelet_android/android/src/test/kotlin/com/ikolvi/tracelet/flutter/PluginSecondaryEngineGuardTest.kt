@@ -15,6 +15,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 
 /**
  * Tests that the primary-instance guard in [TraceletAndroidPlugin] prevents
@@ -48,6 +49,7 @@ internal class PluginSecondaryEngineGuardTest {
     fun setUp() {
         // Reset the static primaryInstance before each test
         resetPrimaryInstance()
+        resetGlobalEventSender()
         // Default: simulate main-thread attach (primary engine behaviour)
         setIsMainThread(true)
 
@@ -70,6 +72,7 @@ internal class PluginSecondaryEngineGuardTest {
         instanceField.isAccessible = true
         instanceField.set(null, null)
         resetPrimaryInstance()
+        resetGlobalEventSender()
         // Restore production Looper check so other test classes are unaffected
         restoreIsMainThread()
     }
@@ -132,7 +135,7 @@ internal class PluginSecondaryEngineGuardTest {
     /**
      * The other half: an in-process *UI* engine (EngineGroup, e.g. an overlay)
      * attaches on the main thread and genuinely can display events, so it must
-     * still receive them.
+     * still receive them — once its Dart side has subscribed (#364).
      */
     @Test
     fun uiSecondaryEngine_joinsTheEventFanOut() {
@@ -141,12 +144,156 @@ internal class PluginSecondaryEngineGuardTest {
         val afterPrimary = globalDispatcherCount()
 
         // No headless spawn in flight — an EngineGroup/overlay engine.
-        TraceletAndroidPlugin().onAttachedToEngine(createMockBinding("overlay"))
+        val overlay = TraceletAndroidPlugin()
+        overlay.onAttachedToEngine(createMockBinding("overlay"))
+        // Its Dart side accesses an event stream, which makes PigeonTracelet
+        // call requestStateFlush() on this engine's HostApi.
+        overlay.onDartEventsSubscribed()
 
         assertEquals(
             afterPrimary + 1,
             globalDispatcherCount(),
             "an in-process UI engine must still receive events",
+        )
+    }
+
+    /**
+     * #364: a FlutterEngine created by *another plugin* must not be treated as
+     * an event receiver.
+     *
+     * `isSpawningHeadlessEngine` only identifies engines Tracelet spawned
+     * itself. An engine created by firebase_messaging's background message
+     * service (or flutter_local_notifications, background_downloader, …) takes
+     * the UI branch, and plugin auto-registration attaches Tracelet to it — but
+     * its isolate never calls `Tracelet.onLocation`. Registering it gave the
+     * dispatcher a non-null `eventApi`, which `EventDispatcher` reads as "a
+     * Flutter engine can receive this", so `fallback()` never routed to
+     * `HeadlessTaskService`. After task removal the real UI engine died and
+     * that foreign engine kept the whole fan-out to itself: native tracking
+     * continued, and Dart saw nothing for the rest of the process.
+     */
+    @Test
+    fun foreignEngineThatNeverSubscribes_doesNotJoinTheEventFanOut() {
+        val primaryPlugin = TraceletAndroidPlugin()
+        primaryPlugin.onAttachedToEngine(createMockBinding("primary"))
+        val afterPrimary = globalDispatcherCount()
+
+        // firebase_messaging's FlutterFirebaseMessagingBackgroundService builds
+        // its engine on the main thread and outside any Tracelet headless spawn
+        // — indistinguishable from an overlay at attach time.
+        TraceletAndroidPlugin().onAttachedToEngine(createMockBinding("fcm"))
+
+        assertEquals(
+            afterPrimary,
+            globalDispatcherCount(),
+            "an engine whose Dart side never subscribed must not join the " +
+                "fan-out, or it swallows every event once the UI engine dies",
+        )
+    }
+
+    /**
+     * #364, the delivery half: with the foreign engine held out, the primary
+     * detaching on task removal leaves nothing in the fan-out claiming it can
+     * deliver — which is what lets events fall through to the headless task
+     * instead of being posted into an isolate with no listeners.
+     */
+    @Test
+    fun foreignEngineSurvivingPrimaryDetach_leavesTheFanOutEmpty() {
+        val primaryPlugin = TraceletAndroidPlugin()
+        val primaryBinding = createMockBinding("primary")
+        primaryPlugin.onAttachedToEngine(primaryBinding)
+        TraceletAndroidPlugin().onAttachedToEngine(createMockBinding("fcm"))
+
+        // App swiped from recents: the UI engine detaches, the FCM engine lives on.
+        primaryPlugin.onDetachedFromEngine(primaryBinding)
+
+        assertEquals(
+            0,
+            globalDispatcherCount(),
+            "the surviving foreign engine must not be left holding the fan-out",
+        )
+    }
+
+    /**
+     * #371, the other half of the state above: an empty fan-out is only safe if
+     * something still routes to the headless task.
+     *
+     * `sdk.setEventSender(globalEventSender)` happens once, at primary attach,
+     * and survives task removal — so after the primary detaches every event the
+     * still-running native tracking produces is dispatched into this composite.
+     * With the members gone, the per-dispatcher `headlessFallback` went with
+     * them; the composite needs its own, wired here and outliving the detach.
+     */
+    @Test
+    fun primaryDetachWithASurvivingEngine_leavesAHeadlessRouteOnTheFanOut() {
+        val primaryPlugin = TraceletAndroidPlugin()
+        val primaryBinding = createMockBinding("primary")
+        primaryPlugin.onAttachedToEngine(primaryBinding)
+        assertNotNull(
+            globalFanOutFallback(),
+            "the primary must wire the fan-out's headless fallback at attach",
+        )
+
+        TraceletAndroidPlugin().onAttachedToEngine(createMockBinding("fcm"))
+        primaryPlugin.onDetachedFromEngine(primaryBinding)
+
+        assertEquals(0, globalDispatcherCount())
+        assertNotNull(
+            globalFanOutFallback(),
+            "with the fan-out empty and the SDK still holding it as the event " +
+                "sender, losing this route means events reach nothing at all",
+        )
+    }
+
+    /**
+     * #364 must not re-open #358: an app whose *headless* task subscribes to a
+     * stream would otherwise hand the headless engine a live `eventApi` through
+     * the same handshake, and swallow the events it was spawned to deliver.
+     */
+    @Test
+    fun headlessEngineThatSubscribes_stillDoesNotJoinTheEventFanOut() {
+        val primaryPlugin = TraceletAndroidPlugin()
+        primaryPlugin.onAttachedToEngine(createMockBinding("primary"))
+        val afterPrimary = globalDispatcherCount()
+
+        val headless = TraceletAndroidPlugin()
+        setSpawningHeadlessEngine(true)
+        try {
+            headless.onAttachedToEngine(createMockBinding("headless"))
+        } finally {
+            setSpawningHeadlessEngine(false)
+        }
+        headless.onDartEventsSubscribed()
+
+        assertEquals(
+            afterPrimary,
+            globalDispatcherCount(),
+            "a headless engine must stay out of the fan-out even when its " +
+                "isolate subscribes to a stream (#358)",
+        )
+    }
+
+    /**
+     * #364: a secondary engine that detached before subscribing must not be
+     * able to join later on a late handshake, holding a messenger whose engine
+     * is gone.
+     */
+    @Test
+    fun uiSecondaryEngine_cannotJoinAfterItDetached() {
+        val primaryPlugin = TraceletAndroidPlugin()
+        primaryPlugin.onAttachedToEngine(createMockBinding("primary"))
+        val afterPrimary = globalDispatcherCount()
+
+        val overlay = TraceletAndroidPlugin()
+        val overlayBinding = createMockBinding("overlay")
+        overlay.onAttachedToEngine(overlayBinding)
+        overlay.onDetachedFromEngine(overlayBinding)
+        overlay.onDartEventsSubscribed()
+
+        assertEquals(
+            afterPrimary,
+            globalDispatcherCount(),
+            "a detached engine must not join the fan-out",
         )
     }
 
@@ -307,12 +454,44 @@ internal class PluginSecondaryEngineGuardTest {
     }
 
     /** Number of dispatchers currently in the global event fan-out. */
-    private fun globalDispatcherCount(): Int {
+    private fun globalDispatcherCount(): Int = globalDispatchers().size
+
+    /**
+     * Empties the static fan-out between tests.
+     *
+     * `globalEventSender` is a companion-object singleton, so dispatchers added
+     * by one test were still there for the next one. Tests that assert a
+     * *relative* count survive that; one that asserts the fan-out is empty
+     * cannot (#364).
+     */
+    private fun resetGlobalEventSender() {
+        globalDispatchers().clear()
+        val sender = globalEventSenderInstance()
+        val fallback = sender.javaClass.getDeclaredField("headlessFallback")
+        fallback.isAccessible = true
+        fallback.set(sender, null)
+    }
+
+    /** The fan-out's own headless fallback, or null when none is wired (#371). */
+    private fun globalFanOutFallback(): Any? {
+        val sender = globalEventSenderInstance()
+        val field = sender.javaClass.getDeclaredField("headlessFallback")
+        field.isAccessible = true
+        return field.get(sender)
+    }
+
+    private fun globalEventSenderInstance(): Any {
+        val senderField = TraceletAndroidPlugin::class.java.getDeclaredField("globalEventSender")
+        senderField.isAccessible = true
+        return senderField.get(null)
+    }
+
+    private fun globalDispatchers(): MutableList<*> {
         val senderField = TraceletAndroidPlugin::class.java.getDeclaredField("globalEventSender")
         senderField.isAccessible = true
         val sender = senderField.get(null)
         val listField = sender.javaClass.getDeclaredField("dispatchers")
         listField.isAccessible = true
-        return (listField.get(sender) as java.util.List<*>).size
+        return listField.get(sender) as MutableList<*>
     }
 }

@@ -1,3 +1,7 @@
+## 3.8.3
+
+**FEAT**: `TlTelematicsRecord` carries `speed` and `value`. Both are nullable, so a Dart side newer than the native plugin decodes a missing field as `null` rather than failing. `severity` is unchanged ([#367](https://github.com/Ikolvi/Tracelet/issues/367)).
+
 ## 3.8.2
 
 Version alignment with tracelet 3.8.2.

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #294 — a single over-confident GPS fix causes false EXIT/ENTER
 /// flapping for a stationary device (high-accuracy geofence mode).
@@ -25,13 +26,12 @@ class Issue294Card extends StatefulWidget {
   State<Issue294Card> createState() => _Issue294CardState();
 }
 
-class _Issue294CardState extends State<Issue294Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue294CardState extends State<Issue294Card>
+    with IssueCardRun<Issue294Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _run;
 
   static const _lat = 10.787929;
   static const _lng = 76.684183;
@@ -86,7 +86,7 @@ class _Issue294CardState extends State<Issue294Card> {
   }
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     try {
       final results = <String>[];
       var allPass = true;
@@ -181,7 +181,7 @@ class _Issue294CardState extends State<Issue294Card> {
     } catch (e) {
       _set('❌ FAILED: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -201,8 +201,8 @@ class _Issue294CardState extends State<Issue294Card> {
           'sustained departure still fires exactly one EXIT (delayed one fix). '
           'Confirms a normal exit is never missed. Runs in-process; no '
           'permissions or device movement required.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

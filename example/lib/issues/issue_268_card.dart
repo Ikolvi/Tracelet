@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #268 — Geofence ENTER/EXIT flapping for a stationary device inside
 /// the radius (high-accuracy mode).
@@ -31,16 +32,15 @@ class Issue268Card extends StatefulWidget {
   State<Issue268Card> createState() => _Issue268CardState();
 }
 
-class _Issue268CardState extends State<Issue268Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue268CardState extends State<Issue268Card>
+    with IssueCardRun<Issue268Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _run;
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     try {
       const centerLat = 37.4219983;
       const centerLng = -122.084;
@@ -109,7 +109,7 @@ class _Issue268CardState extends State<Issue268Card> {
     } catch (e) {
       _set('❌ FAILED: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -129,8 +129,8 @@ class _Issue268CardState extends State<Issue268Card> {
           'ENTER/EXIT) so you can confirm #268 exists; on the fixed build it '
           'reports exactly one ENTER and no EXIT. Runs in-process; no '
           'permissions or device movement required.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

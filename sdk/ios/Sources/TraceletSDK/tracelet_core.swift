@@ -451,6 +451,22 @@ fileprivate struct FfiConverterInt32: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterUInt64: FfiConverterPrimitive {
+    typealias FfiType = UInt64
+    typealias SwiftType = UInt64
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt64 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterInt64: FfiConverterPrimitive {
     typealias FfiType = Int64
     typealias SwiftType = Int64
@@ -1351,6 +1367,26 @@ public protocol DatabaseManagerProtocol: AnyObject, Sendable {
     func encryptPayload(plaintext: Data)  -> Data?
     
     /**
+     * Caps `location_events` at `max_records` rows, deleting the oldest first
+     * and reporting how many went (#361).
+     *
+     * The count companion to
+     * [`prune_locations_older_than`](Self::prune_locations_older_than), and the
+     * bound that actually holds during a long offline stretch: an age window
+     * alone cannot express "never queue more than N", because how many rows a
+     * day is depends entirely on the sampling cadence in force.
+     *
+     * `max_records <= 0` is a no-op, carrying the `-1` unlimited sentinel.
+     *
+     * Oldest is decided by `id`, not by any timestamp: `id` is the insertion
+     * order the sync batcher already uploads and acknowledges in, and it stays
+     * correct when fixes arrive out of order or carry a spoofed clock — a
+     * timestamp-ordered cap would let one bogus future fix pin itself in the
+     * queue and evict every real record around it.
+     */
+    func enforceMaxLocationRecords(maxRecords: Int32) throws  -> UInt32
+    
+    /**
      * Retrieves all audit trail records, ordered sequentially by their chain index.
      */
     func getAuditTrail() throws  -> [DbAuditRecord]
@@ -1445,8 +1481,13 @@ public protocol DatabaseManagerProtocol: AnyObject, Sendable {
     
     /**
      * Inserts a telematics event into the database.
+     *
+     * `speed` (m/s) and `value` (g, or km/h over the limit for speeding) are the
+     * magnitudes carried by `DrivingEvent`. They used to be dropped here, which
+     * left stored history and every synced payload with a normalized `severity`
+     * flag and no physical quantity behind it (#367).
      */
-    func insertTelematicsEvent(eventType: String, severity: Double, lat: Double, lng: Double) throws  -> Int64
+    func insertTelematicsEvent(eventType: String, severity: Double, speed: Double, value: Double, lat: Double, lng: Double) throws  -> Int64
     
     /**
      * Gets the total count of locations persisted in the database.
@@ -1457,6 +1498,34 @@ public protocol DatabaseManagerProtocol: AnyObject, Sendable {
      * Marks telematics events up to max_id as synced.
      */
     func markTelematicsSynced(maxId: Int64) throws 
+    
+    /**
+     * Deletes location rows older than `max_days`, reporting how many went
+     * (#361).
+     *
+     * `maxDaysToPersist` was enforced up to 3.0 by `pruneOldLocations` in the
+     * platform-native `TraceletDatabase` classes. The 3.1.0 migration onto this
+     * shared core replaced the whole persist body with a sink fan-out and took
+     * the retention calls with it; no equivalent was ever added here, so the
+     * documented 1-day default and every explicit override silently did nothing
+     * while the local queue grew without bound.
+     *
+     * `max_days <= 0` is a no-op rather than an error, so callers can pass the
+     * config value straight through to mean "no age-based retention" — matching
+     * [`prune_logs_older_than`](Self::prune_logs_older_than) and the `-1`
+     * unlimited sentinel the public config documents.
+     *
+     * Age is taken from `timestamp_ms`, which is indexed and which
+     * [`insert_location`](Self::insert_location) always populates. Rows written
+     * before that column existed default to `0`; they are aged off the TEXT
+     * `timestamp` instead rather than being read as epoch-old and destroyed on
+     * the first prune. A row whose `timestamp` SQLite cannot parse yields NULL,
+     * compares false, and is kept — retention must never be the reason data
+     * disappears on a guess. Those rows are still bounded by
+     * [`enforce_max_location_records`](Self::enforce_max_location_records),
+     * which orders by `id` and so needs no timestamp at all.
+     */
+    func pruneLocationsOlderThan(maxDays: Int32) throws  -> UInt32
     
     /**
      * Prunes the logs to retain only the specified limit of latest entries.
@@ -1480,6 +1549,18 @@ public protocol DatabaseManagerProtocol: AnyObject, Sendable {
      * so it compares correctly as text against SQLite's own modifier output.
      */
     func pruneLogsOlderThan(maxDays: Int32) throws 
+    
+    /**
+     * Deletes **synced** telematics rows beyond the newest `keep` of them, and
+     * reports how many went (#366).
+     *
+     * Sync marks rows instead of deleting them, because #313 established that
+     * uploading an event must not remove it from the app's own history. That
+     * leaves the table growing for the lifetime of the install, so the synced
+     * tail is trimmed here. Unsynced rows are never touched — they are still
+     * owed to the server, and losing them is the bug this accompanies.
+     */
+    func pruneSyncedTelematics(keep: Int32) throws  -> UInt64
     
     /**
      * Sets the encryption key (32 bytes max). If the string is empty or invalid, encryption is disabled.
@@ -1668,6 +1749,33 @@ open func encryptPayload(plaintext: Data) -> Data?  {
     uniffi_tracelet_core_fn_method_databasemanager_encrypt_payload(
             self.uniffiCloneHandle(),
         FfiConverterData.lower(plaintext),$0
+    )
+})
+}
+    
+    /**
+     * Caps `location_events` at `max_records` rows, deleting the oldest first
+     * and reporting how many went (#361).
+     *
+     * The count companion to
+     * [`prune_locations_older_than`](Self::prune_locations_older_than), and the
+     * bound that actually holds during a long offline stretch: an age window
+     * alone cannot express "never queue more than N", because how many rows a
+     * day is depends entirely on the sampling cadence in force.
+     *
+     * `max_records <= 0` is a no-op, carrying the `-1` unlimited sentinel.
+     *
+     * Oldest is decided by `id`, not by any timestamp: `id` is the insertion
+     * order the sync batcher already uploads and acknowledges in, and it stays
+     * correct when fixes arrive out of order or carry a spoofed clock — a
+     * timestamp-ordered cap would let one bogus future fix pin itself in the
+     * queue and evict every real record around it.
+     */
+open func enforceMaxLocationRecords(maxRecords: Int32)throws  -> UInt32  {
+    return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeTraceletError_lift) {
+    uniffi_tracelet_core_fn_method_databasemanager_enforce_max_location_records(
+            self.uniffiCloneHandle(),
+        FfiConverterInt32.lower(maxRecords),$0
     )
 })
 }
@@ -1891,13 +1999,20 @@ open func insertPrivacyZone(identifier: String, lat: Double, lng: Double, radius
     
     /**
      * Inserts a telematics event into the database.
+     *
+     * `speed` (m/s) and `value` (g, or km/h over the limit for speeding) are the
+     * magnitudes carried by `DrivingEvent`. They used to be dropped here, which
+     * left stored history and every synced payload with a normalized `severity`
+     * flag and no physical quantity behind it (#367).
      */
-open func insertTelematicsEvent(eventType: String, severity: Double, lat: Double, lng: Double)throws  -> Int64  {
+open func insertTelematicsEvent(eventType: String, severity: Double, speed: Double, value: Double, lat: Double, lng: Double)throws  -> Int64  {
     return try  FfiConverterInt64.lift(try rustCallWithError(FfiConverterTypeTraceletError_lift) {
     uniffi_tracelet_core_fn_method_databasemanager_insert_telematics_event(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(eventType),
         FfiConverterDouble.lower(severity),
+        FfiConverterDouble.lower(speed),
+        FfiConverterDouble.lower(value),
         FfiConverterDouble.lower(lat),
         FfiConverterDouble.lower(lng),$0
     )
@@ -1924,6 +2039,41 @@ open func markTelematicsSynced(maxId: Int64)throws   {try rustCallWithError(FfiC
         FfiConverterInt64.lower(maxId),$0
     )
 }
+}
+    
+    /**
+     * Deletes location rows older than `max_days`, reporting how many went
+     * (#361).
+     *
+     * `maxDaysToPersist` was enforced up to 3.0 by `pruneOldLocations` in the
+     * platform-native `TraceletDatabase` classes. The 3.1.0 migration onto this
+     * shared core replaced the whole persist body with a sink fan-out and took
+     * the retention calls with it; no equivalent was ever added here, so the
+     * documented 1-day default and every explicit override silently did nothing
+     * while the local queue grew without bound.
+     *
+     * `max_days <= 0` is a no-op rather than an error, so callers can pass the
+     * config value straight through to mean "no age-based retention" — matching
+     * [`prune_logs_older_than`](Self::prune_logs_older_than) and the `-1`
+     * unlimited sentinel the public config documents.
+     *
+     * Age is taken from `timestamp_ms`, which is indexed and which
+     * [`insert_location`](Self::insert_location) always populates. Rows written
+     * before that column existed default to `0`; they are aged off the TEXT
+     * `timestamp` instead rather than being read as epoch-old and destroyed on
+     * the first prune. A row whose `timestamp` SQLite cannot parse yields NULL,
+     * compares false, and is kept — retention must never be the reason data
+     * disappears on a guess. Those rows are still bounded by
+     * [`enforce_max_location_records`](Self::enforce_max_location_records),
+     * which orders by `id` and so needs no timestamp at all.
+     */
+open func pruneLocationsOlderThan(maxDays: Int32)throws  -> UInt32  {
+    return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeTraceletError_lift) {
+    uniffi_tracelet_core_fn_method_databasemanager_prune_locations_older_than(
+            self.uniffiCloneHandle(),
+        FfiConverterInt32.lower(maxDays),$0
+    )
+})
 }
     
     /**
@@ -1959,6 +2109,25 @@ open func pruneLogsOlderThan(maxDays: Int32)throws   {try rustCallWithError(FfiC
         FfiConverterInt32.lower(maxDays),$0
     )
 }
+}
+    
+    /**
+     * Deletes **synced** telematics rows beyond the newest `keep` of them, and
+     * reports how many went (#366).
+     *
+     * Sync marks rows instead of deleting them, because #313 established that
+     * uploading an event must not remove it from the app's own history. That
+     * leaves the table growing for the lifetime of the install, so the synced
+     * tail is trimmed here. Unsynced rows are never touched — they are still
+     * owed to the server, and losing them is the bug this accompanies.
+     */
+open func pruneSyncedTelematics(keep: Int32)throws  -> UInt64  {
+    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeTraceletError_lift) {
+    uniffi_tracelet_core_fn_method_databasemanager_prune_synced_telematics(
+            self.uniffiCloneHandle(),
+        FfiConverterInt32.lower(keep),$0
+    )
+})
 }
     
     /**
@@ -5771,6 +5940,15 @@ public struct DbTelematicsRecord: Equatable, Hashable {
     public var id: Int64
     public var eventType: String
     public var severity: Double
+    /**
+     * Speed at the event (m/s) — 0.0 for rows written before #367.
+     */
+    public var speed: Double
+    /**
+     * The measured magnitude that triggered it: g for harsh events, km/h over
+     * the limit for speeding. 0.0 for rows written before #367.
+     */
+    public var value: Double
     public var latitude: Double
     public var longitude: Double
     public var timestamp: String
@@ -5778,10 +5956,19 @@ public struct DbTelematicsRecord: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: Int64, eventType: String, severity: Double, latitude: Double, longitude: Double, timestamp: String, synced: Bool) {
+    public init(id: Int64, eventType: String, severity: Double, 
+        /**
+         * Speed at the event (m/s) — 0.0 for rows written before #367.
+         */speed: Double, 
+        /**
+         * The measured magnitude that triggered it: g for harsh events, km/h over
+         * the limit for speeding. 0.0 for rows written before #367.
+         */value: Double, latitude: Double, longitude: Double, timestamp: String, synced: Bool) {
         self.id = id
         self.eventType = eventType
         self.severity = severity
+        self.speed = speed
+        self.value = value
         self.latitude = latitude
         self.longitude = longitude
         self.timestamp = timestamp
@@ -5807,6 +5994,8 @@ public struct FfiConverterTypeDbTelematicsRecord: FfiConverterRustBuffer {
                 id: FfiConverterInt64.read(from: &buf), 
                 eventType: FfiConverterString.read(from: &buf), 
                 severity: FfiConverterDouble.read(from: &buf), 
+                speed: FfiConverterDouble.read(from: &buf), 
+                value: FfiConverterDouble.read(from: &buf), 
                 latitude: FfiConverterDouble.read(from: &buf), 
                 longitude: FfiConverterDouble.read(from: &buf), 
                 timestamp: FfiConverterString.read(from: &buf), 
@@ -5818,6 +6007,8 @@ public struct FfiConverterTypeDbTelematicsRecord: FfiConverterRustBuffer {
         FfiConverterInt64.write(value.id, into: &buf)
         FfiConverterString.write(value.eventType, into: &buf)
         FfiConverterDouble.write(value.severity, into: &buf)
+        FfiConverterDouble.write(value.speed, into: &buf)
+        FfiConverterDouble.write(value.value, into: &buf)
         FfiConverterDouble.write(value.latitude, into: &buf)
         FfiConverterDouble.write(value.longitude, into: &buf)
         FfiConverterString.write(value.timestamp, into: &buf)
@@ -10173,6 +10364,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_tracelet_core_checksum_method_databasemanager_encrypt_payload() != 52269) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_tracelet_core_checksum_method_databasemanager_enforce_max_location_records() != 54354) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_tracelet_core_checksum_method_databasemanager_get_audit_trail() != 59184) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -10215,7 +10409,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_tracelet_core_checksum_method_databasemanager_insert_privacy_zone() != 38263) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_tracelet_core_checksum_method_databasemanager_insert_telematics_event() != 45369) {
+    if (uniffi_tracelet_core_checksum_method_databasemanager_insert_telematics_event() != 45645) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_databasemanager_is_empty() != 5940) {
@@ -10224,10 +10418,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_tracelet_core_checksum_method_databasemanager_mark_telematics_synced() != 38059) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_tracelet_core_checksum_method_databasemanager_prune_locations_older_than() != 38098) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_tracelet_core_checksum_method_databasemanager_prune_logs() != 51361) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_databasemanager_prune_logs_older_than() != 10098) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tracelet_core_checksum_method_databasemanager_prune_synced_telematics() != 11319) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_databasemanager_set_encryption_key() != 2884) {

@@ -30,6 +30,37 @@ class TraceletHostApiImplTest {
         ConfigManager.resetInstance()
     }
 
+    /**
+     * #364: `requestStateFlush` doubles as the per-engine "my Dart side is
+     * listening" handshake.
+     *
+     * The HostApi is registered per messenger, so a call arriving here came
+     * from that engine's isolate — and `PigeonTracelet._ensureEventsRegistered()`
+     * sends exactly one, immediately after `TraceletEventApi.setUp(...)`, on the
+     * first access to any event stream. That is the whole basis for letting a
+     * secondary engine into the event fan-out, so a refactor that drops the
+     * callback (or moves the flush off this method) must fail here rather than
+     * silently strand every overlay engine outside the fan-out.
+     */
+    @Test
+    fun testRequestStateFlush_signalsTheDartEventSubscription() {
+        val context = mock(Context::class.java)
+        val headlessService = mock(HeadlessTaskService::class.java)
+        var subscribed = 0
+
+        val instanceField = TraceletSdk::class.java.getDeclaredField("instance")
+        instanceField.isAccessible = true
+        instanceField.set(null, mock(TraceletSdk::class.java))
+        try {
+            val hostApi = TraceletHostApiImpl(context, headlessService) { subscribed++ }
+            hostApi.requestStateFlush()
+        } finally {
+            instanceField.set(null, null)
+        }
+
+        assertEquals(1, subscribed, "requestStateFlush must signal the subscription")
+    }
+
     @Test
     fun testRegisterHeadlessHeadersCallback_delegatesToService() {
         val context = mock(Context::class.java)

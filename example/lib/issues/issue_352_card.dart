@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #352 — geofence ENTER/EXIT stop firing because proximity
 /// registration rode the persistence-filtered location stream.
@@ -35,18 +36,17 @@ class Issue352Card extends StatefulWidget {
   State<Issue352Card> createState() => _Issue352CardState();
 }
 
-class _Issue352CardState extends State<Issue352Card> {
-  String _status = 'Idle';
-  bool _running = false;
-
+class _Issue352CardState extends State<Issue352Card>
+    with IssueCardRun<Issue352Card> {
   static const _fenceId = 'issue-352-fence';
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  void _set(String s) => setStatus(s);
+
+  @override
+  IssueRunner? get cardRunner => _run;
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -172,7 +172,7 @@ class _Issue352CardState extends State<Issue352Card> {
     } catch (e) {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -192,8 +192,8 @@ class _Issue352CardState extends State<Issue352Card> {
           'maxImpliedSpeed=3m/s froze Play Services registration and '
           'ENTER/EXIT stopped firing for good. Checks that the filter is '
           'clamped and the fence survives it anyway.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

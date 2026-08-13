@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #344 — in SMART motion mode, a `start()` whose committed pace was
 /// stationary left the coordinator permanently deaf to motion.
@@ -81,16 +82,15 @@ class Issue344Card extends StatefulWidget {
   State<Issue344Card> createState() => _Issue344CardState();
 }
 
-class _Issue344CardState extends State<Issue344Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue344CardState extends State<Issue344Card>
+    with IssueCardRun<Issue344Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _run;
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -249,7 +249,7 @@ class _Issue344CardState extends State<Issue344Card> {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
       await sub?.cancel();
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -266,8 +266,8 @@ class _Issue344CardState extends State<Issue344Card> {
           'process, and checks that motion still wakes it. syncCurrentMode() '
           'used to write CONTINUOUS into the coordinator while both its inputs '
           'said stationary, and every wake-up after that returned none.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #318 — killed-state failures left no usable evidence in the logs
 /// table (Android + iOS).
@@ -49,16 +50,15 @@ class Issue318Card extends StatefulWidget {
   State<Issue318Card> createState() => _Issue318CardState();
 }
 
-class _Issue318CardState extends State<Issue318Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue318CardState extends State<Issue318Card>
+    with IssueCardRun<Issue318Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _run;
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -222,7 +222,7 @@ class _Issue318CardState extends State<Issue318Card> {
     } catch (e) {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -241,8 +241,8 @@ class _Issue318CardState extends State<Issue318Card> {
           'table even though logLevel defaults to off — so an intermittent '
           'background failure can be diagnosed from the run that actually '
           'failed, instead of asking the user to reproduce it with logging on.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

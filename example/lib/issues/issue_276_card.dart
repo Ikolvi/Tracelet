@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #276 — tunable accuracy-aware geofence EXIT (`geofenceExitAccuracyMax`).
 ///
@@ -37,13 +38,12 @@ class Issue276Card extends StatefulWidget {
   State<Issue276Card> createState() => _Issue276CardState();
 }
 
-class _Issue276CardState extends State<Issue276Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue276CardState extends State<Issue276Card>
+    with IssueCardRun<Issue276Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _run;
 
   /// Mirrors the native `GeofenceManager.effectiveExitAccuracy` clamp so the
   /// in-process demo matches on-device behavior:
@@ -99,7 +99,7 @@ class _Issue276CardState extends State<Issue276Card> {
   }
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     try {
       const modes = <int>[-1, 0, 20];
       final log = StringBuffer();
@@ -154,7 +154,7 @@ class _Issue276CardState extends State<Issue276Card> {
     } catch (e) {
       _set('❌ FAILED: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -174,8 +174,8 @@ class _Issue276CardState extends State<Issue276Card> {
           'drift spike while still detecting a real departure, and that '
           'disabling gating (0) reproduces the eager pre-#274 exit. Runs '
           'in-process; no permissions or movement required.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #262 — `ready()` must not surface remote-config event registration
 /// failure as an UNCAUGHT async error.
@@ -38,16 +39,15 @@ class Issue262Card extends StatefulWidget {
   State<Issue262Card> createState() => _Issue262CardState();
 }
 
-class _Issue262CardState extends State<Issue262Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue262CardState extends State<Issue262Card>
+    with IssueCardRun<Issue262Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _test;
 
   Future<void> _test() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     try {
       _set(
         'Calling Tracelet.ready() inside a runZonedGuarded error zone and '
@@ -127,7 +127,7 @@ class _Issue262CardState extends State<Issue262Card> {
       try {
         await Tracelet.stop();
       } catch (_) {}
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -146,8 +146,8 @@ class _Issue262CardState extends State<Issue262Card> {
           'handler while the remote-config event channel registers. Pre-fix, a '
           'fire-and-forget requestStateFlush() failure landed in the zone and '
           'took down a ride-start sequence. Runs on Android and iOS.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _test,
     );
   }

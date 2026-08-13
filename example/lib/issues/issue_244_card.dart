@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// PR #244 — iOS `buildLocationMap` hardcoded `activity.type: "unknown"` /
 /// `confidence: -1` on every persisted/dispatched location, so the fused
@@ -24,17 +25,16 @@ class Issue244Card extends StatefulWidget {
   State<Issue244Card> createState() => _Issue244CardState();
 }
 
-class _Issue244CardState extends State<Issue244Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue244CardState extends State<Issue244Card>
+    with IssueCardRun<Issue244Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _test;
 
   Future<void> _test() async {
-    if (_running) return;
-    setState(() => _running = true);
+    if (running) return;
+    setRunning(running: true);
 
     StreamSubscription<ModeChangeEvent>? modeSub;
     StreamSubscription<Location>? locSub;
@@ -104,7 +104,7 @@ class _Issue244CardState extends State<Issue244Card> {
       await modeSub?.cancel();
       await locSub?.cancel();
       await Tracelet.stop();
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -118,8 +118,8 @@ class _Issue244CardState extends State<Issue244Card> {
           '(e.g. still, in_vehicle) with a real confidence — on iOS it was '
           'hardcoded unknown/-1, and vehicle/cycling now map to the AR '
           'vocabulary on both platforms. Run on a real device.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _test,
     );
   }

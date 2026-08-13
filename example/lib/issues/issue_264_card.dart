@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #264 — Android `startOnBoot` geofence restart crashes with an
 /// uninitialized `geofenceManager`.
@@ -52,18 +53,18 @@ class Issue264Card extends StatefulWidget {
   State<Issue264Card> createState() => _Issue264CardState();
 }
 
-class _Issue264CardState extends State<Issue264Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue264CardState extends State<Issue264Card>
+    with IssueCardRun<Issue264Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  // Two-phase: arm, reboot the device, then check. Not sweepable.
+  @override
+  IssueRunner? get cardRunner => null;
 
   /// Persist the exact state described in #264 so a reboot exercises the native
   /// `startBootTracking()` → `geofenceManager` path.
   Future<void> _arm() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     try {
       if (!Platform.isAndroid) {
         _set(
@@ -141,7 +142,7 @@ class _Issue264CardState extends State<Issue264Card> {
     } catch (e) {
       _set('❌ FAILED to arm the repro: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -150,7 +151,7 @@ class _Issue264CardState extends State<Issue264Card> {
   /// the process survived boot the SDK marks `didDeviceReboot` and keeps the
   /// geofence mode enabled.
   Future<void> _checkPostReboot() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     try {
       if (!Platform.isAndroid) {
         _set('ℹ️ #264 is Android-only.');
@@ -172,7 +173,7 @@ class _Issue264CardState extends State<Issue264Card> {
     } catch (e) {
       _set('❌ FAILED to read state: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -217,34 +218,19 @@ class _Issue264CardState extends State<Issue264Card> {
             const SizedBox(height: 8),
             const Text(_description),
             const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: Text(
-                _status,
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 13,
-                  color: Colors.black87,
-                ),
-              ),
-            ),
+            IssueStatusBox(status: status),
             const SizedBox(height: 16),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
                 FilledButton.icon(
-                  onPressed: _running ? null : _arm,
+                  onPressed: running ? null : _arm,
                   icon: const Icon(Icons.play_arrow),
                   label: const Text('Arm reboot repro'),
                 ),
                 OutlinedButton.icon(
-                  onPressed: _running ? null : _checkPostReboot,
+                  onPressed: running ? null : _checkPostReboot,
                   icon: const Icon(Icons.restart_alt),
                   label: const Text('Check post-reboot state'),
                 ),

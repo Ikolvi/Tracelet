@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #335 — iOS emitted the `speedmotion` event twice for most transitions.
 ///
@@ -46,16 +47,15 @@ class Issue335Card extends StatefulWidget {
   State<Issue335Card> createState() => _Issue335CardState();
 }
 
-class _Issue335CardState extends State<Issue335Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue335CardState extends State<Issue335Card>
+    with IssueCardRun<Issue335Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _run;
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -231,7 +231,7 @@ class _Issue335CardState extends State<Issue335Card> {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
       await sub?.cancel();
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -246,8 +246,8 @@ class _Issue335CardState extends State<Issue335Card> {
           'Forces stop/resume transitions with changePace() and asserts each '
           'produces exactly one speedmotion event. iOS used to emit most '
           'transitions twice because both the handler and its caller emitted.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

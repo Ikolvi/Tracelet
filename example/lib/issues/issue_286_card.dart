@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Entrypoint for the secondary engines the iOS probe spawns (see
 /// `AppDelegate.probeIssue286`). A FlutterEngine must be **running** before
@@ -66,19 +67,18 @@ class Issue286Card extends StatefulWidget {
   State<Issue286Card> createState() => _Issue286CardState();
 }
 
-class _Issue286CardState extends State<Issue286Card> {
+class _Issue286CardState extends State<Issue286Card>
+    with IssueCardRun<Issue286Card> {
   static const _debug = MethodChannel('com.tracelet/debug');
 
-  String _status = 'Idle';
-  bool _running = false;
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _test;
 
   Future<void> _test() async {
-    if (_running) return;
-    setState(() => _running = true);
+    if (running) return;
+    setRunning(running: true);
     try {
       _set('Attaching 2 secondary FlutterEngines, then releasing them...');
       final res = await _debug.invokeMapMethod<String, dynamic>(
@@ -232,7 +232,7 @@ class _Issue286CardState extends State<Issue286Card> {
     } catch (e) {
       _set('❌ ERROR: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -255,8 +255,8 @@ class _Issue286CardState extends State<Issue286Card> {
           'VERIFIES: it attaches and releases 2 secondary engines, then reports '
           'how many distinct sinks were created, how many survive, and how many '
           'are registered on the LocationEngine. Debug build; no fix applied.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       runLabel: 'Verify',
       onRun: _test,
     );

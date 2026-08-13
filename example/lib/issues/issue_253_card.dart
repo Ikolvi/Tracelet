@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #253 — a failed foreground promotion still marked the Android service
 /// as a running foreground service.
@@ -39,19 +40,18 @@ class Issue253Card extends StatefulWidget {
   State<Issue253Card> createState() => _Issue253CardState();
 }
 
-class _Issue253CardState extends State<Issue253Card> {
+class _Issue253CardState extends State<Issue253Card>
+    with IssueCardRun<Issue253Card> {
   static const _debug = MethodChannel('com.tracelet/debug');
 
-  String _status = 'Idle';
-  bool _running = false;
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _test;
 
   Future<void> _test() async {
-    if (_running) return;
-    setState(() => _running = true);
+    if (running) return;
+    setRunning(running: true);
 
     try {
       _set('Inspecting the native foreground-promotion guard...');
@@ -99,7 +99,7 @@ class _Issue253CardState extends State<Issue253Card> {
     } catch (e) {
       _set('❌ ERROR: $e');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -114,8 +114,8 @@ class _Issue253CardState extends State<Issue253Card> {
           'now returns its success and callers gate the flag on it. This test '
           'inspects the shipped native code to confirm the guard is in place '
           '(Android); iOS is structurally unaffected.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _test,
     );
   }

@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:crypto/crypto.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
+import 'package:tracelet_example/issues/issue_sweep.dart';
 import 'package:tracelet_example/issues/issue_185_card.dart';
 import 'package:tracelet_example/issues/issue_198_card.dart';
 import 'package:tracelet_example/issues/issue_201_card.dart';
@@ -73,6 +75,12 @@ import 'package:tracelet_example/issues/issue_352_card.dart';
 import 'package:tracelet_example/issues/issue_353_card.dart';
 import 'package:tracelet_example/issues/issue_355_card.dart';
 import 'package:tracelet_example/issues/issue_357_card.dart';
+import 'package:tracelet_example/issues/issue_361_card.dart';
+import 'package:tracelet_example/issues/issue_364_card.dart';
+import 'package:tracelet_example/issues/issue_366_card.dart';
+import 'package:tracelet_example/issues/issue_367_card.dart';
+import 'package:tracelet_example/issues/issue_368_card.dart';
+import 'package:tracelet_example/issues/issue_371_card.dart';
 import 'package:tracelet_example/issues/issue_376_card.dart';
 import 'package:tracelet_example/issues/battery_budget_remote_config_card.dart';
 import 'package:tracelet_example/issues/mock_rejection_card.dart';
@@ -97,6 +105,11 @@ class RecentIssuesTab extends StatefulWidget {
 class _RecentIssuesTabState extends State<RecentIssuesTab> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
+  static const _scope = 'recent';
+  late final IssueSweep _sweep = IssueSweep(
+    scrollController: _scrollController,
+    scope: _scope,
+  );
   String _searchQuery = '';
 
   bool _isTracking = false;
@@ -147,10 +160,18 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
         _searchQuery = _searchController.text;
       });
     });
+    _sweep.addListener(_onSweepChanged);
+  }
+
+  void _onSweepChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    _sweep
+      ..removeListener(_onSweepChanged)
+      ..dispose();
     _scrollController.dispose();
     _searchController.dispose();
     _issue140Timer?.cancel();
@@ -167,18 +188,6 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
       setState(() {
         _statuses[issue] = status;
       });
-    }
-  }
-
-  void _scrollTo(int issue) {
-    final key = _keys[issue];
-    if (key != null && key.currentContext != null) {
-      Scrollable.ensureVisible(
-        key.currentContext!,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-        alignment: 0.1,
-      );
     }
   }
 
@@ -869,50 +878,19 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
     }
   }
 
+  /// Runs every card on the tab (#372).
+  ///
+  /// This used to be a hand-maintained `if` ladder over [_allIssues], which by
+  /// the time it was noticed reached five of the ~75 cards on the page: the
+  /// list predates the per-card widgets, and a card's test lives in that card's
+  /// own `State` where the tab cannot call it. [IssueSweep] instead walks the
+  /// list and runs whatever has mounted, so every card — including ones added
+  /// after this line was written — is swept with nothing to keep in sync here.
   Future<void> _executeAll() async {
-    for (final issue in _allIssues) {
-      // Issues 134, 136 & 140 are manual, long-running background/motion repros —
-      // not part of the automated sweep.
-      if (issue == 134 || issue == 136 || issue == 140) continue;
-      _scrollTo(issue);
-      if (issue == 115) {
-        await _startIssue115Tracking();
-        await Future.delayed(const Duration(seconds: 3));
-        await _stopTracking();
-      } else if (issue == 117) {
-        await _testIssue117();
-        await Future.delayed(const Duration(seconds: 2));
-      } else if (issue == 118) {
-        await _runIssue118All();
-      } else if (issue == 119) {
-        await _testIssue119();
-      } else if (issue == 120) {
-        await _testIssue120();
-      } else if (issue == 124) {
-        await _testIssue124HeaderCrash();
-      } else if (issue == 125) {
-        await _testIssue125();
-      } else if (issue == 126) {
-        await _testIssue126();
-      } else if (issue == 137) {
-        await _testIssue137();
-      } else if (issue == 138) {
-        await _testIssue138();
-      } else if (issue == 139) {
-        await _testIssue139();
-      } else if (issue == 147) {
-        await _testIssue147();
-      } else if (issue == 149) {
-        await _testIssue149();
-      } else if (issue == 154) {
-        await _testIssue154();
-      } else if (issue == 159) {
-        await _testIssue159();
-      } else if (issue == 175) {
-        await _testIssue175();
-      }
-      await Future.delayed(const Duration(seconds: 2));
-    }
+    // Sweeping means "run everything", so a filter left in the search box would
+    // silently make it a lie.
+    _searchController.clear();
+    await _sweep.start();
   }
 
   // ==== ISSUE 137: deltaCoordinatePrecision default ====
@@ -1585,6 +1563,7 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
     required String title,
     required String description,
     required List<Widget> actions,
+    IssueRunner? sweepAction,
   }) {
     if (_searchQuery.isNotEmpty) {
       final query = _searchQuery.toLowerCase();
@@ -1597,7 +1576,14 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
       }
     }
 
-    return _buildIssueCardBody(issueNumber, title, description, actions);
+    // Enlists the card in Execute All for as long as it is mounted, the same
+    // deal the card widgets get from IssueCardRun. A null [sweepAction] keeps a
+    // card manual — a start/stop toggle, or a repro that needs the app killed.
+    return IssueRunnerScope(
+      id: 'issue-$issueNumber',
+      run: sweepAction,
+      child: _buildIssueCardBody(issueNumber, title, description, actions),
+    );
   }
 
   /// Wraps a self-contained issue card widget (one that renders its own
@@ -1666,12 +1652,24 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: statusColor.withValues(alpha: 0.3)),
               ),
-              child: Text(
-                'Status: $status',
-                style: TextStyle(
-                  color: statusColor,
-                  fontWeight: FontWeight.bold,
-                ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: SelectableText(
+                      'Status: $status',
+                      style: TextStyle(
+                        color: statusColor,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  IssueCopyButton(
+                    text: status,
+                    label: 'Issue #$issueNumber',
+                    color: statusColor,
+                  ),
+                ],
               ),
             ),
           ],
@@ -1717,9 +1715,9 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
                 ),
                 const SizedBox(width: 12),
                 FilledButton.icon(
-                  onPressed: _executeAll,
-                  icon: const Icon(Icons.play_arrow),
-                  label: const Text('Execute All'),
+                  onPressed: _sweep.active ? _sweep.cancel : _executeAll,
+                  icon: Icon(_sweep.active ? Icons.stop : Icons.play_arrow),
+                  label: Text(_sweep.active ? 'Stop' : 'Execute All'),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 20,
@@ -1733,228 +1731,244 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
               ],
             ),
           ),
+          IssueSweepBanner(sweep: _sweep),
           Expanded(
-            child: IssueSearchScope(
-              query: _searchQuery.trim().toLowerCase(),
-              child: ListView(
-                controller: _scrollController,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                children: [
-                  // Latest issues first (newest on top).
-                  //
-                  // Cards built on IssueCardShell filter themselves against their
-                  // own title/description/keywords via IssueSearchScope, so they
-                  // are rendered directly. Cards with a bespoke layout (no shell)
-                  // stay wrapped in _searchableCard with explicit keywords.
-                  const Issue376Card(),
-                  const Issue357Card(),
-                  const Issue355Card(),
-                  const Issue353Card(),
-                  const Issue352Card(),
-                  const Issue346Card(),
-                  const Issue344Card(),
-                  const Issue340Card(),
-                  const Issue335Card(),
-                  const Issue334Card(),
-                  const Issue333Card(),
-                  const Issue332Card(),
-                  const Issue331Card(),
-                  const Issue326Card(),
-                  const Issue324Card(),
-                  const Issue321Card(),
-                  const Issue320Card(),
-                  const Issue318Card(),
-                  const Issue316Card(),
-                  const Issue309Card(),
-                  const Issue306Card(),
-                  const Issue305Card(),
-                  const Issue304Card(),
-                  const Issue303Card(),
-                  const Issue301Card(),
-                  const Issue299Card(),
-                  const Issue297Card(),
-                  const Issue294Card(),
-                  const Issue292Card(),
-                  const Issue288Card(),
-                  const Issue286Card(),
-                  const Issue282Card(),
-                  const Issue280Card(),
-                  const Issue276Card(),
-                  const Issue274Card(),
-                  const Issue270Card(),
-                  const Issue268Card(),
-                  const Issue267Card(),
-                  const Issue265Card(),
-                  const Issue264Card(),
-                  const Issue263Card(),
-                  const Issue262Card(),
-                  const Issue261Card(),
-                  const Issue257Card(),
-                  const Issue256Card(),
-                  const Issue255Card(),
-                  const Issue254Card(),
-                  const Issue253Card(),
-                  const Issue252Card(),
-                  const Issue251Card(),
-                  const Issue250Card(),
-                  const Issue248Card(),
-                  const Issue247Card(),
-                  const Issue244Card(),
-                  const Issue243Card(),
-                  const Issue238Card(),
-                  const Issue237Card(),
-                  const Issue231Card(),
-                  const Issue230Card(),
-                  const Issue214Card(),
-                  const Issue213Card(),
-                  const Issue212Card(),
-                  _searchableCard(
-                    issueNumber: 210,
-                    keywords:
-                        'ios blue location indicator geofence mode region '
-                        'monitoring background location high accuracy',
-                    child: const Issue210Card(),
-                  ),
-                  _searchableCard(
-                    issueNumber: 204,
-                    keywords:
-                        'duplicate requestsyncbody sync body builder batch',
-                    child: const Issue204Card(),
-                  ),
-                  _searchableCard(
-                    issueNumber: 201,
-                    keywords:
-                        'local extras getcurrentposition merge global httpconfig',
-                    child: const Issue201Card(),
-                  ),
-                  _searchableCard(
-                    issueNumber: 198,
-                    keywords:
-                        'passive profile battery optimization ios background '
-                        'activity session dynamic island status bar pill',
-                    child: const Issue198Card(),
-                  ),
-                  _searchableCard(
-                    issueNumber: 185,
-                    keywords: 'high accuracy geofence transitions reboot dwell',
-                    child: const Issue185Card(),
-                  ),
-                  _buildIssueCard(
-                    issueNumber: 147,
-                    title: 'getState() drops active config',
-                    description:
-                        'The Pigeon TlState FFI struct had no config field, so '
-                        'State.config was permanently null from ready()/getState(). '
-                        'Now backfilled from the active config. Scan a Test Server '
-                        'QR code first.',
-                    actions: [
-                      FilledButton.icon(
-                        onPressed: _testIssue147,
-                        icon: const Icon(Icons.settings_backup_restore),
-                        label: const Text('Run Test'),
-                      ),
-                    ],
-                  ),
-                  _buildIssueCard(
-                    issueNumber: 149,
-                    title: 'Missing syncInterval in HttpConfig',
-                    description:
-                        'HttpConfig.syncInterval (interval-based sync) was missing '
-                        'from the Dart class and Pigeon struct, causing compile '
-                        'failures. Now present, serialized, and round-trips through '
-                        'native. Scan a Test Server QR code first.',
-                    actions: [
-                      FilledButton.icon(
-                        onPressed: _testIssue149,
-                        icon: const Icon(Icons.timelapse),
-                        label: const Text('Run Test'),
-                      ),
-                    ],
-                  ),
-                  _buildIssueCard(
-                    issueNumber: 154,
-                    title: 'Dummy destroySyncedLocations stub',
-                    description:
-                        'destroySyncedLocations() always returned a hardcoded 0. It '
-                        'now reports the real count of locations synced-and-pruned. '
-                        'Syncs 3 records to a loopback server and asserts the count. '
-                        'Deterministic.',
-                    actions: [
-                      FilledButton.icon(
-                        onPressed: _testIssue154,
-                        icon: const Icon(Icons.delete_sweep),
-                        label: const Text('Run Test'),
-                      ),
-                    ],
-                  ),
-                  _buildIssueCard(
-                    issueNumber: 159,
-                    title: 'Offline queue metrics',
-                    description:
-                        'Adds getPendingLocations()/getPendingLocationCount() to '
-                        'expose the offline (pending-sync) queue. Inserts 4 records '
-                        'and asserts both APIs report them. Deterministic.',
-                    actions: [
-                      FilledButton.icon(
-                        onPressed: _testIssue159,
-                        icon: const Icon(Icons.inbox),
-                        label: const Text('Run Test'),
-                      ),
-                    ],
-                  ),
-                  _buildIssueCard(
-                    issueNumber: 162,
-                    title: 'Battery Budget & Wakelock',
-                    description:
-                        'Test dynamic battery budgeting (adjusts distanceFilter, '
-                        'desiredAccuracy, and periodic interval based on target %/hr) '
-                        'and stationary OEM Wakelock release.\n\n'
-                        '$_issue162Details',
-                    actions: [
-                      FilledButton.icon(
-                        onPressed: _toggleIssue162,
-                        icon: Icon(
-                          _isIssue162Tracking ? Icons.stop : Icons.play_arrow,
+            child: IssueCardScope(
+              name: _scope,
+              child: IssueSearchScope(
+                query: _searchQuery.trim().toLowerCase(),
+                child: ListView(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  children: [
+                    // Latest issues first (newest on top).
+                    //
+                    // Cards built on IssueCardShell filter themselves against their
+                    // own title/description/keywords via IssueSearchScope, so they
+                    // are rendered directly. Cards with a bespoke layout (no shell)
+                    // stay wrapped in _searchableCard with explicit keywords.
+                    const Issue376Card(),
+                    const Issue371Card(),
+                    const Issue368Card(),
+                    const Issue367Card(),
+                    const Issue366Card(),
+                    const Issue364Card(),
+                    const Issue361Card(),
+                    const Issue357Card(),
+                    const Issue355Card(),
+                    const Issue353Card(),
+                    const Issue352Card(),
+                    const Issue346Card(),
+                    const Issue344Card(),
+                    const Issue340Card(),
+                    const Issue335Card(),
+                    const Issue334Card(),
+                    const Issue333Card(),
+                    const Issue332Card(),
+                    const Issue331Card(),
+                    const Issue326Card(),
+                    const Issue324Card(),
+                    const Issue321Card(),
+                    const Issue320Card(),
+                    const Issue318Card(),
+                    const Issue316Card(),
+                    const Issue309Card(),
+                    const Issue306Card(),
+                    const Issue305Card(),
+                    const Issue304Card(),
+                    const Issue303Card(),
+                    const Issue301Card(),
+                    const Issue299Card(),
+                    const Issue297Card(),
+                    const Issue294Card(),
+                    const Issue292Card(),
+                    const Issue288Card(),
+                    const Issue286Card(),
+                    const Issue282Card(),
+                    const Issue280Card(),
+                    const Issue276Card(),
+                    const Issue274Card(),
+                    const Issue270Card(),
+                    const Issue268Card(),
+                    const Issue267Card(),
+                    const Issue265Card(),
+                    const Issue264Card(),
+                    const Issue263Card(),
+                    const Issue262Card(),
+                    const Issue261Card(),
+                    const Issue257Card(),
+                    const Issue256Card(),
+                    const Issue255Card(),
+                    const Issue254Card(),
+                    const Issue253Card(),
+                    const Issue252Card(),
+                    const Issue251Card(),
+                    const Issue250Card(),
+                    const Issue248Card(),
+                    const Issue247Card(),
+                    const Issue244Card(),
+                    const Issue243Card(),
+                    const Issue238Card(),
+                    const Issue237Card(),
+                    const Issue231Card(),
+                    const Issue230Card(),
+                    const Issue214Card(),
+                    const Issue213Card(),
+                    const Issue212Card(),
+                    _searchableCard(
+                      issueNumber: 210,
+                      keywords:
+                          'ios blue location indicator geofence mode region '
+                          'monitoring background location high accuracy',
+                      child: const Issue210Card(),
+                    ),
+                    _searchableCard(
+                      issueNumber: 204,
+                      keywords:
+                          'duplicate requestsyncbody sync body builder batch',
+                      child: const Issue204Card(),
+                    ),
+                    _searchableCard(
+                      issueNumber: 201,
+                      keywords:
+                          'local extras getcurrentposition merge global httpconfig',
+                      child: const Issue201Card(),
+                    ),
+                    _searchableCard(
+                      issueNumber: 198,
+                      keywords:
+                          'passive profile battery optimization ios background '
+                          'activity session dynamic island status bar pill',
+                      child: const Issue198Card(),
+                    ),
+                    _searchableCard(
+                      issueNumber: 185,
+                      keywords:
+                          'high accuracy geofence transitions reboot dwell',
+                      child: const Issue185Card(),
+                    ),
+                    _buildIssueCard(
+                      issueNumber: 147,
+                      sweepAction: _testIssue147,
+                      title: 'getState() drops active config',
+                      description:
+                          'The Pigeon TlState FFI struct had no config field, so '
+                          'State.config was permanently null from ready()/getState(). '
+                          'Now backfilled from the active config. Scan a Test Server '
+                          'QR code first.',
+                      actions: [
+                        FilledButton.icon(
+                          onPressed: _testIssue147,
+                          icon: const Icon(Icons.settings_backup_restore),
+                          label: const Text('Run Test'),
                         ),
-                        label: Text(
-                          _isIssue162Tracking ? 'Stop' : 'Start tracking',
+                      ],
+                    ),
+                    _buildIssueCard(
+                      issueNumber: 149,
+                      sweepAction: _testIssue149,
+                      title: 'Missing syncInterval in HttpConfig',
+                      description:
+                          'HttpConfig.syncInterval (interval-based sync) was missing '
+                          'from the Dart class and Pigeon struct, causing compile '
+                          'failures. Now present, serialized, and round-trips through '
+                          'native. Scan a Test Server QR code first.',
+                      actions: [
+                        FilledButton.icon(
+                          onPressed: _testIssue149,
+                          icon: const Icon(Icons.timelapse),
+                          label: const Text('Run Test'),
                         ),
-                      ),
-                    ],
-                  ),
-                  _buildIssueCard(
-                    issueNumber: 175,
-                    title: 'Battery & Extras DB Persistence',
-                    description:
-                        'Verifies that custom battery levels and globally configured extras '
-                        'are correctly serialized into the SQLite DB (via route_context) '
-                        'and successfully restored on retrieval instead of falling back to default values.',
-                    actions: [
-                      FilledButton.icon(
-                        onPressed: _testIssue175,
-                        icon: const Icon(Icons.play_arrow),
-                        label: const Text('Run Test'),
-                      ),
-                    ],
-                  ),
-                  // Feature demos (not numbered issues) — searchable by keyword
-                  // and kept at the bottom so they never sit above real issues.
-                  _searchableCard(
-                    keywords:
-                        'battery budget remote config batterybudgetperhour '
-                        'runtime setconfig onbudgetadjustment activeconfig sync',
-                    child: const BatteryBudgetRemoteConfigCard(),
-                  ),
-                  _searchableCard(
-                    keywords:
-                        'remote config remoteconfig native background fetch '
-                        'remoteconfigurl https cache setconfig',
-                    child: const RemoteConfigCard(),
-                  ),
-                  // MockRejectionCard uses IssueCardShell, so it self-filters via
-                  // IssueSearchScope (title/description/keywords).
-                  const MockRejectionCard(),
-                ],
+                      ],
+                    ),
+                    _buildIssueCard(
+                      issueNumber: 154,
+                      sweepAction: _testIssue154,
+                      title: 'Dummy destroySyncedLocations stub',
+                      description:
+                          'destroySyncedLocations() always returned a hardcoded 0. It '
+                          'now reports the real count of locations synced-and-pruned. '
+                          'Syncs 3 records to a loopback server and asserts the count. '
+                          'Deterministic.',
+                      actions: [
+                        FilledButton.icon(
+                          onPressed: _testIssue154,
+                          icon: const Icon(Icons.delete_sweep),
+                          label: const Text('Run Test'),
+                        ),
+                      ],
+                    ),
+                    _buildIssueCard(
+                      issueNumber: 159,
+                      sweepAction: _testIssue159,
+                      title: 'Offline queue metrics',
+                      description:
+                          'Adds getPendingLocations()/getPendingLocationCount() to '
+                          'expose the offline (pending-sync) queue. Inserts 4 records '
+                          'and asserts both APIs report them. Deterministic.',
+                      actions: [
+                        FilledButton.icon(
+                          onPressed: _testIssue159,
+                          icon: const Icon(Icons.inbox),
+                          label: const Text('Run Test'),
+                        ),
+                      ],
+                    ),
+                    _buildIssueCard(
+                      issueNumber: 162,
+                      title: 'Battery Budget & Wakelock',
+                      description:
+                          'Test dynamic battery budgeting (adjusts distanceFilter, '
+                          'desiredAccuracy, and periodic interval based on target %/hr) '
+                          'and stationary OEM Wakelock release.\n\n'
+                          '$_issue162Details',
+                      actions: [
+                        FilledButton.icon(
+                          onPressed: _toggleIssue162,
+                          icon: Icon(
+                            _isIssue162Tracking ? Icons.stop : Icons.play_arrow,
+                          ),
+                          label: Text(
+                            _isIssue162Tracking ? 'Stop' : 'Start tracking',
+                          ),
+                        ),
+                      ],
+                    ),
+                    _buildIssueCard(
+                      issueNumber: 175,
+                      sweepAction: _testIssue175,
+                      title: 'Battery & Extras DB Persistence',
+                      description:
+                          'Verifies that custom battery levels and globally configured extras '
+                          'are correctly serialized into the SQLite DB (via route_context) '
+                          'and successfully restored on retrieval instead of falling back to default values.',
+                      actions: [
+                        FilledButton.icon(
+                          onPressed: _testIssue175,
+                          icon: const Icon(Icons.play_arrow),
+                          label: const Text('Run Test'),
+                        ),
+                      ],
+                    ),
+                    // Feature demos (not numbered issues) — searchable by keyword
+                    // and kept at the bottom so they never sit above real issues.
+                    _searchableCard(
+                      keywords:
+                          'battery budget remote config batterybudgetperhour '
+                          'runtime setconfig onbudgetadjustment activeconfig sync',
+                      child: const BatteryBudgetRemoteConfigCard(),
+                    ),
+                    _searchableCard(
+                      keywords:
+                          'remote config remoteconfig native background fetch '
+                          'remoteconfigurl https cache setconfig',
+                      child: const RemoteConfigCard(),
+                    ),
+                    // MockRejectionCard uses IssueCardShell, so it self-filters via
+                    // IssueSearchScope (title/description/keywords).
+                    const MockRejectionCard(),
+                  ],
+                ),
               ),
             ),
           ),

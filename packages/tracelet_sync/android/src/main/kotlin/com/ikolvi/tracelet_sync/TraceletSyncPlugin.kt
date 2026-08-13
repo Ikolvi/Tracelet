@@ -227,6 +227,33 @@ class TraceletSyncSink(private val sdk: TraceletSdk) : LocationDataSink, Tracele
         }
     }
 
+    /**
+     * POSTs telematics to their own endpoint (#368).
+     *
+     * Reuses [executeFallbackHttpSync] so the dedicated endpoint gets the same
+     * headers, timeouts, retry/backoff and 401 token-refresh handling as the
+     * location path — the only difference is the URL and the body.
+     */
+    override fun postTelematicsBlocking(
+        config: uniffi.tracelet_core.HttpConfig,
+        url: String,
+        body: String,
+    ): Boolean = kotlinx.coroutines.runBlocking {
+        val result = executeFallbackHttpSync(
+            config.copy(url = url),
+            body,
+            sdk.dartSyncInterceptor,
+        )
+        sdk.getEventSender().sendHttp(mapOf(
+            "success" to result.success,
+            "status" to result.status,
+            "responseText" to result.responseText,
+            "isRetry" to false,
+            "retryCount" to 0
+        ))
+        result.success
+    }
+
     data class FallbackSyncResult(val success: Boolean, val status: Int, val responseText: String)
 
     internal suspend fun executeFallbackHttpSync(

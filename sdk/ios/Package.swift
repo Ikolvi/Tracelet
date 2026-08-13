@@ -90,6 +90,10 @@ let package = Package(
                 // stationary state for the rest of the process.
                 "SmartMotionCoordinatorSyncModeTests.swift",
                 "SmartMotionCoordinatorTests.swift",
+                // #361: the persistence retention caps, across the FFI boundary.
+                // Both keys were accepted and enforced by nothing after the
+                // 3.1.0 DB migration dropped the calls that implemented them.
+                "DatabaseRetentionCapsTests.swift",
             ]
         ),
     ]

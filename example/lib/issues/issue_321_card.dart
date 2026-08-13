@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #321 — a partial `setConfig()` reset *every* section, not just the
 /// foreground service.
@@ -43,16 +44,15 @@ class Issue321Card extends StatefulWidget {
   State<Issue321Card> createState() => _Issue321CardState();
 }
 
-class _Issue321CardState extends State<Issue321Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue321CardState extends State<Issue321Card>
+    with IssueCardRun<Issue321Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _run;
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -269,7 +269,7 @@ class _Issue321CardState extends State<Issue321Card> {
     } catch (e) {
       _set('❌ FAILED: $e\n\n${results.join('\n')}');
     } finally {
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -288,8 +288,8 @@ class _Issue321CardState extends State<Issue321Card> {
           'http, iOS keep-alive flags and the Android foreground service — '
           'while a field that is supplied still takes effect, and ready() '
           'still sends a complete baseline.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

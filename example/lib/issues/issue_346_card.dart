@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
+import 'package:tracelet_example/issues/issue_card_state.dart';
 
 /// Issue #346 — transport-mode auto-tuning overwrote an explicit
 /// `distanceFilter: 0`, so a parked device recorded nothing and never synced.
@@ -62,16 +63,15 @@ class Issue346Card extends StatefulWidget {
   State<Issue346Card> createState() => _Issue346CardState();
 }
 
-class _Issue346CardState extends State<Issue346Card> {
-  String _status = 'Idle';
-  bool _running = false;
+class _Issue346CardState extends State<Issue346Card>
+    with IssueCardRun<Issue346Card> {
+  void _set(String s) => setStatus(s);
 
-  void _set(String s) {
-    if (mounted) setState(() => _status = s);
-  }
+  @override
+  IssueRunner? get cardRunner => _run;
 
   Future<void> _run() async {
-    setState(() => _running = true);
+    setRunning(running: true);
     final results = <String>[];
     var allPass = true;
 
@@ -222,7 +222,7 @@ class _Issue346CardState extends State<Issue346Card> {
     } finally {
       await modeSub?.cancel();
       await locSub?.cancel();
-      if (mounted) setState(() => _running = false);
+      setRunning(running: false);
     }
   }
 
@@ -238,8 +238,8 @@ class _Issue346CardState extends State<Issue346Card> {
           'A committed "still" mode swapped in a 25 m distance filter over a '
           'configured 0, so a parked device filtered out every fix and had '
           'nothing to sync. Checks the gate in force and that fixes still land.',
-      status: _status,
-      running: _running,
+      status: status,
+      running: running,
       onRun: _run,
     );
   }

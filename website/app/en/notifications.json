@@ -1,5 +1,5 @@
 {
-  "badgeTitle": "New in 3.8.2",
+  "badgeTitle": "New in 3.8.3",
   "items": [
     {
       "title": "Geofences smaller than 100 m now work",
@@ -15,11 +15,6 @@
       "title": "notifyOnDwell and loiteringDelay are persisted",
       "description": "These columns existed but were never written or read, so every fence rebuilt from the database came back with DWELL off and a zero loitering delay — DWELL stopped working permanently after the first restore, and an explicit notifyOnExit: false was silently reverted.",
       "href": "/core/geofencing"
-    },
-    {
-      "title": "Docs for older versions",
-      "description": "The version dropdown next to the logo switches between the current docs and frozen archives of previous releases.",
-      "href": "/v3.7/en"
     }
   ]
 }

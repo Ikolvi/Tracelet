@@ -182,6 +182,46 @@ final class PluginSecondaryEngineGuardTests: XCTestCase {
         )
     }
 
+    // MARK: - Detach must hand delivery back to the headless runner
+
+    /// #364 (iOS half): once the primary engine detaches, its dispatcher must
+    /// stop claiming it can deliver.
+    ///
+    /// `PluginEventDispatcher` decides "can a Flutter engine receive this?" by
+    /// whether `eventApi` is non-nil, and `detachFromEngine` left it set — bound
+    /// to a messenger whose engine is gone. The SDK keeps that dispatcher as its
+    /// event sender and keeps tracking under `stopOnTerminate: false`, so every
+    /// subsequent event was posted into a dead engine instead of falling
+    /// through to the `HeadlessRunner`, and the registered headless task heard
+    /// nothing for the rest of the process.
+    func testPrimaryDetach_routesEventsToTheHeadlessFallback() {
+        let registrar = MockPluginRegistrar()
+        TraceletIosPlugin.register(with: registrar)
+
+        guard let dispatcher = TraceletSdk.shared.getEventSender() as? PluginEventDispatcher else {
+            return XCTFail("primary registration must install a PluginEventDispatcher")
+        }
+
+        var fellBackTo: [String] = []
+        dispatcher.headlessFallback = { eventName, _ in fellBackTo.append(eventName) }
+
+        // While the engine is attached the event belongs to Dart, not the
+        // headless task — the fallback must stay out of the way.
+        dispatcher.sendLocation(["coords": ["latitude": 1.0, "longitude": 2.0]])
+        XCTAssertEqual(
+            fellBackTo, [],
+            "an attached engine must still receive events directly"
+        )
+
+        TraceletIosPlugin.primaryInstance?.detachFromEngine(for: registrar)
+
+        dispatcher.sendLocation(["coords": ["latitude": 1.0, "longitude": 2.0]])
+        XCTAssertEqual(
+            fellBackTo, ["location"],
+            "after detach, events must reach the headless task instead of a dead engine"
+        )
+    }
+
     // MARK: - Pigeon HostApi registered on both engines
 
     /// The Pigeon HostApi must be set up on EVERY engine's messenger so
