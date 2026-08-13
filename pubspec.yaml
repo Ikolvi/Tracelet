@@ -19,7 +19,14 @@ workspace:
   - example
 
 dev_dependencies:
-  melos: ^7.0.0
+  # Kept in step with the version CI activates globally. The global melos shim
+  # delegates to this workspace copy once it is resolved, but `melos bootstrap`
+  # is what resolves it — so on a cold cache bootstrap runs as the global
+  # version and on a warm one as this pin. When the two differed (8.x vs 7.x)
+  # they disagreed about the analyzer excludes written into each package's
+  # analysis_options.yaml, and CI's generated-files check went red or green
+  # depending on nothing but cache state.
+  melos: ^8.0.0
   very_good_analysis: ^6.0.0
 
 melos:
@@ -43,38 +50,38 @@ melos:
   scripts:
     analyze:
       description: Run dart analyze across all packages
-      run: dart analyze --fatal-infos .
       exec:
+        command: dart analyze --fatal-infos .
         concurrency: 4
 
     format:
       description: Check formatting across all packages
-      run: find . -maxdepth 1 -type d \( -name lib -o -name test -o -name example -o -name integration_test -o -name bin \) -print0 | xargs -0 dart format --set-exit-if-changed
       exec:
+        command: find . -maxdepth 1 -type d \( -name lib -o -name test -o -name example -o -name integration_test -o -name bin \) -print0 | xargs -0 dart format --set-exit-if-changed
         concurrency: 4
 
     format:fix:
       description: Fix formatting across all packages
-      run: find . -maxdepth 1 -type d \( -name lib -o -name test -o -name example -o -name integration_test -o -name bin \) -print0 | xargs -0 dart format
       exec:
+        command: find . -maxdepth 1 -type d \( -name lib -o -name test -o -name example -o -name integration_test -o -name bin \) -print0 | xargs -0 dart format
         concurrency: 4
 
     test:
       description: Run tests across all packages
-      run: flutter test --coverage
       packageFilters:
         dirExists: test
       exec:
+        command: flutter test --coverage
         concurrency: 1
         failFast: true
 
     test:dart:
       description: Run Dart-only tests (no Flutter)
-      run: dart test
       packageFilters:
         dirExists: test
         noDependsOn: flutter
       exec:
+        command: dart test
         concurrency: 1
 
     pigeon:
@@ -85,14 +92,14 @@ melos:
 
     clean:
       description: Clean all packages
-      run: flutter clean
       exec:
+        command: flutter clean
         concurrency: 4
 
     pub:get:
       description: Run pub get across all packages
-      run: flutter pub get
       exec:
+        command: flutter pub get
         concurrency: 4
 
     build:example:android:
@@ -118,12 +125,12 @@ melos:
 
     coverage:
       description: Generate coverage report
-      run: |
-        flutter test --coverage
-        genhtml coverage/lcov.info -o coverage/html
       packageFilters:
         dirExists: test
       exec:
+        command: |
+          flutter test --coverage
+          genhtml coverage/lcov.info -o coverage/html
         concurrency: 1
 
     benchmark:
