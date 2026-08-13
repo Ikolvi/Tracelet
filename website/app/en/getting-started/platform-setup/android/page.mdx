@@ -243,6 +243,77 @@ await Tracelet.updateNotification();
   **Safe by design.** `updateNotification()` never restarts tracking, and it is a no-op when the foreground service is not currently running (nothing to refresh). On iOS it refreshes the running [Live Activity](/en/getting-started/platform-setup/ios) instead (when you opted into one via `liveActivityConfig`); on web it is a no-op — so the same call is safe on every platform.
 </Callout>
 
+### Updating the Notification Quietly (`notificationOnlyAlertOnce`)
+
+There is a catch to the pattern above. Android treats every repost as a **fresh alert** unless you tell it otherwise, so a notification you refresh once a minute plays your notification sound once a minute, for as long as tracking runs.
+
+Tracelet's channel is created with vibration and lights disabled, so this is a *sound*, not a buzz — but on the default `notificationPriority` it is audible, and users notice it quickly.
+
+Set `notificationOnlyAlertOnce` so only the first post alerts and every later update lands silently:
+
+```dart
+await Tracelet.setConfig(
+  const tl.Config(
+    android: tl.AndroidConfig(
+      foregroundService: tl.ForegroundServiceConfig(
+        notificationOnlyAlertOnce: true,
+      ),
+    ),
+  ),
+);
+```
+
+This is worth setting for **any** notification whose content changes while tracking runs — a remaining-stops count, pending uploads, the current geofence, live accuracy — not just for the timer below.
+
+<Callout type="info">
+  **Why not just lower the priority?** Dropping `notificationPriority` to `low` or `min` also silences the channel, but it silences the *first* post too, and Android fixes a channel's importance when the channel is **created**. An app already installed with a default-importance channel cannot lower it later without also changing `channelId`, which orphans the old channel in system settings. `notificationOnlyAlertOnce` has neither problem and works at any priority.
+</Callout>
+
+<Callout type="warning">
+  It defaults to `false`, which preserves the behaviour of every existing app. Nothing changes until you opt in.
+</Callout>
+
+### Showing an Elapsed Timer in the Notification
+
+For apps built around a bounded session — a delivery run, a shift, a job, a drive — the notification can show a running clock counting up from a moment you choose:
+
+```dart
+final shiftStartedAt = DateTime.now();
+
+await Tracelet.setConfig(
+  tl.Config(
+    android: tl.AndroidConfig(
+      foregroundService: tl.ForegroundServiceConfig(
+        notificationTitle: 'Shift in progress',
+        notificationStartedAt: shiftStartedAt.millisecondsSinceEpoch,
+        notificationShowTimer: true,
+        notificationOnlyAlertOnce: true,
+      ),
+    ),
+  ),
+);
+
+await Tracelet.updateNotification();
+```
+
+**Android renders the clock itself.** You call this once; the OS ticks the display at second resolution for the life of the notification. Your app never wakes up to redraw it, and reposting the notification for an unrelated reason — new text, a config change — does not restart the count.
+
+You supply `notificationStartedAt` rather than Tracelet taking it from `start()`, because the period a user cares about often began before tracking did, or survives a tracking restart. To show "since tracking started", pass the moment you called `start()`.
+
+<Callout type="info">
+  **Semantics worth knowing.**
+  - `notificationShowTimer: false` (the default) renders exactly today's notification.
+  - `notificationShowTimer: true` with no `notificationStartedAt` shows no timer and logs why. Substituting "now" would restart the clock on every repost and misreport the session.
+  - A `notificationStartedAt` in the future is clamped to the current time **per post**, leaving the stored value untouched, so a device clock correction heals on the next repost.
+  - The timer only counts up. To stop showing it, set `notificationShowTimer: false` — the start instant stays stored but inert.
+</Callout>
+
+<Callout type="warning">
+  You *can* render elapsed time yourself by rewriting `notificationText` on a timer, and for a static count that is the right tool. The reason to prefer this is cost and resolution: a per-minute rewrite is a full round trip into native plus a repost — roughly 480 of them across an eight-hour shift — and showing ticking *seconds* that way is not practical at all. The OS chronometer is one call.
+</Callout>
+
+The iOS counterpart is the [Live Activity timer](/en/getting-started/platform-setup/ios#showing-an-elapsed-timer-in-the-live-activity), which takes the same two fields on `liveActivityConfig`.
+
 ---
 
 ## Scenario 2: The Weather App (Periodic Tracking)
