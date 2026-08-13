@@ -262,6 +262,9 @@ Nested under `AndroidConfig.foregroundService`. Controls the user-facing foregro
 | `notificationColor` | `String?` | `null` | Notification accent color hex string (e.g. `'#4CAF50'`). |
 | `notificationSmallIcon` | `String?` | `null` | Custom resource name for the notification's small icon. |
 | `notificationLargeIcon` | `String?` | `null` | Custom resource name for the notification's large icon. |
+| `notificationStartedAt` | `int?` | `null` | Epoch milliseconds (wall clock) from which the notification counts up. Used only when `notificationShowTimer` is true; future values are clamped to the current time when posted. |
+| `notificationShowTimer` | `bool` | `false` | Show a count-up chronometer from `notificationStartedAt`. No timer is shown without a start value. Android advances it without notification reposts. |
+| `notificationOnlyAlertOnce` | `bool` | `false` | Alert with sound or vibration only on the first notification post, so later content updates are silent. Android only; not applicable to iOS Live Activities. |
 | `notificationPriority` | `NotificationPriority` | `defaultPriority` | Priority level: `min`, `low`, `defaultPriority`, `high`, or `max`. |
 | `notificationOngoing` | `bool` | `true` | When true, the notification cannot be cleared by swiping. |
 | `actions` | `List<String>` | `[]` | Custom action buttons to display inside the notification. |
@@ -281,6 +284,50 @@ iOS-specific configurations. Ignored on Android and Web.
 | `locationAuthorizationRequest` | `LocationAuthorizationRequest` | `always` | Authorization level to request: `always` or `whenInUse`. |
 | `disableLocationAuthorizationAlert` | `bool` | `false` | Suppress the automatic dialog warning when required permissions are missing. |
 | `preventSuspend` | `bool` | `false` | Play an extremely quiet silent audio clip in the background to prevent iOS from suspending the process. |
+| `liveActivityConfig` | `LiveActivityConfig?` | `null` | Opt in to an iOS 17+ Live Activity for the tracking indicator. Requires a Widget Extension. |
+
+### LiveActivityConfig
+
+Nested under `IosConfig.liveActivityConfig`. When absent, Tracelet does not create a Live Activity.
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `title` | `String` | required | Static Live Activity title. A change applies when the next activity starts because ActivityKit attributes are immutable while it is running. |
+| `body` | `String` | required | Dynamic status text shown by the Live Activity. |
+| `startedAt` | `int?` | `null` | Epoch milliseconds (wall clock) from which the Live Activity counts up. Used only when `showTimer` is true; future values are clamped when rendered. |
+| `showTimer` | `bool` | `false` | Show a count-up timer from `startedAt`. No timer is shown without a start value, and iOS advances it without SDK updates. |
+
+The bundled `TraceletLiveActivityView` renders the timer automatically. A custom Widget Extension can opt in using `context.state.startedAt` and `context.state.showTimer`; the SDK does not push periodic updates because `Text(timerInterval:countsDown:)` advances on its own.
+
+### Updating the tracking indicator
+
+To start the timer, write only the notification fields and repost. `setConfig` is a partial update (#320, #321) — fields you do not supply keep their persisted value, so `http.url`, headers and every other section are untouched:
+
+```dart
+await Tracelet.setConfig(Config(
+  android: AndroidConfig(
+    foregroundService: ForegroundServiceConfig(
+      notificationText: 'Delivery in progress',
+      notificationStartedAt: shiftStartedAt.millisecondsSinceEpoch,
+      notificationShowTimer: true,
+      notificationOnlyAlertOnce: true,
+    ),
+  ),
+  ios: IosConfig(
+    liveActivityConfig: LiveActivityConfig(
+      title: 'Delivery',
+      body: 'In progress',
+      startedAt: shiftStartedAt.millisecondsSinceEpoch,
+      showTimer: true,
+    ),
+  ),
+));
+await Tracelet.updateNotification();
+```
+
+`setConfig` persists the values; `updateNotification()` reposts the indicator so they take effect on the one currently on screen. Neither needs to be called periodically — the OS advances the timer on its own.
+
+Set `notificationShowTimer` (or `showTimer`) to `false` to stop showing the clock. The start instant remains persisted and inert while the timer is off.
 
 ---
 

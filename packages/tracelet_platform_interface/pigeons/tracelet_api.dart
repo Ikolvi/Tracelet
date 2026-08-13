@@ -180,6 +180,9 @@ class TlForegroundServiceConfig {
     this.notificationColor,
     this.notificationSmallIcon,
     this.notificationLargeIcon,
+    this.notificationStartedAt,
+    this.notificationShowTimer,
+    this.notificationOnlyAlertOnce,
   });
 
   final bool? enabled;
@@ -194,6 +197,15 @@ class TlForegroundServiceConfig {
   final bool? notificationOngoing;
   final bool? showNotificationOnPauseOnly;
   final List<String?>? actions;
+
+  /// Epoch milliseconds for the optional wall-clock count-up timer.
+  final int? notificationStartedAt;
+
+  /// Whether to show the count-up timer when [notificationStartedAt] exists.
+  final bool? notificationShowTimer;
+
+  /// Whether notification reposts should alert only on the first post.
+  final bool? notificationOnlyAlertOnce;
 }
 
 class TlAndroidConfig {
@@ -226,9 +238,15 @@ class TlAndroidConfig {
 }
 
 class TlLiveActivityConfig {
-  TlLiveActivityConfig({this.title, this.body});
+  TlLiveActivityConfig({this.title, this.body, this.startedAt, this.showTimer});
   final String? title;
   final String? body;
+
+  /// Epoch milliseconds for the optional wall-clock count-up timer.
+  final int? startedAt;
+
+  /// Whether to show the count-up timer when [startedAt] exists.
+  final bool? showTimer;
 }
 
 class TlIosConfig {

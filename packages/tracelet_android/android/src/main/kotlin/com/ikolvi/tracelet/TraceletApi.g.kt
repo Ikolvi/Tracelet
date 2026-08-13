@@ -697,7 +697,13 @@ data class TlForegroundServiceConfig (
   val notificationPriority: TlNotificationPriority? = null,
   val notificationOngoing: Boolean? = null,
   val showNotificationOnPauseOnly: Boolean? = null,
-  val actions: List<String?>? = null
+  val actions: List<String?>? = null,
+  /** Epoch milliseconds for the optional wall-clock count-up timer. */
+  val notificationStartedAt: Long? = null,
+  /** Whether to show the count-up timer when [notificationStartedAt] exists. */
+  val notificationShowTimer: Boolean? = null,
+  /** Whether notification reposts should alert only on the first post. */
+  val notificationOnlyAlertOnce: Boolean? = null
 )
  {
   companion object {
@@ -714,7 +720,10 @@ data class TlForegroundServiceConfig (
       val notificationOngoing = pigeonVar_list[9] as Boolean?
       val showNotificationOnPauseOnly = pigeonVar_list[10] as Boolean?
       val actions = pigeonVar_list[11] as List<String?>?
-      return TlForegroundServiceConfig(enabled, channelId, channelName, notificationTitle, notificationText, notificationColor, notificationSmallIcon, notificationLargeIcon, notificationPriority, notificationOngoing, showNotificationOnPauseOnly, actions)
+      val notificationStartedAt = pigeonVar_list[12] as Long?
+      val notificationShowTimer = pigeonVar_list[13] as Boolean?
+      val notificationOnlyAlertOnce = pigeonVar_list[14] as Boolean?
+      return TlForegroundServiceConfig(enabled, channelId, channelName, notificationTitle, notificationText, notificationColor, notificationSmallIcon, notificationLargeIcon, notificationPriority, notificationOngoing, showNotificationOnPauseOnly, actions, notificationStartedAt, notificationShowTimer, notificationOnlyAlertOnce)
     }
   }
   fun toList(): List<Any?> {
@@ -731,6 +740,9 @@ data class TlForegroundServiceConfig (
       notificationOngoing,
       showNotificationOnPauseOnly,
       actions,
+      notificationStartedAt,
+      notificationShowTimer,
+      notificationOnlyAlertOnce,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -741,7 +753,7 @@ data class TlForegroundServiceConfig (
       return true
     }
     val other = other as TlForegroundServiceConfig
-    return TraceletApiPigeonUtils.deepEquals(this.enabled, other.enabled) && TraceletApiPigeonUtils.deepEquals(this.channelId, other.channelId) && TraceletApiPigeonUtils.deepEquals(this.channelName, other.channelName) && TraceletApiPigeonUtils.deepEquals(this.notificationTitle, other.notificationTitle) && TraceletApiPigeonUtils.deepEquals(this.notificationText, other.notificationText) && TraceletApiPigeonUtils.deepEquals(this.notificationColor, other.notificationColor) && TraceletApiPigeonUtils.deepEquals(this.notificationSmallIcon, other.notificationSmallIcon) && TraceletApiPigeonUtils.deepEquals(this.notificationLargeIcon, other.notificationLargeIcon) && TraceletApiPigeonUtils.deepEquals(this.notificationPriority, other.notificationPriority) && TraceletApiPigeonUtils.deepEquals(this.notificationOngoing, other.notificationOngoing) && TraceletApiPigeonUtils.deepEquals(this.showNotificationOnPauseOnly, other.showNotificationOnPauseOnly) && TraceletApiPigeonUtils.deepEquals(this.actions, other.actions)
+    return TraceletApiPigeonUtils.deepEquals(this.enabled, other.enabled) && TraceletApiPigeonUtils.deepEquals(this.channelId, other.channelId) && TraceletApiPigeonUtils.deepEquals(this.channelName, other.channelName) && TraceletApiPigeonUtils.deepEquals(this.notificationTitle, other.notificationTitle) && TraceletApiPigeonUtils.deepEquals(this.notificationText, other.notificationText) && TraceletApiPigeonUtils.deepEquals(this.notificationColor, other.notificationColor) && TraceletApiPigeonUtils.deepEquals(this.notificationSmallIcon, other.notificationSmallIcon) && TraceletApiPigeonUtils.deepEquals(this.notificationLargeIcon, other.notificationLargeIcon) && TraceletApiPigeonUtils.deepEquals(this.notificationPriority, other.notificationPriority) && TraceletApiPigeonUtils.deepEquals(this.notificationOngoing, other.notificationOngoing) && TraceletApiPigeonUtils.deepEquals(this.showNotificationOnPauseOnly, other.showNotificationOnPauseOnly) && TraceletApiPigeonUtils.deepEquals(this.actions, other.actions) && TraceletApiPigeonUtils.deepEquals(this.notificationStartedAt, other.notificationStartedAt) && TraceletApiPigeonUtils.deepEquals(this.notificationShowTimer, other.notificationShowTimer) && TraceletApiPigeonUtils.deepEquals(this.notificationOnlyAlertOnce, other.notificationOnlyAlertOnce)
   }
 
   override fun hashCode(): Int {
@@ -758,6 +770,9 @@ data class TlForegroundServiceConfig (
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.notificationOngoing)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.showNotificationOnPauseOnly)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.actions)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.notificationStartedAt)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.notificationShowTimer)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.notificationOnlyAlertOnce)
     return result
   }
 }
@@ -839,20 +854,28 @@ data class TlAndroidConfig (
 /** Generated class from Pigeon that represents data sent in messages. */
 data class TlLiveActivityConfig (
   val title: String? = null,
-  val body: String? = null
+  val body: String? = null,
+  /** Epoch milliseconds for the optional wall-clock count-up timer. */
+  val startedAt: Long? = null,
+  /** Whether to show the count-up timer when [startedAt] exists. */
+  val showTimer: Boolean? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): TlLiveActivityConfig {
       val title = pigeonVar_list[0] as String?
       val body = pigeonVar_list[1] as String?
-      return TlLiveActivityConfig(title, body)
+      val startedAt = pigeonVar_list[2] as Long?
+      val showTimer = pigeonVar_list[3] as Boolean?
+      return TlLiveActivityConfig(title, body, startedAt, showTimer)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
       title,
       body,
+      startedAt,
+      showTimer,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -863,13 +886,15 @@ data class TlLiveActivityConfig (
       return true
     }
     val other = other as TlLiveActivityConfig
-    return TraceletApiPigeonUtils.deepEquals(this.title, other.title) && TraceletApiPigeonUtils.deepEquals(this.body, other.body)
+    return TraceletApiPigeonUtils.deepEquals(this.title, other.title) && TraceletApiPigeonUtils.deepEquals(this.body, other.body) && TraceletApiPigeonUtils.deepEquals(this.startedAt, other.startedAt) && TraceletApiPigeonUtils.deepEquals(this.showTimer, other.showTimer)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.title)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.body)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.startedAt)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.showTimer)
     return result
   }
 }
@@ -2826,8 +2851,8 @@ data class TlTelematicsRecord (
   /**
    * Speed at the event in m/s — for an impact, the speed going in (#367).
    *
-   * Nullable so records stored before the magnitudes were persisted decode as
-   * `null` rather than a misleading `0.0`.
+   * Nullable so a Dart side newer than the native plugin decodes a missing
+   * field as `null` instead of failing.
    */
   val speed: Double? = null,
   /**

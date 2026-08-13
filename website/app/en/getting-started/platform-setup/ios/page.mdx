@@ -194,6 +194,29 @@ ios: tl.IosConfig(
 )
 ```
 
+### Showing an Elapsed Timer in the Live Activity
+
+For a bounded session — a ride, a delivery, a shift — the Live Activity can show a clock counting up from a moment you choose:
+
+```dart
+final rideStartedAt = DateTime.now();
+
+ios: tl.IosConfig(
+  liveActivityConfig: tl.LiveActivityConfig(
+    title: 'Ride in progress',
+    body: 'Tracking your route to the destination...',
+    startedAt: rideStartedAt.millisecondsSinceEpoch,
+    showTimer: true,
+  ),
+)
+```
+
+**iOS renders the clock itself** via `Text(timerInterval:countsDown: false)`. Tracelet pushes no periodic updates to advance it, and the count is not restarted by an unrelated refresh. This mirrors the [Android notification timer](/en/getting-started/platform-setup/android#showing-an-elapsed-timer-in-the-notification), and the semantics match: `showTimer: false` is exactly today's behaviour, `showTimer: true` without a `startedAt` shows no clock, a future `startedAt` is clamped when rendered, and the timer only counts up.
+
+<Callout type="warning">
+  **Your Widget Extension must declare the fields to draw them.** Because the extension defines its own copy of `TraceletActivityAttributes`, setting `showTimer` in Dart is not enough on its own — `ContentState` needs `startedAt` and `showTimer`, and the view needs a `Text(timerInterval:)`. Both are in the [snippet above](#scenario-5-live-activities-lock-screen--dynamic-island-ui). An extension without them keeps working and shows no clock.
+</Callout>
+
 ### Refreshing the Live Activity While Tracking (`updateNotification()`)
 
 To change what the Live Activity shows *after* tracking has started, update `liveActivityConfig` via `setConfig()` and then call `Tracelet.updateNotification()`. Since **v3.6.8** this refreshes the Live Activity from the latest config **without restarting the tracking pipeline** — the cross-platform counterpart to refreshing the [Android foreground-service notification](/en/getting-started/platform-setup/android#refreshing-the-notification-while-tracking-updatenotification):
@@ -259,7 +282,24 @@ import SwiftUI
 public struct TraceletActivityAttributes: ActivityAttributes {
     public struct ContentState: Codable, Hashable {
         public var status: String
-        public init(status: String) { self.status = status }
+
+        // Optional elapsed-timer fields. Decoded with `decodeIfPresent` so this
+        // struct still works against SDK versions that never send them.
+        public var startedAt: Date?
+        public var showTimer: Bool
+
+        public init(status: String, startedAt: Date? = nil, showTimer: Bool = false) {
+            self.status = status
+            self.startedAt = startedAt
+            self.showTimer = showTimer
+        }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            status = try c.decode(String.self, forKey: .status)
+            startedAt = try c.decodeIfPresent(Date.self, forKey: .startedAt)
+            showTimer = try c.decodeIfPresent(Bool.self, forKey: .showTimer) ?? false
+        }
     }
     public var title: String
     public init(title: String) { self.title = title }
@@ -283,6 +323,15 @@ struct TraceletWidgetLiveActivity: Widget {
                     Text(context.state.status).font(.subheadline).foregroundColor(.secondary)
                 }
                 Spacer()
+                // Elapsed timer. iOS ticks this itself — no updates are pushed.
+                // `min(..., Date())` clamps a start instant that is in the
+                // future, which would otherwise render as a stuck clock.
+                if context.state.showTimer, let startedAt = context.state.startedAt {
+                    Text(timerInterval: min(startedAt, Date())...Date.distantFuture,
+                         countsDown: false)
+                        .font(.system(.title3, design: .rounded).monospacedDigit())
+                        .frame(maxWidth: 90)
+                }
             }
             .padding()
         } dynamicIsland: { context in
@@ -308,6 +357,10 @@ struct TraceletWidgetLiveActivity: Widget {
 }
 ```
 This SwiftUI view is fully yours to customize — style it however you like inside the `ActivityConfiguration` block, mapping the data from `context.attributes.title` and `context.state.status`.
+
+<Callout type="info">
+  **Already shipped a Widget Extension?** The `startedAt` / `showTimer` fields on `ContentState` are additive. An extension built before they existed keeps working exactly as it did — Swift's generated decoder ignores keys it does not know about — it simply shows no clock. Copy the two fields and the `init(from:)` above into your struct when you want [the elapsed timer](#showing-an-elapsed-timer-in-the-live-activity).
+</Callout>
 
 <Callout type="warning">
   **Set the Widget Extension's deployment target to iOS 16.2.** Xcode's "Widget Extension" template often adds Control Widgets and an `@available(iOS 18.0, *)` annotation on the `@main` `WidgetBundle`. If that annotation is higher than the extension's deployment target, the widget bundle (and therefore your Live Activity) silently fails to register — the system logs `Activity had no descriptor` — and the extension can crash on older OS versions. Keep the `@main` bundle available at the extension's deployment floor, and wrap any iOS-18-only widgets (e.g. Control Widgets) in `if #available(iOS 18.0, *)`.

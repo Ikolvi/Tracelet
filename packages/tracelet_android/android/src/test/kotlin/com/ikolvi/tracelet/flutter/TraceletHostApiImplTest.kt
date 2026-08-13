@@ -105,6 +105,9 @@ class TraceletHostApiImplTest {
         org.mockito.Mockito.`when`(mockConfig.geo.periodicDesiredAccuracy!!.raw).thenReturn(0)
         org.mockito.Mockito.`when`(mockConfig.geo.filter!!.policy!!.raw).thenReturn(0)
         org.mockito.Mockito.`when`(mockConfig.android.foregroundService!!.notificationPriority!!.raw).thenReturn(0)
+        org.mockito.Mockito.`when`(mockConfig.android.foregroundService!!.notificationStartedAt).thenReturn(4_294_967_296L)
+        org.mockito.Mockito.`when`(mockConfig.android.foregroundService!!.notificationShowTimer).thenReturn(false)
+        org.mockito.Mockito.`when`(mockConfig.android.foregroundService!!.notificationOnlyAlertOnce).thenReturn(true)
         org.mockito.Mockito.`when`(mockConfig.logger.logLevel!!.raw).thenReturn(0)
         org.mockito.Mockito.`when`(mockConfig.persistence.persistMode!!.raw).thenReturn(0)
         org.mockito.Mockito.`when`(mockConfig.audit.hashAlgorithm!!.raw).thenReturn(0)
@@ -114,6 +117,15 @@ class TraceletHostApiImplTest {
 
         val httpMap = map["http"] as Map<String, Any?>
         val motionMap = map["motion"] as Map<String, Any?>
+        val androidMap = map["android"] as Map<String, Any?>
+        val foregroundServiceMap = androidMap["foregroundService"] as Map<String, Any?>
+
+        // #376: the timer fields have to survive the Pigeon -> SDK map hop.
+        // notificationStartedAt is above Int32 on purpose — an `as? Int` read
+        // would drop it, and epoch millis are always in that range.
+        assertEquals(4_294_967_296L, foregroundServiceMap["notificationStartedAt"])
+        assertEquals(false, foregroundServiceMap["notificationShowTimer"])
+        assertEquals(true, foregroundServiceMap["notificationOnlyAlertOnce"])
 
         val httpFields = com.ikolvi.tracelet.TlHttpConfig::class.java.declaredFields.map { it.name }.filter { it != "\$stable" && it != "Companion" }
         for (field in httpFields) {

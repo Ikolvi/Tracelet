@@ -1039,7 +1039,12 @@ public final class TraceletSdk {
                     if #available(iOS 17.0, *) {
                         #if canImport(ActivityKit)
                         if let lc = configManager.getLiveActivityConfig() {
-                            LiveActivityManager.shared.updateLiveActivity(title: lc.title, body: lc.body)
+                            LiveActivityManager.shared.updateLiveActivity(
+                                title: lc.title,
+                                body: lc.body,
+                                startedAt: lc.startedAt,
+                                showTimer: lc.showTimer
+                            )
                         }
                         #endif
                     }
@@ -1155,7 +1160,12 @@ public final class TraceletSdk {
                 logger.info("updateNotification: tracking not enabled — nothing to refresh")
                 return
             }
-            LiveActivityManager.shared.refreshLiveActivity(title: liveConfig.title, body: liveConfig.body)
+            LiveActivityManager.shared.refreshLiveActivity(
+                title: liveConfig.title,
+                body: liveConfig.body,
+                startedAt: liveConfig.startedAt,
+                showTimer: liveConfig.showTimer
+            )
             #endif
         }
     }

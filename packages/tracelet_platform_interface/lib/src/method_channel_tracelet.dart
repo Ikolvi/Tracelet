@@ -763,6 +763,12 @@ class MethodChannelTracelet extends TraceletPlatform {
     if (c.notificationLargeIcon != null)
       if (c.notificationLargeIcon != null)
         'notificationLargeIcon': c.notificationLargeIcon,
+    if (c.notificationStartedAt != null)
+      'notificationStartedAt': c.notificationStartedAt,
+    if (c.notificationShowTimer != null)
+      'notificationShowTimer': c.notificationShowTimer,
+    if (c.notificationOnlyAlertOnce != null)
+      'notificationOnlyAlertOnce': c.notificationOnlyAlertOnce,
     if (c.notificationPriority != null)
       'notificationPriority': c.notificationPriority!.index - 2,
     if (c.notificationOngoing != null)
@@ -790,6 +796,17 @@ class MethodChannelTracelet extends TraceletPlatform {
     if (c.disableLocationAuthorizationAlert != null)
       'disableLocationAuthorizationAlert': c.disableLocationAuthorizationAlert,
     if (c.preventSuspend != null) 'preventSuspend': c.preventSuspend,
+    if (c.liveActivityConfig != null)
+      'liveActivityConfig': {
+        if (c.liveActivityConfig!.title != null)
+          'title': c.liveActivityConfig!.title,
+        if (c.liveActivityConfig!.body != null)
+          'body': c.liveActivityConfig!.body,
+        if (c.liveActivityConfig!.startedAt != null)
+          'startedAt': c.liveActivityConfig!.startedAt,
+        if (c.liveActivityConfig!.showTimer != null)
+          'showTimer': c.liveActivityConfig!.showTimer,
+      },
   };
 
   Map<String, Object?> _httpToMap(TlHttpConfig c) => {

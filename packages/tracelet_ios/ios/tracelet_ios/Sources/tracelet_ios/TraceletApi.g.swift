@@ -589,6 +589,12 @@ struct TlForegroundServiceConfig: Hashable {
   var notificationOngoing: Bool? = nil
   var showNotificationOnPauseOnly: Bool? = nil
   var actions: [String?]? = nil
+  /// Epoch milliseconds for the optional wall-clock count-up timer.
+  var notificationStartedAt: Int64? = nil
+  /// Whether to show the count-up timer when [notificationStartedAt] exists.
+  var notificationShowTimer: Bool? = nil
+  /// Whether notification reposts should alert only on the first post.
+  var notificationOnlyAlertOnce: Bool? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -605,6 +611,9 @@ struct TlForegroundServiceConfig: Hashable {
     let notificationOngoing: Bool? = nilOrValue(pigeonVar_list[9])
     let showNotificationOnPauseOnly: Bool? = nilOrValue(pigeonVar_list[10])
     let actions: [String?]? = nilOrValue(pigeonVar_list[11])
+    let notificationStartedAt: Int64? = nilOrValue(pigeonVar_list[12])
+    let notificationShowTimer: Bool? = nilOrValue(pigeonVar_list[13])
+    let notificationOnlyAlertOnce: Bool? = nilOrValue(pigeonVar_list[14])
 
     return TlForegroundServiceConfig(
       enabled: enabled,
@@ -618,7 +627,10 @@ struct TlForegroundServiceConfig: Hashable {
       notificationPriority: notificationPriority,
       notificationOngoing: notificationOngoing,
       showNotificationOnPauseOnly: showNotificationOnPauseOnly,
-      actions: actions
+      actions: actions,
+      notificationStartedAt: notificationStartedAt,
+      notificationShowTimer: notificationShowTimer,
+      notificationOnlyAlertOnce: notificationOnlyAlertOnce
     )
   }
   func toList() -> [Any?] {
@@ -635,13 +647,16 @@ struct TlForegroundServiceConfig: Hashable {
       notificationOngoing,
       showNotificationOnPauseOnly,
       actions,
+      notificationStartedAt,
+      notificationShowTimer,
+      notificationOnlyAlertOnce,
     ]
   }
   static func == (lhs: TlForegroundServiceConfig, rhs: TlForegroundServiceConfig) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsTraceletApi(lhs.enabled, rhs.enabled) && deepEqualsTraceletApi(lhs.channelId, rhs.channelId) && deepEqualsTraceletApi(lhs.channelName, rhs.channelName) && deepEqualsTraceletApi(lhs.notificationTitle, rhs.notificationTitle) && deepEqualsTraceletApi(lhs.notificationText, rhs.notificationText) && deepEqualsTraceletApi(lhs.notificationColor, rhs.notificationColor) && deepEqualsTraceletApi(lhs.notificationSmallIcon, rhs.notificationSmallIcon) && deepEqualsTraceletApi(lhs.notificationLargeIcon, rhs.notificationLargeIcon) && deepEqualsTraceletApi(lhs.notificationPriority, rhs.notificationPriority) && deepEqualsTraceletApi(lhs.notificationOngoing, rhs.notificationOngoing) && deepEqualsTraceletApi(lhs.showNotificationOnPauseOnly, rhs.showNotificationOnPauseOnly) && deepEqualsTraceletApi(lhs.actions, rhs.actions)
+    return deepEqualsTraceletApi(lhs.enabled, rhs.enabled) && deepEqualsTraceletApi(lhs.channelId, rhs.channelId) && deepEqualsTraceletApi(lhs.channelName, rhs.channelName) && deepEqualsTraceletApi(lhs.notificationTitle, rhs.notificationTitle) && deepEqualsTraceletApi(lhs.notificationText, rhs.notificationText) && deepEqualsTraceletApi(lhs.notificationColor, rhs.notificationColor) && deepEqualsTraceletApi(lhs.notificationSmallIcon, rhs.notificationSmallIcon) && deepEqualsTraceletApi(lhs.notificationLargeIcon, rhs.notificationLargeIcon) && deepEqualsTraceletApi(lhs.notificationPriority, rhs.notificationPriority) && deepEqualsTraceletApi(lhs.notificationOngoing, rhs.notificationOngoing) && deepEqualsTraceletApi(lhs.showNotificationOnPauseOnly, rhs.showNotificationOnPauseOnly) && deepEqualsTraceletApi(lhs.actions, rhs.actions) && deepEqualsTraceletApi(lhs.notificationStartedAt, rhs.notificationStartedAt) && deepEqualsTraceletApi(lhs.notificationShowTimer, rhs.notificationShowTimer) && deepEqualsTraceletApi(lhs.notificationOnlyAlertOnce, rhs.notificationOnlyAlertOnce)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -658,6 +673,9 @@ struct TlForegroundServiceConfig: Hashable {
     deepHashTraceletApi(value: notificationOngoing, hasher: &hasher)
     deepHashTraceletApi(value: showNotificationOnPauseOnly, hasher: &hasher)
     deepHashTraceletApi(value: actions, hasher: &hasher)
+    deepHashTraceletApi(value: notificationStartedAt, hasher: &hasher)
+    deepHashTraceletApi(value: notificationShowTimer, hasher: &hasher)
+    deepHashTraceletApi(value: notificationOnlyAlertOnce, hasher: &hasher)
   }
 }
 
@@ -743,35 +761,47 @@ struct TlAndroidConfig: Hashable {
 struct TlLiveActivityConfig: Hashable {
   var title: String? = nil
   var body: String? = nil
+  /// Epoch milliseconds for the optional wall-clock count-up timer.
+  var startedAt: Int64? = nil
+  /// Whether to show the count-up timer when [startedAt] exists.
+  var showTimer: Bool? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> TlLiveActivityConfig? {
     let title: String? = nilOrValue(pigeonVar_list[0])
     let body: String? = nilOrValue(pigeonVar_list[1])
+    let startedAt: Int64? = nilOrValue(pigeonVar_list[2])
+    let showTimer: Bool? = nilOrValue(pigeonVar_list[3])
 
     return TlLiveActivityConfig(
       title: title,
-      body: body
+      body: body,
+      startedAt: startedAt,
+      showTimer: showTimer
     )
   }
   func toList() -> [Any?] {
     return [
       title,
       body,
+      startedAt,
+      showTimer,
     ]
   }
   static func == (lhs: TlLiveActivityConfig, rhs: TlLiveActivityConfig) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsTraceletApi(lhs.title, rhs.title) && deepEqualsTraceletApi(lhs.body, rhs.body)
+    return deepEqualsTraceletApi(lhs.title, rhs.title) && deepEqualsTraceletApi(lhs.body, rhs.body) && deepEqualsTraceletApi(lhs.startedAt, rhs.startedAt) && deepEqualsTraceletApi(lhs.showTimer, rhs.showTimer)
   }
 
   func hash(into hasher: inout Hasher) {
     hasher.combine("TlLiveActivityConfig")
     deepHashTraceletApi(value: title, hasher: &hasher)
     deepHashTraceletApi(value: body, hasher: &hasher)
+    deepHashTraceletApi(value: startedAt, hasher: &hasher)
+    deepHashTraceletApi(value: showTimer, hasher: &hasher)
   }
 }
 
@@ -2780,8 +2810,8 @@ struct TlTelematicsRecord: Hashable {
   var severity: Double
   /// Speed at the event in m/s — for an impact, the speed going in (#367).
   ///
-  /// Nullable so records stored before the magnitudes were persisted decode as
-  /// `null` rather than a misleading `0.0`.
+  /// Nullable so a Dart side newer than the native plugin decodes a missing
+  /// field as `null` instead of failing.
   var speed: Double? = nil
   /// The measured magnitude that triggered the event: g for harsh driving
   /// events and impacts, km/h over the limit for speeding (#367).

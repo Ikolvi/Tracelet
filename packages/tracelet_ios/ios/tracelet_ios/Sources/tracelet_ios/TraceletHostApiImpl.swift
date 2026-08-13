@@ -91,10 +91,20 @@ class TraceletHostApiImpl: TraceletHostApi {
         dict["preventSuspend"] = c.ios.preventSuspend
         dict["useBackgroundActivitySession"] = c.ios.useBackgroundActivitySession
         if let liveConfig = c.ios.liveActivityConfig {
-            dict["liveActivityConfig"] = [
-                "title": liveConfig.title,
-                "body": liveConfig.body
-            ]
+            var liveActivityDict: [String: Any] = [:]
+            if let title = liveConfig.title {
+                liveActivityDict["title"] = title
+            }
+            if let body = liveConfig.body {
+                liveActivityDict["body"] = body
+            }
+            if let startedAt = liveConfig.startedAt {
+                liveActivityDict["startedAt"] = startedAt
+            }
+            if let showTimer = liveConfig.showTimer {
+                liveActivityDict["showTimer"] = showTimer
+            }
+            dict["liveActivityConfig"] = liveActivityDict
         }
 
         // HTTP

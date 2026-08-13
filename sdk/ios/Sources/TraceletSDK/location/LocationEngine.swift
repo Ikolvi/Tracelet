@@ -471,7 +471,12 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
                 // Skipped while a setConfig() restart is in progress so the
                 // existing activity survives (it is updated in place instead).
                 if !suppressLiveActivityLifecycle {
-                    LiveActivityManager.shared.startLiveActivity(title: liveConfig.title, body: liveConfig.body)
+                    LiveActivityManager.shared.startLiveActivity(
+                        title: liveConfig.title,
+                        body: liveConfig.body,
+                        startedAt: liveConfig.startedAt,
+                        showTimer: liveConfig.showTimer
+                    )
                 }
                 #endif
             } else if configManager.getUseBackgroundActivitySession() {

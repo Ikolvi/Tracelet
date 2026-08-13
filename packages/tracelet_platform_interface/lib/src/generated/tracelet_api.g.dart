@@ -533,6 +533,9 @@ class TlForegroundServiceConfig {
     this.notificationOngoing,
     this.showNotificationOnPauseOnly,
     this.actions,
+    this.notificationStartedAt,
+    this.notificationShowTimer,
+    this.notificationOnlyAlertOnce,
   });
 
   bool? enabled;
@@ -559,6 +562,15 @@ class TlForegroundServiceConfig {
 
   List<String?>? actions;
 
+  /// Epoch milliseconds for the optional wall-clock count-up timer.
+  int? notificationStartedAt;
+
+  /// Whether to show the count-up timer when [notificationStartedAt] exists.
+  bool? notificationShowTimer;
+
+  /// Whether notification reposts should alert only on the first post.
+  bool? notificationOnlyAlertOnce;
+
   List<Object?> _toList() {
     return <Object?>[
       enabled,
@@ -573,6 +585,9 @@ class TlForegroundServiceConfig {
       notificationOngoing,
       showNotificationOnPauseOnly,
       actions,
+      notificationStartedAt,
+      notificationShowTimer,
+      notificationOnlyAlertOnce,
     ];
   }
 
@@ -595,6 +610,9 @@ class TlForegroundServiceConfig {
       notificationOngoing: result[9] as bool?,
       showNotificationOnPauseOnly: result[10] as bool?,
       actions: (result[11] as List<Object?>?)?.cast<String?>(),
+      notificationStartedAt: result[12] as int?,
+      notificationShowTimer: result[13] as bool?,
+      notificationOnlyAlertOnce: result[14] as bool?,
     );
   }
 
@@ -622,7 +640,10 @@ class TlForegroundServiceConfig {
           showNotificationOnPauseOnly,
           other.showNotificationOnPauseOnly,
         ) &&
-        _deepEquals(actions, other.actions);
+        _deepEquals(actions, other.actions) &&
+        _deepEquals(notificationStartedAt, other.notificationStartedAt) &&
+        _deepEquals(notificationShowTimer, other.notificationShowTimer) &&
+        _deepEquals(notificationOnlyAlertOnce, other.notificationOnlyAlertOnce);
   }
 
   @override
@@ -737,14 +758,20 @@ class TlAndroidConfig {
 }
 
 class TlLiveActivityConfig {
-  TlLiveActivityConfig({this.title, this.body});
+  TlLiveActivityConfig({this.title, this.body, this.startedAt, this.showTimer});
 
   String? title;
 
   String? body;
 
+  /// Epoch milliseconds for the optional wall-clock count-up timer.
+  int? startedAt;
+
+  /// Whether to show the count-up timer when [startedAt] exists.
+  bool? showTimer;
+
   List<Object?> _toList() {
-    return <Object?>[title, body];
+    return <Object?>[title, body, startedAt, showTimer];
   }
 
   Object encode() {
@@ -756,6 +783,8 @@ class TlLiveActivityConfig {
     return TlLiveActivityConfig(
       title: result[0] as String?,
       body: result[1] as String?,
+      startedAt: result[2] as int?,
+      showTimer: result[3] as bool?,
     );
   }
 
@@ -768,7 +797,10 @@ class TlLiveActivityConfig {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(title, other.title) && _deepEquals(body, other.body);
+    return _deepEquals(title, other.title) &&
+        _deepEquals(body, other.body) &&
+        _deepEquals(startedAt, other.startedAt) &&
+        _deepEquals(showTimer, other.showTimer);
   }
 
   @override
@@ -3258,8 +3290,8 @@ class TlTelematicsRecord {
 
   /// Speed at the event in m/s — for an impact, the speed going in (#367).
   ///
-  /// Nullable so records stored before the magnitudes were persisted decode as
-  /// `null` rather than a misleading `0.0`.
+  /// Nullable so a Dart side newer than the native plugin decodes a missing
+  /// field as `null` instead of failing.
   double? speed;
 
   /// The measured magnitude that triggered the event: g for harsh driving

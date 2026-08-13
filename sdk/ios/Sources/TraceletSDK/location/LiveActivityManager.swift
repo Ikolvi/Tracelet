@@ -32,8 +32,8 @@ internal final class LiveActivityManager {
 
     // MARK: - Public API (safe to call from any thread)
 
-    func startLiveActivity(title: String, body: String) {
-        onMain { self.startOnMain(title: title, body: body) }
+    func startLiveActivity(title: String, body: String, startedAt: Date? = nil, showTimer: Bool = false) {
+        onMain { self.startOnMain(title: title, body: body, startedAt: startedAt, showTimer: showTimer) }
     }
 
     func stopLiveActivity() {
@@ -49,8 +49,8 @@ internal final class LiveActivityManager {
     /// and cannot change without ending and re-requesting the activity, so a
     /// title change is reported but not applied here. No-op if no activity is
     /// currently running (nothing to refresh).
-    func updateLiveActivity(title: String, body: String) {
-        onMain { self.updateOnMain(title: title, body: body) }
+    func updateLiveActivity(title: String, body: String, startedAt: Date? = nil, showTimer: Bool = false) {
+        onMain { self.updateOnMain(title: title, body: body, startedAt: startedAt, showTimer: showTimer) }
     }
 
     /// Ensures the Live Activity reflects the latest `liveActivityConfig` while
@@ -63,19 +63,19 @@ internal final class LiveActivityManager {
     /// screen at the moment the app asks to refresh it (e.g. after a transient
     /// stop/restart). Starting it here guarantees the newest content is shown
     /// rather than silently doing nothing.
-    func refreshLiveActivity(title: String, body: String) {
+    func refreshLiveActivity(title: String, body: String, startedAt: Date? = nil, showTimer: Bool = false) {
         onMain {
             if self.currentActivity != nil {
-                self.updateOnMain(title: title, body: body)
+                self.updateOnMain(title: title, body: body, startedAt: startedAt, showTimer: showTimer)
             } else if !self.isStarting {
-                self.startOnMain(title: title, body: body)
+                self.startOnMain(title: title, body: body, startedAt: startedAt, showTimer: showTimer)
             }
         }
     }
 
     // MARK: - Main-thread implementation
 
-    private func startOnMain(title: String, body: String) {
+    private func startOnMain(title: String, body: String, startedAt: Date? = nil, showTimer: Bool = false) {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
             TraceletLog.debug("[Tracelet-LiveActivity] Live Activities not enabled; skipping start.")
             return
@@ -94,7 +94,12 @@ internal final class LiveActivityManager {
             await LiveActivityManager.endAllActivities()
 
             do {
-                let activity = try LiveActivityManager.requestActivity(title: title, body: body)
+                let activity = try LiveActivityManager.requestActivity(
+                    title: title,
+                    body: body,
+                    startedAt: startedAt,
+                    showTimer: showTimer
+                )
 
                 guard let self = self else {
                     // Owner deallocated mid-flight — don't leak the activity.
@@ -118,7 +123,7 @@ internal final class LiveActivityManager {
         }
     }
 
-    private func updateOnMain(title: String, body: String) {
+    private func updateOnMain(title: String, body: String, startedAt: Date? = nil, showTimer: Bool = false) {
         guard let activity = currentActivity else {
             TraceletLog.debug("[Tracelet-LiveActivity] No active Live Activity to refresh; skipping update.")
             return
@@ -132,7 +137,11 @@ internal final class LiveActivityManager {
         }
 
         Task { @MainActor in
-            let newState = TraceletActivityAttributes.ContentState(status: body)
+            let newState = LiveActivityManager.contentState(
+                body: body,
+                startedAt: startedAt,
+                showTimer: showTimer
+            )
             if #available(iOS 16.2, *) {
                 await activity.update(ActivityContent(state: newState, staleDate: nil))
             } else {
@@ -169,9 +178,14 @@ internal final class LiveActivityManager {
         }
     }
 
-    private static func requestActivity(title: String, body: String) throws -> Activity<TraceletActivityAttributes> {
+    private static func requestActivity(
+        title: String,
+        body: String,
+        startedAt: Date? = nil,
+        showTimer: Bool = false
+    ) throws -> Activity<TraceletActivityAttributes> {
         let attributes = TraceletActivityAttributes(title: title)
-        let state = TraceletActivityAttributes.ContentState(status: body)
+        let state = contentState(body: body, startedAt: startedAt, showTimer: showTimer)
         if #available(iOS 16.2, *) {
             return try Activity.request(
                 attributes: attributes,
@@ -192,12 +206,28 @@ internal final class LiveActivityManager {
             await activity.endImmediately()
         }
     }
+
+    private static func contentState(
+        body: String,
+        startedAt: Date?,
+        showTimer: Bool
+    ) -> TraceletActivityAttributes.ContentState {
+        if showTimer && startedAt == nil {
+            TraceletLog.debug("showTimer is set but startedAt is not — no timer shown")
+        }
+        return TraceletActivityAttributes.ContentState(
+            status: body,
+            startedAt: startedAt.map { min($0, Date()) },
+            showTimer: showTimer
+        )
+    }
 }
 
 @available(iOS 16.1, *)
 private extension Activity where Attributes == TraceletActivityAttributes {
     /// Ends the activity immediately with a terminal "stopped" state.
     func endImmediately() async {
+        // Deliberately omit timer state so the terminal card never keeps ticking.
         let finalState = TraceletActivityAttributes.ContentState(status: "Tracking stopped")
         if #available(iOS 16.2, *) {
             await end(ActivityContent(state: finalState, staleDate: nil), dismissalPolicy: .immediate)

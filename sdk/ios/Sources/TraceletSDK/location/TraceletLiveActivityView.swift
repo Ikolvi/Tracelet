@@ -28,6 +28,11 @@ public struct TraceletLiveActivityView: View {
             Text(context.state.status)
                 .font(.subheadline)
                 .foregroundColor(.gray)
+            if context.state.showTimer, let startedAt = context.state.startedAt {
+                Text(timerInterval: min(startedAt, Date())...Date.distantFuture, countsDown: false)
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundColor(.white)
+            }
         }
         .padding()
         .activityBackgroundTint(Color.black.opacity(0.8))

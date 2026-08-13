@@ -211,13 +211,24 @@ public final class ConfigManager {
     public struct LiveActivityConfig {
         public let title: String
         public let body: String
+        public let startedAt: Date?
+        public let showTimer: Bool
     }
 
     public func getLiveActivityConfig() -> LiveActivityConfig? {
         guard let map = cache["liveActivityConfig"] as? [String: Any],
               let title = map["title"] as? String,
               let body = map["body"] as? String else { return nil }
-        return LiveActivityConfig(title: title, body: body)
+        let startedAt = (map["startedAt"] as? NSNumber).map {
+            Date(timeIntervalSince1970: $0.doubleValue / 1000.0)
+        }
+        let showTimer = map["showTimer"] as? Bool ?? false
+        return LiveActivityConfig(
+            title: title,
+            body: body,
+            startedAt: startedAt,
+            showTimer: showTimer
+        )
     }
 
     // MotionConfig
