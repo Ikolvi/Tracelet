@@ -128,11 +128,15 @@ jobs:
 
       - name: Check for uncommitted generated files
         if: ${{ !(inputs.skip_flutter && inputs.skip_native_sdks) }}
+        # Scoped to the only codegen output that is tracked: the Dart bindings
+        # and the C header are both gitignored. A repo-wide `git status` also
+        # trips on files no codegen step writes — Flutter's own `pub get`
+        # rewrites every analysis_options.yaml since 3.47 (#381).
         run: |
-          if [ -n "$(git status --porcelain)" ]; then
+          if [ -n "$(git status --porcelain -- sdk/rust-core/core/src/frb_generated.rs)" ]; then
             echo "❌ Generated files are out of date!"
             echo "Please run 'flutter_rust_bridge_codegen generate' locally and commit the changes."
-            git diff
+            git diff -- sdk/rust-core/core/src/frb_generated.rs
             exit 1
           fi
           echo "✅ Generated files are up to date."
