@@ -15,6 +15,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 
 /**
  * Tests that the primary-instance guard in [TraceletAndroidPlugin] prevents
@@ -210,6 +211,37 @@ internal class PluginSecondaryEngineGuardTest {
             0,
             globalDispatcherCount(),
             "the surviving foreign engine must not be left holding the fan-out",
+        )
+    }
+
+    /**
+     * #371, the other half of the state above: an empty fan-out is only safe if
+     * something still routes to the headless task.
+     *
+     * `sdk.setEventSender(globalEventSender)` happens once, at primary attach,
+     * and survives task removal — so after the primary detaches every event the
+     * still-running native tracking produces is dispatched into this composite.
+     * With the members gone, the per-dispatcher `headlessFallback` went with
+     * them; the composite needs its own, wired here and outliving the detach.
+     */
+    @Test
+    fun primaryDetachWithASurvivingEngine_leavesAHeadlessRouteOnTheFanOut() {
+        val primaryPlugin = TraceletAndroidPlugin()
+        val primaryBinding = createMockBinding("primary")
+        primaryPlugin.onAttachedToEngine(primaryBinding)
+        assertNotNull(
+            globalFanOutFallback(),
+            "the primary must wire the fan-out's headless fallback at attach",
+        )
+
+        TraceletAndroidPlugin().onAttachedToEngine(createMockBinding("fcm"))
+        primaryPlugin.onDetachedFromEngine(primaryBinding)
+
+        assertEquals(0, globalDispatcherCount())
+        assertNotNull(
+            globalFanOutFallback(),
+            "with the fan-out empty and the SDK still holding it as the event " +
+                "sender, losing this route means events reach nothing at all",
         )
     }
 
@@ -434,6 +466,24 @@ internal class PluginSecondaryEngineGuardTest {
      */
     private fun resetGlobalEventSender() {
         globalDispatchers().clear()
+        val sender = globalEventSenderInstance()
+        val fallback = sender.javaClass.getDeclaredField("headlessFallback")
+        fallback.isAccessible = true
+        fallback.set(sender, null)
+    }
+
+    /** The fan-out's own headless fallback, or null when none is wired (#371). */
+    private fun globalFanOutFallback(): Any? {
+        val sender = globalEventSenderInstance()
+        val field = sender.javaClass.getDeclaredField("headlessFallback")
+        field.isAccessible = true
+        return field.get(sender)
+    }
+
+    private fun globalEventSenderInstance(): Any {
+        val senderField = TraceletAndroidPlugin::class.java.getDeclaredField("globalEventSender")
+        senderField.isAccessible = true
+        return senderField.get(null)
     }
 
     private fun globalDispatchers(): MutableList<*> {

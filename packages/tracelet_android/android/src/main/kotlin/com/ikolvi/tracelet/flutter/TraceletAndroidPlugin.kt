@@ -18,45 +18,125 @@ import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.PluginRegistry
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Broadcasts events to multiple EventDispatchers.
+ *
+ * The fan-out can legitimately end up with **no member able to receive** — most
+ * often after task removal, when the primary engine detaches while another
+ * plugin's background engine keeps the process alive (#371). Every dispatcher
+ * has its own [EventDispatcher.headlessFallback] for the engine-is-gone case,
+ * but those are members of the list: once the list is empty there is nothing
+ * left to fall back *from*, and `forEach` on an empty list is a silent no-op.
+ * So the composite carries a fallback of its own — see [headlessFallback].
  */
 class MultiEventSender : com.ikolvi.tracelet.sdk.TraceletEventSender {
     private val dispatchers = CopyOnWriteArrayList<EventDispatcher>()
 
+    /**
+     * Where an event goes when no member of the fan-out can receive it (#371).
+     *
+     * Wired by the primary plugin instance to the same `HeadlessTaskService`
+     * the per-dispatcher fallbacks use, so the surviving process keeps a
+     * headless-capable receiver after the UI engine dies. Null before any
+     * primary attach — in that state the members keep their old behaviour of
+     * each falling back on their own.
+     */
+    @Volatile
+    var headlessFallback: ((eventName: String, data: Map<String, Any?>) -> Unit)? = null
+
+    /**
+     * Whether events are currently being routed to the headless task because
+     * the fan-out cannot receive them. Only used to log the *transitions*: the
+     * events themselves arrive every few seconds, and this whole class of bug
+     * is invisible precisely because the empty-fan-out path logged nothing.
+     */
+    private val routingToHeadless = AtomicBoolean(false)
+
     fun add(dispatcher: EventDispatcher) = dispatchers.addIfAbsent(dispatcher)
     fun remove(dispatcher: EventDispatcher) = dispatchers.remove(dispatcher)
-    
-    // Fallback getter - uses first available dispatcher for hasListener checks
-    private val first: EventDispatcher? get() = dispatchers.firstOrNull()
 
-    override fun sendLocation(data: Map<String, Any?>) { dispatchers.forEach { it.sendLocation(data) } }
-    override fun sendMotionChange(data: Map<String, Any?>) { dispatchers.forEach { it.sendMotionChange(data) } }
-    override fun sendSpeedMotionChange(data: Map<String, Any?>) { dispatchers.forEach { it.sendSpeedMotionChange(data) } }
-    override fun sendActivityChange(data: Map<String, Any?>) { dispatchers.forEach { it.sendActivityChange(data) } }
-    override fun sendProviderChange(data: Map<String, Any?>) { dispatchers.forEach { it.sendProviderChange(data) } }
-    override fun sendGeofence(data: Map<String, Any?>) { dispatchers.forEach { it.sendGeofence(data) } }
-    override fun sendGeofencesChange(data: Map<String, Any?>) { dispatchers.forEach { it.sendGeofencesChange(data) } }
-    override fun sendHeartbeat(data: Map<String, Any?>) { dispatchers.forEach { it.sendHeartbeat(data) } }
-    override fun sendHttp(data: Map<String, Any?>) { dispatchers.forEach { it.sendHttp(data) } }
-    override fun sendSchedule(data: Map<String, Any?>) { dispatchers.forEach { it.sendSchedule(data) } }
-    override fun sendPowerSaveChange(isPowerSaveMode: Boolean) { dispatchers.forEach { it.sendPowerSaveChange(isPowerSaveMode) } }
-    override fun sendConnectivityChange(data: Map<String, Any?>) { dispatchers.forEach { it.sendConnectivityChange(data) } }
-    override fun sendEnabledChange(enabled: Boolean) { dispatchers.forEach { it.sendEnabledChange(enabled) } }
-    override fun sendNotificationAction(action: String) { dispatchers.forEach { it.sendNotificationAction(action) } }
-    override fun sendAuthorization(data: Map<String, Any?>) { dispatchers.forEach { it.sendAuthorization(data) } }
-    override fun sendWatchPosition(data: Map<String, Any?>) { dispatchers.forEach { it.sendWatchPosition(data) } }
-    
-    override fun sendRemoteConfigEvent(data: Map<String, Any?>) { dispatchers.forEach { it.sendRemoteConfigEvent(data) } }
-    override fun sendTrip(data: Map<String, Any?>) { dispatchers.forEach { it.sendTrip(data) } }
-    override fun sendBudgetAdjustment(data: Map<String, Any?>) { dispatchers.forEach { it.sendBudgetAdjustment(data) } }
-    override fun sendDrivingEvent(data: Map<String, Any?>) { dispatchers.forEach { it.sendDrivingEvent(data) } }
-    override fun sendImpact(data: Map<String, Any?>) { dispatchers.forEach { it.sendImpact(data) } }
-    override fun sendModeChange(data: Map<String, Any?>) { dispatchers.forEach { it.sendModeChange(data) } }
-    override fun sendCrashModelStatus(data: Map<String, Any?>) { dispatchers.forEach { it.sendCrashModelStatus(data) } }
+    /**
+     * Sends one event, to the engines that can receive it or — when none can —
+     * to the headless task (#371).
+     *
+     * [send] is the per-dispatcher call; [eventName] and [data] are what the
+     * headless task needs, and are the same names `EventDispatcher.fallback`
+     * uses so the headless side sees one vocabulary.
+     */
+    private inline fun fanOut(
+        eventName: String,
+        data: Map<String, Any?>,
+        send: (EventDispatcher) -> Unit,
+    ) {
+        val members = dispatchers
+        if (members.any { it.canReceive }) {
+            if (routingToHeadless.compareAndSet(true, false)) {
+                TraceletLog.lifecycle(
+                    "engines: a Flutter engine can receive events again — " +
+                        "headless routing stopped (#371)",
+                )
+            }
+            members.forEach(send)
+            return
+        }
+
+        val fallback = headlessFallback
+        if (fallback == null) {
+            // No primary has attached in this process yet, so there is no
+            // HeadlessTaskService to route to. Let the members fall back
+            // individually, exactly as before.
+            if (members.isEmpty()) {
+                if (routingToHeadless.compareAndSet(false, true)) {
+                    TraceletLog.lifecycle(
+                        "engines: '$eventName' dispatched into an empty fan-out with " +
+                            "no headless fallback wired — delivery is being lost (#371)",
+                    )
+                }
+            }
+            members.forEach(send)
+            return
+        }
+
+        if (routingToHeadless.compareAndSet(false, true)) {
+            TraceletLog.lifecycle(
+                "engines: no attached engine can receive events (fan-out " +
+                    "size=${members.size}) — routing to the headless task (#371)",
+            )
+        }
+        fallback(eventName, data)
+    }
+
+    override fun sendLocation(data: Map<String, Any?>) = fanOut("location", data) { it.sendLocation(data) }
+    override fun sendMotionChange(data: Map<String, Any?>) = fanOut("motionchange", data) { it.sendMotionChange(data) }
+    override fun sendSpeedMotionChange(data: Map<String, Any?>) = fanOut("speedmotionchange", data) { it.sendSpeedMotionChange(data) }
+    override fun sendActivityChange(data: Map<String, Any?>) = fanOut("activitychange", data) { it.sendActivityChange(data) }
+    override fun sendProviderChange(data: Map<String, Any?>) = fanOut("providerchange", data) { it.sendProviderChange(data) }
+    override fun sendGeofence(data: Map<String, Any?>) = fanOut("geofence", data) { it.sendGeofence(data) }
+    override fun sendGeofencesChange(data: Map<String, Any?>) = fanOut("geofenceschange", data) { it.sendGeofencesChange(data) }
+    override fun sendHeartbeat(data: Map<String, Any?>) = fanOut("heartbeat", data) { it.sendHeartbeat(data) }
+    override fun sendHttp(data: Map<String, Any?>) = fanOut("http", data) { it.sendHttp(data) }
+    override fun sendSchedule(data: Map<String, Any?>) = fanOut("schedule", data) { it.sendSchedule(data) }
+    override fun sendPowerSaveChange(isPowerSaveMode: Boolean) =
+        fanOut("powersavechange", mapOf("value" to isPowerSaveMode)) { it.sendPowerSaveChange(isPowerSaveMode) }
+    override fun sendConnectivityChange(data: Map<String, Any?>) = fanOut("connectivitychange", data) { it.sendConnectivityChange(data) }
+    override fun sendEnabledChange(enabled: Boolean) =
+        fanOut("enabledchange", mapOf("value" to enabled)) { it.sendEnabledChange(enabled) }
+    override fun sendNotificationAction(action: String) =
+        fanOut("notificationaction", mapOf("value" to action)) { it.sendNotificationAction(action) }
+    override fun sendAuthorization(data: Map<String, Any?>) = fanOut("authorization", data) { it.sendAuthorization(data) }
+    override fun sendWatchPosition(data: Map<String, Any?>) = fanOut("watchposition", data) { it.sendWatchPosition(data) }
+
+    override fun sendRemoteConfigEvent(data: Map<String, Any?>) = fanOut("remoteconfig", data) { it.sendRemoteConfigEvent(data) }
+    override fun sendTrip(data: Map<String, Any?>) = fanOut("trip", data) { it.sendTrip(data) }
+    override fun sendBudgetAdjustment(data: Map<String, Any?>) = fanOut("budgetadjustment", data) { it.sendBudgetAdjustment(data) }
+    override fun sendDrivingEvent(data: Map<String, Any?>) = fanOut("drivingevent", data) { it.sendDrivingEvent(data) }
+    override fun sendImpact(data: Map<String, Any?>) = fanOut("impact", data) { it.sendImpact(data) }
+    override fun sendModeChange(data: Map<String, Any?>) = fanOut("modechange", data) { it.sendModeChange(data) }
+    override fun sendCrashModelStatus(data: Map<String, Any?>) = fanOut("crashmodelstatus", data) { it.sendCrashModelStatus(data) }
 
     override fun hasListener(eventName: String): Boolean = dispatchers.any { it.hasListener(eventName) }
 }
@@ -174,6 +254,18 @@ class TraceletAndroidPlugin :
             sdk.dartSyncInterceptor = this
 
             eventDispatcher.headlessFallback = { eventName, eventData ->
+                dispatchToHeadless(hs, eventName, eventData)
+            }
+
+            // The same route, one level up (#371). The per-dispatcher fallback
+            // above can only fire while this dispatcher is *in* the fan-out, and
+            // on task removal it is the first thing removed — leaving a composite
+            // with no members, whose `forEach` drops every event in silence when
+            // another plugin's background engine keeps the process alive. Wiring
+            // the composite to the same HeadlessTaskService instance matters:
+            // that object owns the spawn-in-flight guard and the pending-event
+            // queue, so both routes feed one engine rather than racing two.
+            globalEventSender.headlessFallback = { eventName, eventData ->
                 dispatchToHeadless(hs, eventName, eventData)
             }
 
