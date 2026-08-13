@@ -444,6 +444,14 @@ class MainActivity : FlutterActivity() {
                     // The restore is in a finally — leaving the app's own
                     // dispatcher out would break event delivery for the rest of
                     // the session, which is the very bug being tested.
+                    //
+                    // Delivery is observed by wrapping the fan-out's own
+                    // headless fallback for the duration of the send, not by
+                    // grepping the log. Both log lines this used to look for are
+                    // once-per-process — the "#371" line is written on the
+                    // transition into headless routing, and "headless: spawning"
+                    // only when there is no engine yet — so a second run of this
+                    // card routed correctly and reported a false failure.
                     try {
                         val dispatchers = fanOutDispatchers()
                             ?: throw IllegalStateException(
@@ -453,12 +461,27 @@ class MainActivity : FlutterActivity() {
                             .getInstance(applicationContext)
                         val sender = sdk.getEventSender()
                         val removed = ArrayList<Any?>(dispatchers)
+                        val routed = ArrayList<String>()
+                        val fallbackField = fanOutFallbackField(sender)
+                        val original = fallbackField?.get(sender)
                         try {
+                            if (original != null) {
+                                @Suppress("UNCHECKED_CAST")
+                                val delegate =
+                                    original as (String, Map<String, Any?>) -> Unit
+                                val recorder: (String, Map<String, Any?>) -> Unit =
+                                    { name, data ->
+                                        routed.add(name)
+                                        delegate(name, data)
+                                    }
+                                fallbackField.set(sender, recorder)
+                            }
                             dispatchers.clear()
                             sender.sendLocation(issue371ProbeLocation())
                         } finally {
                             @Suppress("UNCHECKED_CAST")
                             (dispatchers as MutableList<Any?>).addAll(removed)
+                            if (original != null) fallbackField?.set(sender, original)
                         }
                         result.success(
                             mapOf(
@@ -470,6 +493,8 @@ class MainActivity : FlutterActivity() {
                                 "restoredCount" to fanOutSize(),
                                 "fanOutFallbackWired" to fanOutFallbackWired(),
                                 "headlessTaskRegistered" to headlessTaskRegistered(),
+                                "routedToHeadless" to routed.isNotEmpty(),
+                                "routedEvents" to routed,
                             ),
                         )
                     } catch (e: Throwable) {
@@ -513,6 +538,21 @@ class MainActivity : FlutterActivity() {
             .apply { isAccessible = true }.get(null)
         sender.javaClass.getDeclaredField("dispatchers")
             .apply { isAccessible = true }.get(sender) as? MutableList<*>
+    } catch (e: Throwable) {
+        null
+    }
+
+    /**
+     * `MultiEventSender.headlessFallback`, or null on a build without the #371
+     * fix (the field does not exist there).
+     *
+     * Wrapping it for the length of one send is how the probe observes that the
+     * composite actually routed the event, rather than inferring it from a log
+     * line that is only written once per process.
+     */
+    private fun fanOutFallbackField(sender: Any): java.lang.reflect.Field? = try {
+        sender.javaClass.getDeclaredField("headlessFallback")
+            .apply { isAccessible = true }
     } catch (e: Throwable) {
         null
     }

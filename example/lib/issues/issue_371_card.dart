@@ -217,27 +217,46 @@ class _Issue371CardState extends State<Issue371Card>
                   'dropped in silence',
       );
 
+      // The routing itself, observed by wrapping the fan-out's fallback around
+      // this one send. Deliberately not the log lines below: both are written
+      // once per process — the "#371" line on the *transition* into headless
+      // routing, "headless: spawning" only while there is no engine yet — so
+      // pressing Run a second time reported a false failure on a build that
+      // routed the event perfectly well.
+      final routedEvents = (probe['routedEvents'] as List<Object?>? ?? [])
+          .map((e) => '$e')
+          .toList();
+      check(
+        'the event was routed to the headless task',
+        probe['routedToHeadless'] == true,
+        probe['routedToHeadless'] == true
+            ? "the fan-out handed '${routedEvents.join(', ')}' to the headless "
+                  'route while it had no member that could receive'
+            : 'the location sent into the empty fan-out reached nothing at '
+                  'all, which is #371',
+      );
+
       // Give HeadlessTaskService a moment to log its spawn.
       await Future<void>.delayed(const Duration(seconds: 2));
       final routedLines = await _logsSince(beforeId, _emptyFanOutMarker);
       final spawnLines = await _logsSince(beforeId, _spawnMarker);
 
-      check(
-        'the event was routed to the headless task',
-        routedLines.isNotEmpty || spawnLines.isNotEmpty,
-        routedLines.isNotEmpty
-            ? routedLines.last
-            : spawnLines.isNotEmpty
-            ? spawnLines.last
-            : 'neither "$_emptyFanOutMarker" nor "$_spawnMarker" was logged — '
-                  'the location sent into the empty fan-out reached nothing, '
-                  'which is #371',
-      );
-
       final summary = StringBuffer()
         ..writeln(allPass ? '✅ PASS' : '❌ FAIL')
         ..writeln()
         ..writeln(results.join('\n'))
+        ..writeln()
+        ..writeln('— Lifecycle log, first run of this process only —')
+        ..writeln(
+          routedLines.isNotEmpty || spawnLines.isNotEmpty
+              ? [...routedLines, ...spawnLines].join('\n')
+              : 'Nothing new. Expected from the second Run onwards: the '
+                    '"$_emptyFanOutMarker" line is written when routing '
+                    'switches to headless, not per event, and "$_spawnMarker" '
+                    'only while no headless engine exists yet. Both already '
+                    'happened on the first run. Restart the app to see them '
+                    'again.',
+        )
         ..writeln()
         ..writeln('— Armed —')
         ..writeln(

@@ -37,19 +37,6 @@ void main() {
     return s ?? <String, dynamic>{};
   }
 
-  Future<int> latestLogId() async {
-    final logs = await Tracelet.getLogs(500);
-    return logs.fold<int>(0, (max, e) => e.id > max ? e.id : max);
-  }
-
-  Future<List<String>> logsSince(int sinceId, String marker) async {
-    final logs = await Tracelet.getLogs(500);
-    return logs
-        .where((e) => e.id > sinceId && e.message.contains(marker))
-        .map((e) => e.message)
-        .toList();
-  }
-
   setUpAll(() async {
     await Tracelet.registerHeadlessTask(issue371HeadlessTask);
     await Tracelet.ready(const Config());
@@ -114,7 +101,6 @@ void main() {
           'routed" look the same from here',
     );
 
-    final sinceId = await latestLogId();
     final probe = await debug.invokeMapMethod<String, dynamic>(
       'debugIssue371EmptyFanOutProbe',
     );
@@ -136,14 +122,13 @@ void main() {
     // The symptom first, the mechanism second: on a build without the fix this
     // is the assertion that should fail, and it fails saying what the reporter
     // saw rather than naming a field.
-    await Future<void>.delayed(const Duration(seconds: 2));
-    final routed = await logsSince(sinceId, 'routing to the headless task');
-    final spawned = await logsSince(
-      sinceId,
-      'headless: spawning a FlutterEngine',
-    );
+    //
+    // Observed by wrapping the fan-out's own fallback around the send, not by
+    // grepping the log: the "#371" line is written on the transition into
+    // headless routing and "headless: spawning" only while no engine exists, so
+    // both are once-per-process and a second probe would look like a failure.
     expect(
-      routed.isNotEmpty || spawned.isNotEmpty,
+      probe['routedToHeadless'],
       isTrue,
       reason:
           'the location sent into the empty fan-out reached nothing at all — '
@@ -157,6 +142,20 @@ void main() {
           'MultiEventSender.headlessFallback is null: with the members gone '
           'there is nothing left to fall back from (#371)',
     );
+
+    // Running the probe again must answer the same. It did not when this was
+    // read from the log: the first run latches the transition into headless
+    // routing and leaves a headless engine alive, so neither line is written a
+    // second time and a correctly-routed event looked like a failure.
+    final again = await debug.invokeMapMethod<String, dynamic>(
+      'debugIssue371EmptyFanOutProbe',
+    );
+    expect(
+      again!['routedToHeadless'],
+      isTrue,
+      reason: 'a repeated probe must route exactly as the first one did',
+    );
+    expect(again['restoredCount'], again['emptiedCount']);
   });
 
   tearDownAll(() async {
