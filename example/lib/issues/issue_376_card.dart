@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
@@ -55,13 +54,22 @@ import 'package:tracelet_example/issues/issue_card_shell.dart';
 /// card reporting PASS for something it never measured is worse than no card,
 /// because it will be believed.
 ///
-/// **On iOS it takes a different route.** The markers above are Android
-/// foreground-service logs and have no Live Activity equivalent, so rather than
-/// refuse to run — or worse, assert against the Dart mirror it just wrote to —
-/// the card drives the Live Activity end to end and hands the judging over: it
-/// enables the timer, holds a window open for you to look at the Lock Screen,
-/// reposts text-only to show the clock does not restart, and reports what
-/// should have happened without claiming a single pass.
+/// **One flow, on every platform.** There is no Android branch and no iOS
+/// branch here: the same six steps run everywhere, through the same
+/// `setConfig` + `updateNotification` calls, writing the Android
+/// foreground-service fields and the iOS Live Activity fields in a single
+/// config each time. The platforms are configured differently on purpose —
+/// an ongoing notification and a Live Activity are genuinely different objects
+/// — but nothing about *which* platform is running changes what this card
+/// does.
+///
+/// What does change is the evidence. The markers above are Android
+/// foreground-service logs and have no Live Activity equivalent, so the card
+/// probes once, after the first repost, for any build log at all. If none
+/// exists the rows downgrade to `➖ NOT MEASURED` rather than failing against
+/// evidence that was never going to be there, and the look-windows at every
+/// step become the measurement instead. That decision is made from what the
+/// run observed, not from `defaultTargetPlatform`.
 class Issue376Card extends StatefulWidget {
   const Issue376Card({super.key});
 
@@ -135,6 +143,12 @@ class _Issue376CardState extends State<Issue376Card> {
   /// row asserts that it did not.
   static const _absenceSettle = Duration(seconds: 2);
 
+  /// A shorter look-window for the steps after the main observation: long
+  /// enough to see a clock appear, disappear or keep counting, without making
+  /// the run tedious. Used on every platform — on one that emits no build log
+  /// these windows are the only measurement there is.
+  static const _lookSeconds = 8;
+
   /// Bound on how long to wait, after `start()` returns, for the native
   /// `isRunning` flag to flip true inside `onStartCommand`
   /// (LocationService.kt:688) — see the call site in step 2 for why this
@@ -197,91 +211,15 @@ class _Issue376CardState extends State<Issue376Card> {
     await Tracelet.updateNotification();
   }
 
-  /// The iOS half of #376, driven end to end and reported for the operator to
-  /// judge.
+  /// Holds a look-at-the-screen window open, counting down in the status text.
   ///
-  /// Deliberately asserts nothing. iOS exposes no read-back for what a Live
-  /// Activity rendered: `getLogs()` carries no equivalent of the Android
-  /// builder line, and `getState().config` is backfilled from the Dart mirror
-  /// this card just wrote to, so a row keyed off it would only be checking
-  /// that `setConfig` assigned a Dart field. What this flow *can* do is put
-  /// the feature in front of you in a state where the answer is visible on the
-  /// Lock Screen.
-  Future<void> _runIos() async {
-    try {
-      _set('1/4 — configuring a Live Activity with the timer enabled…');
-
-      // A complete LiveActivityConfig rather than a partial one: iOS replaces
-      // the whole liveActivityConfig map on write, and title/body are required.
-      final startedAt = DateTime.now().subtract(_elapsedForDisplay);
-
-      await Tracelet.setConfig(
-        Config(
-          logger: const LoggerConfig(logLevel: LogLevel.verbose, debug: true),
-          ios: IosConfig(
-            liveActivityConfig: LiveActivityConfig(
-              title: 'Issue 376 — shift in progress',
-              body: 'Timer requested; started two hours ago',
-              startedAt: startedAt.millisecondsSinceEpoch,
-              showTimer: true,
-            ),
-          ),
-        ),
-      );
-
-      _set('2/4 — starting tracking so the Live Activity is presented…');
-      await Tracelet.start();
-      await Tracelet.updateNotification();
-
-      for (var left = _observationSeconds; left > 0; left--) {
-        _set(
-          '3/4 — LOOK AT THE LOCK SCREEN OR DYNAMIC ISLAND NOW. The Live '
-          'Activity should show a clock reading about 2:00:00 and counting '
-          'up. ${left}s…',
-        );
-        await Future<void>.delayed(const Duration(seconds: 1));
-      }
-
-      // The point of the repost: the clock must not jump back to zero. The
-      // persisted startedAt is the only source of truth, so changing the body
-      // reconfigures the activity from the same instant.
-      _set('4/4 — reposting with new text only; the clock must not restart…');
-      await _setNotification(
-        text: 'Reposted — the elapsed time must not jump back to zero',
-      );
-      await Future<void>.delayed(const Duration(seconds: 4));
-
-      _set(
-        'DRIVEN, NOT ASSERTED — iOS gives this card nothing to read back, so '
-        'every line below is for you to confirm by looking. No row here '
-        'claims a pass.\n\n'
-        'What should have happened:\n'
-        '• A Live Activity appeared with the title "Issue 376 — shift in '
-        'progress".\n'
-        '• It showed a clock counting up from about 2:00:00 — rendered by iOS '
-        'via Text(timerInterval:), not by any update this card sent. The SDK '
-        'pushed no periodic updates to advance it.\n'
-        '• At step 4 the body text changed and the clock kept counting rather '
-        'than restarting, because the persisted startedAt is the only source '
-        'of truth.\n\n'
-        'If you saw no clock at all, the most likely cause is the Widget '
-        'Extension rather than the SDK: a custom TraceletActivityAttributes '
-        'whose ContentState lacks startedAt/showTimer decodes the payload '
-        "fine and simply draws nothing. This example app compiles the SDK's "
-        'own TraceletActivityAttributes.swift into the widget target, so it '
-        'has the fields; a host app that hand-copied the struct from the docs '
-        'must add them.\n\n'
-        'If you saw no Live Activity at all: it requires iOS 16.2+, a Widget '
-        'Extension in the build, NSSupportsLiveActivities in Info.plist, and '
-        'Live Activities enabled for this app in Settings. It is also bound to '
-        'the moving sub-state, so it can be dismissed when tracking pauses on '
-        'going stationary.\n\n'
-        'Cleanup: the timer is left ON here, unlike the Android flow, because '
-        'the whole point is that you can still look at it after the card '
-        'finishes. Re-run any other card to restore the demo baseline.',
-      );
-    } catch (e, s) {
-      _set('❌ ERROR — $e\n\n$s');
+  /// Every observation goes through this. Where the platform emits no build
+  /// log, the operator is the measuring instrument, so a step that changes
+  /// something has to give them time to see it before the next write lands.
+  Future<void> _look(String message, int seconds) async {
+    for (var left = seconds; left > 0; left--) {
+      _set('$message ${left}s…');
+      await Future<void>.delayed(const Duration(seconds: 1));
     }
   }
 
@@ -410,32 +348,31 @@ class _Issue376CardState extends State<Issue376Card> {
   Future<void> _run() async {
     setState(() => _running = true);
 
-    // iOS has no equivalent evidence channel: the markers below are Android
-    // service logs, and the Live Activity path writes nothing this card can
-    // read. So iOS gets its own flow that *drives* the feature and hands the
-    // judging to the operator, rather than rows that would be asserting
-    // nothing. Reporting green off a Dart field the card itself wrote is the
-    // failure mode this whole card exists to avoid.
-    if (defaultTargetPlatform == TargetPlatform.iOS && !kIsWeb) {
-      await _runIos();
-      setState(() => _running = false);
-      return;
-    }
-
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
-      _set(
-        'NOT RUN — this card covers the Android notification-build path and '
-        'the iOS Live Activity. There is no tracking indicator to drive on '
-        'this platform.',
-      );
-      setState(() => _running = false);
-      return;
-    }
-
     final results = <String>[];
     var allPass = true;
 
+    // Whether this platform exposes the native evidence channel the rows are
+    // read from. Decided from what the run actually observed rather than from
+    // `defaultTargetPlatform`, so there is exactly one flow here: every step
+    // below drives both platforms through the same `_setNotification`, and the
+    // only thing that varies is whether the device left a log line behind to
+    // check it against.
+    //
+    // Android's foreground service logs the repost intent, its suppression, or
+    // its refusal when not running. The iOS Live Activity path logs none of
+    // them, so `showTimer` there is confirmed by looking at the Lock Screen —
+    // which is why every step also opens a window for the operator.
+    var hasNativeEvidence = true;
+
     void check(String name, bool pass, String detail) {
+      if (!hasNativeEvidence) {
+        results.add(
+          '➖ $name — NOT MEASURED. This platform emitted no notification-build '
+          'log for the card to read, so this row is neither passed nor '
+          'failed. Confirm it against the on-screen indicator instead.',
+        );
+        return;
+      }
       results.add('${pass ? '✅' : '❌'} $name — $detail');
       if (!pass) allPass = false;
     }
@@ -521,6 +458,20 @@ class _Issue376CardState extends State<Issue376Card> {
       );
 
       final enable = await _observeBuilderCall(marker);
+
+      // The one place the platform's diagnostics are inspected rather than its
+      // identity. If the first repost produced no build log, no suppression
+      // notice and no not-running refusal, then this platform has no such
+      // channel at all — the iOS Live Activity path writes none of them — and
+      // every row below downgrades to NOT MEASURED instead of failing against
+      // evidence that was never going to exist.
+      hasNativeEvidence =
+          enable.repost != null ||
+          enable.applied != null ||
+          await _sawLine(marker, _serviceNotRunningMarker) ||
+          await _sawLine(marker, _suppressedMarker) ||
+          await _sawLine(marker, _noStartInstantMarker);
+
       final enabled = _values(enable.applied);
       check(
         '[native log] the builder was configured with the start instant this '
@@ -547,13 +498,15 @@ class _Issue376CardState extends State<Issue376Card> {
       // (it clamps a future instant to the rebuild time) and step 6 ends with
       // the timer off, which is the state the closing instructions describe —
       // so this is the only window where a clock reading 2:00:00 is on screen.
-      for (var left = _observationSeconds; left > 0; left--) {
-        _set(
-          '3/6 — OPEN THE NOTIFICATION SHADE NOW. The notification should show '
-          'a clock reading about 2:00:00 and counting up. ${left}s…',
-        );
-        await Future<void>.delayed(const Duration(seconds: 1));
-      }
+      //
+      // On iOS this window is not a courtesy, it is the measurement: the rows
+      // above and below are NOT MEASURED there, so the Lock Screen is the only
+      // place the answer exists.
+      await _look(
+        '3/6 — OPEN THE NOTIFICATION SHADE OR LOCK SCREEN NOW. The tracking '
+        'indicator should show a clock reading about 2:00:00 and counting up.',
+        _observationSeconds,
+      );
 
       // ── 4. Text-only repost ──────────────────────────────────────────────
       _set('4/6 — reposting with new text only…');
@@ -581,6 +534,12 @@ class _Issue376CardState extends State<Issue376Card> {
                   'startedAt: a regression that kept startedAt for logging but '
                   'called setWhen(now) would move `when` to the time of this '
                   'call and fail here',
+      );
+
+      await _look(
+        '4/6 — the text just changed. The clock should have CARRIED ON from '
+        '~2:00:00, not restarted at zero.',
+        _lookSeconds,
       );
 
       // ── 5. A future start instant ────────────────────────────────────────
@@ -622,6 +581,13 @@ class _Issue376CardState extends State<Issue376Card> {
                   'Both halves are read off the same line, which is why the '
                   'clamp can be shown not to have been written back into the '
                   'config',
+      );
+
+      await _look(
+        '5/6 — a start instant an hour ahead was supplied. The clock should '
+        'now read close to 0:00:00 and count up, because a future instant is '
+        'clamped when it is rendered — not stuck, and not counting down.',
+        _lookSeconds,
       );
 
       // ── 6. Opting out ────────────────────────────────────────────────────
@@ -684,6 +650,11 @@ class _Issue376CardState extends State<Issue376Card> {
       // that point — evidence that makes the silence above attributable to
       // showTimer:false rather than a broken path, though it cannot see
       // inside the window itself.
+      await _look(
+        '6/6 — the clock should have DISAPPEARED, leaving the text only.',
+        _lookSeconds,
+      );
+
       marker = await _latestLogId();
       await _setNotification(showTimer: true);
 
@@ -719,6 +690,13 @@ class _Issue376CardState extends State<Issue376Card> {
       // polling rounds earlier, at the start of step 6). Neither field can be
       // cleared (see the closing text below), so the freshest instant this
       // card can leave behind is the best it can do for whatever inherits it.
+      await _look(
+        '6/6 — the control: a clock should be BACK, counting from a few '
+        'seconds ago. If it never returned, the disappearance above proved '
+        'nothing.',
+        _lookSeconds,
+      );
+
       marker = await _latestLogId();
       final finalStartedAt = DateTime.now().millisecondsSinceEpoch;
       await _setNotification(
@@ -747,7 +725,32 @@ class _Issue376CardState extends State<Issue376Card> {
             'below for what covers that instead',
       );
 
-      final header = allPass
+      final header = !hasNativeEvidence
+          ? 'DRIVEN, NOT ASSERTED — this platform emitted no '
+                'notification-build log, so none of the ${results.length} rows '
+                'below could be checked and none of them claim a pass. The '
+                'sequence itself was identical to every other platform: the '
+                'same six steps through the same setConfig + '
+                'updateNotification calls. What differs is only the evidence — '
+                'here the windows above were the measurement, and you are the '
+                'instrument.\n\n'
+                'What should have happened, in order: a clock appeared reading '
+                'about 2:00:00 and counting up, rendered by the OS rather than '
+                'by any update this card sent; a text-only repost left it '
+                'counting instead of restarting; a start instant an hour ahead '
+                'rendered near zero because it is clamped when drawn; then the '
+                'clock disappeared, returned for the control, and is now gone '
+                'again.\n\n'
+                'If you saw no clock at any point on iOS, suspect the Widget '
+                'Extension before the SDK: a custom TraceletActivityAttributes '
+                'whose ContentState lacks startedAt/showTimer decodes the '
+                'payload fine and simply draws nothing. If you saw no Live '
+                'Activity at all, it needs iOS 16.2+, a Widget Extension in '
+                'the build, NSSupportsLiveActivities in Info.plist, and Live '
+                'Activities enabled in Settings — and it is bound to the '
+                'moving sub-state, so it can be dismissed when tracking pauses '
+                'on going stationary.'
+          : allPass
           ? '✅ PASS — all ${results.length} rows below passed. They are not the '
                 'same kind of evidence, so each is tagged: [native log] rows '
                 'were read back from foreground-service log lines, '
