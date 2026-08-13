@@ -244,8 +244,15 @@ async function translateMdx(content, targetLang, engine) {
       continue;
     }
 
-    const t = await translateTextWithProtection(line, targetLang, engine);
-    translatedLines.push(t);
+    // Leading whitespace is structure, not formatting: an indented line is the
+    // continuation of the block above it. The translation endpoints drop it
+    // (the text is URL-encoded and comes back trimmed), so strip it here and
+    // put it back. Without this, the body of a <Callout> nested in a list item
+    // lands in column 0, which closes the list item while the tag is still
+    // open and fails the build with "Expected a closing tag for `<Callout>`".
+    const indent = line.match(/^\s*/)[0];
+    const t = await translateTextWithProtection(line.slice(indent.length), targetLang, engine);
+    translatedLines.push(`${indent}${t.replace(/^\s+/, '')}`);
   }
 
   return translatedLines.join('\n');
