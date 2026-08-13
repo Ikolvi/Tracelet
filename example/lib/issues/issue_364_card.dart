@@ -35,6 +35,13 @@ import 'package:tracelet_example/issues/issue_card_state.dart';
 /// fires after the app is swiped away — needs the app to be dead, so no card
 /// can observe it. Those steps are printed at the end to run by hand.
 ///
+/// It also cannot see what happens *after* the primary detaches, which is where
+/// this fix left a second hole: with the foreign engine correctly held out, the
+/// fan-out was empty rather than hostile, and an empty fan-out dropped events
+/// just as quietly (#371). `issue_371_card.dart` covers that — with the real
+/// firebase_messaging engine rather than the look-alike one built here, because
+/// that failure needs the foreign engine to still be attached at swipe time.
+///
 /// **iOS.** The foreign-engine path does not exist there: `register(with:)`
 /// gives secondary registrars the Pigeon HostApi only and never wires them into
 /// event delivery. The iOS half of this fix is the detach path — the primary's

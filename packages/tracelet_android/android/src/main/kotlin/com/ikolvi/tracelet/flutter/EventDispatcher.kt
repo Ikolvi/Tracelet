@@ -56,6 +56,16 @@ class EventDispatcher : TraceletEventSender {
         eventApi = null
     }
 
+    /**
+     * Whether this dispatcher has a Flutter engine to post events to.
+     *
+     * The same condition every `send*` branches on, named so [MultiEventSender]
+     * can ask the question before broadcasting: when no member can receive, the
+     * event must go to the headless task instead of into an empty `forEach`
+     * (#371).
+     */
+    internal val canReceive: Boolean get() = eventApi != null
+
     // ---------------------------------------------------------------------------
     // TraceletEventSender implementation
     // ---------------------------------------------------------------------------

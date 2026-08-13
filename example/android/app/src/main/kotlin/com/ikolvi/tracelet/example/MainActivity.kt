@@ -1,9 +1,11 @@
 package com.ikolvi.tracelet.example
 
+import android.content.Intent
 import android.util.Base64
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugins.firebase.messaging.FlutterFirebaseMessagingBackgroundService
 
 class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -363,10 +365,247 @@ class MainActivity : FlutterActivity() {
                     } catch (e: Throwable) {
                         result.error("ISSUE_364_ERROR", e.toString(), null)
                     }
+                } else if (call.method == "debugIssue371SpawnFcmEngine") {
+                    // #371 step 1 — get the REAL foreign engine into the process.
+                    //
+                    // Not a look-alike `FlutterEngine(applicationContext)` this
+                    // time (that is #364's card): this hands the work to
+                    // firebase_messaging's own JobIntentService, whose onCreate
+                    // runs FlutterFirebaseMessagingBackgroundExecutor
+                    // .startBackgroundIsolate() and constructs the engine. The
+                    // difference that matters for #371 is ownership — the service
+                    // holds that engine for the rest of the process, so it is
+                    // still attached when the app is swiped away, which is the
+                    // exact condition the reporter's failing branch depends on.
+                    //
+                    // The intent carries no RemoteMessage: the executor logs
+                    // "RemoteMessage byte array not found in Intent." and stops
+                    // there, which is all we want. The engine — and Tracelet's
+                    // auto-registered plugin instance on it — is already up by
+                    // then.
+                    //
+                    // Requires FirebaseMessaging.onBackgroundMessage() to have run
+                    // in Dart: startBackgroundIsolate() reads the callback handle
+                    // that call stores, and does nothing when it is absent.
+                    try {
+                        val before = fanOutSize()
+                        val enginesBefore = attachedEngineCount()
+                        FlutterFirebaseMessagingBackgroundService.enqueueMessageProcessing(
+                            applicationContext,
+                            Intent(applicationContext, MainActivity::class.java),
+                            false,
+                        )
+                        result.success(
+                            mapOf(
+                                "platform" to "android",
+                                "fanOutBefore" to before,
+                                "enginesBefore" to enginesBefore,
+                                "callbackHandleSet" to fcmCallbackHandleSet(),
+                            ),
+                        )
+                    } catch (e: Throwable) {
+                        result.error("ISSUE_371_SPAWN_ERROR", e.toString(), null)
+                    }
+                } else if (call.method == "debugIssue371FanOutState") {
+                    // Read-only: lets the card poll until the FCM engine has
+                    // actually attached before it measures anything.
+                    result.success(
+                        mapOf(
+                            "platform" to "android",
+                            "fanOut" to fanOutSize(),
+                            "engines" to attachedEngineCount(),
+                            "fanOutFallbackWired" to fanOutFallbackWired(),
+                            "headlessTaskRegistered" to headlessTaskRegistered(),
+                            "foreignEngineArmed" to fcmCallbackHandleSet(),
+                        ),
+                    )
+                } else if (call.method == "debugIssue371DisarmForeignEngine") {
+                    // Drops the handles firebase_messaging persisted, so the next
+                    // launch of the example is back to a single engine.
+                    applicationContext
+                        .getSharedPreferences(FCM_PREFS, MODE_PRIVATE)
+                        .edit()
+                        .remove("callback_handle")
+                        .remove("user_callback_handle")
+                        .apply()
+                    result.success(null)
+                } else if (call.method == "debugIssue371EmptyFanOutProbe") {
+                    // #371 step 2 — put the process into the post-swipe state and
+                    // dispatch one event through the SDK's real event sender.
+                    //
+                    // After task removal `onDetachedFromEngine` removes the
+                    // primary's dispatcher from the fan-out while the SDK keeps
+                    // that same composite as its event sender, so the composite is
+                    // left empty — and `dispatchers.forEach { … }` on an empty list
+                    // dropped every event in silence. That state cannot be reached
+                    // from a live isolate (it needs this app to be dead), so we
+                    // reproduce it exactly: empty the fan-out, send, restore.
+                    //
+                    // The restore is in a finally — leaving the app's own
+                    // dispatcher out would break event delivery for the rest of
+                    // the session, which is the very bug being tested.
+                    //
+                    // Delivery is observed by wrapping the fan-out's own
+                    // headless fallback for the duration of the send, not by
+                    // grepping the log. Both log lines this used to look for are
+                    // once-per-process — the "#371" line is written on the
+                    // transition into headless routing, and "headless: spawning"
+                    // only when there is no engine yet — so a second run of this
+                    // card routed correctly and reported a false failure.
+                    try {
+                        val dispatchers = fanOutDispatchers()
+                            ?: throw IllegalStateException(
+                                "fan-out not readable — run a debug build",
+                            )
+                        val sdk = com.ikolvi.tracelet.sdk.TraceletSdk
+                            .getInstance(applicationContext)
+                        val sender = sdk.getEventSender()
+                        val removed = ArrayList<Any?>(dispatchers)
+                        val routed = ArrayList<String>()
+                        val fallbackField = fanOutFallbackField(sender)
+                        val original = fallbackField?.get(sender)
+                        try {
+                            if (original != null) {
+                                @Suppress("UNCHECKED_CAST")
+                                val delegate =
+                                    original as (String, Map<String, Any?>) -> Unit
+                                val recorder: (String, Map<String, Any?>) -> Unit =
+                                    { name, data ->
+                                        routed.add(name)
+                                        delegate(name, data)
+                                    }
+                                fallbackField.set(sender, recorder)
+                            }
+                            dispatchers.clear()
+                            sender.sendLocation(issue371ProbeLocation())
+                        } finally {
+                            @Suppress("UNCHECKED_CAST")
+                            (dispatchers as MutableList<Any?>).addAll(removed)
+                            if (original != null) fallbackField?.set(sender, original)
+                        }
+                        result.success(
+                            mapOf(
+                                "platform" to "android",
+                                "senderIsTheFanOut" to
+                                    (sender.javaClass.name ==
+                                        "com.ikolvi.tracelet.flutter.MultiEventSender"),
+                                "emptiedCount" to removed.size,
+                                "restoredCount" to fanOutSize(),
+                                "fanOutFallbackWired" to fanOutFallbackWired(),
+                                "headlessTaskRegistered" to headlessTaskRegistered(),
+                                "routedToHeadless" to routed.isNotEmpty(),
+                                "routedEvents" to routed,
+                            ),
+                        )
+                    } catch (e: Throwable) {
+                        result.error("ISSUE_371_PROBE_ERROR", e.toString(), null)
+                    }
                 } else {
                     result.notImplemented()
                 }
             }
+    }
+
+    // ==== #371 verification helpers ====
+
+    /**
+     * A synthetic fix, tagged so anything it reaches can be told apart from a
+     * real one. Same shape the SDK's location pipeline emits.
+     */
+    private fun issue371ProbeLocation(): Map<String, Any?> = mapOf(
+        "uuid" to "issue-371-probe",
+        "event" to "issue371probe",
+        "timestamp" to java.time.Instant.now().toString(),
+        "is_moving" to true,
+        "odometer" to 0.0,
+        "coords" to mapOf(
+            "latitude" to 0.0,
+            "longitude" to 0.0,
+            "accuracy" to 5.0,
+            "speed" to 0.0,
+            "heading" to 0.0,
+            "altitude" to 0.0,
+        ),
+        "battery" to mapOf("level" to 1.0, "is_charging" to false),
+        "extras" to mapOf("issue" to "371"),
+    )
+
+    /** The live dispatcher list inside the global fan-out, or null (#371). */
+    private fun fanOutDispatchers(): MutableList<*>? = try {
+        val pluginClass =
+            Class.forName("com.ikolvi.tracelet.flutter.TraceletAndroidPlugin")
+        val sender = pluginClass.getDeclaredField("globalEventSender")
+            .apply { isAccessible = true }.get(null)
+        sender.javaClass.getDeclaredField("dispatchers")
+            .apply { isAccessible = true }.get(sender) as? MutableList<*>
+    } catch (e: Throwable) {
+        null
+    }
+
+    /**
+     * `MultiEventSender.headlessFallback`, or null on a build without the #371
+     * fix (the field does not exist there).
+     *
+     * Wrapping it for the length of one send is how the probe observes that the
+     * composite actually routed the event, rather than inferring it from a log
+     * line that is only written once per process.
+     */
+    private fun fanOutFallbackField(sender: Any): java.lang.reflect.Field? = try {
+        sender.javaClass.getDeclaredField("headlessFallback")
+            .apply { isAccessible = true }
+    } catch (e: Throwable) {
+        null
+    }
+
+    /**
+     * Whether the fan-out itself carries a headless fallback — the #371 fix.
+     * Without it an empty fan-out has nothing to fall back *from*, because the
+     * per-dispatcher fallbacks left with the dispatchers.
+     */
+    private fun fanOutFallbackWired(): Boolean = try {
+        val pluginClass =
+            Class.forName("com.ikolvi.tracelet.flutter.TraceletAndroidPlugin")
+        val sender = pluginClass.getDeclaredField("globalEventSender")
+            .apply { isAccessible = true }.get(null)
+        sender.javaClass.getDeclaredField("headlessFallback")
+            .apply { isAccessible = true }.get(sender) != null
+    } catch (e: Throwable) {
+        false
+    }
+
+    /** Engines Tracelet is currently attached to (the plugin's own counter). */
+    private fun attachedEngineCount(): Int = try {
+        val pluginClass =
+            Class.forName("com.ikolvi.tracelet.flutter.TraceletAndroidPlugin")
+        val counter = pluginClass.getDeclaredField("attachedEngineCount")
+            .apply { isAccessible = true }.get(null)
+        (counter as java.util.concurrent.atomic.AtomicInteger).get()
+    } catch (e: Throwable) {
+        -1
+    }
+
+    /**
+     * Whether `registerHeadlessTask()` has stored a callback — without it the
+     * headless route exists but has nowhere to deliver, and the probe would
+     * report a false negative.
+     */
+    private fun headlessTaskRegistered(): Boolean =
+        applicationContext
+            .getSharedPreferences("com.tracelet.headless", MODE_PRIVATE)
+            .getLong("dispatch_callback_id", -1L) != -1L
+
+    /**
+     * Whether `FirebaseMessaging.onBackgroundMessage()` stored its handle — the
+     * precondition for firebase_messaging creating its background engine.
+     */
+    private fun fcmCallbackHandleSet(): Boolean =
+        applicationContext
+            .getSharedPreferences(FCM_PREFS, MODE_PRIVATE)
+            .getLong("callback_handle", 0L) != 0L
+
+    private companion object {
+        /** firebase_messaging's own store (`FlutterFirebaseMessagingUtils`). */
+        const val FCM_PREFS = "io.flutter.firebase.messaging.callback"
     }
 
     /**

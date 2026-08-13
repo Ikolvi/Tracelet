@@ -6,6 +6,7 @@ import 'package:tracelet/tracelet.dart' as tl;
 import 'package:tracelet_doctor/tracelet_doctor.dart';
 import 'package:tracelet_example/behavior_page.dart';
 import 'package:tracelet_example/demo_config.dart';
+import 'package:tracelet_example/foreign_fcm_engine.dart';
 import 'package:tracelet_example/geofence_notifier.dart';
 import 'package:tracelet_example/provider_options_page.dart';
 import 'package:tracelet_example/map_page.dart';
@@ -138,6 +139,12 @@ void main() {
     // engine isn't running.
     tl.Tracelet.registerHeadlessHeadersCallback(headlessHeadersCallback);
     tl.Tracelet.registerHeadlessSyncBodyBuilder(headlessSyncBodyBuilder);
+    // #371: bring the foreign firebase_messaging engine back when a previous
+    // session armed it, the way an app that calls onBackgroundMessage() in
+    // main() has it from every launch. Without this the engine would be gone
+    // after the swipe-kill the repro is about, and the manual half of
+    // issue_371_card.dart would silently test the passing branch.
+    unawaited(ForeignFcmEngine.restoreIfArmed());
   }
 
   runApp(const TraceletApp());
