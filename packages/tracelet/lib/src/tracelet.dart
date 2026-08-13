@@ -1644,12 +1644,17 @@ class Tracelet {
   /// - `serviceForeground` (`bool`): whether it is currently promoted to the
   ///   foreground.
   /// - `foregroundNotificationId` (`int?`): the notification id while promoted.
-  /// - `lastForegroundPromotionResult` (`String?`): `success`, `deferred`, or
-  ///   `failed` (null before any attempt).
+  /// - `lastForegroundPromotionResult` (`String?`): `success`, `deferred`,
+  ///   `failed`, or `suppressed` (null before any attempt). `suppressed` means
+  ///   the notification is hidden on purpose while the app is on screen
+  ///   (`showNotificationOnPauseOnly`) — tracking is running and the service is
+  ///   alive, unlike `deferred` and `failed`.
   /// - `lastForegroundPromotionFailureClass` (`String?`): exception class of
   ///   the last failed/deferred promotion.
   /// - `lastForegroundPromotionFailureMessage` (`String?`): its message.
-  /// - `lastForegroundTransitionAt` (`int?`): epoch-ms of the last transition.
+  /// - `lastForegroundTransitionAt` (`int?`): epoch-ms of the last *transition*
+  ///   — a promotion that changed the state, not a re-post of a notification
+  ///   the service already held (#378).
   /// - `platform` (`String`): `android` or `ios`.
   ///
   /// On iOS the promotion fields are null/`false` — iOS has no foreground

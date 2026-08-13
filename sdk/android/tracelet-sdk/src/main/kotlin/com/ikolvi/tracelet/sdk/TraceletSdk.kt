@@ -2938,12 +2938,17 @@ class TraceletSdk private constructor(private val context: Context) {
      *   foreground (last `startForeground()` succeeded and not since demoted).
      * - `foregroundNotificationId` (Long?): the notification id while promoted.
      * - `lastForegroundPromotionResult` (String?): `success` | `deferred` |
-     *   `failed` (null before any attempt).
+     *   `failed` | `suppressed` (null before any attempt). `suppressed` is a
+     *   deliberate demotion by `showNotificationOnPauseOnly` while the app is
+     *   on screen — the service is alive and tracking, unlike `deferred` and
+     *   `failed` (#378).
      * - `lastForegroundPromotionFailureClass` (String?): exception class of the
      *   last failed/deferred promotion.
      * - `lastForegroundPromotionFailureMessage` (String?): its message.
      * - `lastForegroundTransitionAt` (Long?): epoch-ms of the last promotion
-     *   transition.
+     *   transition — a change of state, not every `startForeground` call, so
+     *   the interval a process spent without a foreground service is
+     *   measurable from it (#378).
      * - `platform` (String): `android`.
      */
     /**

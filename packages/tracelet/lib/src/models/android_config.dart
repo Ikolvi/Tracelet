@@ -558,6 +558,17 @@ class ForegroundServiceConfig {
   /// When `true`, the persistent notification is automatically dismissed when the app
   /// enters the foreground and restored when it enters the background.
   ///
+  /// **Ignored while `AppConfig.stopOnTerminate` is `false` (#378.)** Hiding the
+  /// notification means demoting the foreground service — Android has no
+  /// foreground service without one — and a process holding no foreground
+  /// service is killed when its task is removed. Swiping the app away in the
+  /// few hundred milliseconds between the app leaving the screen and the
+  /// notification being re-posted therefore killed the process outright,
+  /// silently costing you everything `stopOnTerminate: false` promises. The
+  /// promise wins: the notification stays up, and the SDK says so once on the
+  /// lifecycle log channel. Set `stopOnTerminate: true` if you would rather
+  /// have the hidden notification.
+  ///
   /// Defaults to `false`.
   bool get showNotificationOnPauseOnly => _showNotificationOnPauseOnly ?? false;
 

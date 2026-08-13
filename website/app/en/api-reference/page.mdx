@@ -194,6 +194,7 @@ Android specific OS constraints. [See Android Story 📖](/en/getting-started/pl
 - **`notificationPriority`**: `NotificationPriority` *(Default: `NotificationPriority.defaultPriority`)*
 - **`notificationOngoing`**: `bool` *(Default: `true`)*
 - **`showNotificationOnPauseOnly`**: `bool` *(Default: `false`)*
+  Hides the notification while the app is on screen. **Ignored while `app.stopOnTerminate` is `false`** — hiding it demotes the foreground service, and a swipe from recents in that window kills the process ([#378](https://github.com/Ikolvi/Tracelet/issues/378)). The override is logged once per `start()`. [See Hiding the notification 📖](/en/getting-started/platform-setup/android#hiding-the-notification-while-the-app-is-open-shownotificationonpauseonly)
 - **`actions`**: `List<String>` *(Default: `[]`)*
 - **`notificationStartedAt`**: `int?` *(Default: `null`)*
   Epoch milliseconds (wall clock) the elapsed timer counts up from. Only rendered when `notificationShowTimer` is `true`. A value in the future is clamped to the current time each time the notification is posted, so a device clock correction self-heals. [See Elapsed timer 📖](/en/getting-started/platform-setup/android#showing-an-elapsed-timer-in-the-notification)

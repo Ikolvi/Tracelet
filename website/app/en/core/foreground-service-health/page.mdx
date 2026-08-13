@@ -61,10 +61,10 @@ Returns a `Map<String, Object?>` with the following keys:
 | `serviceRunning` | `bool` | Whether the native location service process is alive. |
 | `serviceForeground` | `bool` | Whether the service is **currently promoted** to the foreground (last `startForeground()` succeeded and it hasn't been demoted/stopped since). |
 | `foregroundNotificationId` | `int?` | The notification id while promoted; `null` otherwise. |
-| `lastForegroundPromotionResult` | `String?` | `success`, `deferred`, or `failed` — the outcome of the most recent promotion attempt (`null` before any attempt). |
+| `lastForegroundPromotionResult` | `String?` | `success`, `deferred`, `failed`, or `suppressed` — the outcome of the most recent promotion attempt (`null` before any attempt). |
 | `lastForegroundPromotionFailureClass` | `String?` | Exception class of the last failed/deferred promotion (e.g. `ForegroundServiceStartNotAllowedException`). |
 | `lastForegroundPromotionFailureMessage` | `String?` | The exception message. |
-| `lastForegroundTransitionAt` | `int?` | Epoch-milliseconds of the last promotion transition. |
+| `lastForegroundTransitionAt` | `int?` | Epoch-milliseconds of the last promotion **transition** — a change of state, not every `startForeground()` call, so the interval a process spent unpromoted is measurable from it. |
 | `platform` | `String` | `android`, `ios`, or `web`. |
 
 <Callout type="info">
@@ -85,7 +85,15 @@ whole story:
 | `true` | `true` | `success` | ✅ **Healthy** — the foreground service is running and promoted. |
 | `true` | `false` | `deferred` | ⏳ **Deferred** — Android refused the start while backgrounded; Tracelet will retry when the app returns to the foreground. |
 | `true` | `false` | `failed` | ❌ **Failed** — promotion failed; background tracking is **not** operational. Inspect the failure class/message. |
+| `true` | `false` | `suppressed` | 🙈 **Hidden on purpose** — `showNotificationOnPauseOnly` took the notification down while the app is on screen. Tracking is running and the service is alive. Only possible with `stopOnTerminate: true` ([why](/en/getting-started/platform-setup/android#hiding-the-notification-while-the-app-is-open-shownotificationonpauseonly)). |
 | `true` | `false` | `null` | ⌛ Requested but not confirmed yet (transient — poll again shortly). |
+
+<Callout type="warning">
+  Do not treat `serviceForeground: false` as a failure on its own. A `suppressed`
+  service is demoted because you configured it that way, and it is still
+  tracking — reporting it as broken is a false alarm. `deferred` and `failed`
+  are the results that mean something is wrong.
+</Callout>
 
 ---
 
@@ -106,6 +114,9 @@ Future<String> describeTrackingHealth() async {
   if (h['serviceForeground'] == true) return 'Tracking active';
 
   switch (h['lastForegroundPromotionResult']) {
+    case 'suppressed':
+      // Demoted on purpose by showNotificationOnPauseOnly. Still tracking.
+      return 'Tracking active';
     case 'deferred':
       return 'Waiting to start — reopen the app to resume background tracking';
     case 'failed':

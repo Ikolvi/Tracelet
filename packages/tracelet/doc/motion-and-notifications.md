@@ -84,7 +84,9 @@ Android 14 introduced strict constraints regarding when Foreground Services (FGS
 The **Smart Foreground Notification Visibility** feature allows you to only show the persistent notification when the app enters the background or when a specific state is reached, while seamlessly keeping the FGS alive.
 
 ### How It Works
-If `showNotificationOnPauseOnly` is enabled, the SDK starts the Foreground Service but hides the notification while the user is actively using the app. It only reveals the notification when the app goes into the background or when tracking demands it. 
+If `showNotificationOnPauseOnly` is enabled, the SDK starts the Foreground Service and then hides the notification while the user is actively using the app, revealing it again when the app goes into the background.
+
+Hiding it means **demoting the service**: Android has no such thing as a foreground service without a notification, so `stopForeground()` is what takes it down. The service keeps running and tracking is unaffected — but while it is demoted the process holds no foreground service, which is the state Android kills when the user swipes the app out of recents. See the constraint below.
 
 ### Common Scenarios & Setup Examples
 
@@ -106,6 +108,24 @@ final config = TlConfig(
 ```
 
 > **Warning**: Disabling `showNotificationOnPauseOnly` (setting it to `false`) means the notification is always visible while tracking is enabled. On Android 14+, attempting to start an FGS without immediate notification visibility from a background state may result in exceptions if not handled properly by this smart logic.
+
+### Constraint: it is ignored under `stopOnTerminate: false` (#378)
+
+The two settings ask for incompatible things, and the survival promise wins.
+
+While the notification is hidden the process holds no foreground service, and `ActivityManager` chooses which processes to kill on task removal from exactly that fact — before the SDK's `onTaskRemoved` handler runs, so nothing the SDK does at removal time can undo it. A swipe from recents in the few hundred milliseconds between the app leaving the screen and the notification coming back therefore killed the process outright: no headless task, no events, no logs, nothing that `stopOnTerminate: false` exists to guarantee. The window was measured at 285 ms on a Pixel Fold and 700–1500 ms on the reporting user's Android 15 device.
+
+So when `stopOnTerminate: false` is set, `showNotificationOnPauseOnly` is not applied and the notification stays visible. It is not silent — the SDK writes one line to the always-on lifecycle log channel, readable via `Tracelet.getLogs()`:
+
+```text
+notification: showNotificationOnPauseOnly ignored because stopOnTerminate=false — …
+```
+
+`Tracelet.getForegroundServiceHealth()` reports the same thing from the other side: when the notification *is* legitimately hidden (`stopOnTerminate: true`), `serviceForeground` is `false` and `lastForegroundPromotionResult` is `suppressed` — a demotion you asked for, distinct from a promotion the OS refused.
+
+To keep the hidden notification, set `stopOnTerminate: true` and accept that tracking ends with the swipe. On Android 14+ a location foreground service must show its notification anyway once the app is not on screen, so what you gain is limited to the period the app is open.
+
+This is Android-only. iOS has no foreground service, no notification to hide and no task-removal kill of this kind; `showNotificationOnPauseOnly` lives on `AndroidConfig` and is not read by the iOS SDK.
 
 ---
 

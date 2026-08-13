@@ -182,7 +182,7 @@ android: tl.AndroidConfig(
     channelName: 'Delivery Tracking',
     notificationText: 'Tracking your route to the customer',
     notificationOngoing: true, // User cannot swipe it away
-    showNotificationOnPauseOnly: false, // Auto-hides when app is open
+    showNotificationOnPauseOnly: false, // Always visible — see the section below
     actions: ['Pause', 'Complete'], // Adds interactive buttons to the notification
   ),
 )
@@ -271,6 +271,56 @@ This is worth setting for **any** notification whose content changes while track
 
 <Callout type="warning">
   It defaults to `false`, which preserves the behaviour of every existing app. Nothing changes until you opt in.
+</Callout>
+
+### Hiding the Notification While the App Is Open (`showNotificationOnPauseOnly`)
+
+`showNotificationOnPauseOnly: true` takes the tracking notification down while the user is actually looking at your app, and puts it back when they leave. It is a genuinely nicer experience — the notification tray stays clean while the app is on screen — but it comes with one hard constraint, and the constraint is not obvious.
+
+**Hiding the notification means demoting the service.** Android has no concept of a foreground service without a notification, so the only way to hide it is `stopForeground()`. Tracking continues and the service keeps running, but for as long as the notification is hidden your process holds **no foreground service**.
+
+That is exactly the state Android kills when the user swipes your app out of recents.
+
+<Callout type="warning">
+  **`showNotificationOnPauseOnly` is ignored while `stopOnTerminate: false`** ([#378](https://github.com/Ikolvi/Tracelet/issues/378)). The two settings ask for incompatible things and the survival promise wins: the notification stays visible.
+</Callout>
+
+#### Why it cannot be made to work
+
+When a task is removed, `ActivityManager` decides which processes to kill from `proc.foregroundServices` — and it decides **before** `onTaskRemoved` is dispatched to your app's main thread. So an SDK cannot rescue the situation by posting the notification at removal time; by then the verdict is in. Tracelet had exactly that mitigation, and it did not help.
+
+The result was a race nobody could see. Swipe the app away in the gap between it leaving the screen and the notification coming back, and the process died: no headless task, no events, no logs, none of what `stopOnTerminate: false` exists to guarantee. Swipe a second later and everything worked perfectly. The gap was measured at **285 ms** on a Pixel Fold and **700–1500 ms** on an Android 15 device.
+
+#### What Tracelet does instead
+
+| Your config | Behaviour |
+|---|---|
+| `stopOnTerminate: false` + `showNotificationOnPauseOnly: true` | The flag is **ignored**. The notification stays visible, the service is never demoted, and a swipe from recents can never kill the process. |
+| `stopOnTerminate: true` + `showNotificationOnPauseOnly: true` | Works exactly as documented — hidden while the app is on screen. Nothing is promised past the swipe here, so there is nothing to protect. |
+| `showNotificationOnPauseOnly: false` | The notification is always visible. This is the default. |
+
+The override is **not silent** — that was half of what made the original bug expensive. One line is written to the always-on lifecycle log channel per `start()`, readable with `Tracelet.getLogs()` at any log level, including from a killed-state run:
+
+```text
+notification: showNotificationOnPauseOnly ignored because stopOnTerminate=false — hiding the
+notification demotes the foreground service, and a swipe from recents in that window kills the
+process (#378). Set stopOnTerminate=true to hide it while the app is open, or
+showNotificationOnPauseOnly=false to stop asking.
+```
+
+[`getForegroundServiceHealth()`](/en/core/foreground-service-health) reports the same thing from the other side. When the notification is legitimately hidden (`stopOnTerminate: true`), `serviceForeground` is `false` and `lastForegroundPromotionResult` is `suppressed` — a demotion you asked for, which is a different thing from a promotion the OS refused.
+
+#### Choosing
+
+Decide which one you actually need:
+
+- **Tracking must survive the user swiping the app away** → keep `stopOnTerminate: false` and let the notification show. This is the right default for delivery, fleet, workforce and safety apps.
+- **A clean notification tray matters more than surviving the swipe** → set `stopOnTerminate: true`. Tracking ends when the app is removed from recents, which for many consumer apps is exactly what the user expects anyway.
+
+Note what you gain in the second case is bounded: on Android 14+ a location foreground service must show its notification once your app is off screen regardless, so the hiding only ever applies while the user is in your app.
+
+<Callout type="info">
+  This is Android-only. iOS has no foreground service, no notification to hide and no task-removal kill of this kind — `showNotificationOnPauseOnly` lives on `AndroidConfig` and the iOS SDK does not read it.
 </Callout>
 
 ### Showing an Elapsed Timer in the Notification
