@@ -1,34 +1,15 @@
 package com.ikolvi.tracelet.flutter
 
 import android.content.Context
-import androidx.test.core.app.ApplicationProvider
 import com.ikolvi.tracelet.TlAuthorizationStatus
-import com.ikolvi.tracelet.TlNotificationUpdate
 import com.ikolvi.tracelet.flutter.service.HeadlessTaskService
-import com.ikolvi.tracelet.sdk.ConfigManager
 import com.ikolvi.tracelet.sdk.TraceletSdk
-import org.junit.Before
 import org.junit.Test
-import org.junit.runner.RunWith
 import org.mockito.Mockito.mock
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-@RunWith(RobolectricTestRunner::class)
-@Config(manifest = Config.NONE)
 class TraceletHostApiImplTest {
-
-    @Before
-    fun resetSdkSingletons() {
-        TraceletSdk::class.java.getDeclaredField("instance").apply {
-            isAccessible = true
-            set(null, null)
-        }
-        ConfigManager.resetInstance()
-    }
 
     /**
      * #364: `requestStateFlush` doubles as the per-engine "my Dart side is
@@ -139,6 +120,9 @@ class TraceletHostApiImplTest {
         val androidMap = map["android"] as Map<String, Any?>
         val foregroundServiceMap = androidMap["foregroundService"] as Map<String, Any?>
 
+        // #376: the timer fields have to survive the Pigeon -> SDK map hop.
+        // notificationStartedAt is above Int32 on purpose — an `as? Int` read
+        // would drop it, and epoch millis are always in that range.
         assertEquals(4_294_967_296L, foregroundServiceMap["notificationStartedAt"])
         assertEquals(false, foregroundServiceMap["notificationShowTimer"])
         assertEquals(true, foregroundServiceMap["notificationOnlyAlertOnce"])
@@ -158,36 +142,5 @@ class TraceletHostApiImplTest {
                 "Missing field in Motion mapping: $field"
             )
         }
-    }
-
-    @Test
-    fun testSetNotification_forwardsEveryFieldToSdk() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val sdk = TraceletSdk.getInstance(context)
-        sdk.configManager.reset(null)
-        sdk.configManager.setConfig(
-            mapOf(
-                "android" to mapOf(
-                    "foregroundService" to mapOf("notificationShowTimer" to true),
-                ),
-            ),
-        )
-        val hostApi = TraceletHostApiImpl(context, mock(HeadlessTaskService::class.java))
-        var result: Result<Unit>? = null
-
-        hostApi.setNotification(
-            TlNotificationUpdate(
-                title = "Tracking",
-                text = "Uploading",
-                startedAt = 4_294_967_296L,
-                showTimer = false,
-            ),
-        ) { result = it }
-
-        assertTrue(result!!.isSuccess)
-        assertEquals("Tracking", sdk.configManager.getFgNotificationTitle())
-        assertEquals("Uploading", sdk.configManager.getFgNotificationText())
-        assertEquals(4_294_967_296L, sdk.configManager.getFgNotificationStartedAt())
-        assertFalse(sdk.configManager.getFgNotificationShowTimer())
     }
 }

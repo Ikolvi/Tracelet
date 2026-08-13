@@ -2848,6 +2848,21 @@ data class TlTelematicsRecord (
   val eventType: String,
   /** The severity of the event. */
   val severity: Double,
+  /**
+   * Speed at the event in m/s — for an impact, the speed going in (#367).
+   *
+   * Nullable so a Dart side newer than the native plugin decodes a missing
+   * field as `null` instead of failing.
+   */
+  val speed: Double? = null,
+  /**
+   * The measured magnitude that triggered the event: g for harsh driving
+   * events and impacts, km/h over the limit for speeding (#367).
+   *
+   * `severity` is the normalized 0–1 flag; this is the physical quantity
+   * behind it. Nullable for the same reason as [speed].
+   */
+  val value: Double? = null,
   /** The latitude. */
   val latitude: Double,
   /** The longitude. */
@@ -2863,11 +2878,13 @@ data class TlTelematicsRecord (
       val id = pigeonVar_list[0] as Long
       val eventType = pigeonVar_list[1] as String
       val severity = pigeonVar_list[2] as Double
-      val latitude = pigeonVar_list[3] as Double
-      val longitude = pigeonVar_list[4] as Double
-      val timestamp = pigeonVar_list[5] as String
-      val synced = pigeonVar_list[6] as Boolean
-      return TlTelematicsRecord(id, eventType, severity, latitude, longitude, timestamp, synced)
+      val speed = pigeonVar_list[3] as Double?
+      val value = pigeonVar_list[4] as Double?
+      val latitude = pigeonVar_list[5] as Double
+      val longitude = pigeonVar_list[6] as Double
+      val timestamp = pigeonVar_list[7] as String
+      val synced = pigeonVar_list[8] as Boolean
+      return TlTelematicsRecord(id, eventType, severity, speed, value, latitude, longitude, timestamp, synced)
     }
   }
   fun toList(): List<Any?> {
@@ -2875,6 +2892,8 @@ data class TlTelematicsRecord (
       id,
       eventType,
       severity,
+      speed,
+      value,
       latitude,
       longitude,
       timestamp,
@@ -2889,7 +2908,7 @@ data class TlTelematicsRecord (
       return true
     }
     val other = other as TlTelematicsRecord
-    return TraceletApiPigeonUtils.deepEquals(this.id, other.id) && TraceletApiPigeonUtils.deepEquals(this.eventType, other.eventType) && TraceletApiPigeonUtils.deepEquals(this.severity, other.severity) && TraceletApiPigeonUtils.deepEquals(this.latitude, other.latitude) && TraceletApiPigeonUtils.deepEquals(this.longitude, other.longitude) && TraceletApiPigeonUtils.deepEquals(this.timestamp, other.timestamp) && TraceletApiPigeonUtils.deepEquals(this.synced, other.synced)
+    return TraceletApiPigeonUtils.deepEquals(this.id, other.id) && TraceletApiPigeonUtils.deepEquals(this.eventType, other.eventType) && TraceletApiPigeonUtils.deepEquals(this.severity, other.severity) && TraceletApiPigeonUtils.deepEquals(this.speed, other.speed) && TraceletApiPigeonUtils.deepEquals(this.value, other.value) && TraceletApiPigeonUtils.deepEquals(this.latitude, other.latitude) && TraceletApiPigeonUtils.deepEquals(this.longitude, other.longitude) && TraceletApiPigeonUtils.deepEquals(this.timestamp, other.timestamp) && TraceletApiPigeonUtils.deepEquals(this.synced, other.synced)
   }
 
   override fun hashCode(): Int {
@@ -2897,6 +2916,8 @@ data class TlTelematicsRecord (
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.id)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.eventType)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.severity)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.speed)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.value)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.latitude)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.longitude)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.timestamp)
@@ -2958,6 +2979,11 @@ data class TlLogEntry (
 /**
  * Location-filter thresholds applied by transport-mode auto-tuning (#301).
  *
+ * Declared last on purpose: pigeon assigns codec type IDs by declaration
+ * order, so inserting a class higher up would renumber every type after it
+ * and break any app that resolves a plugin and the platform interface at
+ * different versions.
+ *
  * Generated class from Pigeon that represents data sent in messages.
  */
 data class TlLocationTuning (
@@ -3005,66 +3031,6 @@ data class TlLocationTuning (
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.trackingAccuracyThreshold)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.odometerAccuracyThreshold)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.maxImpliedSpeed)
-    return result
-  }
-}
-
-/**
- * A targeted notification update for `setNotification()`.
- *
- * Every field is nullable; null means "leave the persisted value alone".
- * Deliberately NOT a TlConfig: this payload can never carry http.url or
- * headers, so a notification refresh cannot clobber sync settings.
- *
- * Declared last to preserve all existing Pigeon codec type IDs.
- *
- * Generated class from Pigeon that represents data sent in messages.
- */
-data class TlNotificationUpdate (
-  /** The replacement notification or Live Activity title. */
-  val title: String? = null,
-  /** The replacement notification text or Live Activity body. */
-  val text: String? = null,
-  /** Epoch milliseconds for the optional wall-clock count-up timer. */
-  val startedAt: Long? = null,
-  /** Whether to show the count-up timer when a start instant exists. */
-  val showTimer: Boolean? = null
-)
- {
-  companion object {
-    fun fromList(pigeonVar_list: List<Any?>): TlNotificationUpdate {
-      val title = pigeonVar_list[0] as String?
-      val text = pigeonVar_list[1] as String?
-      val startedAt = pigeonVar_list[2] as Long?
-      val showTimer = pigeonVar_list[3] as Boolean?
-      return TlNotificationUpdate(title, text, startedAt, showTimer)
-    }
-  }
-  fun toList(): List<Any?> {
-    return listOf(
-      title,
-      text,
-      startedAt,
-      showTimer,
-    )
-  }
-  override fun equals(other: Any?): Boolean {
-    if (other == null || other.javaClass != javaClass) {
-      return false
-    }
-    if (this === other) {
-      return true
-    }
-    val other = other as TlNotificationUpdate
-    return TraceletApiPigeonUtils.deepEquals(this.title, other.title) && TraceletApiPigeonUtils.deepEquals(this.text, other.text) && TraceletApiPigeonUtils.deepEquals(this.startedAt, other.startedAt) && TraceletApiPigeonUtils.deepEquals(this.showTimer, other.showTimer)
-  }
-
-  override fun hashCode(): Int {
-    var result = javaClass.hashCode()
-    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.title)
-    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.text)
-    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.startedAt)
-    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.showTimer)
     return result
   }
 }
@@ -3386,11 +3352,6 @@ private open class TraceletApiPigeonCodec : StandardMessageCodec() {
           TlLocationTuning.fromList(it)
         }
       }
-      192.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          TlNotificationUpdate.fromList(it)
-        }
-      }
       else -> super.readValueOfType(type, buffer)
     }
   }
@@ -3648,10 +3609,6 @@ private open class TraceletApiPigeonCodec : StandardMessageCodec() {
         stream.write(191)
         writeValue(stream, value.toList())
       }
-      is TlNotificationUpdate -> {
-        stream.write(192)
-        writeValue(stream, value.toList())
-      }
       else -> super.writeValue(stream, value)
     }
   }
@@ -3681,12 +3638,6 @@ interface TraceletHostApi {
    * - Web: no-op.
    */
   fun updateNotification(callback: (Result<Unit>) -> Unit)
-  /**
-   * Applies a targeted update to the tracking indicator's content and
-   * reposts it, merging only the supplied fields into the persisted
-   * configuration. Never touches any other config section.
-   */
-  fun setNotification(update: TlNotificationUpdate, callback: (Result<Unit>) -> Unit)
   fun getCurrentPosition(options: TlCurrentPositionOptions, callback: (Result<TlLocation>) -> Unit)
   fun getLastKnownLocation(options: TlCurrentPositionOptions?, callback: (Result<TlLocation?>) -> Unit)
   fun watchPosition(options: TlCurrentPositionOptions, callback: (Result<Long>) -> Unit)
@@ -3973,25 +3924,6 @@ interface TraceletHostApi {
         if (api != null) {
           channel.setMessageHandler { _, reply ->
             api.updateNotification{ result: Result<Unit> ->
-              val error = result.exceptionOrNull()
-              if (error != null) {
-                reply.reply(TraceletApiPigeonUtils.wrapError(error))
-              } else {
-                reply.reply(TraceletApiPigeonUtils.wrapResult(null))
-              }
-            }
-          }
-        } else {
-          channel.setMessageHandler(null)
-        }
-      }
-      run {
-        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.setNotification$separatedMessageChannelSuffix", codec)
-        if (api != null) {
-          channel.setMessageHandler { message, reply ->
-            val args = message as List<Any?>
-            val updateArg = args[0] as TlNotificationUpdate
-            api.setNotification(updateArg) { result: Result<Unit> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(TraceletApiPigeonUtils.wrapError(error))

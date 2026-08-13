@@ -165,10 +165,6 @@ class PigeonTracelet extends TraceletPlatform {
   @override
   Future<void> updateNotification() => _api.updateNotification();
 
-  @override
-  Future<void> setNotification(TlNotificationUpdate update) =>
-      _api.setNotification(update);
-
   // ---------------------------------------------------------------------------
   // Location
   // ---------------------------------------------------------------------------

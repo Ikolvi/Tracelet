@@ -330,11 +330,6 @@ class TraceletWebPlugin extends TraceletPlatform {
     // Web has no foreground-service notification to refresh (#257): no-op.
   }
 
-  @override
-  Future<void> setNotification(TlNotificationUpdate update) async {
-    // Web has no tracking indicator to update: no-op.
-  }
-
   // ---------------------------------------------------------------------------
   // Location
   // ---------------------------------------------------------------------------

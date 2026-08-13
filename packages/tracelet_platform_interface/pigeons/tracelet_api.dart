@@ -929,12 +929,6 @@ abstract class TraceletHostApi {
   @async
   void updateNotification();
 
-  /// Applies a targeted update to the tracking indicator's content and
-  /// reposts it, merging only the supplied fields into the persisted
-  /// configuration. Never touches any other config section.
-  @async
-  void setNotification(TlNotificationUpdate update);
-
   @async
   TlLocation getCurrentPosition(TlCurrentPositionOptions options);
 
@@ -1209,6 +1203,8 @@ class TlTelematicsRecord {
     required this.longitude,
     required this.timestamp,
     required this.synced,
+    this.speed,
+    this.value,
   });
 
   /// The primary key.
@@ -1219,6 +1215,19 @@ class TlTelematicsRecord {
 
   /// The severity of the event.
   final double severity;
+
+  /// Speed at the event in m/s — for an impact, the speed going in (#367).
+  ///
+  /// Nullable so a Dart side newer than the native plugin decodes a missing
+  /// field as `null` instead of failing.
+  final double? speed;
+
+  /// The measured magnitude that triggered the event: g for harsh driving
+  /// events and impacts, km/h over the limit for speeding (#367).
+  ///
+  /// `severity` is the normalized 0–1 flag; this is the physical quantity
+  /// behind it. Nullable for the same reason as [speed].
+  final double? value;
 
   /// The latitude.
   final double latitude;
@@ -1255,6 +1264,11 @@ class TlLogEntry {
 }
 
 /// Location-filter thresholds applied by transport-mode auto-tuning (#301).
+///
+/// Declared last on purpose: pigeon assigns codec type IDs by declaration
+/// order, so inserting a class higher up would renumber every type after it
+/// and break any app that resolves a plugin and the platform interface at
+/// different versions.
 class TlLocationTuning {
   TlLocationTuning({
     required this.distanceFilter,
@@ -1274,30 +1288,6 @@ class TlLocationTuning {
 
   /// Fixes implying a speed above this (m/s) are rejected.
   final int maxImpliedSpeed;
-}
-
-/// A targeted notification update for `setNotification()`.
-///
-/// Every field is nullable; null means "leave the persisted value alone".
-/// Deliberately NOT a TlConfig: this payload can never carry http.url or
-/// headers, so a notification refresh cannot clobber sync settings.
-///
-/// Declared last to preserve all existing Pigeon codec type IDs.
-class TlNotificationUpdate {
-  /// Creates a targeted notification update from only the supplied fields.
-  TlNotificationUpdate({this.title, this.text, this.startedAt, this.showTimer});
-
-  /// The replacement notification or Live Activity title.
-  final String? title;
-
-  /// The replacement notification text or Live Activity body.
-  final String? text;
-
-  /// Epoch milliseconds for the optional wall-clock count-up timer.
-  final int? startedAt;
-
-  /// Whether to show the count-up timer when a start instant exists.
-  final bool? showTimer;
 }
 
 // =============================================================================

@@ -69,6 +69,23 @@ class TraceletSdk private constructor(private val context: Context) {
         /** Battery budget sampling interval: 5 minutes. */
         private const val BATTERY_SAMPLE_INTERVAL_MS = 5 * 60 * 1000L
 
+        /**
+         * Retention pruning runs on the first location insert and every N-th
+         * thereafter, instead of on every insert (#361).
+         */
+        private const val PRUNE_EVERY_N_INSERTS = 100L
+
+        /**
+         * How many already-synced telematics events stay readable through
+         * `getTelematicsEvents()` (#366).
+         *
+         * Sync marks rows instead of deleting them so uploading an event doesn't
+         * erase it from the app's own history (#313) — this is what stops that
+         * from growing for the lifetime of the install. Unsynced rows are never
+         * subject to it; they are still owed to the server.
+         */
+        private const val MAX_SYNCED_TELEMATICS_RETAINED = 1000
+
         fun getInstance(context: Context): TraceletSdk {
             return instance ?: synchronized(this) {
                 instance ?: TraceletSdk(context.applicationContext).also { instance = it }
@@ -244,6 +261,22 @@ class TraceletSdk private constructor(private val context: Context) {
          * for providers that don't queue work.
          */
         fun cancelPendingSync() {}
+
+        /**
+         * POSTs `body` to `url` — the separate telematics endpoint (#368).
+         * Returns whether the server accepted it; `false` leaves the events
+         * unsynced for the next attempt.
+         *
+         * Defaults to `false` so a provider that hasn't implemented it reports
+         * "not delivered" rather than silently settling events it never sent.
+         * Only reached when `telematicsUrl` is set, so providers that don't
+         * override it keep their existing behaviour untouched.
+         */
+        fun postTelematicsBlocking(
+            config: uniffi.tracelet_core.HttpConfig,
+            url: String,
+            body: String,
+        ): Boolean = false
     }
 
     var syncProvider: SyncProvider? = null
@@ -1698,29 +1731,6 @@ class TraceletSdk private constructor(private val context: Context) {
     }
 
     /**
-     * Applies a targeted update to the foreground-service notification and
-     * reposts it. Merges only the supplied fields into the persisted config —
-     * the payload cannot carry http or any other section, so a notification
-     * refresh can never clobber sync settings.
-     */
-    fun setNotification(
-        title: String? = null,
-        text: String? = null,
-        startedAt: Long? = null,
-        showTimer: Boolean? = null,
-    ) {
-        val fg = buildMap<String, Any?> {
-            if (title != null) put("notificationTitle", title)
-            if (text != null) put("notificationText", text)
-            if (startedAt != null) put("notificationStartedAt", startedAt)
-            if (showTimer != null) put("notificationShowTimer", showTimer)
-        }
-        if (fg.isEmpty()) return
-        configManager.setConfig(mapOf("android" to mapOf("foregroundService" to fg)))
-        updateNotification()
-    }
-
-    /**
      * Bootstraps the SDK for a headless / boot / task-removal restart.
      *
      * Returns `true` only when initialization has fully completed and the
@@ -2230,12 +2240,71 @@ class TraceletSdk private constructor(private val context: Context) {
 
         return try {
             val newRowId = db.insertLocation(uuid, lat, lng, acc, speed, heading, altitude, isMock, isMoving, activity, activityConfidence, routeContext, timestamp, eventType, eventPayload, address)
+            enforceRetentionCaps(db)
             // Notify the sync plugin so it can trigger auto-sync
             (syncProvider as? com.ikolvi.tracelet.sdk.location.LocationDataSink)?.insertLocation(params)
             newRowId.toString()
         } catch (e: Exception) {
             logger.error("insertLocation failed: ${e.message}")
             ""
+        }
+    }
+
+    /** Location inserts seen this process. See [enforceRetentionCaps]. */
+    private var locationInsertsSeen = 0L
+
+    /**
+     * Applies `maxDaysToPersist` and `maxRecordsToPersist` to `location_events`
+     * (#361).
+     *
+     * Both caps were accepted by `ready()`/`setConfig()`, echoed back in
+     * `State.config` — and enforced by nothing, so the local queue grew without
+     * bound however they were set. They were real up to 3.0 via `pruneOldLocations`
+     * / `enforceMaxRecords` on the Kotlin `TraceletDatabase`; the 3.1.0 migration
+     * onto the Rust core replaced the persist body with a sink fan-out and deleted
+     * the retention calls with it, leaving [PRUNE_EVERY_N_INSERTS] and a docstring
+     * behind as the only trace.
+     *
+     * Deliberately here rather than back in `LocationEngine.persistLocationIfAllowed`,
+     * where the leftover counter sat: this is the single funnel every location
+     * reaches the DB through. The engine's persist path is only one caller — the
+     * public `Tracelet.insertLocation()` API and the headless boot path insert
+     * straight through here, and pruning in the engine would have left the
+     * reporter's own repro (100+ explicit `insertLocation` calls) still unbounded.
+     *
+     * Amortized over [PRUNE_EVERY_N_INSERTS] inserts rather than run on each one,
+     * so a COUNT-and-DELETE is not attached to every GPS fix. The queue can
+     * therefore sit up to that many records above `maxRecordsToPersist` between
+     * prunes; the cap bounds growth, it is not a per-insert invariant. The first
+     * insert of the process prunes, so a cap tightened while stopped — or a backlog
+     * inherited from a build that never enforced one — is cut down without waiting
+     * out a whole window.
+     *
+     * A retention failure must not fail the insert: the record is already committed
+     * and losing it to a prune error would be strictly worse than an oversized
+     * queue.
+     *
+     * The counter is deliberately unsynchronized, like [lastInsertedTimestamp]
+     * above it. Inserts arrive from both the location callback thread and the
+     * public API, so a racy increment can make a prune land an insert early or
+     * late — which costs nothing, and is cheaper than serializing every insert
+     * behind a lock to schedule a periodic DELETE precisely.
+     */
+    private fun enforceRetentionCaps(db: RustDatabaseManager) {
+        if (locationInsertsSeen++ % PRUNE_EVERY_N_INSERTS != 0L) return
+        try {
+            val maxDays = configManager.getMaxDaysToPersist()
+            val maxRecords = configManager.getMaxRecordsToPersist()
+            val byAge = db.pruneLocationsOlderThan(maxDays)
+            val byCount = db.enforceMaxLocationRecords(maxRecords)
+            if (byAge > 0u || byCount > 0u) {
+                logger.debug(
+                    "Retention: pruned $byAge location(s) older than $maxDays day(s), " +
+                        "$byCount over the $maxRecords-record cap.",
+                )
+            }
+        } catch (e: Exception) {
+            logger.error("Retention pruning failed: ${e.message}")
         }
     }
 
@@ -2270,42 +2339,71 @@ class TraceletSdk private constructor(private val context: Context) {
                     orderDescending = null
                 ))
                 var configHttp = config.http
-                val syncTelematics = configManager.getConfig().let { cfg ->
-                    val http = cfg["http"] as? Map<*,*>
-                    http?.get("syncTelematics") as? Boolean ?: false
-                }
-                
-                var telematicsCleared = false
+                // #370: this read `getConfig()["http"]["syncTelematics"]`, but
+                // ConfigManager.setConfig flattens Dart's nested sections into
+                // the top level — so `["http"]` was always null and the flag was
+                // always false. syncTelematics never took effect here, whatever
+                // the app configured. Use the accessor that knows the cache is
+                // flat, as getSyncTelematics/getTelematicsUrl already do.
+                val syncTelematics = configManager.getSyncTelematics()
+
+                // #366: the id range we attach, so a *successful* upload can mark
+                // exactly those synced. This used to be a bare boolean that fed an
+                // unconditional `clearTelematicsEvents()` — a table-wide DELETE
+                // that ran even when the POST had failed, so an offline device
+                // destroyed its driving events instead of queueing them, and a
+                // successful one also took any event recorded after the batch was
+                // read. 0 means nothing was attached.
+                var attachedTelematicsMaxId = 0L
+                // #368: a separate endpoint means the telematics travel on their
+                // own request, so they must not also ride the location payload.
+                val telematicsUrl = configManager.getTelematicsUrl()?.takeIf { it.isNotBlank() }
+                var telematicsToPost: List<uniffi.tracelet_core.DbTelematicsRecord> = emptyList()
                 if (syncTelematics) {
                     val telematics = db.getTelematicsEvents(250)
                     if (telematics.isNotEmpty()) {
-                        val jsonArray = org.json.JSONArray()
-                        telematics.forEach { event ->
-                            val obj = org.json.JSONObject()
-                            obj.put("id", event.id)
-                            obj.put("event_type", event.eventType)
-                            obj.put("severity", event.severity)
-                            obj.put("latitude", event.latitude)
-                            obj.put("longitude", event.longitude)
-                            obj.put("timestamp", event.timestamp)
-                            obj.put("synced", event.synced)
-                            jsonArray.put(obj)
+                        attachedTelematicsMaxId = telematics.maxOf { it.id }
+                        if (telematicsUrl != null) {
+                            telematicsToPost = telematics
+                        } else {
+                            val newExtras = (configHttp.extras ?: emptyMap()).toMutableMap()
+                            newExtras["__telematics"] = telematicsJsonArray(telematics).toString()
+                            configHttp = configHttp.copy(extras = newExtras)
                         }
-                        val newExtras = (configHttp.extras ?: emptyMap()).toMutableMap()
-                        newExtras["__telematics"] = jsonArray.toString()
-                        configHttp = configHttp.copy(extras = newExtras)
-                        telematicsCleared = true
                     }
                 }
-                
-                val hasTelematics = telematicsCleared
+
+                val hasTelematics = attachedTelematicsMaxId > 0L
                 if (records.isEmpty() && !hasTelematics) {
                     mainHandler.post { callback(emptyList()) }
                     return@Thread
                 }
-                
-                val count = provider.syncBatchBlocking(configHttp, records)
-                if (count > 0L || hasTelematics) {
+
+                // #368: posted before the locations so a telematics-only sync still
+                // has something to do when `records` is empty.
+                val telematicsPosted = if (telematicsToPost.isNotEmpty()) {
+                    postTelematicsBatch(telematicsUrl!!, configHttp, telematicsToPost)
+                } else {
+                    false
+                }
+
+                // Skipping the location POST is only safe when the telematics
+                // already went somewhere else (#368). On the default path they
+                // ride this request, so it must still be made even with an empty
+                // batch — otherwise they would sit unsynced until a location
+                // happened along.
+                val count = if (records.isEmpty() && telematicsUrl != null) {
+                    0L
+                } else {
+                    provider.syncBatchBlocking(configHttp, records)
+                }
+
+                // #366: telematics are only settled when the request that carried
+                // them actually succeeded. Attached to the location payload, that
+                // is the location POST; sent to `telematicsUrl`, it is their own.
+                // Anything else leaves them unsynced for the next attempt.
+                val telematicsDelivered = if (telematicsUrl != null) telematicsPosted else count > 0L
+                if (count > 0L || telematicsDelivered) {
                     if (count > 0L) {
                         val syncedCount = count.toInt()
                         val successfullySynced = records.take(syncedCount)
@@ -2314,10 +2412,19 @@ class TraceletSdk private constructor(private val context: Context) {
                             syncedLocationsRemoved.addAndGet(count)
                         }
                     }
-                    if (telematicsCleared) {
-                        db.clearTelematicsEvents()
+                    if (telematicsDelivered && attachedTelematicsMaxId > 0L) {
+                        // Mark, don't delete: #313 requires an uploaded event to
+                        // stay visible in the app's own history. Bounded by the
+                        // synced-tail trim below so the table can't grow forever.
+                        db.markTelematicsSynced(attachedTelematicsMaxId)
+                        db.pruneSyncedTelematics(MAX_SYNCED_TELEMATICS_RETAINED)
                     }
-                    logger.info("TraceletSdk: Synced locations ($count) and telematics ($hasTelematics)")
+                    logger.info("TraceletSdk: Synced locations ($count) and telematics ($telematicsDelivered)")
+                } else if (hasTelematics) {
+                    logger.info(
+                        "TraceletSdk: sync failed; telematics up to id $attachedTelematicsMaxId " +
+                            "kept unsynced for the next attempt",
+                    )
                 }
                 
                 mainHandler.post {
@@ -2330,6 +2437,58 @@ class TraceletSdk private constructor(private val context: Context) {
                 }
             }
         }.start()
+    }
+
+    /**
+     * Serializes telematics rows to the wire shape (#366, #367).
+     *
+     * The key names are the ones apps already parse out of `extras.__telematics`,
+     * so this stays additive: `speed` and `value` join the object, nothing is
+     * renamed or removed.
+     */
+    private fun telematicsJsonArray(
+        events: List<uniffi.tracelet_core.DbTelematicsRecord>,
+    ): org.json.JSONArray {
+        val jsonArray = org.json.JSONArray()
+        events.forEach { event ->
+            val obj = org.json.JSONObject()
+            obj.put("id", event.id)
+            obj.put("event_type", event.eventType)
+            obj.put("severity", event.severity)
+            obj.put("speed", event.speed)
+            obj.put("value", event.value)
+            obj.put("latitude", event.latitude)
+            obj.put("longitude", event.longitude)
+            obj.put("timestamp", event.timestamp)
+            obj.put("synced", event.synced)
+            jsonArray.put(obj)
+        }
+        return jsonArray
+    }
+
+    /**
+     * POSTs telematics to the dedicated [telematicsUrl] endpoint (#368).
+     *
+     * Wraps the array in `{"telematics": [...]}` so the body is an object, and
+     * routes through the sync provider so pinning, headers, timeouts and retry
+     * behave the same as the location path. Failures are swallowed into `false`
+     * — the caller keeps the rows unsynced rather than losing them (#366).
+     */
+    private fun postTelematicsBatch(
+        telematicsUrl: String,
+        configHttp: uniffi.tracelet_core.HttpConfig,
+        events: List<uniffi.tracelet_core.DbTelematicsRecord>,
+    ): Boolean {
+        val provider = syncProvider ?: return false
+        return try {
+            val body = org.json.JSONObject()
+                .put("telematics", telematicsJsonArray(events))
+                .toString()
+            provider.postTelematicsBlocking(configHttp, telematicsUrl, body)
+        } catch (e: Exception) {
+            logger.error("Telematics sync to $telematicsUrl failed: ${e.message}")
+            false
+        }
     }
 
     fun setDynamicHeaders(headers: Map<String, String>) {
@@ -2653,6 +2812,9 @@ class TraceletSdk private constructor(private val context: Context) {
                 "id" to e.id,
                 "event_type" to e.eventType,
                 "severity" to e.severity,
+                // #367: additive — existing keys keep their names and meaning.
+                "speed" to e.speed,
+                "value" to e.value,
                 "latitude" to e.latitude,
                 "longitude" to e.longitude,
                 "timestamp" to e.timestamp,
@@ -2718,7 +2880,9 @@ class TraceletSdk private constructor(private val context: Context) {
     fun simulateTelematicsEvent(eventType: String, severity: Double, latitude: Double, longitude: Double): Boolean {
         if (!isReady) return false
         return try {
-            rustDatabase?.insertTelematicsEvent(eventType, severity, latitude, longitude)
+            // #367: a simulated event has no measured magnitudes; 0.0 keeps the
+            // public 4-arg signature (Pigeon + React Native) unchanged.
+            rustDatabase?.insertTelematicsEvent(eventType, severity, 0.0, 0.0, latitude, longitude)
             true
         } catch (e: Exception) {
             logger.error("Failed to simulate telematics event: ${e.message}")
@@ -3338,7 +3502,10 @@ class TraceletSdk private constructor(private val context: Context) {
             // Persist to the telematics DB so getTelematicsEvents() returns the
             // real history (not just Doctor-simulated events).
             try {
-                rustDatabase?.insertTelematicsEvent(e.kind, e.severity, e.latitude, e.longitude)
+                // #367: `speed` and `value` are the magnitudes behind the
+                // normalized severity — persist them, or stored history and every
+                // synced payload keeps only the flag.
+                rustDatabase?.insertTelematicsEvent(e.kind, e.severity, e.speed, e.value, e.latitude, e.longitude)
             } catch (ex: Exception) {
                 logger.error("Failed to persist driving event: ${ex.message}")
             }
@@ -3811,7 +3978,11 @@ class TraceletSdk private constructor(private val context: Context) {
         // may still be cancelled) to the telematics DB for history/retrieval.
         if (e.kind == "crash" || e.kind == "fall") {
             try {
-                rustDatabase?.insertTelematicsEvent(e.kind, e.confidence, e.latitude, e.longitude)
+                // #367: peak g and the speed going in are an impact's magnitudes,
+                // the same role speed/value play for a driving event.
+                rustDatabase?.insertTelematicsEvent(
+                    e.kind, e.confidence, e.speedBefore, e.peakG, e.latitude, e.longitude,
+                )
             } catch (ex: Exception) {
                 logger.error("Failed to persist impact event: ${ex.message}")
             }
@@ -3849,8 +4020,9 @@ class TraceletSdk private constructor(private val context: Context) {
             ),
         )
         try {
+            // #367: as above — peak g and entry speed are the impact's magnitudes.
             rustDatabase?.insertTelematicsEvent(
-                p.confirmedKind, p.confidence, p.latitude, p.longitude,
+                p.confirmedKind, p.confidence, p.speedBefore, p.peakG, p.latitude, p.longitude,
             )
         } catch (ex: Exception) {
             logger.error("Failed to persist confirmed impact event: ${ex.message}")

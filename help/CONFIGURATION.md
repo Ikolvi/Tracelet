@@ -301,21 +301,33 @@ The bundled `TraceletLiveActivityView` renders the timer automatically. A custom
 
 ### Updating the tracking indicator
 
-Use `Tracelet.setNotification` to update only notification or Live Activity content:
+To start the timer, write only the notification fields and repost. `setConfig` is a partial update (#320, #321) — fields you do not supply keep their persisted value, so `http.url`, headers and every other section are untouched:
 
 ```dart
-await Tracelet.setNotification(
-  text: 'Delivery in progress',
-  startedAt: shiftStartedAt.millisecondsSinceEpoch,
-  showTimer: true,
-);
+await Tracelet.setConfig(Config(
+  android: AndroidConfig(
+    foregroundService: ForegroundServiceConfig(
+      notificationText: 'Delivery in progress',
+      notificationStartedAt: shiftStartedAt.millisecondsSinceEpoch,
+      notificationShowTimer: true,
+      notificationOnlyAlertOnce: true,
+    ),
+  ),
+  ios: IosConfig(
+    liveActivityConfig: LiveActivityConfig(
+      title: 'Delivery',
+      body: 'In progress',
+      startedAt: shiftStartedAt.millisecondsSinceEpoch,
+      showTimer: true,
+    ),
+  ),
+));
+await Tracelet.updateNotification();
 ```
 
-Only non-null arguments are merged into the persisted indicator configuration. This is safer than using `setConfig` for frequent content updates: the targeted payload cannot carry `http.url`, headers, or other unrelated settings that could be overwritten accidentally. An all-null call is a no-op.
+`setConfig` persists the values; `updateNotification()` reposts the indicator so they take effect on the one currently on screen. Neither needs to be called periodically — the OS advances the timer on its own.
 
-On Android, the foreground-service notification is reposted if the service is running; otherwise the values are persisted for its next post. On iOS, the call updates an already configured Live Activity and is a logged no-op when `liveActivityConfig` is absent. On Web it is a no-op. `showTimer: false` disables a stored timer; `startedAt` cannot be cleared through this nullable update API and remains inert while the timer is off.
-
-`Tracelet.updateNotification()` remains available when configuration was changed separately and the current indicator only needs to be reposted. Neither API needs periodic calls to advance the timer.
+Set `notificationShowTimer` (or `showTimer`) to `false` to stop showing the clock. The start instant remains persisted and inert while the timer is off.
 
 ---
 

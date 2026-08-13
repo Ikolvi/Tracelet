@@ -34,10 +34,19 @@ public protocol SyncProvider {
     /// Cancel any pending (debounced) auto-sync so stop() takes effect
     /// immediately (#213). Default no-op for providers without a debounce.
     func cancelPendingSync()
+    /// POST `body` to `url` — the separate telematics endpoint (#368). Returns
+    /// whether the server accepted it; `false` leaves the events unsynced for
+    /// the next attempt.
+    func postTelematicsBlocking(config: HttpConfig, url: String, body: String) throws -> Bool
 }
 
 public extension SyncProvider {
     func cancelPendingSync() {}
+
+    /// Defaults to "not delivered" so a provider that hasn't implemented it
+    /// can't settle events it never sent (#366). Only reached when
+    /// `telematicsUrl` is set, so existing providers are unaffected.
+    func postTelematicsBlocking(config: HttpConfig, url: String, body: String) throws -> Bool { false }
 }
 
 public final class TraceletSdk {
@@ -1161,31 +1170,6 @@ public final class TraceletSdk {
         }
     }
 
-    /// Applies a targeted update to the optional Live Activity and reposts it
-    /// without carrying HTTP or any unrelated configuration section.
-    public func setNotification(title: String?, text: String?, startedAt: Date?, showTimer: Bool?) {
-        guard title != nil || text != nil || startedAt != nil || showTimer != nil else { return }
-        guard isReady else { return }
-        guard let current = configManager.getLiveActivityConfig() else {
-            logger.info("no liveActivityConfig set — setNotification is Android-only until one is configured")
-            return
-        }
-
-        let mergedStartedAt = startedAt ?? current.startedAt
-        var merged: [String: Any] = [
-            "title": title ?? current.title,
-            "body": text ?? current.body,
-            "showTimer": showTimer ?? current.showTimer,
-        ]
-        if let mergedStartedAt = mergedStartedAt {
-            merged["startedAt"] = Int64(
-                (mergedStartedAt.timeIntervalSince1970 * 1000.0).rounded()
-            )
-        }
-        _ = configManager.setConfig(["liveActivityConfig": merged])
-        updateNotification()
-    }
-
     /// Loose equality for two heterogeneous config values, used to detect which
     /// keys changed between an old and new config snapshot. Config values are
     /// primitives (Int/Double/Bool/String) sourced from the same dictionary
@@ -1752,6 +1736,7 @@ public final class TraceletSdk {
                 eventPayload: eventPayload,
                 address: address
             )
+            enforceRetentionCaps(db)
             // Notify the sync plugin so it can trigger auto-sync
             if let sink = syncProvider as? LocationDataSink {
                 sink.insertLocation(params)
@@ -1763,12 +1748,141 @@ public final class TraceletSdk {
         }
     }
 
+    /// Location inserts seen this process. See ``enforceRetentionCaps(_:)``.
+    private var locationInsertsSeen = 0
+
+    /// Retention pruning runs on the first location insert and every N-th
+    /// thereafter, instead of on every insert (#361).
+    private static let pruneEveryNInserts = 100
+
+    /// Applies `maxDaysToPersist` and `maxRecordsToPersist` to `location_events`
+    /// (#361).
+    ///
+    /// Both caps were accepted by `ready()`/`setConfig()`, echoed back in
+    /// `State.config` — and enforced by nothing, so the local queue grew without
+    /// bound however they were set. They were real up to 3.0 via `pruneOldLocations`
+    /// / `enforceMaxRecords` on the Swift `TraceletDatabase`; the 3.1.0 migration
+    /// onto the Rust core replaced the persist body with a sink fan-out and deleted
+    /// the retention calls with it, leaving an unread counter and a docstring behind
+    /// as the only trace.
+    ///
+    /// Deliberately here rather than back in `LocationEngine.persistLocationIfAllowed`,
+    /// where the leftover counter sat: this is the single funnel every location
+    /// reaches the DB through. The engine's persist path is only one caller — the
+    /// public `insertLocation` API, the geofence writers and the killed-state
+    /// relaunch path insert straight through here, and pruning in the engine would
+    /// have left the reporter's own repro (100+ explicit `insertLocation` calls)
+    /// still unbounded.
+    ///
+    /// Amortized over ``pruneEveryNInserts`` inserts rather than run on each one, so
+    /// a COUNT-and-DELETE is not attached to every GPS fix. The queue can therefore
+    /// sit up to that many records above `maxRecordsToPersist` between prunes; the
+    /// cap bounds growth, it is not a per-insert invariant. The first insert of the
+    /// process prunes, so a cap tightened while stopped — or a backlog inherited
+    /// from a build that never enforced one — is cut down without waiting out a
+    /// whole window.
+    ///
+    /// A retention failure must not fail the insert: the record is already committed
+    /// and losing it to a prune error would be strictly worse than an oversized
+    /// queue.
+    ///
+    /// The counter is deliberately unsynchronized, like ``lastInsertedTimestamp``
+    /// above it. Inserts arrive from both the CoreLocation delegate and the public
+    /// API, so a racy increment can make a prune land an insert early or late —
+    /// which costs nothing, and is cheaper than serializing every insert behind a
+    /// lock to schedule a periodic DELETE precisely.
+    private func enforceRetentionCaps(_ db: DatabaseManager) {
+        defer { locationInsertsSeen += 1 }
+        guard locationInsertsSeen % TraceletSdk.pruneEveryNInserts == 0 else { return }
+        do {
+            let maxDays = Int32(clamping: configManager.getMaxDaysToPersist())
+            let maxRecords = Int32(clamping: configManager.getMaxRecordsToPersist())
+            let byAge = try db.pruneLocationsOlderThan(maxDays: maxDays)
+            let byCount = try db.enforceMaxLocationRecords(maxRecords: maxRecords)
+            if byAge > 0 || byCount > 0 {
+                TraceletLog.debug(
+                    "Retention: pruned \(byAge) location(s) older than \(maxDays) day(s), "
+                        + "\(byCount) over the \(maxRecords)-record cap."
+                )
+            }
+        } catch {
+            TraceletLog.error("Retention pruning failed: \(error)")
+        }
+    }
+
     // =========================================================================
     // MARK: - HTTP Sync
     // =========================================================================
 
     /// Manually trigger HTTP synchronization of pending locations.
     ///
+    /// How many already-synced telematics events stay readable through
+    /// `getTelematicsEvents()` (#366).
+    ///
+    /// Sync marks rows instead of deleting them so uploading an event doesn't
+    /// erase it from the app's own history (#313) — this is what stops that from
+    /// growing for the lifetime of the install. Unsynced rows are never subject
+    /// to it; they are still owed to the server.
+    static let maxSyncedTelematicsRetained: Int32 = 1000
+
+    /// Serializes telematics rows to the wire shape (#366, #367).
+    ///
+    /// The key names are the ones apps already parse out of `extras.__telematics`,
+    /// so this stays additive: `speed` and `value` join the object, nothing is
+    /// renamed or removed.
+    static func telematicsDicts(_ events: [DbTelematicsRecord]) -> [[String: Any]] {
+        events.map { event in
+            [
+                "id": event.id,
+                "event_type": event.eventType,
+                "severity": event.severity,
+                "speed": event.speed,
+                "value": event.value,
+                "latitude": event.latitude,
+                "longitude": event.longitude,
+                "timestamp": event.timestamp,
+                "synced": event.synced
+            ]
+        }
+    }
+
+    /// The JSON array apps read from `extras.__telematics`, or `nil` if it could
+    /// not be serialized — in which case nothing was attached and the rows must
+    /// stay unsynced.
+    static func telematicsJsonString(_ events: [DbTelematicsRecord]) -> String? {
+        guard let data = try? JSONSerialization.data(withJSONObject: telematicsDicts(events), options: []) else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
+    }
+
+    /// POSTs telematics to the dedicated `telematicsUrl` endpoint (#368).
+    ///
+    /// Wraps the array in `{"telematics": [...]}` so the body is an object, and
+    /// routes through the sync provider so pinning, headers, timeouts and retry
+    /// behave the same as the location path. Failures collapse to `false` — the
+    /// caller keeps the rows unsynced rather than losing them (#366).
+    static func postTelematicsBatch(
+        provider: SyncProvider,
+        config: HttpConfig,
+        url: String,
+        events: [DbTelematicsRecord]
+    ) -> Bool {
+        guard let data = try? JSONSerialization.data(
+            withJSONObject: ["telematics": telematicsDicts(events)],
+            options: []
+        ), let body = String(data: data, encoding: .utf8) else {
+            TraceletLog.error("Telematics sync body could not be serialized")
+            return false
+        }
+        do {
+            return try provider.postTelematicsBlocking(config: config, url: url, body: body)
+        } catch {
+            TraceletLog.error("Telematics sync to \(url) failed: \(error)")
+            return false
+        }
+    }
+
     /// - Parameter completion: Called with the list of synced location dictionaries.
     public func sync(completion: (([[String: Any]]) -> Void)? = nil) {
         guard isReady else { completion?([]); return }
@@ -1792,48 +1906,81 @@ public final class TraceletSdk {
                     orderDescending: config.http.locationsOrderDirection == 1
                 ))
                 var configHttp = config.http
-                let syncTelematics = (self.configManager.getConfig()["http"] as? [String: Any])?["syncTelematics"] as? Bool ?? false
+                // #370: this read `getConfig()["http"]["syncTelematics"]`, but the
+                // config cache is flat — Dart's nested sections are flattened on
+                // the way in — so `["http"]` was always nil and the flag always
+                // false. syncTelematics never took effect here, whatever the app
+                // configured. Use the accessor that knows the cache is flat.
+                let syncTelematics = self.configManager.getSyncTelematics()
                 
-                var telematicsCleared = false
+                // #366: the id range we attach, so a *successful* upload can mark
+                // exactly those synced. This used to be a bare boolean feeding an
+                // unconditional `clearTelematicsEvents()` — a table-wide delete
+                // that ran even when the POST had failed, so an offline device
+                // destroyed its driving events instead of queueing them. 0 means
+                // nothing was attached.
+                var attachedTelematicsMaxId: Int64 = 0
+                // #368: a separate endpoint means the telematics travel on their
+                // own request, so they must not also ride the location payload.
+                let telematicsUrl = self.configManager.getTelematicsUrl().isEmpty
+                    ? nil : self.configManager.getTelematicsUrl()
+                var telematicsToPost: [DbTelematicsRecord] = []
                 if syncTelematics {
                     let telematics = try db.getTelematicsEvents(limit: 250)
                     if !telematics.isEmpty {
-                        var telematicsDicts = [[String: Any]]()
-                        for event in telematics {
-                            telematicsDicts.append([
-                                "id": event.id,
-                                "event_type": event.eventType,
-                                "severity": event.severity,
-                                "latitude": event.latitude,
-                                "longitude": event.longitude,
-                                "timestamp": event.timestamp,
-                                "synced": event.synced
-                            ])
-                        }
-                        if let jsonData = try? JSONSerialization.data(withJSONObject: telematicsDicts, options: []),
-                           let jsonString = String(data: jsonData, encoding: .utf8) {
+                        attachedTelematicsMaxId = telematics.map { $0.id }.max() ?? 0
+                        if telematicsUrl != nil {
+                            telematicsToPost = telematics
+                        } else if let jsonString = Self.telematicsJsonString(telematics) {
                             var newExtras = configHttp.extras ?? [:]
                             newExtras["__telematics"] = jsonString
                             configHttp.extras = newExtras
-                            telematicsCleared = true
+                        } else {
+                            // Serialization failed — nothing was attached, so the
+                            // rows must stay unsynced rather than be settled below.
+                            attachedTelematicsMaxId = 0
                         }
                     }
                 }
-                
-                let hasTelematics = telematicsCleared
+
+                let hasTelematics = attachedTelematicsMaxId > 0
                 if records.isEmpty && !hasTelematics {
                     DispatchQueue.main.async { completion?([]) }
                     return
                 }
-                
+
                 guard let syncProvider = syncProvider else {
                     TraceletLog.error("Sync failed: No SyncProvider registered (is tracelet_sync installed?)")
                     DispatchQueue.main.async { completion?([]) }
                     return
                 }
-                
-                let syncedCount = try syncProvider.syncBatchBlocking(config: configHttp, records: records)
-                if syncedCount > 0 || hasTelematics {
+
+                // #368: posted before the locations so a telematics-only sync still
+                // has something to do when `records` is empty.
+                var telematicsPosted = false
+                if let telematicsUrl = telematicsUrl, !telematicsToPost.isEmpty {
+                    telematicsPosted = Self.postTelematicsBatch(
+                        provider: syncProvider,
+                        config: configHttp,
+                        url: telematicsUrl,
+                        events: telematicsToPost
+                    )
+                }
+
+                // Skipping the location POST is only safe when the telematics
+                // already went somewhere else (#368). On the default path they
+                // ride this request, so it must still be made even with an empty
+                // batch — otherwise they would sit unsynced until a location
+                // happened along.
+                let syncedCount = (records.isEmpty && telematicsUrl != nil)
+                    ? 0
+                    : try syncProvider.syncBatchBlocking(config: configHttp, records: records)
+
+                // #366: telematics are only settled when the request that carried
+                // them actually succeeded. Attached to the location payload, that
+                // is the location POST; sent to `telematicsUrl`, it is their own.
+                let telematicsDelivered = telematicsUrl != nil ? telematicsPosted : syncedCount > 0
+                if syncedCount > 0 || telematicsDelivered {
                     if syncedCount > 0 {
                         let successfullySynced = Array(records.prefix(Int(syncedCount)))
                         if let lastRecord = successfullySynced.last {
@@ -1843,11 +1990,20 @@ public final class TraceletSdk {
                             self.syncedLocationsLock.unlock()
                         }
                     }
-                    if telematicsCleared {
-                        try db.clearTelematicsEvents()
+                    if telematicsDelivered && attachedTelematicsMaxId > 0 {
+                        // Mark, don't delete: #313 requires an uploaded event to
+                        // stay visible in the app's own history. Bounded by the
+                        // synced-tail trim so the table can't grow forever.
+                        try db.markTelematicsSynced(maxId: attachedTelematicsMaxId)
+                        _ = try db.pruneSyncedTelematics(keep: Self.maxSyncedTelematicsRetained)
                     }
                     DispatchQueue.main.async { completion?([]) }
                 } else {
+                    if hasTelematics {
+                        TraceletLog.info(
+                            "sync failed; telematics up to id \(attachedTelematicsMaxId) kept unsynced for the next attempt"
+                        )
+                    }
                     DispatchQueue.main.async { completion?([]) }
                 }
             } catch {
@@ -2079,17 +2235,8 @@ public final class TraceletSdk {
         if let maxId = events.map({ $0.id }).max() {
             lastExposedTelematicsMaxId = maxId
         }
-        return events.map { e in
-            [
-                "id": e.id,
-                "event_type": e.eventType,
-                "severity": e.severity,
-                "latitude": e.latitude,
-                "longitude": e.longitude,
-                "timestamp": e.timestamp,
-                "synced": e.synced,
-            ]
-        }
+        // #367: additive — existing keys keep their names and meaning.
+        return Self.telematicsDicts(events)
     }
 
     /// Highest telematics id handed to a custom builder via
@@ -2157,7 +2304,11 @@ public final class TraceletSdk {
     public func simulateTelematicsEvent(eventType: String, severity: Double, latitude: Double, longitude: Double) -> Bool {
         guard isReady, let db = rustDatabase else { return false }
         do {
-            try db.insertTelematicsEvent(eventType: eventType, severity: severity, lat: latitude, lng: longitude)
+            // #367: a simulated event has no measured magnitudes; 0.0 keeps the
+            // public 4-arg signature (Pigeon + React Native) unchanged.
+            try db.insertTelematicsEvent(
+                eventType: eventType, severity: severity, speed: 0.0, value: 0.0,
+                lat: latitude, lng: longitude)
             return true
         } catch {
             logger.error("Failed to simulate telematics event: \(error)")
@@ -2875,8 +3026,12 @@ public final class TraceletSdk {
             ])
             // Persist to the telematics DB so getTelematicsEvents() returns the
             // real history (not just Doctor-simulated events).
+            // #367: `speed` and `value` are the magnitudes behind the normalized
+            // severity — persist them, or stored history and every synced payload
+            // keeps only the flag.
             try? rustDatabase?.insertTelematicsEvent(
-                eventType: e.kind, severity: e.severity, lat: e.latitude, lng: e.longitude)
+                eventType: e.kind, severity: e.severity, speed: e.speed, value: e.value,
+                lat: e.latitude, lng: e.longitude)
         }
     }
 
@@ -3257,8 +3412,11 @@ public final class TraceletSdk {
             "speedBefore": p.speedBefore, "latitude": p.latitude, "longitude": p.longitude,
             "timestampMs": p.timestampMs, "confirmDeadlineMs": p.confirmDeadlineMs,
         ])
+        // #367: peak g and the speed going in are an impact's magnitudes, the
+        // same role speed/value play for a driving event.
         try? rustDatabase?.insertTelematicsEvent(
-            eventType: p.confirmedKind, severity: p.confidence, lat: p.latitude, lng: p.longitude)
+            eventType: p.confirmedKind, severity: p.confidence, speed: p.speedBefore,
+            value: p.peakG, lat: p.latitude, lng: p.longitude)
     }
 
     /// Delivers any crash/fall candidates whose deadline elapsed while the app
@@ -3282,8 +3440,10 @@ public final class TraceletSdk {
         // Persist confirmed impacts (not transient potential_* candidates, which
         // may still be cancelled) to the telematics DB for history/retrieval.
         if e.kind == "crash" || e.kind == "fall" {
+            // #367: as above — peak g and entry speed are the impact's magnitudes.
             try? rustDatabase?.insertTelematicsEvent(
-                eventType: e.kind, severity: e.confidence, lat: e.latitude, lng: e.longitude)
+                eventType: e.kind, severity: e.confidence, speed: e.speedBefore,
+                value: e.peakG, lat: e.latitude, lng: e.longitude)
             // #182: an in-process confirmation just delivered this event — drop
             // the persisted candidate and cancel its safety-net notification so
             // the relaunch drain never re-emits a duplicate.

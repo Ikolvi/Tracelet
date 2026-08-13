@@ -81,16 +81,6 @@ class MethodChannelTracelet extends TraceletPlatform {
     await _methodChannel.invokeMethod<void>('updateNotification');
   }
 
-  @override
-  Future<void> setNotification(TlNotificationUpdate update) async {
-    await _methodChannel.invokeMethod<void>('setNotification', {
-      if (update.title != null) 'title': update.title,
-      if (update.text != null) 'text': update.text,
-      if (update.startedAt != null) 'startedAt': update.startedAt,
-      if (update.showTimer != null) 'showTimer': update.showTimer,
-    });
-  }
-
   // ---------------------------------------------------------------------------
   // Location
   // ---------------------------------------------------------------------------

@@ -3271,6 +3271,8 @@ class TlTelematicsRecord {
     required this.id,
     required this.eventType,
     required this.severity,
+    this.speed,
+    this.value,
     required this.latitude,
     required this.longitude,
     required this.timestamp,
@@ -3285,6 +3287,19 @@ class TlTelematicsRecord {
 
   /// The severity of the event.
   double severity;
+
+  /// Speed at the event in m/s — for an impact, the speed going in (#367).
+  ///
+  /// Nullable so a Dart side newer than the native plugin decodes a missing
+  /// field as `null` instead of failing.
+  double? speed;
+
+  /// The measured magnitude that triggered the event: g for harsh driving
+  /// events and impacts, km/h over the limit for speeding (#367).
+  ///
+  /// `severity` is the normalized 0–1 flag; this is the physical quantity
+  /// behind it. Nullable for the same reason as [speed].
+  double? value;
 
   /// The latitude.
   double latitude;
@@ -3303,6 +3318,8 @@ class TlTelematicsRecord {
       id,
       eventType,
       severity,
+      speed,
+      value,
       latitude,
       longitude,
       timestamp,
@@ -3320,10 +3337,12 @@ class TlTelematicsRecord {
       id: result[0]! as int,
       eventType: result[1]! as String,
       severity: result[2]! as double,
-      latitude: result[3]! as double,
-      longitude: result[4]! as double,
-      timestamp: result[5]! as String,
-      synced: result[6]! as bool,
+      speed: result[3] as double?,
+      value: result[4] as double?,
+      latitude: result[5]! as double,
+      longitude: result[6]! as double,
+      timestamp: result[7]! as String,
+      synced: result[8]! as bool,
     );
   }
 
@@ -3339,6 +3358,8 @@ class TlTelematicsRecord {
     return _deepEquals(id, other.id) &&
         _deepEquals(eventType, other.eventType) &&
         _deepEquals(severity, other.severity) &&
+        _deepEquals(speed, other.speed) &&
+        _deepEquals(value, other.value) &&
         _deepEquals(latitude, other.latitude) &&
         _deepEquals(longitude, other.longitude) &&
         _deepEquals(timestamp, other.timestamp) &&
@@ -3409,6 +3430,11 @@ class TlLogEntry {
 }
 
 /// Location-filter thresholds applied by transport-mode auto-tuning (#301).
+///
+/// Declared last on purpose: pigeon assigns codec type IDs by declaration
+/// order, so inserting a class higher up would renumber every type after it
+/// and break any app that resolves a plugin and the platform interface at
+/// different versions.
 class TlLocationTuning {
   TlLocationTuning({
     required this.distanceFilter,
@@ -3471,66 +3497,6 @@ class TlLocationTuning {
           other.odometerAccuracyThreshold,
         ) &&
         _deepEquals(maxImpliedSpeed, other.maxImpliedSpeed);
-  }
-
-  @override
-  // ignore: avoid_equals_and_hash_code_on_mutable_classes
-  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
-}
-
-/// A targeted notification update for `setNotification()`.
-///
-/// Every field is nullable; null means "leave the persisted value alone".
-/// Deliberately NOT a TlConfig: this payload can never carry http.url or
-/// headers, so a notification refresh cannot clobber sync settings.
-///
-/// Declared last to preserve all existing Pigeon codec type IDs.
-class TlNotificationUpdate {
-  TlNotificationUpdate({this.title, this.text, this.startedAt, this.showTimer});
-
-  /// The replacement notification or Live Activity title.
-  String? title;
-
-  /// The replacement notification text or Live Activity body.
-  String? text;
-
-  /// Epoch milliseconds for the optional wall-clock count-up timer.
-  int? startedAt;
-
-  /// Whether to show the count-up timer when a start instant exists.
-  bool? showTimer;
-
-  List<Object?> _toList() {
-    return <Object?>[title, text, startedAt, showTimer];
-  }
-
-  Object encode() {
-    return _toList();
-  }
-
-  static TlNotificationUpdate decode(Object result) {
-    result as List<Object?>;
-    return TlNotificationUpdate(
-      title: result[0] as String?,
-      text: result[1] as String?,
-      startedAt: result[2] as int?,
-      showTimer: result[3] as bool?,
-    );
-  }
-
-  @override
-  // ignore: avoid_equals_and_hash_code_on_mutable_classes
-  bool operator ==(Object other) {
-    if (other is! TlNotificationUpdate || other.runtimeType != runtimeType) {
-      return false;
-    }
-    if (identical(this, other)) {
-      return true;
-    }
-    return _deepEquals(title, other.title) &&
-        _deepEquals(text, other.text) &&
-        _deepEquals(startedAt, other.startedAt) &&
-        _deepEquals(showTimer, other.showTimer);
   }
 
   @override
@@ -3734,9 +3700,6 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is TlLocationTuning) {
       buffer.putUint8(191);
       writeValue(buffer, value.encode());
-    } else if (value is TlNotificationUpdate) {
-      buffer.putUint8(192);
-      writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
     }
@@ -3892,8 +3855,6 @@ class _PigeonCodec extends StandardMessageCodec {
         return TlLogEntry.decode(readValue(buffer)!);
       case 191:
         return TlLocationTuning.decode(readValue(buffer)!);
-      case 192:
-        return TlNotificationUpdate.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -4111,29 +4072,6 @@ class TraceletHostApi {
       binaryMessenger: pigeonVar_binaryMessenger,
     );
     final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
-    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
-
-    _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: true,
-    );
-  }
-
-  /// Applies a targeted update to the tracking indicator's content and
-  /// reposts it, merging only the supplied fields into the persisted
-  /// configuration. Never touches any other config section.
-  Future<void> setNotification(TlNotificationUpdate update) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.setNotification$pigeonVar_messageChannelSuffix';
-    final pigeonVar_channel = BasicMessageChannel<Object?>(
-      pigeonVar_channelName,
-      pigeonChannelCodec,
-      binaryMessenger: pigeonVar_binaryMessenger,
-    );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[update],
-    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(

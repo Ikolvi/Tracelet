@@ -15,7 +15,6 @@ import com.ikolvi.tracelet.TlCurrentPositionOptions
 import com.ikolvi.tracelet.TlGeofence
 import com.ikolvi.tracelet.TlLocation
 import com.ikolvi.tracelet.TlLocationTuning
-import com.ikolvi.tracelet.TlNotificationUpdate
 import com.ikolvi.tracelet.TlProviderChangeEvent
 import com.ikolvi.tracelet.TlState
 import com.ikolvi.tracelet.TlTrackingMode
@@ -43,6 +42,15 @@ import com.ikolvi.tracelet.sdk.util.OemCompat
 class TraceletHostApiImpl(
     private val context: Context,
     private val headlessService: HeadlessTaskService,
+    /**
+     * Invoked when the Dart side of the engine this instance is registered on
+     * subscribes to Tracelet's events (#364).
+     *
+     * Optional so the existing two-argument construction keeps working; the
+     * plugin passes it for every engine, and only a secondary UI engine acts
+     * on it. See [TraceletAndroidPlugin.onDartEventsSubscribed].
+     */
+    private val onDartEventsSubscribed: (() -> Unit)? = null,
 ) : TraceletHostApi {
 
     companion object {
@@ -390,6 +398,14 @@ class TraceletHostApiImpl(
 
     @Suppress("UNCHECKED_CAST")
     override fun requestStateFlush() {
+        // `PigeonTracelet._ensureEventsRegistered()` calls this once per isolate,
+        // immediately after `TraceletEventApi.setUp(...)`, on the first access to
+        // any event stream. Since the HostApi is registered per messenger, its
+        // arrival here is the native side's evidence that *this* engine's Dart
+        // side is listening — which is what decides whether a secondary engine
+        // may join the event fan-out (#364). Signalled before the flush so the
+        // re-emitted state reaches an engine that just subscribed.
+        onDartEventsSubscribed?.invoke()
         sdk.requestStateFlush()
     }
 
@@ -484,18 +500,6 @@ class TraceletHostApiImpl(
         // running — LocationService only reposts when already promoted.
         try {
             sdk.updateNotification()
-            callback(Result.success(Unit))
-        } catch (e: Exception) { callback(Result.failure(e)) }
-    }
-
-    override fun setNotification(update: TlNotificationUpdate, callback: (Result<Unit>) -> Unit) {
-        try {
-            sdk.setNotification(
-                title = update.title,
-                text = update.text,
-                startedAt = update.startedAt,
-                showTimer = update.showTimer,
-            )
             callback(Result.success(Unit))
         } catch (e: Exception) { callback(Result.failure(e)) }
     }
@@ -982,6 +986,9 @@ class TraceletHostApiImpl(
                     id = e.id,
                     eventType = e.eventType,
                     severity = e.severity,
+                    // #367: the magnitudes behind the normalized severity.
+                    speed = e.speed,
+                    value = e.value,
                     latitude = e.latitude,
                     longitude = e.longitude,
                     timestamp = e.timestamp,

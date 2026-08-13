@@ -14,11 +14,11 @@ import 'package:tracelet_example/issues/issue_card_shell.dart';
 /// [Tracelet.getLogs], carrying the values the Android `ConfigManager` handed
 /// to the notification builder. That channel matters because
 /// `Tracelet.getState().config` is backfilled from the Dart mirror
-/// `_currentConfig` (`tracelet.dart:223-229`), which `setNotification` mutates
-/// at `:558-581` *before* it calls the platform at `:582`. A card that read the
-/// timer fields back that way would be asserting that a Dart field holds what
-/// the card itself had just written into it — which is what the first version
-/// of this card did, and it proved nothing.
+/// `_currentConfig`, which `setConfig` merges into *before* it calls the
+/// platform. A card that read the timer fields back that way would be
+/// asserting that a Dart field holds what the card itself had just written
+/// into it — which is what the first version of this card did, and it proved
+/// nothing.
 ///
 /// The line those rows key off:
 ///
@@ -138,6 +138,37 @@ class _Issue376CardState extends State<Issue376Card> {
     if (mounted) setState(() => _status = s);
   }
 
+  /// Writes only the notification fields, then reposts the indicator.
+  ///
+  /// `setConfig` is a partial update on both sides (#320, #321): a field left
+  /// null here is *not supplied* rather than *set to its default*, so
+  /// everything this does not name — `http.url` and `headers` included — keeps
+  /// the value the platform already persisted. That is what makes a content
+  /// update safe without a bespoke payload type.
+  ///
+  /// `setConfig` persists; `updateNotification()` is what pushes the change
+  /// onto the notification already on screen (#257).
+  Future<void> _setNotification({
+    String? title,
+    String? text,
+    int? startedAt,
+    bool? showTimer,
+  }) async {
+    await Tracelet.setConfig(
+      Config(
+        android: AndroidConfig(
+          foregroundService: ForegroundServiceConfig(
+            notificationTitle: title,
+            notificationText: text,
+            notificationStartedAt: startedAt,
+            notificationShowTimer: showTimer,
+          ),
+        ),
+      ),
+    );
+    await Tracelet.updateNotification();
+  }
+
   /// Highest log id currently stored — the window boundary.
   ///
   /// Ids rather than timestamps: monotonic, no date parsing, and they order the
@@ -175,7 +206,7 @@ class _Issue376CardState extends State<Issue376Card> {
   /// timeout: if the service genuinely never comes up, the row-2 diagnostic
   /// below already names that case correctly. This only removes the false
   /// failure where the service *would* have come up, but the first
-  /// `setNotification()` was sent before it did.
+  /// [_setNotification] was sent before it did.
   Future<bool> _awaitServiceRunning() async {
     final deadline = DateTime.now().add(_serviceStartTimeout);
     while (true) {
@@ -203,8 +234,8 @@ class _Issue376CardState extends State<Issue376Card> {
   /// reaching the service, then the `applyChronometer` line that followed *it*
   /// (id ordering, not just "some line appeared").
   ///
-  /// `marker` is taken by the caller before it calls `setNotification`, so both
-  /// halves are attributable to that call.
+  /// `marker` is taken by the caller before it calls [_setNotification], so
+  /// both halves are attributable to that call.
   Future<({LogEntry? repost, LogEntry? applied})> _observeBuilderCall(
     int marker,
   ) async {
@@ -346,13 +377,13 @@ class _Issue376CardState extends State<Issue376Card> {
       );
 
       // ── 2. Enable the timer ──────────────────────────────────────────────
-      _set('2/6 — requesting the timer via setNotification…');
+      _set('2/6 — requesting the timer via setConfig + updateNotification…');
 
       // Tracelet.start() only dispatches startForegroundService; the native
       // isRunning flag that updateNotification() gates on is set later,
       // inside onStartCommand (LocationService.kt:649-689), which runs
       // asynchronously after start() returns. Racing ahead with the first
-      // setNotification() risks losing that race — updateNotification()
+      // repost risks losing that race — updateNotification()
       // would see isRunning still false and refuse the update
       // (TraceletSdk.kt:1692-1695), which this card would otherwise report
       // as a chronometer failure it did not cause. Closed once, up front.
@@ -363,7 +394,7 @@ class _Issue376CardState extends State<Issue376Card> {
           .millisecondsSinceEpoch;
 
       var marker = await _latestLogId();
-      await Tracelet.setNotification(
+      await _setNotification(
         title: 'Issue 376 — shift in progress',
         text: 'Timer requested; started two hours ago',
         startedAt: startedAt,
@@ -408,7 +439,7 @@ class _Issue376CardState extends State<Issue376Card> {
       // ── 4. Text-only repost ──────────────────────────────────────────────
       _set('4/6 — reposting with new text only…');
       marker = await _latestLogId();
-      await Tracelet.setNotification(
+      await _setNotification(
         text: 'Reposted — the elapsed time must not jump back to zero',
       );
 
@@ -447,7 +478,7 @@ class _Issue376CardState extends State<Issue376Card> {
       // same device clock the native code stamps into `when`
       // (System.currentTimeMillis), so they are directly comparable.
       final beforeCall = DateTime.now().millisecondsSinceEpoch;
-      await Tracelet.setNotification(startedAt: future, showTimer: true);
+      await _setNotification(startedAt: future, showTimer: true);
 
       final futureBuild = await _observeBuilderCall(marker);
       final clamped = _values(futureBuild.applied);
@@ -486,13 +517,13 @@ class _Issue376CardState extends State<Issue376Card> {
       );
 
       // Sent with the opt-out so the config is not left holding the step-5
-      // future instant: a later card calling setNotification(showTimer: true)
+      // future instant: a later card setting notificationShowTimer: true
       // would otherwise reactivate an hour-ahead start (buildDemoConfig sets
       // neither timer field, and the native merge skips nulls, so nothing else
       // clears it).
       final saneStartedAt = DateTime.now().millisecondsSinceEpoch;
       marker = await _latestLogId();
-      await Tracelet.setNotification(
+      await _setNotification(
         showTimer: false,
         startedAt: saneStartedAt,
         text: 'Timer disabled — the notification should now show no clock',
@@ -535,7 +566,7 @@ class _Issue376CardState extends State<Issue376Card> {
       // showTimer:false rather than a broken path, though it cannot see
       // inside the window itself.
       marker = await _latestLogId();
-      await Tracelet.setNotification(showTimer: true);
+      await _setNotification(showTimer: true);
 
       final control = await _observeBuilderCall(marker);
       final controlValues = _values(control.applied);
@@ -571,7 +602,7 @@ class _Issue376CardState extends State<Issue376Card> {
       // card can leave behind is the best it can do for whatever inherits it.
       marker = await _latestLogId();
       final finalStartedAt = DateTime.now().millisecondsSinceEpoch;
-      await Tracelet.setNotification(
+      await _setNotification(
         showTimer: false,
         startedAt: finalStartedAt,
         text: 'Timer disabled — the notification should now show no clock',
@@ -579,10 +610,10 @@ class _Issue376CardState extends State<Issue376Card> {
       await _awaitLine(marker, _repostMarker);
 
       // ── 7. The Dart mirror's http.url ────────────────────────────────────
-      // Honest scope: this is a Dart-side check. It verifies that the merge
-      // setNotification performs on _currentConfig (tracelet.dart:560-581)
-      // leaves http alone — a real bug class for copyWith chains, and the exact
-      // failure the rebuild-the-whole-Config workaround used to risk. It says
+      // Honest scope: this is a Dart-side check. Every write above went through
+      // setConfig carrying only foregroundService fields, so this verifies the
+      // partial-merge guarantee (#320, #321) held across all six of them and
+      // left http untouched — a real bug class for copyWith chains. It says
       // nothing about native http state, which has no read-back at all.
       final httpUrlNow = Tracelet.activeConfig.http.url;
       check(
@@ -591,8 +622,8 @@ class _Issue376CardState extends State<Issue376Card> {
             'notification calls above',
         httpUrlNow == baselineHttpUrl,
         'http.url=$httpUrlNow (baseline $baselineHttpUrl). This is a Dart-side '
-            'field comparison, not a native read-back: it pins the copyWith/merge '
-            'chain in setNotification (tracelet.dart:558-581), which is a real bug '
+            'field comparison, not a native read-back: it pins the partial-merge '
+            'chain setConfig runs on _currentConfig, which is a real bug '
             'class, and says nothing about native http state. See NOT MEASURED '
             'below for what covers that instead',
       );
@@ -634,17 +665,16 @@ class _Issue376CardState extends State<Issue376Card> {
         'LiveActivityConfig is set. That half has had review but no compiler '
         'and no device; this card is Android-only and says nothing about it.\n'
         '• Native http state. There is no config read-back from the platform, '
-        'so the guarantee is structural rather than measured: '
-        'TlNotificationUpdate carries only title/text/startedAt/showTimer, and '
-        'TraceletSdk.setNotification builds a four-field foregroundService map '
-        'from those four and nothing else (TraceletSdk.kt:1712-1717). The payload is incapable '
-        'of carrying http.\n\n'
+        'so the guarantee is structural rather than measured: every write above '
+        'sent a Config carrying only foregroundService fields, and setConfig is '
+        'a partial update on both sides (#320, #321) — an unset section is '
+        'absent from the payload, so ConfigManager never sees http at all.\n\n'
         'Cleanup: the card ends with showTimer:false and notificationStartedAt '
         'refreshed to the instant immediately before this final call returns '
         '— not the hour-ahead instant step 5 used, and not the earlier '
         'saneStartedAt captured at the start of step 6. Neither field can be '
         'cleared — buildDemoConfig sets neither, and the native merge skips '
-        'nulls — so a later card that calls setNotification(showTimer: true) '
+        'nulls — so a later card setting notificationShowTimer: true '
         'without supplying its own startedAt inherits this instant. How '
         'stale it is by then is not something this card controls: it '
         'depends on how long you wait before running that later card, not on '
@@ -682,7 +712,7 @@ class _Issue376CardState extends State<Issue376Card> {
     return IssueCardShell(
       keywords:
           'notification chronometer elapsed timer setUsesChronometer setWhen '
-          'onlyAlertOnce setNotification live activity timerInterval '
+          'onlyAlertOnce updateNotification live activity timerInterval '
           'foreground service startedAt showTimer clamp repost 376',
       title: '#376: an OS-rendered elapsed timer in the tracking notification',
       description:

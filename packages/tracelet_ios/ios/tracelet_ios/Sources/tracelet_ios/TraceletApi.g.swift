@@ -2808,6 +2808,17 @@ struct TlTelematicsRecord: Hashable {
   var eventType: String
   /// The severity of the event.
   var severity: Double
+  /// Speed at the event in m/s — for an impact, the speed going in (#367).
+  ///
+  /// Nullable so a Dart side newer than the native plugin decodes a missing
+  /// field as `null` instead of failing.
+  var speed: Double? = nil
+  /// The measured magnitude that triggered the event: g for harsh driving
+  /// events and impacts, km/h over the limit for speeding (#367).
+  ///
+  /// `severity` is the normalized 0–1 flag; this is the physical quantity
+  /// behind it. Nullable for the same reason as [speed].
+  var value: Double? = nil
   /// The latitude.
   var latitude: Double
   /// The longitude.
@@ -2823,15 +2834,19 @@ struct TlTelematicsRecord: Hashable {
     let id = pigeonVar_list[0] as! Int64
     let eventType = pigeonVar_list[1] as! String
     let severity = pigeonVar_list[2] as! Double
-    let latitude = pigeonVar_list[3] as! Double
-    let longitude = pigeonVar_list[4] as! Double
-    let timestamp = pigeonVar_list[5] as! String
-    let synced = pigeonVar_list[6] as! Bool
+    let speed: Double? = nilOrValue(pigeonVar_list[3])
+    let value: Double? = nilOrValue(pigeonVar_list[4])
+    let latitude = pigeonVar_list[5] as! Double
+    let longitude = pigeonVar_list[6] as! Double
+    let timestamp = pigeonVar_list[7] as! String
+    let synced = pigeonVar_list[8] as! Bool
 
     return TlTelematicsRecord(
       id: id,
       eventType: eventType,
       severity: severity,
+      speed: speed,
+      value: value,
       latitude: latitude,
       longitude: longitude,
       timestamp: timestamp,
@@ -2843,6 +2858,8 @@ struct TlTelematicsRecord: Hashable {
       id,
       eventType,
       severity,
+      speed,
+      value,
       latitude,
       longitude,
       timestamp,
@@ -2853,7 +2870,7 @@ struct TlTelematicsRecord: Hashable {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsTraceletApi(lhs.id, rhs.id) && deepEqualsTraceletApi(lhs.eventType, rhs.eventType) && deepEqualsTraceletApi(lhs.severity, rhs.severity) && deepEqualsTraceletApi(lhs.latitude, rhs.latitude) && deepEqualsTraceletApi(lhs.longitude, rhs.longitude) && deepEqualsTraceletApi(lhs.timestamp, rhs.timestamp) && deepEqualsTraceletApi(lhs.synced, rhs.synced)
+    return deepEqualsTraceletApi(lhs.id, rhs.id) && deepEqualsTraceletApi(lhs.eventType, rhs.eventType) && deepEqualsTraceletApi(lhs.severity, rhs.severity) && deepEqualsTraceletApi(lhs.speed, rhs.speed) && deepEqualsTraceletApi(lhs.value, rhs.value) && deepEqualsTraceletApi(lhs.latitude, rhs.latitude) && deepEqualsTraceletApi(lhs.longitude, rhs.longitude) && deepEqualsTraceletApi(lhs.timestamp, rhs.timestamp) && deepEqualsTraceletApi(lhs.synced, rhs.synced)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -2861,6 +2878,8 @@ struct TlTelematicsRecord: Hashable {
     deepHashTraceletApi(value: id, hasher: &hasher)
     deepHashTraceletApi(value: eventType, hasher: &hasher)
     deepHashTraceletApi(value: severity, hasher: &hasher)
+    deepHashTraceletApi(value: speed, hasher: &hasher)
+    deepHashTraceletApi(value: value, hasher: &hasher)
     deepHashTraceletApi(value: latitude, hasher: &hasher)
     deepHashTraceletApi(value: longitude, hasher: &hasher)
     deepHashTraceletApi(value: timestamp, hasher: &hasher)
@@ -2920,6 +2939,11 @@ struct TlLogEntry: Hashable {
 
 /// Location-filter thresholds applied by transport-mode auto-tuning (#301).
 ///
+/// Declared last on purpose: pigeon assigns codec type IDs by declaration
+/// order, so inserting a class higher up would renumber every type after it
+/// and break any app that resolves a plugin and the platform interface at
+/// different versions.
+///
 /// Generated class from Pigeon that represents data sent in messages.
 struct TlLocationTuning: Hashable {
   /// Minimum movement (m) between recorded fixes.
@@ -2967,64 +2991,6 @@ struct TlLocationTuning: Hashable {
     deepHashTraceletApi(value: trackingAccuracyThreshold, hasher: &hasher)
     deepHashTraceletApi(value: odometerAccuracyThreshold, hasher: &hasher)
     deepHashTraceletApi(value: maxImpliedSpeed, hasher: &hasher)
-  }
-}
-
-/// A targeted notification update for `setNotification()`.
-///
-/// Every field is nullable; null means "leave the persisted value alone".
-/// Deliberately NOT a TlConfig: this payload can never carry http.url or
-/// headers, so a notification refresh cannot clobber sync settings.
-///
-/// Declared last to preserve all existing Pigeon codec type IDs.
-///
-/// Generated class from Pigeon that represents data sent in messages.
-struct TlNotificationUpdate: Hashable {
-  /// The replacement notification or Live Activity title.
-  var title: String? = nil
-  /// The replacement notification text or Live Activity body.
-  var text: String? = nil
-  /// Epoch milliseconds for the optional wall-clock count-up timer.
-  var startedAt: Int64? = nil
-  /// Whether to show the count-up timer when a start instant exists.
-  var showTimer: Bool? = nil
-
-
-  // swift-format-ignore: AlwaysUseLowerCamelCase
-  static func fromList(_ pigeonVar_list: [Any?]) -> TlNotificationUpdate? {
-    let title: String? = nilOrValue(pigeonVar_list[0])
-    let text: String? = nilOrValue(pigeonVar_list[1])
-    let startedAt: Int64? = nilOrValue(pigeonVar_list[2])
-    let showTimer: Bool? = nilOrValue(pigeonVar_list[3])
-
-    return TlNotificationUpdate(
-      title: title,
-      text: text,
-      startedAt: startedAt,
-      showTimer: showTimer
-    )
-  }
-  func toList() -> [Any?] {
-    return [
-      title,
-      text,
-      startedAt,
-      showTimer,
-    ]
-  }
-  static func == (lhs: TlNotificationUpdate, rhs: TlNotificationUpdate) -> Bool {
-    if Swift.type(of: lhs) != Swift.type(of: rhs) {
-      return false
-    }
-    return deepEqualsTraceletApi(lhs.title, rhs.title) && deepEqualsTraceletApi(lhs.text, rhs.text) && deepEqualsTraceletApi(lhs.startedAt, rhs.startedAt) && deepEqualsTraceletApi(lhs.showTimer, rhs.showTimer)
-  }
-
-  func hash(into hasher: inout Hasher) {
-    hasher.combine("TlNotificationUpdate")
-    deepHashTraceletApi(value: title, hasher: &hasher)
-    deepHashTraceletApi(value: text, hasher: &hasher)
-    deepHashTraceletApi(value: startedAt, hasher: &hasher)
-    deepHashTraceletApi(value: showTimer, hasher: &hasher)
   }
 }
 
@@ -3233,8 +3199,6 @@ private class TraceletApiPigeonCodecReader: FlutterStandardReader {
       return TlLogEntry.fromList(self.readValue() as! [Any?])
     case 191:
       return TlLocationTuning.fromList(self.readValue() as! [Any?])
-    case 192:
-      return TlNotificationUpdate.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
     }
@@ -3432,9 +3396,6 @@ private class TraceletApiPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? TlLocationTuning {
       super.writeByte(191)
       super.writeValue(value.toList())
-    } else if let value = value as? TlNotificationUpdate {
-      super.writeByte(192)
-      super.writeValue(value.toList())
     } else {
       super.writeValue(value)
     }
@@ -3477,10 +3438,6 @@ protocol TraceletHostApi {
   ///   liveActivityConfig (if the developer opted into one). No-op otherwise.
   /// - Web: no-op.
   func updateNotification(completion: @escaping (Result<Void, Error>) -> Void)
-  /// Applies a targeted update to the tracking indicator's content and
-  /// reposts it, merging only the supplied fields into the persisted
-  /// configuration. Never touches any other config section.
-  func setNotification(update: TlNotificationUpdate, completion: @escaping (Result<Void, Error>) -> Void)
   func getCurrentPosition(options: TlCurrentPositionOptions, completion: @escaping (Result<TlLocation, Error>) -> Void)
   func getLastKnownLocation(options: TlCurrentPositionOptions?, completion: @escaping (Result<TlLocation?, Error>) -> Void)
   func watchPosition(options: TlCurrentPositionOptions, completion: @escaping (Result<Int64, Error>) -> Void)
@@ -3750,26 +3707,6 @@ class TraceletHostApiSetup {
       }
     } else {
       updateNotificationChannel.setMessageHandler(nil)
-    }
-    /// Applies a targeted update to the tracking indicator's content and
-    /// reposts it, merging only the supplied fields into the persisted
-    /// configuration. Never touches any other config section.
-    let setNotificationChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.setNotification\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
-    if let api = api {
-      setNotificationChannel.setMessageHandler { message, reply in
-        let args = message as! [Any?]
-        let updateArg = args[0] as! TlNotificationUpdate
-        api.setNotification(update: updateArg) { result in
-          switch result {
-          case .success:
-            reply(wrapResult(nil))
-          case .failure(let error):
-            reply(wrapError(error))
-          }
-        }
-      }
-    } else {
-      setNotificationChannel.setMessageHandler(nil)
     }
     let getCurrentPositionChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.getCurrentPosition\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
