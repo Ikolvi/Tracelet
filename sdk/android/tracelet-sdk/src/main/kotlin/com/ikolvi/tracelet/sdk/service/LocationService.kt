@@ -49,9 +49,11 @@ internal fun applyChronometer(
         TraceletLog.debug("notificationShowTimer is set but notificationStartedAt is not — no timer shown")
         return
     }
-    builder.setWhen(minOf(startedAt, now))
+    val effectiveWhen = minOf(startedAt, now)
+    builder.setWhen(effectiveWhen)
     builder.setShowWhen(true)
     builder.setUsesChronometer(true)
+    TraceletLog.debug("chronometer applied: when=$effectiveWhen startedAt=$startedAt clamped=${startedAt > now}")
 }
 
 /** Applies whether only the first post of this notification should alert. */
