@@ -40,11 +40,26 @@ struct TraceletWidgetLiveActivity: Widget {
                     Image(systemName: "antenna.radiowaves.left.and.right")
                         .foregroundColor(.cyan)
                         .font(.headline)
-                    Text("LIVE")
-                        .font(.caption2)
-                        .fontWeight(.bold)
-                        .foregroundColor(.cyan)
-                        .padding(.top, 2)
+                    // #376: the elapsed timer. iOS ticks this itself — the SDK
+                    // pushes no updates to advance it. `min(startedAt, Date())`
+                    // clamps a start instant in the future, which would
+                    // otherwise render as a clock stuck at zero.
+                    if context.state.showTimer, let startedAt = context.state.startedAt {
+                        Text(timerInterval: min(startedAt, Date())...Date.distantFuture,
+                             countsDown: false)
+                            .font(.caption.monospacedDigit())
+                            .fontWeight(.bold)
+                            .foregroundColor(.cyan)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 68)
+                            .padding(.top, 2)
+                    } else {
+                        Text("LIVE")
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.cyan)
+                            .padding(.top, 2)
+                    }
                 }
             }
             .padding()
@@ -62,9 +77,21 @@ struct TraceletWidgetLiveActivity: Widget {
                     }
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    Text("LIVE")
-                        .fontWeight(.bold)
-                        .foregroundColor(.red)
+                    // #376: same clamp and the same no-repost tick as the
+                    // Lock Screen view above.
+                    if context.state.showTimer, let startedAt = context.state.startedAt {
+                        Text(timerInterval: min(startedAt, Date())...Date.distantFuture,
+                             countsDown: false)
+                            .font(.caption.monospacedDigit())
+                            .fontWeight(.bold)
+                            .foregroundColor(.cyan)
+                            .multilineTextAlignment(.trailing)
+                            .frame(maxWidth: 68)
+                    } else {
+                        Text("LIVE")
+                            .fontWeight(.bold)
+                            .foregroundColor(.red)
+                    }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     Text(context.state.status)

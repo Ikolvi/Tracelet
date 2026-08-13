@@ -50,10 +50,18 @@ import 'package:tracelet_example/issues/issue_card_shell.dart';
 /// process or re-reads from disk.
 ///
 /// **What it does not claim.** It cannot see what the lock screen or shade
-/// drew, whether the clock is ticking, whether the device alerted, or anything
-/// at all about iOS. Those are reported at the end as things for the operator
-/// to look at, never as rows. A card reporting PASS for something it never
-/// measured is worse than no card, because it will be believed.
+/// drew, whether the clock is ticking, or whether the device alerted. Those are
+/// reported at the end as things for the operator to look at, never as rows. A
+/// card reporting PASS for something it never measured is worse than no card,
+/// because it will be believed.
+///
+/// **On iOS it takes a different route.** The markers above are Android
+/// foreground-service logs and have no Live Activity equivalent, so rather than
+/// refuse to run — or worse, assert against the Dart mirror it just wrote to —
+/// the card drives the Live Activity end to end and hands the judging over: it
+/// enables the timer, holds a window open for you to look at the Lock Screen,
+/// reposts text-only to show the clock does not restart, and reports what
+/// should have happened without claiming a single pass.
 class Issue376Card extends StatefulWidget {
   const Issue376Card({super.key});
 
@@ -148,12 +156,22 @@ class _Issue376CardState extends State<Issue376Card> {
   ///
   /// `setConfig` persists; `updateNotification()` is what pushes the change
   /// onto the notification already on screen (#257).
+  ///
+  /// The iOS half is sent too, so running this card on a device drives the Live
+  /// Activity as well as the Android notification. It is built differently on
+  /// purpose: `ForegroundServiceConfig` tracks each field's unset state, so the
+  /// nulls above are simply not supplied, whereas `LiveActivityConfig` requires
+  /// `title` and `body` and iOS replaces the whole `liveActivityConfig` map on
+  /// write. Passing only the timer fields would therefore blank the text, so
+  /// the unsupplied fields are carried over from the active config instead.
   Future<void> _setNotification({
     String? title,
     String? text,
     int? startedAt,
     bool? showTimer,
   }) async {
+    final live = Tracelet.activeConfig.ios.liveActivityConfig;
+
     await Tracelet.setConfig(
       Config(
         android: AndroidConfig(
@@ -164,9 +182,107 @@ class _Issue376CardState extends State<Issue376Card> {
             notificationShowTimer: showTimer,
           ),
         ),
+        ios: live == null
+            ? const IosConfig()
+            : IosConfig(
+                liveActivityConfig: LiveActivityConfig(
+                  title: title ?? live.title,
+                  body: text ?? live.body,
+                  startedAt: startedAt ?? live.startedAt,
+                  showTimer: showTimer ?? live.showTimer,
+                ),
+              ),
       ),
     );
     await Tracelet.updateNotification();
+  }
+
+  /// The iOS half of #376, driven end to end and reported for the operator to
+  /// judge.
+  ///
+  /// Deliberately asserts nothing. iOS exposes no read-back for what a Live
+  /// Activity rendered: `getLogs()` carries no equivalent of the Android
+  /// builder line, and `getState().config` is backfilled from the Dart mirror
+  /// this card just wrote to, so a row keyed off it would only be checking
+  /// that `setConfig` assigned a Dart field. What this flow *can* do is put
+  /// the feature in front of you in a state where the answer is visible on the
+  /// Lock Screen.
+  Future<void> _runIos() async {
+    try {
+      _set('1/4 — configuring a Live Activity with the timer enabled…');
+
+      // A complete LiveActivityConfig rather than a partial one: iOS replaces
+      // the whole liveActivityConfig map on write, and title/body are required.
+      final startedAt = DateTime.now().subtract(_elapsedForDisplay);
+
+      await Tracelet.setConfig(
+        Config(
+          logger: const LoggerConfig(logLevel: LogLevel.verbose, debug: true),
+          ios: IosConfig(
+            liveActivityConfig: LiveActivityConfig(
+              title: 'Issue 376 — shift in progress',
+              body: 'Timer requested; started two hours ago',
+              startedAt: startedAt.millisecondsSinceEpoch,
+              showTimer: true,
+            ),
+          ),
+        ),
+      );
+
+      _set('2/4 — starting tracking so the Live Activity is presented…');
+      await Tracelet.start();
+      await Tracelet.updateNotification();
+
+      for (var left = _observationSeconds; left > 0; left--) {
+        _set(
+          '3/4 — LOOK AT THE LOCK SCREEN OR DYNAMIC ISLAND NOW. The Live '
+          'Activity should show a clock reading about 2:00:00 and counting '
+          'up. ${left}s…',
+        );
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+
+      // The point of the repost: the clock must not jump back to zero. The
+      // persisted startedAt is the only source of truth, so changing the body
+      // reconfigures the activity from the same instant.
+      _set('4/4 — reposting with new text only; the clock must not restart…');
+      await _setNotification(
+        text: 'Reposted — the elapsed time must not jump back to zero',
+      );
+      await Future<void>.delayed(const Duration(seconds: 4));
+
+      _set(
+        'DRIVEN, NOT ASSERTED — iOS gives this card nothing to read back, so '
+        'every line below is for you to confirm by looking. No row here '
+        'claims a pass.\n\n'
+        'What should have happened:\n'
+        '• A Live Activity appeared with the title "Issue 376 — shift in '
+        'progress".\n'
+        '• It showed a clock counting up from about 2:00:00 — rendered by iOS '
+        'via Text(timerInterval:), not by any update this card sent. The SDK '
+        'pushed no periodic updates to advance it.\n'
+        '• At step 4 the body text changed and the clock kept counting rather '
+        'than restarting, because the persisted startedAt is the only source '
+        'of truth.\n\n'
+        'If you saw no clock at all, the most likely cause is the Widget '
+        'Extension rather than the SDK: a custom TraceletActivityAttributes '
+        'whose ContentState lacks startedAt/showTimer decodes the payload '
+        "fine and simply draws nothing. This example app compiles the SDK's "
+        'own TraceletActivityAttributes.swift into the widget target, so it '
+        'has the fields; a host app that hand-copied the struct from the docs '
+        'must add them.\n\n'
+        'If you saw no Live Activity at all: it requires iOS 16.2+, a Widget '
+        'Extension in the build, NSSupportsLiveActivities in Info.plist, and '
+        'Live Activities enabled for this app in Settings. It is also bound to '
+        'the moving sub-state, so it can be dismissed when tracking pauses on '
+        'going stationary.\n\n'
+        'Cleanup: the timer is left ON here, unlike the Android flow, because '
+        'the whole point is that you can still look at it after the card '
+        'finishes. Re-run any other card to restore the demo baseline.',
+      );
+    } catch (e, s) {
+      _set('❌ ERROR — $e\n\n$s');
+    }
   }
 
   /// Highest log id currently stored — the window boundary.
@@ -294,20 +410,23 @@ class _Issue376CardState extends State<Issue376Card> {
   Future<void> _run() async {
     setState(() => _running = true);
 
-    // iOS has no equivalent evidence channel: the markers above are Android
+    // iOS has no equivalent evidence channel: the markers below are Android
     // service logs, and the Live Activity path writes nothing this card can
-    // read. Running the rows here and reporting green would be a lie about a
-    // platform the change has never been compiled for.
+    // read. So iOS gets its own flow that *drives* the feature and hands the
+    // judging to the operator, rather than rows that would be asserting
+    // nothing. Reporting green off a Dart field the card itself wrote is the
+    // failure mode this whole card exists to avoid.
+    if (defaultTargetPlatform == TargetPlatform.iOS && !kIsWeb) {
+      await _runIos();
+      setState(() => _running = false);
+      return;
+    }
+
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       _set(
-        'NOT RUN — this card measures the Android notification-build path.\n\n'
-        'Almost every row it can assert is read from Android '
-        'foreground-service log lines. The iOS half of #376 renders the '
-        'elapsed time with '
-        'Text(timerInterval:) in a Live Activity, which produces no log this '
-        'card can read, and it is documented to no-op when no '
-        'LiveActivityConfig is set. That half has had review but no compiler '
-        'and no device: it is unverified, and nothing here would change that.',
+        'NOT RUN — this card covers the Android notification-build path and '
+        'the iOS Live Activity. There is no tracking indicator to drive on '
+        'this platform.',
       );
       setState(() => _running = false);
       return;
@@ -660,10 +779,10 @@ class _Issue376CardState extends State<Issue376Card> {
         'so a broken persist would still show every row green.\n'
         '• The alert behaviour. Each repost re-alerts unless '
         'notificationOnlyAlertOnce is set. That is audible, not readable.\n'
-        '• iOS, entirely. The Live Activity renders the elapsed time with '
-        'Text(timerInterval:) and ticks with no repost, and no-ops when no '
-        'LiveActivityConfig is set. That half has had review but no compiler '
-        'and no device; this card is Android-only and says nothing about it.\n'
+        '• iOS. This run measured the Android path only. Run this same card on '
+        'an iOS device and it takes a different route: it drives the Live '
+        'Activity and asks you to look, because iOS exposes no read-back it '
+        'could honestly assert against.\n'
         '• Native http state. There is no config read-back from the platform, '
         'so the guarantee is structural rather than measured: every write above '
         'sent a Config carrying only foregroundService fields, and setConfig is '
@@ -725,9 +844,11 @@ class _Issue376CardState extends State<Issue376Card> {
           'showTimer:false — that last one a negative, backed by a control '
           'that turns the timer on again to show the path was alive. The log '
           'line is written before the notification is built or posted, so no '
-          'row claims anything was rendered. What the shade drew, whether the '
-          'values were persisted, and the iOS Live Activity have no Dart '
-          'read-back: reported for you to look at, never asserted.',
+          'row claims anything was rendered. What the shade drew and whether '
+          'the values were persisted have no Dart read-back: reported for you '
+          'to look at, never asserted. On iOS the card instead drives the Live '
+          'Activity timer and asks you to look at the Lock Screen, since that '
+          'path exposes nothing it could honestly assert.',
       status: _status,
       running: _running,
       onRun: _run,
