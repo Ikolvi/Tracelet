@@ -1286,6 +1286,24 @@ class LocationEngine(
             }
         } else {
             forcePersistNextFilteredLocation = false
+            // Hand back the slot the anchor just took (#385).
+            //
+            // The processor waives the distance filter only for a fix with no
+            // predecessor (`state.last_latitude.is_some() && distance < ...`).
+            // Before the anchor existed, the fix that woke a stationary session
+            // — the #54 one-shot on a changePace(true), or the first fix of the
+            // stream the SMART coordinator starts — *was* that first fix, and
+            // was delivered for free. The anchor now holds that slot, and the
+            // wake fix is metres away from it, so it would be dropped as a
+            // duplicate: the app would be told it is moving and handed no
+            // position to go with it.
+            //
+            // Deliberately not scoped to any one wake path: this is about the
+            // *next* fix whatever produces it, which is what makes it cover the
+            // accelerometer wake as well as the explicit pace change. While the
+            // session stays stationary there is no stream, so nothing else can
+            // consume it in the meantime.
+            if (isStartupFix) forcePersistNextFilteredLocation = true
         }
 
         // Odometer update from processor's computed delta

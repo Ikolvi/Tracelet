@@ -24,7 +24,9 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeastOnce
+import org.mockito.kotlin.clearInvocations
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.robolectric.RobolectricTestRunner
@@ -207,6 +209,37 @@ class StationaryStartInitialFixTest {
             10.787929,
             sdk.locationEngine.getLastLocation()?.latitude ?: 0.0,
             1e-6,
+        )
+    }
+
+    @Test
+    fun `the fix that wakes the session is still delivered after the anchor`() {
+        ready(isMoving = false)
+        sdk.start()
+        idle()
+
+        // The anchor lands and takes the processor's first-fix slot.
+        client.deliverCurrentLocation(fix(lat = 10.787929, ageSeconds = 0))
+        idle()
+        clearInvocations(events)
+
+        // The device wakes without having moved — the phone is still on the
+        // desk, which is the case the distance filter drops. Before the anchor
+        // existed this fix *was* the session's first, so the processor waived
+        // the filter for it and it was delivered for free.
+        sdk.changePace(true)
+        idle()
+        client.deliverCurrentLocation(fix(lat = 10.787929, ageSeconds = 0))
+        idle()
+
+        val dispatched = argumentCaptor<Map<String, Any?>>()
+        verify(events, atLeastOnce()).sendLocation(dispatched.capture())
+        assertEquals(
+            "a pace change that hands the app no position is the #54 guarantee " +
+                "silently withdrawn — being told you are moving is not the same " +
+                "as being told where",
+            "motionchange",
+            dispatched.lastValue["event"],
         )
     }
 
