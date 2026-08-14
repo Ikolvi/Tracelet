@@ -796,6 +796,29 @@ jobs:
           # Update Podspec
           perl -pi -e "s|s.dependency 'TraceletSDK'.*|s.vendored_frameworks = 'TraceletCore.xcframework'|g" packages/tracelet_ios/ios/tracelet_ios.podspec
           perl -pi -e "s|s.source           = \\{ :path => '.' \\}|s.source = \\{ :http => 'https://github.com/Ikolvi/Tracelet/releases/download/tracelet_ios-v${IOS_VERSION}/TraceletCore.xcframework.zip' \\}|g" packages/tracelet_ios/ios/tracelet_ios.podspec
+          # Flutter installs plugins as :path pods, so CocoaPods never fetches
+          # s.source :http (CocoaPods#11867). Download the zip when the
+          # vendored xcframework is not on disk. Call is appended after the
+          # spec block so it is not instance_eval'd by the CocoaPods DSL. (#390)
+          python3 - "$IOS_VERSION" << 'PY'
+from pathlib import Path
+import sys
+version = sys.argv[1]
+p = Path("packages/tracelet_ios/ios/tracelet_ios.podspec")
+text = p.read_text().rstrip() + "\n"
+if "s.vendored_frameworks = 'TraceletCore.xcframework'" not in text:
+    raise SystemExit("vendored_frameworks line missing from tracelet_ios.podspec")
+if "TraceletPodspec.ensure_xcframework!" in text:
+    raise SystemExit("ensure_xcframework already injected into tracelet_ios.podspec")
+p.write_text(
+    text
+    + "\n"
+    + "TraceletPodspec.ensure_xcframework!(\n"
+    + "  'TraceletCore.xcframework',\n"
+    + f'  "https://github.com/Ikolvi/Tracelet/releases/download/tracelet_ios-v{version}/TraceletCore.xcframework.zip"\n'
+    + ")\n"
+)
+PY
           
           # Update Package.swift
           CORE_CHECKSUM="${{ needs.publish-ios-sdk.outputs.core_checksum }}"
@@ -832,6 +855,27 @@ jobs:
           # Update Podspec
           perl -pi -e 's|s\.dependency '\''TraceletSDK'\''.*|s.dependency '\''tracelet_ios'\''|g' packages/tracelet_sync/ios/tracelet_sync.podspec 2>/dev/null || true
           perl -pi -e "s|s.source           = \\{ :path => '.' \\}|s.source = \\{ :http => 'https://github.com/Ikolvi/Tracelet/releases/download/tracelet_sync-v${SYNC_VERSION}/TraceletSyncFFI.xcframework.zip' \\}|g" packages/tracelet_sync/ios/tracelet_sync.podspec
+          # Flutter :path installs skip s.source :http. Fetch TraceletSyncFFI
+          # when the vendored xcframework is not already on disk. (#390)
+          python3 - "$SYNC_VERSION" << 'PY'
+from pathlib import Path
+import sys
+version = sys.argv[1]
+p = Path("packages/tracelet_sync/ios/tracelet_sync.podspec")
+text = p.read_text().rstrip() + "\n"
+if "s.vendored_frameworks = 'tracelet_sync/TraceletSyncFFI.xcframework'" not in text:
+    raise SystemExit("vendored_frameworks line missing from tracelet_sync.podspec")
+if "TraceletPodspec.ensure_xcframework!" in text:
+    raise SystemExit("ensure_xcframework already injected into tracelet_sync.podspec")
+p.write_text(
+    text
+    + "\n"
+    + "TraceletPodspec.ensure_xcframework!(\n"
+    + "  'tracelet_sync/TraceletSyncFFI.xcframework',\n"
+    + f'  "https://github.com/Ikolvi/Tracelet/releases/download/tracelet_sync-v{version}/TraceletSyncFFI.xcframework.zip"\n'
+    + ")\n"
+)
+PY
           
           # Update Package.swift
           perl -pi -e 's/\.package\(name: "TraceletSDK".*/.package(name: "tracelet_ios", path: "..\/tracelet_ios"),/g' packages/tracelet_sync/ios/tracelet_sync/Package.swift

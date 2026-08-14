@@ -1,3 +1,7 @@
+## Unreleased
+
+**FIX**: CocoaPods fallback fetches `TraceletCore.xcframework` when Flutter installs the plugin as a `:path` pod. The published podspec set `s.source :http` to the GitHub Release zip, which CocoaPods never downloads for path pods, so disabling Swift Package Manager linked the UniFFI Swift stubs against a missing Rust binary ([#390](https://github.com/Ikolvi/Tracelet/issues/390)).
+
 ## 3.8.5
 
 **FIX**: the pinned native SDK acquires a first location when a session starts stationary, which is the default pace — previously `start()` acquired nothing until the device physically moved. No Dart or plugin change; the fix arrives with the `TraceletSDK` version this release pins ([#385](https://github.com/Ikolvi/Tracelet/issues/385)).

@@ -2,6 +2,10 @@
 # To learn more about a Podspec see http://guides.cocoapods.org/syntax/podspec.html.
 # Run `pod lib lint tracelet_ios.podspec` to validate before publishing.
 #
+# Loaded so the publish rewrite can call ensure_tracelet_xcframework! after it
+# replaces TraceletSDK with a vendored GitHub Release binary. (#390)
+require File.expand_path('ensure_xcframework', File.dirname(__FILE__))
+
 Pod::Spec.new do |s|
   s.name             = 'tracelet_ios'
   s.version = '3.8.5'

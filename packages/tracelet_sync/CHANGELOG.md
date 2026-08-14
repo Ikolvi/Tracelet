@@ -1,3 +1,7 @@
+## Unreleased
+
+**FIX**: CocoaPods fallback fetches `TraceletSyncFFI.xcframework` when Flutter installs the plugin as a `:path` pod. The published podspec set `s.source :http` to the GitHub Release zip, which CocoaPods never downloads for path pods, so disabling Swift Package Manager linked the UniFFI Swift stubs against a missing Rust binary ([#390](https://github.com/Ikolvi/Tracelet/issues/390)).
+
 ## 3.8.5
 
 Version alignment with tracelet 3.8.5.
