@@ -1,5 +1,7 @@
 ## 3.8.5
 
+**FIX**: the pinned native SDK acquires a first location when a session starts stationary, which is the default pace — previously `start()` acquired nothing until the device physically moved. No Dart or plugin change; the fix arrives with the `com.ikolvi:tracelet-sdk` version this release pins ([#385](https://github.com/Ikolvi/Tracelet/issues/385)).
+
 **FIX**: the pinned native SDK applies `persistMode` to geofence ENTER/EXIT records, which previously bypassed it entirely and were persisted and synced under `location` and `none` alike. No Dart or plugin change; the fix arrives with the `com.ikolvi:tracelet-sdk` version this release pins ([#383](https://github.com/Ikolvi/Tracelet/issues/383)).
 
 ## 3.8.4
