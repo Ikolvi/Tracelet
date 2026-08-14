@@ -99,6 +99,11 @@ let package = Package(
                 // insertLocation, so `location` and `none` persisted — and
                 // HTTP-synced — every crossing they document as excluded.
                 "ConfigManagerGeofencePersistModeTests.swift",
+                // #385: a session that starts stationary must still acquire one
+                // location. 3.2.0 replaced start()'s unconditional
+                // locationEngine.start() with the pace branch and left the
+                // stationary path with no acquisition at all.
+                "LocationEngineStartupFixTests.swift",
             ]
         ),
     ]

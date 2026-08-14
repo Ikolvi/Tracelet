@@ -513,6 +513,26 @@ public final class TraceletSdk {
             startBackgroundActivitySessionIfNeeded()
         } else {
             _ = changePace(false)
+            // A stationary start is dark otherwise: no continuous stream (by
+            // design), and `changePace(false)` changes nothing in subsystems
+            // that are already stationary. The app was left with no position at
+            // all until the device physically moved. One fix anchors the
+            // session; the pace it was asked to start in is untouched (#385).
+            //
+            // Restores acquisition this path lost in 3.2.0 (bb8af6a0), which
+            // replaced an unconditional locationEngine.start() with the pace
+            // branch above — the same edit landed on both platforms. The stream
+            // had been doing double duty (ongoing feed *and* initial fix) and
+            // only the first job was replaced.
+            //
+            // Fresh starts only. A resume runs on every process relaunch and
+            // restores rather than commits its pace — the killed-state path
+            // stays exactly as it was.
+            if !isResume {
+                TraceletLog.lifecycle(
+                    "session: acquiring the initial fix for a stationary start (#385)")
+                locationEngine.requestStartupFix()
+            }
         }
 
         startHeartbeat()

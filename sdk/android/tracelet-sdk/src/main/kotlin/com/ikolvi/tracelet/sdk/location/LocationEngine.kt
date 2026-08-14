@@ -970,24 +970,57 @@ class LocationEngine(
     }
 
     /**
+     * Acquires the single fix that anchors a session which *starts* stationary
+     * (#385).
+     *
+     * A fresh `start()` with `motion.isMoving: false` — the default — runs no
+     * continuous stream by design, and on this path the stationary schedule is
+     * not armed either: the SMART coordinator is synced to STATIONARY_PERIODIC
+     * before both of its inputs are pushed to stationary, so `evaluate_state`
+     * sees no mode change and returns `None`. Nothing called the provider at
+     * all, and the app got no location until the device physically moved and
+     * [changePace] took the transition below.
+     *
+     * Passive is floored to balanced for the same reason
+     * [getCurrentPosition] floors it: PRIORITY_PASSIVE only yields a fix while
+     * *another* app is actively requesting one, so a passive tracking profile
+     * would otherwise reproduce the very silence this exists to fix. It is
+     * floored only here — the transition path keeps its configured priority,
+     * where the continuous stream it accompanies is the thing actually
+     * acquiring.
+     */
+    fun requestStartupFix() {
+        // The stream is already acquiring — a moving start, or the
+        // in-app-evaluated-geofence branch of a stationary one (#357).
+        if (isTracking) return
+        requestImmediateFix(isStartupFix = true)
+    }
+
+    /**
      * Fires a single [getCurrentLocation] request to deliver a fresh fix
-     * immediately after a stationary → moving transition.
+     * immediately after a stationary → moving transition, or at the start of a
+     * session that begins stationary ([requestStartupFix], [isStartupFix]).
      *
      * The result is fed into the same [onLocationReceived] pipeline used
      * by the continuous stream, so all filters, Kalman, persistence, and
      * event dispatch remain consistent.
      */
-    private fun requestImmediateFix() {
+    private fun requestImmediateFix(isStartupFix: Boolean = false) {
         if (!hasPermission()) return
         // Supersede any prior in-flight one-shot so we never have two racing.
         immediateFixCts?.cancel()
         val cts = TraceletCancellationTokenSource()
         immediateFixCts = cts
         val priority = accuracyToPriority(config.getDesiredAccuracy())
+            .let {
+                if (isStartupFix && it == TraceletLocationPriority.PRIORITY_PASSIVE)
+                    TraceletLocationPriority.PRIORITY_BALANCED_POWER_ACCURACY
+                else it
+            }
         try {
             fusedClient.getCurrentLocation(priority, cts.token, onSuccess = { location ->
                 if (location != null && immediateFixCts === cts) {
-                    onLocationReceived(location, "location")
+                    onLocationReceived(location, "location", isStartupFix = isStartupFix)
                 }
             })
         } catch (_: SecurityException) {
@@ -1059,7 +1092,13 @@ class LocationEngine(
     // Private methods
     // =========================================================================
 
-    private fun onLocationReceived(location: Location, event: String) {
+    /**
+     * @param isStartupFix true only for the anchor fix [requestStartupFix]
+     * takes at the start of a stationary session. It reaches the app, the DB
+     * and the geofence evaluator like any other fix, but it is kept out of the
+     * speed motion machine — see the sink below.
+     */
+    private fun onLocationReceived(location: Location, event: String, isStartupFix: Boolean = false) {
         // Only reset DR timer when GPS hardware is enabled AND the fix
         // is GPS-quality.  When the user has toggled GPS off,
         // FusedLocationProvider can still deliver accurate Wi-Fi / cell
@@ -1132,9 +1171,19 @@ class LocationEngine(
             rawComputedSpeed
         }
 
-        // Use platform speed if available, otherwise use computed speed
+        // Use platform speed if available, otherwise use computed speed.
+        //
+        // The startup anchor (#385) has no valid time base for the derivation:
+        // `lastLocation` survives stop(), so the first fix of a new session in a
+        // live process would be derived against wherever the *previous* session
+        // ended. A device carried 5 km between two sessions yields ~8 m/s —
+        // inside `maxImpliedSpeed` (80 m/s), so nothing discards it. A Doppler
+        // reading is a real measurement and is kept; the derivation is dropped,
+        // for this one fix only, which is what "no speed" already means here.
         val effectiveSpeed = if (location.hasSpeed() && location.speed > 0) {
             location.speed.toDouble()
+        } else if (isStartupFix) {
+            0.0
         } else {
             computedSpeed
         }
@@ -1201,7 +1250,18 @@ class LocationEngine(
         // fix whether or not it accepted it — it used to be hardcoded to 0 on
         // every rejection, which fed the machine a fabricated "stopped" for
         // most of every drive (#332).
-        speedMotionSpeedSink?.invoke(result.effectiveSpeed)
+        //
+        // The anchor keeps the measured-speed-only rule applied above: the
+        // *processor* derives its own speed from its own last accepted fix
+        // (`state.last_latitude`), which stop() does not clear either, so
+        // `result.effectiveSpeed` re-introduces exactly the cross-session
+        // derivation that `effectiveSpeed` just declined. Left alone it would
+        // overturn the pace `start()` committed a few lines before asking for
+        // the anchor — 8 m/s is well above `speedMovingThreshold` (1.5 m/s) —
+        // which is the silent override of a committed pace that #344 and
+        // StartCommittedPaceTest exist to prevent (#385).
+        val motionSpeed = if (isStartupFix) effectiveSpeed else result.effectiveSpeed
+        speedMotionSpeedSink?.invoke(motionSpeed)
 
         var isForcedAccept = false
         if (!result.accepted) {
@@ -1226,6 +1286,24 @@ class LocationEngine(
             }
         } else {
             forcePersistNextFilteredLocation = false
+            // Hand back the slot the anchor just took (#385).
+            //
+            // The processor waives the distance filter only for a fix with no
+            // predecessor (`state.last_latitude.is_some() && distance < ...`).
+            // Before the anchor existed, the fix that woke a stationary session
+            // — the #54 one-shot on a changePace(true), or the first fix of the
+            // stream the SMART coordinator starts — *was* that first fix, and
+            // was delivered for free. The anchor now holds that slot, and the
+            // wake fix is metres away from it, so it would be dropped as a
+            // duplicate: the app would be told it is moving and handed no
+            // position to go with it.
+            //
+            // Deliberately not scoped to any one wake path: this is about the
+            // *next* fix whatever produces it, which is what makes it cover the
+            // accelerometer wake as well as the explicit pace change. While the
+            // session stays stationary there is no stream, so nothing else can
+            // consume it in the meantime.
+            if (isStartupFix) forcePersistNextFilteredLocation = true
         }
 
         // Odometer update from processor's computed delta
@@ -1237,11 +1315,17 @@ class LocationEngine(
         if (location.accuracy > 0 && location.accuracy <= 100) {
             lastGpsLocation = location
         }
-        lastEffectiveSpeed = result.effectiveSpeed
+        // `motionSpeed`, not `result.effectiveSpeed`: this field is read as the
+        // session's current speed, and start() seeds the speed machine with it
+        // — so an anchor's derived value would reach the machine one session
+        // later through that door even though the sink above declined it (#385).
+        lastEffectiveSpeed = motionSpeed
         state.lastLocationTime = location.time
 
         val actualEvent = if (isForcedAccept) "motionchange" else event
-        val enriched = enrichLocation(location, actualEvent, result.effectiveSpeed, smoothedLat, smoothedLng)
+        // Identical to result.effectiveSpeed for every fix but the anchor,
+        // which reports what was measured rather than what was derived (#385).
+        val enriched = enrichLocation(location, actualEvent, motionSpeed, smoothedLat, smoothedLng)
 
         fun dispatch(finalEnriched: Map<String, Any?>) {
             // Privacy zone check (Enterprise) — BEFORE audit + persist + send.

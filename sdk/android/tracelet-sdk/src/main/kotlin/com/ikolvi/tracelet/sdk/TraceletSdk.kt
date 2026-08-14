@@ -1097,6 +1097,28 @@ class TraceletSdk private constructor(private val context: Context) {
                 )
                 locationEngine.start()
             }
+            // A stationary start is dark otherwise: no continuous stream (by
+            // design), and no stationary schedule either — the coordinator is
+            // synced to STATIONARY_PERIODIC above and *then* told both inputs
+            // are stationary, so it reports no mode change and arms nothing.
+            // The app was left with no position at all until the device
+            // physically moved. One fix anchors the session; the pace it was
+            // asked to start in is untouched (#385).
+            //
+            // Restores acquisition this path lost in 3.2.0 (bb8af6a0), which
+            // replaced an unconditional locationEngine.start() with the pace
+            // branch above. The stream had been doing double duty — ongoing
+            // feed *and* initial fix — and only the first job was replaced.
+            //
+            // Fresh starts only. A resume runs on every process relaunch and
+            // restores rather than commits its pace — the killed-state path
+            // stays exactly as it was.
+            if (!isResume) {
+                TraceletLog.lifecycle(
+                    "session: acquiring the initial fix for a stationary start (#385)"
+                )
+                locationEngine.requestStartupFix()
+            }
         }
 
         startHeartbeat()
