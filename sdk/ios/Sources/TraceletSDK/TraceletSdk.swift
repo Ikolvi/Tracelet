@@ -1596,6 +1596,23 @@ public final class TraceletSdk {
     /// DB writes from the same GPS fix.
     private var lastInsertedTimestamp: String? = nil
 
+    /// Persists a geofence ENTER/EXIT record only if allowed by persistMode (#383).
+    ///
+    /// The geofence counterpart of `LocationEngine.persistLocationIfAllowed` — geofence
+    /// transitions used to be wired straight to `insertLocation`, so `location` and
+    /// `none` still wrote (and HTTP-synced) every crossing despite documenting otherwise.
+    ///
+    /// Only the DB write is gated. The listener event is dispatched separately by
+    /// `GeofenceManager` via `eventDispatcher.sendGeofence`, so `none` keeps its
+    /// documented "events are still fired" behaviour.
+    ///
+    /// Read live rather than latched at setup, so a `setConfig` mid-session takes
+    /// effect on the next transition.
+    private func persistGeofenceIfAllowed(_ eventData: [String: Any]) {
+        guard configManager.shouldPersistGeofenceRecords() else { return }
+        let _ = insertLocation(eventData)
+    }
+
     /// Insert a custom location into the store.
     ///
     /// - Parameter params: Location data dictionary.
@@ -2630,7 +2647,7 @@ public final class TraceletSdk {
             rustDatabase: rustDatabase
         )
         geofenceManager.onGeofenceEvent = { [weak self] eventData in
-            let _ = self?.insertLocation(eventData)
+            self?.persistGeofenceIfAllowed(eventData)
         }
         
         // Smart motion coordinator

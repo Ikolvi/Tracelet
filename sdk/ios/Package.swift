@@ -94,6 +94,11 @@ let package = Package(
                 // Both keys were accepted and enforced by nothing after the
                 // 3.1.0 DB migration dropped the calls that implemented them.
                 "DatabaseRetentionCapsTests.swift",
+                // #383: persistMode gates geofence ENTER/EXIT rows, not just
+                // ordinary locations. The geofence path was wired straight to
+                // insertLocation, so `location` and `none` persisted — and
+                // HTTP-synced — every crossing they document as excluded.
+                "ConfigManagerGeofencePersistModeTests.swift",
             ]
         ),
     ]

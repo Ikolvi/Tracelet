@@ -376,6 +376,22 @@ public final class ConfigManager {
 
     // PersistenceConfig
     public func getPersistMode() -> Int { (cache["persistMode"] as? NSNumber)?.intValue ?? 0 }
+
+    /// Whether geofence ENTER/EXIT records may be written to the local DB (#383).
+    ///
+    /// The geofence counterpart of the `persistMode` check `LocationEngine`
+    /// applies to ordinary locations. Gates persistence only — the geofence
+    /// listener event is dispatched separately and fires in every mode, so
+    /// `none` keeps its documented "events are still fired" behaviour.
+    ///
+    /// persistMode: 0 = all, 1 = location only, 2 = geofence only, 3 = none
+    public func shouldPersistGeofenceRecords() -> Bool {
+        switch getPersistMode() {
+        case 1, 3: return false // location only / none
+        default: return true // all / geofence only
+        }
+    }
+
     public func getLocationTemplate() -> String? { cache["locationTemplate"] as? String }
     public func getGeofenceTemplate() -> String? { cache["geofenceTemplate"] as? String }
     public func getDisableProviderChangeRecord() -> Bool { cache["disableProviderChangeRecord"] as? Bool ?? false }
