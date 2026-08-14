@@ -1,3 +1,7 @@
+## 3.8.5
+
+**FIX**: the pinned native SDK applies `persistMode` to geofence ENTER/EXIT records, which previously bypassed it entirely and were persisted and synced under `location` and `none` alike. No Dart or plugin change; the fix arrives with the `com.ikolvi:tracelet-sdk` version this release pins ([#383](https://github.com/Ikolvi/Tracelet/issues/383)).
+
 ## 3.8.4
 
 **FEAT**: the foreground-service host API carries `notificationStartedAt`, `notificationShowTimer` and `notificationOnlyAlertOnce` through to the SDK, so the notification's OS-rendered elapsed timer and its alert-once behaviour are configurable from Dart ([#376](https://github.com/Ikolvi/Tracelet/issues/376)).

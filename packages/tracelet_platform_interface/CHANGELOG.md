@@ -1,3 +1,7 @@
+## 3.8.5
+
+Version alignment with tracelet 3.8.5.
+
 ## 3.8.4
 
 **FEAT**: `TlForegroundServiceConfig` carries `notificationStartedAt`, `notificationShowTimer` and `notificationOnlyAlertOnce`, and `TlLiveActivityConfig` carries `startedAt` and `showTimer`, for the OS-rendered elapsed timer. The fields are appended at the end of each Pigeon class and the generated decoders read those indices unconditionally, so a native package must resolve against this interface version or newer — the platform packages' constraints move with this release ([#376](https://github.com/Ikolvi/Tracelet/issues/376)).

@@ -1,21 +1,23 @@
 import os
 import re
 
-version_from = "3.8.3"
-version_to = "3.8.4"
+version_from = "3.8.4"
+version_to = "3.8.5"
 
-# Patch release: the notification/Live Activity elapsed timer (#376), the
-# pause-only-vs-stopOnTerminate arbitration and its health-snapshot fallout
-# (#378), and the empty-fan-out headless routing fix (#371). Everything in #376
-# is additive — new nullable config fields, no signature or default changed —
-# so a patch is the right step.
+# Patch release carrying one native fix: persistMode now gates geofence
+# ENTER/EXIT persistence on both platforms (#383). Previously only ordinary GPS
+# fixes were gated, so `location` and `none` still wrote — and HTTP-synced —
+# every crossing. Behaviour narrows to what the modes already documented, no
+# API surface moves, so a patch is the right step.
 #
-# The dependency bumps below are load-bearing this cycle, not bookkeeping: #376
-# appends fields to TlForegroundServiceConfig and TlLiveActivityConfig, and
-# Pigeon serialises those as positional lists whose decoders read the appended
-# indices unconditionally. A native package resolved against the older
-# interface would read past the end of the list and throw during ready(), so
-# the `tracelet_platform_interface: ^` constraints must land on this version.
+# Unlike 3.8.4, the dependency bumps below are ordinary bookkeeping this cycle:
+# the Pigeon interface is untouched, so nothing forces a native package onto
+# the new tracelet_platform_interface. The constraints still move together to
+# keep the workspace resolving as one release.
+#
+# The other change since 3.8.4 is website tooling only — translate.js keeping
+# leading whitespace so an indented <Callout> survives translation — which
+# ships no package code and so gets no changelog entry.
 
 # 1. Bump version strings
 exact_replacements = [

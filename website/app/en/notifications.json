@@ -1,20 +1,10 @@
 {
-  "badgeTitle": "New in 3.8.4",
+  "badgeTitle": "New in 3.8.5",
   "items": [
     {
-      "title": "An elapsed timer the OS ticks for you",
-      "description": "notificationStartedAt + notificationShowTimer put a running clock in the Android tracking notification, and startedAt + showTimer do the same for an iOS Live Activity. The system advances both — no reposts, so no once-a-minute rewrite of your own and no alert on each one. notificationOnlyAlertOnce covers the other half: notification text that changes while tracking runs can now update silently.",
-      "href": "/getting-started/platform-setup/android"
-    },
-    {
-      "title": "showNotificationOnPauseOnly no longer defeats stopOnTerminate",
-      "description": "Hiding the notification demotes the foreground service, and Android kills a process holding none when its task is removed — so a swipe from recents in that window took the process with it. The setting is now ignored while stopOnTerminate is false, and says so once in the log. getForegroundServiceHealth() reports a hidden-on-purpose notification as a fourth result, suppressed, instead of claiming a service that is not there.",
-      "href": "/core/foreground-service-health"
-    },
-    {
-      "title": "Events keep reaching your headless task",
-      "description": "With another plugin's background engine in the app — firebase_messaging's, typically — task removal could leave Tracelet broadcasting into an event fan-out with no members at all. Native tracking ran on and Dart received nothing, silently. Events now fall through to the registered headless task whenever no engine can receive them.",
-      "href": "/getting-started/platform-setup/android"
+      "title": "persistMode now applies to geofence crossings",
+      "description": "persistMode only ever gated ordinary GPS fixes, so 'location' and 'none' still wrote every geofence ENTER/EXIT to the local database and uploaded it in the next HTTP batch. An app that chose 'none' to get callbacks without the SDK retaining a location history was accumulating a record of every fence it crossed. Crossings are now stored only under 'all' and 'geofence'. Your onGeofence listener is unaffected in every mode — only the database write is gated.",
+      "href": "/core/geofencing"
     }
   ]
 }
