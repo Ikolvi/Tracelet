@@ -433,6 +433,10 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         guard !isTracking else { return }
         isTracking = true
 
+        // A pending anchor is superseded by the stream this starts; the flag
+        // must not survive onto the stream's first fix (#385).
+        startupFixPending = false
+
         configureLocationManager()
         checkReducedAccuracy()
 
@@ -486,6 +490,10 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     }
 
     public func stop() {
+        // Cleared before the isTracking guard on purpose: the startup fix runs
+        // while *not* tracking, so a stop() during it returns below without
+        // ever reaching this line otherwise (#385).
+        startupFixPending = false
         guard isTracking else { return }
         isTracking = false
         isPeriodicTracking = false
@@ -1052,6 +1060,62 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         return true
     }
 
+    /// Acquires the single fix that anchors a session which *starts* stationary
+    /// (#385).
+    ///
+    /// A fresh `start()` with `motion.isMoving: false` — the default — runs no
+    /// continuous stream by design, and on this path nothing else acquires
+    /// either: `changePace(false)` hands the pace to the motion subsystems,
+    /// which are already stationary and so change nothing. The app was left
+    /// with no position at all until the device physically moved and
+    /// `changePace(true)` took the stationary → moving transition, which is
+    /// where the equivalent one-shot below already lived.
+    ///
+    /// Routed through `requestLocation()` — and therefore through
+    /// `didUpdateLocations` — rather than the best-of-N sampling window that
+    /// `getCurrentPosition` uses: the sampling window delivers via
+    /// `deliverBest`, which writes to the sinks directly and would bypass the
+    /// `persistMode` gate and the `event: "location"` tag that every automatic
+    /// fix carries. An anchor the app never asked for must obey the same
+    /// persistence rules as the stream it stands in for.
+    public func requestStartupFix() {
+        let authStatus: CLAuthorizationStatus
+        if #available(iOS 14.0, *) {
+            authStatus = locationManager.authorizationStatus
+        } else {
+            authStatus = CLLocationManager.authorizationStatus()
+        }
+        guard authStatus == .authorizedWhenInUse || authStatus == .authorizedAlways else {
+            TraceletLog.debug("[Tracelet] requestStartupFix skipped — not authorized (status=\(authStatus.rawValue))")
+            return
+        }
+
+        // The stream is already acquiring — a moving start, or the
+        // in-app-evaluated-geofence branch of a stationary one (#357). Periodic
+        // owns the manager outright and restores its own configuration after
+        // each fix; do not reach into it.
+        guard !isTracking, !isPeriodicTracking else { return }
+
+        // Don't collide with an in-flight getCurrentPosition window: its
+        // `feedSample` would consume the fix and `restoreAfterSampling` would
+        // stop the updates it started.
+        guard sampleState == nil else { return }
+
+        // start() never ran on this path, so the manager still holds whatever
+        // accuracy a previous mode left on it. Apply the configured one.
+        applyLocationProviderOptions()
+        startupFixPending = true
+        locationManager.requestLocation()
+    }
+
+    /// Set between [requestStartupFix] and the fix it asks for, so
+    /// `didUpdateLocations` can recognise the session's anchor.
+    ///
+    /// Cleared by the first delivery, by a delegate error, and by `stop()`, so
+    /// a request that never lands cannot leave the flag on an unrelated fix
+    /// later in the session.
+    private var startupFixPending = false
+
     // MARK: - Odometer
 
     public func getOdometer() -> Double {
@@ -1126,6 +1190,11 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
 
     public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
+
+        // Consumed here so exactly one fix is treated as the session's anchor
+        // (#385) — see `speedSink` below.
+        let isStartupFix = startupFixPending
+        startupFixPending = false
 
         // Only reset DR timer on GPS-quality fixes (not cell/Wi-Fi).
         if LocationEngine.isGpsFix(location) {
@@ -1210,8 +1279,18 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             }
         }
 
-        // Resolve effective speed: platform speed if available, otherwise computed
-        let effectiveSpeed = (location.speed > 0) ? location.speed : computedSpeed
+        // Resolve effective speed: platform speed if available, otherwise computed.
+        //
+        // The startup anchor (#385) has no valid time base for the derivation:
+        // `lastLocation` survives stop(), so the first fix of a new session in a
+        // live process would be derived against wherever the *previous* session
+        // ended. A device carried 5 km between two sessions yields ~8 m/s —
+        // inside `maxImpliedSpeed` (80 m/s), so nothing discards it. A Doppler
+        // reading is a real measurement and is kept; the derivation is dropped,
+        // for this one fix only, which is what "no speed" already means here.
+        let effectiveSpeed = (location.speed > 0)
+            ? location.speed
+            : (isStartupFix ? 0.0 : computedSpeed)
 
         // Feed the transport classifier from the raw stream — see `rawSpeedSink`.
         rawSpeedSink?(effectiveSpeed)
@@ -1273,7 +1352,18 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         // fix whether or not it accepted it — it used to be hardcoded to 0 on
         // every rejection, which fed the machine a fabricated "stopped" for
         // most of every drive (#332).
-        speedSink?(result.effectiveSpeed)
+        //
+        // The anchor keeps the measured-speed-only rule applied above: the
+        // *processor* derives its own speed from its own last accepted fix
+        // (`state.last_latitude`), which stop() does not clear either, so
+        // `result.effectiveSpeed` re-introduces exactly the cross-session
+        // derivation that `effectiveSpeed` just declined. Left alone it would
+        // overturn the pace `start()` committed a few lines before asking for
+        // the anchor — 8 m/s is well above `speedMovingThreshold` (1.5 m/s) —
+        // which is the silent override of a committed pace #344 exists to
+        // prevent (#385).
+        let motionSpeed = isStartupFix ? effectiveSpeed : result.effectiveSpeed
+        speedSink?(motionSpeed)
 
         if !result.accepted {
             // #334: the speed handed to the motion machine belongs on this line.
@@ -1292,7 +1382,12 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             stateManager.addOdometer(distance: result.odometerDelta)
         }
 
-        lastEffectiveSpeed = result.effectiveSpeed
+        // `motionSpeed`, not `result.effectiveSpeed`: this property is read as
+        // the session's current speed, and startSpeedMotionManager() seeds the
+        // machine with it — so an anchor's derived value would reach the
+        // machine one session later through that door even though the sink
+        // above declined it (#385).
+        lastEffectiveSpeed = motionSpeed
 
         // Persist last periodic coordinates for cross-restart odometer
         if isPeriodicTracking {
@@ -1306,7 +1401,10 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         }
         stateManager.lastLocationTime = Date().timeIntervalSince1970 * 1000
 
-        let locationMap = buildLocationMap(location, speed: result.effectiveSpeed, smoothedLat: smoothedLat, smoothedLng: smoothedLng)
+        // `motionSpeed` is identical to result.effectiveSpeed for every fix but
+        // the anchor, which reports what was measured rather than what was
+        // derived (#385).
+        let locationMap = buildLocationMap(location, speed: motionSpeed, smoothedLat: smoothedLat, smoothedLng: smoothedLng)
 
         // Fire one-shot callbacks
         fireOneShots(location)
@@ -1417,6 +1515,10 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
 
     public func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         TraceletLog.error("[Tracelet] Location error: \(error.localizedDescription)")
+
+        // A startup fix that failed is over; the flag must not survive onto an
+        // unrelated fix later in the session (#385).
+        startupFixPending = false
 
         // Fail all one-shots — fallback to lastLocation if available
         let fallbackLocation = lastLocation
