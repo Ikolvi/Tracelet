@@ -694,6 +694,8 @@ external fun uniffi_tracelet_core_checksum_method_locationprocessor_process(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_locationprocessor_reset(
 ): Short
+external fun uniffi_tracelet_core_checksum_method_locationprocessor_reset_odometer_anchor(
+): Short
 external fun uniffi_tracelet_core_checksum_method_locationprocessor_restore_base_tuning(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_locationprocessor_retune(
@@ -985,6 +987,8 @@ external fun uniffi_tracelet_core_fn_method_locationprocessor_last_effective_spe
 external fun uniffi_tracelet_core_fn_method_locationprocessor_process(`ptr`: Long,`latitude`: Double,`longitude`: Double,`accuracy`: Double,`speed`: Double,`timestampMs`: Long,`isMock`: Byte,`adaptiveContext`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun uniffi_tracelet_core_fn_method_locationprocessor_reset(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_tracelet_core_fn_method_locationprocessor_reset_odometer_anchor(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 external fun uniffi_tracelet_core_fn_method_locationprocessor_restore_base_tuning(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -1438,6 +1442,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_reset() != 34209.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_reset_odometer_anchor() != 15510.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_restore_base_tuning() != 17132.toShort()) {
@@ -6528,6 +6535,23 @@ public interface LocationProcessorInterface {
     fun `reset`()
     
     /**
+     * Clears the odometer's anchor alone, leaving the tracking anchor, the
+     * sparse window and the active tuning where they are.
+     *
+     * `setOdometer()` on the hosts writes the total and nothing else, while
+     * the distance it accumulates is measured from the anchor kept here. The
+     * next accepted fix therefore added the whole span since the previous one
+     * — for an app that reset to zero and started tracking, however far the
+     * device had travelled untracked — so "the odometer is N" survived exactly
+     * one fix (#387).
+     *
+     * [reset] is the wrong tool for that: it also drops `last_latitude`, which
+     * is what decides whether the next fix clears the distance filter, so
+     * setting the odometer would quietly change which fixes are recorded.
+     */
+    fun `resetOdometerAnchor`()
+    
+    /**
      * Restores the thresholds the processor was constructed with, undoing any
      * [`Self::retune`]. Used when the classifier drops back to `Unknown` and
      * the host's own configuration should take over again.
@@ -6756,6 +6780,33 @@ open class LocationProcessor: Disposable, AutoCloseable, LocationProcessorInterf
     callWithHandle {
     uniffiRustCall() { _status ->
     UniffiLib.uniffi_tracelet_core_fn_method_locationprocessor_reset(
+        it,
+        _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Clears the odometer's anchor alone, leaving the tracking anchor, the
+     * sparse window and the active tuning where they are.
+     *
+     * `setOdometer()` on the hosts writes the total and nothing else, while
+     * the distance it accumulates is measured from the anchor kept here. The
+     * next accepted fix therefore added the whole span since the previous one
+     * — for an app that reset to zero and started tracking, however far the
+     * device had travelled untracked — so "the odometer is N" survived exactly
+     * one fix (#387).
+     *
+     * [reset] is the wrong tool for that: it also drops `last_latitude`, which
+     * is what decides whether the next fix clears the distance filter, so
+     * setting the odometer would quietly change which fixes are recorded.
+     */override fun `resetOdometerAnchor`()
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_locationprocessor_reset_odometer_anchor(
         it,
         _status)
 }

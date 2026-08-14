@@ -1031,9 +1031,23 @@ class LocationEngine(
     /** Returns the current odometer value. */
     fun getOdometer(): Double = state.odometer
 
-    /** Sets the odometer to a specific value. */
+    /**
+     * Sets the odometer to a specific value.
+     *
+     * The processor's odometer anchor goes with it (#387). Distance is measured
+     * from that anchor, not from the total, so writing the counter alone left
+     * the next accepted fix to add the whole span since the previous one — for
+     * the common "reset to zero, then start tracking", however far the device
+     * had travelled while it was not being tracked. `setOdometer(0)` meant
+     * "the odometer is zero" for exactly one fix.
+     *
+     * Only the odometer anchor is cleared, never the tracking one: that would
+     * waive the distance filter for the next fix and change which locations are
+     * recorded, which is not something setting a counter should do.
+     */
     fun setOdometer(value: Double): Map<String, Any?> {
         state.odometer = value
+        locationProcessor?.resetOdometerAnchor()
         return lastLocation?.let { enrichLocation(it, "setOdometer") }
             ?: mapOf("odometer" to value)
     }

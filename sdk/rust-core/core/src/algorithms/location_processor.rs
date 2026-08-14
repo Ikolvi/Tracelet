@@ -603,6 +603,25 @@ impl LocationProcessor {
         LocationProcessorResult::accept(effective_speed, odometer_delta, distance)
     }
 
+    /// Clears the odometer's anchor alone, leaving the tracking anchor, the
+    /// sparse window and the active tuning where they are.
+    ///
+    /// `setOdometer()` on the hosts writes the total and nothing else, while
+    /// the distance it accumulates is measured from the anchor kept here. The
+    /// next accepted fix therefore added the whole span since the previous one
+    /// — for an app that reset to zero and started tracking, however far the
+    /// device had travelled untracked — so "the odometer is N" survived exactly
+    /// one fix (#387).
+    ///
+    /// [reset] is the wrong tool for that: it also drops `last_latitude`, which
+    /// is what decides whether the next fix clears the distance filter, so
+    /// setting the odometer would quietly change which fixes are recorded.
+    pub fn reset_odometer_anchor(&self) {
+        let mut state = self.state.lock().unwrap();
+        state.odo_last_latitude = None;
+        state.odo_last_longitude = None;
+    }
+
     /// Clears the positional history. Leaves the active tuning in place — a
     /// reset is about forgetting where we were, not which mode we are in.
     pub fn reset(&self) {
@@ -958,6 +977,58 @@ mod tests {
             (total - 40.0).abs() < 0.5,
             "booked {total} m over a 40 m span ending on a trusted fix",
         );
+    }
+
+    // -- #387: setOdometer() must move the anchor, not just the total --
+    //
+    // The hosts' `setOdometer` writes the counter while the distance it
+    // accumulates is measured from the anchor kept here. Without clearing it,
+    // the next accepted fix books the whole span since the previous one, so an
+    // app that reset to zero and started tracking began its trip with however
+    // far the device had travelled untracked.
+
+    #[test]
+    fn resetting_the_odometer_anchor_makes_the_next_fix_contribute_nothing() {
+        let p = processor(walking());
+        assert!(fix_at(&p, 0.0, 5.0, 1_000).accepted);
+
+        // Without the reset, this is the phantom leg: a 30 m span the caller
+        // has just declared should not count.
+        p.reset_odometer_anchor();
+
+        let after = fix_at(&p, 30.0, 5.0, 31_000);
+        assert!(after.accepted, "the fix is still recorded — only its distance is dropped");
+        assert_eq!(
+            after.odometer_delta, 0.0,
+            "the first fix after a reset has nothing to measure from, exactly as \
+             the first fix of a fresh processor has",
+        );
+
+        // And the anchor is re-established, so ordinary accumulation resumes.
+        let next = fix_at(&p, 60.0, 5.0, 61_000);
+        assert!(
+            (next.odometer_delta - 30.0).abs() < 0.5,
+            "expected the 30 m since the reset, got {}",
+            next.odometer_delta,
+        );
+    }
+
+    #[test]
+    fn resetting_the_odometer_anchor_leaves_the_tracking_anchor_alone() {
+        // The distinction that makes this a separate method from `reset()`:
+        // `last_latitude` decides whether the next fix clears the distance
+        // filter, so setting the odometer must not change which fixes are
+        // recorded. A 1 m step under walking's 5 m filter stays filtered.
+        let p = processor(walking());
+        assert!(fix_at(&p, 0.0, 5.0, 1_000).accepted);
+
+        p.reset_odometer_anchor();
+
+        assert!(p.has_last_location(), "the tracking anchor survives");
+        let stationary = fix_at(&p, 1.0, 5.0, 11_000);
+        assert!(!stationary.accepted);
+        assert_eq!(stationary.reason.as_deref(), Some("DISTANCE_FILTER"));
+        assert_eq!(p.current_tuning(), walking(), "and so does the active tuning");
     }
 
     #[test]
