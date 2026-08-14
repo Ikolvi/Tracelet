@@ -798,6 +798,22 @@ class ConfigManager(context: Context) {
     fun getPersistMode(): Int =
         getInt("persistMode", DEFAULT_PERSIST_MODE)
 
+    /**
+     * Whether geofence ENTER/EXIT records may be written to the local DB (#383).
+     *
+     * The geofence counterpart of the `persistMode` check `LocationEngine`
+     * applies to ordinary locations. Gates persistence only — the geofence
+     * listener event is dispatched separately and fires in every mode, so
+     * `none` keeps its documented "events are still fired" behaviour.
+     *
+     * persistMode: 0 = all, 1 = location only, 2 = geofence only, 3 = none
+     */
+    fun shouldPersistGeofenceRecords(): Boolean =
+        when (getPersistMode()) {
+            1, 3 -> false // location only / none
+            else -> true // all / geofence only
+        }
+
     fun getMaxDaysToPersist(): Int =
         getInt("maxDaysToPersist", DEFAULT_MAX_DAYS_TO_PERSIST)
 

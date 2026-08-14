@@ -670,7 +670,7 @@ class TraceletSdk private constructor(private val context: Context) {
             },
         ).apply {
             onGeofenceEvent = { eventMap ->
-                insertLocation(eventMap)
+                persistGeofenceIfAllowed(eventMap)
             }
         }
         GeofenceBroadcastReceiver.geofenceManager = geofenceManager
@@ -2118,6 +2118,25 @@ class TraceletSdk private constructor(private val context: Context) {
      * DB writes from the same GPS fix (e.g. from PeriodicLocationWorker).
      */
     private var lastInsertedTimestamp: String? = null
+
+    /**
+     * Persists a geofence ENTER/EXIT record only if allowed by persistMode (#383).
+     *
+     * The geofence counterpart of `LocationEngine.persistLocationIfAllowed` — geofence
+     * transitions used to be wired straight to [insertLocation], so `location` and
+     * `none` still wrote (and HTTP-synced) every crossing despite documenting otherwise.
+     *
+     * Only the DB write is gated. The listener event is dispatched separately by
+     * `GeofenceManager` via `events.sendGeofence`, so `none` keeps its documented
+     * "events are still fired" behaviour.
+     *
+     * Read live rather than latched at setup, so a `setConfig` mid-session takes
+     * effect on the next transition.
+     */
+    private fun persistGeofenceIfAllowed(eventMap: Map<String, Any?>) {
+        if (!configManager.shouldPersistGeofenceRecords()) return
+        insertLocation(eventMap)
+    }
 
     /**
      * Inserts a location record into the Rust database and notifies registered sync sinks.
