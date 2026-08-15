@@ -1,6 +1,6 @@
 ## Unreleased
 
-**FIX**: (iOS) CocoaPods fallback fetches `TraceletCore.xcframework` / `TraceletSyncFFI.xcframework` when Flutter installs the plugins as `:path` pods. The published podspecs set `s.source :http` to the GitHub Release zips, which CocoaPods never downloads for path pods, so disabling Swift Package Manager failed at link with undefined UniFFI symbols ([#390](https://github.com/Ikolvi/Tracelet/issues/390)).
+**FIX**: (iOS) an app with Swift Package Manager disabled links again. Flutter installs plugins as `:path` pods, and the published podspecs pointed `s.source :http` at the GitHub Release zips — a source CocoaPods never downloads for path pods, so `TraceletCore.xcframework` / `TraceletSyncFFI.xcframework` were simply absent and the build failed at `ld` with hundreds of undefined UniFFI symbols. The podspecs now fetch and checksum their own binary during evaluation, and each links the framework it vendors, which CocoaPods does only for a *dependency's* vendored frameworks ([#390](https://github.com/Ikolvi/Tracelet/issues/390)).
 
 ## 3.8.5
 

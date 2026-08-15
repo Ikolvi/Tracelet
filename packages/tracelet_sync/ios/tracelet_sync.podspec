@@ -2,8 +2,8 @@
 # To learn more about a Podspec see http://guides.cocoapods.org/syntax/podspec.html.
 # Run `pod lib lint tracelet_sync.podspec` to validate before publishing.
 #
-# Loaded so the publish rewrite can call ensure_tracelet_xcframework! after it
-# points vendored_frameworks at the GitHub Release zip. (#390)
+# Fetches the vendored sync FFI binary in published packages, where CocoaPods
+# will not do it for us. No-op in the monorepo. (#390)
 require File.expand_path('ensure_xcframework', File.dirname(__FILE__))
 
 Pod::Spec.new do |s|
@@ -24,8 +24,24 @@ A new Flutter plugin project.
   s.platform = :ios, '14.0'
   s.vendored_frameworks = 'tracelet_sync/TraceletSyncFFI.xcframework'
 
+  # Published packages ship without the binary they vendor: Flutter installs
+  # plugins as :path pods, and CocoaPods downloads neither `s.source :http` nor
+  # `prepare_command` for those. Podspec evaluation is the one hook that does
+  # run, so fetch it here. No-op in the monorepo, which builds it. (#390)
+  TraceletSyncPodspec.ensure_xcframework!(
+    File.dirname(__FILE__),
+    'tracelet_sync/TraceletSyncFFI.xcframework',
+    "https://github.com/Ikolvi/Tracelet/releases/download/tracelet_sync-v#{s.version}/TraceletSyncFFI.xcframework.zip"
+  )
+
+  # CocoaPods links a *dependency's* vendored frameworks into a pod target but
+  # never the pod's own, so ffi_tracelet_sync_* would have no definitions at
+  # link time. TraceletCore needs no flag here: it is vendored by tracelet_ios,
+  # which this pod depends on in published packages. (#390)
+  sync_ldflags = TraceletSyncPodspec.published?(File.dirname(__FILE__)) ? ' -framework "TraceletSyncFFI"' : ''
+
   # Flutter.framework does not contain a i386 slice.
-  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386', 'STRIP_STYLE' => 'non-global' }
+  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386', 'STRIP_STYLE' => 'non-global', 'OTHER_LDFLAGS' => '$(inherited)' + sync_ldflags }
   s.user_target_xcconfig = { 
     'OTHER_LDFLAGS' => '$(inherited) -Wl,-multiply_defined,suppress -Wl,-ld_classic', 
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
