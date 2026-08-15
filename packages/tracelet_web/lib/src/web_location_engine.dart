@@ -29,6 +29,16 @@ class WebLocationEngine {
   /// Current odometer value in meters.
   double _odometer = 0;
 
+  /// Whether the next fix must not contribute distance (issue #387).
+  ///
+  /// The odometer accumulates from `_lastLocation`, which doubles as the
+  /// tracking anchor and so cannot simply be cleared by [setOdometer] — it also
+  /// feeds `motionchange` and `getLastKnownLocation`. Skipping one delta is
+  /// equivalent here: the native engines clear a dedicated odometer anchor,
+  /// whose only effect is that the next accepted fix has nothing to measure
+  /// from.
+  bool _skipNextOdometerDelta = false;
+
   /// Whether tracking is currently active.
   bool _isTracking = false;
 
@@ -300,8 +310,15 @@ class WebLocationEngine {
   }
 
   /// Manually overrides the accumulated odometer value.
+  ///
+  /// The reference the odometer measures from is dropped with it (#387).
+  /// Writing the total alone left the next fix to add the whole span since the
+  /// previous one — for the common "reset to zero, then start tracking",
+  /// however far the device had travelled while it was not being tracked — so
+  /// `setOdometer(0)` meant "the odometer is zero" for exactly one fix.
   Map<String, Object?> setOdometer(double value) {
     _odometer = value;
+    _skipNextOdometerDelta = true;
     return _lastLocation ?? _emptyLocation();
   }
 
@@ -394,10 +411,12 @@ class WebLocationEngine {
       distance = GeoUtils.haversine(prevLat, prevLon, curLat, curLon);
     }
 
-    // Update odometer.
-    if (prevLat != null) {
+    // Update odometer. The fix after a setOdometer() has nothing to measure
+    // from, exactly as the first fix of a session has (#387).
+    if (prevLat != null && !_skipNextOdometerDelta) {
       _odometer += distance;
     }
+    _skipNextOdometerDelta = false;
     locationMap['odometer'] = _odometer;
 
     _updateLastLocation(locationMap);
