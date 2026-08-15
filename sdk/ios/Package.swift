@@ -104,6 +104,10 @@ let package = Package(
                 // locationEngine.start() with the pace branch and left the
                 // stationary path with no acquisition at all.
                 "LocationEngineStartupFixTests.swift",
+                // #387: setOdometer() moves the odometer anchor, not just the
+                // total. Without it the next accepted fix re-added the whole
+                // span since the previous one, so a reset survived one fix.
+                "LocationProcessorOdometerAnchorTests.swift",
             ]
         ),
     ]

@@ -3327,6 +3327,23 @@ public protocol LocationProcessorProtocol: AnyObject, Sendable {
     func reset() 
     
     /**
+     * Clears the odometer's anchor alone, leaving the tracking anchor, the
+     * sparse window and the active tuning where they are.
+     *
+     * `setOdometer()` on the hosts writes the total and nothing else, while
+     * the distance it accumulates is measured from the anchor kept here. The
+     * next accepted fix therefore added the whole span since the previous one
+     * — for an app that reset to zero and started tracking, however far the
+     * device had travelled untracked — so "the odometer is N" survived exactly
+     * one fix (#387).
+     *
+     * [reset] is the wrong tool for that: it also drops `last_latitude`, which
+     * is what decides whether the next fix clears the distance filter, so
+     * setting the odometer would quietly change which fixes are recorded.
+     */
+    func resetOdometerAnchor() 
+    
+    /**
      * Restores the thresholds the processor was constructed with, undoing any
      * [`Self::retune`]. Used when the classifier drops back to `Unknown` and
      * the host's own configuration should take over again.
@@ -3506,6 +3523,28 @@ open func process(latitude: Double, longitude: Double, accuracy: Double, speed: 
      */
 open func reset()  {try! rustCall() {
     uniffi_tracelet_core_fn_method_locationprocessor_reset(
+            self.uniffiCloneHandle(),$0
+    )
+}
+}
+    
+    /**
+     * Clears the odometer's anchor alone, leaving the tracking anchor, the
+     * sparse window and the active tuning where they are.
+     *
+     * `setOdometer()` on the hosts writes the total and nothing else, while
+     * the distance it accumulates is measured from the anchor kept here. The
+     * next accepted fix therefore added the whole span since the previous one
+     * — for an app that reset to zero and started tracking, however far the
+     * device had travelled untracked — so "the odometer is N" survived exactly
+     * one fix (#387).
+     *
+     * [reset] is the wrong tool for that: it also drops `last_latitude`, which
+     * is what decides whether the next fix clears the distance filter, so
+     * setting the odometer would quietly change which fixes are recorded.
+     */
+open func resetOdometerAnchor()  {try! rustCall() {
+    uniffi_tracelet_core_fn_method_locationprocessor_reset_odometer_anchor(
             self.uniffiCloneHandle(),$0
     )
 }
@@ -10272,6 +10311,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_locationprocessor_reset() != 34209) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tracelet_core_checksum_method_locationprocessor_reset_odometer_anchor() != 15510) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_locationprocessor_restore_base_tuning() != 17132) {
