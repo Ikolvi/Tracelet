@@ -298,6 +298,20 @@ jobs:
         working-directory: example
         run: flutter build ios --no-codesign --release
 
+      # The example builds the monorepo podspecs; pub.dev consumers get the
+      # rewritten ones, and nothing here exercised that shape — which is how a
+      # podspec no consumer could load reached main. (#390)
+      - name: Verify published CocoaPods fallback
+        run: |
+          # A published podspec fetches the GitHub Release for its own version,
+          # which does not exist until the release job runs. Validate the
+          # mechanism against the most recently published version instead
+          # (tracelet_ios and tracelet_sync are bumped in lockstep).
+          git fetch --tags --quiet
+          LATEST=$(git tag --list 'tracelet_ios-v*' | sed 's/^tracelet_ios-v//' | sort -V | tail -1)
+          echo "Verifying against tracelet_ios-v${LATEST}"
+          scripts/verify_cocoapods_fallback.sh --version "$LATEST"
+
       - name: Verify FRB Symbols are not stripped
         working-directory: example
         run: |
