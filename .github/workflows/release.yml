@@ -796,10 +796,16 @@ jobs:
           # Update Podspec
           perl -pi -e "s|s.dependency 'TraceletSDK'.*|s.vendored_frameworks = 'TraceletCore.xcframework'|g" packages/tracelet_ios/ios/tracelet_ios.podspec
           perl -pi -e "s|s.source           = \\{ :path => '.' \\}|s.source = \\{ :http => 'https://github.com/Ikolvi/Tracelet/releases/download/tracelet_ios-v${IOS_VERSION}/TraceletCore.xcframework.zip' \\}|g" packages/tracelet_ios/ios/tracelet_ios.podspec
-          
+
           # Update Package.swift
           CORE_CHECKSUM="${{ needs.publish-ios-sdk.outputs.core_checksum }}"
-          
+
+          # The podspec fetches this zip itself at evaluation time, because
+          # Flutter :path installs skip s.source :http and prepare_command
+          # (CocoaPods#11867). Ship the digest beside it so that download is
+          # verified the same way SPM verifies its binaryTarget. (#390)
+          echo "${CORE_CHECKSUM}" > packages/tracelet_ios/ios/TraceletCore.xcframework.sha256
+
           perl -pi -e 's/\.package\(name: "TraceletSDK".*//g' packages/tracelet_ios/ios/tracelet_ios/Package.swift
           perl -pi -e 's/\.product\(name: "TraceletSDK".*/"TraceletCore",/g' packages/tracelet_ios/ios/tracelet_ios/Package.swift
           
@@ -832,7 +838,13 @@ jobs:
           # Update Podspec
           perl -pi -e 's|s\.dependency '\''TraceletSDK'\''.*|s.dependency '\''tracelet_ios'\''|g' packages/tracelet_sync/ios/tracelet_sync.podspec 2>/dev/null || true
           perl -pi -e "s|s.source           = \\{ :path => '.' \\}|s.source = \\{ :http => 'https://github.com/Ikolvi/Tracelet/releases/download/tracelet_sync-v${SYNC_VERSION}/TraceletSyncFFI.xcframework.zip' \\}|g" packages/tracelet_sync/ios/tracelet_sync.podspec
-          
+          # The podspec fetches this zip itself at evaluation time, because
+          # Flutter :path installs skip s.source :http and prepare_command
+          # (CocoaPods#11867). Ship the digest beside it so that download is
+          # verified the same way SPM verifies its binaryTarget. (#390)
+          mkdir -p packages/tracelet_sync/ios/tracelet_sync
+          echo "${SYNC_CHECKSUM}" > packages/tracelet_sync/ios/tracelet_sync/TraceletSyncFFI.xcframework.sha256
+
           # Update Package.swift
           perl -pi -e 's/\.package\(name: "TraceletSDK".*/.package(name: "tracelet_ios", path: "..\/tracelet_ios"),/g' packages/tracelet_sync/ios/tracelet_sync/Package.swift
           perl -pi -e 's/\.product\(name: "TraceletSDK".*/.product(name: "tracelet-ios", package: "tracelet_ios"),/g' packages/tracelet_sync/ios/tracelet_sync/Package.swift

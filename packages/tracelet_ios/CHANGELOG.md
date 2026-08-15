@@ -1,3 +1,7 @@
+## Unreleased
+
+**FIX**: the CocoaPods fallback links. Two things were missing when Swift Package Manager is disabled and Flutter installs the plugin as a `:path` pod. The published podspec pointed `s.source :http` at the GitHub Release zip, which CocoaPods never downloads for path pods — the podspec now fetches it during evaluation, the one hook that does run, and verifies its checksum the way the SPM binary target does. And CocoaPods links a *dependency's* vendored frameworks into a pod target but never the pod's own, so even once the binary was on disk the UniFFI stubs still had nothing to resolve `uniffi_tracelet_core_*` against ([#390](https://github.com/Ikolvi/Tracelet/issues/390)).
+
 ## 3.8.5
 
 **FIX**: the pinned native SDK clears the odometer's distance anchor in `setOdometer()`, so a reset counter is no longer re-inflated by the next fix. No Dart or plugin change; the fix arrives with the `TraceletSDK` version this release pins ([#387](https://github.com/Ikolvi/Tracelet/issues/387)).
