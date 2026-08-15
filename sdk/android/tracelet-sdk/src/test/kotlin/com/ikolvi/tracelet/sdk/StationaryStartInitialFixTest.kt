@@ -143,10 +143,39 @@ class StationaryStartInitialFixTest {
                 "foregroundService" to false,
                 "stopOnStationary" to false,
                 "isMoving" to isMoving,
+                // Pinned, not inherited: ready() merges into the persisted
+                // config, and `hasEvaluatorOwnedGeofences()` is true whenever
+                // this flag is — no stored fence required. Left to whatever an
+                // earlier class wrote, start() runs the stream for in-app
+                // evaluation (#357) and skips the anchor as "already
+                // acquiring", so the class failed on whichever test JUnit
+                // scheduled first and passed on a re-run.
+                "geofenceModeHighAccuracy" to false,
             ) + extra,
         ) { done = true }
         idle()
         check(done) { "ready() did not complete" }
+        // `TraceletSdk.isTracking` also consults `LocationService.isRunning`, a
+        // static that outlives the singleton this class resets — a foreground
+        // service left "running" by an earlier class makes start() take its
+        // already-tracking early return, and every assertion below then
+        // measures nothing. Checked rather than assumed: the failure is
+        // otherwise a silent zero three steps later.
+        check(!sdk.isTracking) {
+            "a previous test left tracking active — start() would no-op"
+        }
+
+        // The other half of the same trap: geofences live in the Rust DB under
+        // filesDir, which is shared by the whole test run and survives both the
+        // singleton reset and Robolectric's sandbox. A single sub-100 m fence
+        // left by another class is evaluator-owned on its own merits, config
+        // flag or not.
+        sdk.removeGeofences()
+        idle()
+        check(!sdk.geofenceManager.hasEvaluatorOwnedGeofences()) {
+            "an evaluator-owned fence or the high-accuracy flag survived; " +
+                "start() would run the stream and skip the anchor"
+        }
 
         // The motion subsystems are process-scoped and outlive stop(), so a
         // leftover moving input from whichever test ran before this one would
@@ -219,8 +248,16 @@ class StationaryStartInitialFixTest {
         idle()
 
         // The anchor lands and takes the processor's first-fix slot.
+        assertEquals("precondition: the anchor was requested", 1, client.getCurrentLocationCalls)
         client.deliverCurrentLocation(fix(lat = 10.787929, ageSeconds = 0))
         idle()
+        assertEquals(
+            "precondition: the anchor was accepted — without it there is no slot " +
+                "to hand back and nothing under test",
+            10.787929,
+            sdk.locationEngine.getLastLocation()?.latitude ?: 0.0,
+            1e-6,
+        )
         clearInvocations(events)
 
         // The device wakes without having moved — the phone is still on the
