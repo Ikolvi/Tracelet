@@ -1,3 +1,7 @@
+## 3.8.6-alpha.1
+
+Version alignment with tracelet 3.8.6-alpha.1.
+
 ## 3.8.5
 
 **FIX**: the pinned native SDK clears the odometer's distance anchor in `setOdometer()`, so a reset counter is no longer re-inflated by the next fix. No Dart or plugin change; the fix arrives with the `com.ikolvi:tracelet-sdk` version this release pins ([#387](https://github.com/Ikolvi/Tracelet/issues/387)).

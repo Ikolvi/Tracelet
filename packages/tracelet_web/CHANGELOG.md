@@ -1,3 +1,7 @@
+## 3.8.6-alpha.1
+
+Version alignment with tracelet 3.8.6-alpha.1.
+
 ## 3.8.5
 
 **FIX**: `setOdometer()` drops the reference the odometer measures from. Accumulation runs off `_lastLocation`, which the setter left in place, so the next browser fix added the whole span since the previous one and a reset survived exactly one fix — the same defect the native engines had, reached independently ([#387](https://github.com/Ikolvi/Tracelet/issues/387)).

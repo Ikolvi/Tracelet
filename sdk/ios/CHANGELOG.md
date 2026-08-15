@@ -1,3 +1,7 @@
+## 3.8.6-alpha.1
+
+Version alignment with tracelet 3.8.6-alpha.1.
+
 ## 3.8.5
 
 **FIX**: `setOdometer()` clears the processor's odometer anchor. `LocationProcessor` keeps that anchor separate from the tracking one — deliberately, so a fix too coarse to trust defers its distance rather than losing it — and advances it on every fix that passes the accuracy gate. `LocationEngine.setOdometer` wrote `stateManager.odometer` and nothing else, and nothing on any platform ever cleared the anchor (`LocationProcessor.reset()` existed with no callers outside the core), so the next accepted fix booked the whole span since the previous one against the value just set. The call now goes through a new `LocationProcessor.reset_odometer_anchor()`, which clears the odometer anchor alone: a full `reset()` would also drop `last_latitude`, which is what decides whether the next fix clears the distance filter, so setting a counter would have changed which locations are recorded. Covered by `LocationProcessorOdometerAnchorTests`, wired into `Package.swift`; the engine's one-line call is covered end to end by the Android twin, the same split `DatabaseRetentionCapsTests` documents for [#361](https://github.com/Ikolvi/Tracelet/issues/361) ([#387](https://github.com/Ikolvi/Tracelet/issues/387)).

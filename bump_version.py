@@ -1,23 +1,23 @@
 import os
 import re
 
-version_from = "3.8.4"
-version_to = "3.8.5"
+version_from = "3.8.5"
+version_to = "3.8.6-alpha.1"
 
-# Patch release carrying one native fix: persistMode now gates geofence
-# ENTER/EXIT persistence on both platforms (#383). Previously only ordinary GPS
-# fixes were gated, so `location` and `none` still wrote — and HTTP-synced —
-# every crossing. Behaviour narrows to what the modes already documented, no
-# API surface moves, so a patch is the right step.
+# Prerelease, published to validate the #390 fix against the real artifact
+# rather than a simulation of it. The CocoaPods fallback only exists in the
+# *published* podspec — release.yml rewrites it at publish time — so the one
+# thing local verification cannot cover is whether the publish pipeline itself
+# emits a package a consumer can install. That is precisely where #391's
+# version failed, and precisely what a green CI run could not see.
 #
-# Unlike 3.8.4, the dependency bumps below are ordinary bookkeeping this cycle:
-# the Pigeon interface is untouched, so nothing forces a native package onto
-# the new tracelet_platform_interface. The constraints still move together to
-# keep the workspace resolving as one release.
+# An alpha rather than 3.8.6 proper because pub.dev does not serve prereleases
+# to a `^3.8.5` constraint: nobody is upgraded into this by accident, and if
+# the pipeline emits something wrong the blast radius is whoever opts in by
+# pinning the exact version.
 #
-# The other change since 3.8.4 is website tooling only — translate.js keeping
-# leading whitespace so an indented <Callout> survives translation — which
-# ships no package code and so gets no changelog entry.
+# Carries the #390 entries already sitting under `## Unreleased`. If the alpha
+# checks out, 3.8.6 proper follows with the same content.
 
 # 1. Bump version strings
 exact_replacements = [
