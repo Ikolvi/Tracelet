@@ -55,6 +55,51 @@ final class SpeedMotionManagerTests: XCTestCase {
         XCTAssertEqual(manager.state, .stationary)
     }
 
+    // MARK: - Hysteresis band
+
+    /// Leaving MOVING takes a clearer signal than entering it did.
+    ///
+    /// One threshold used to govern both directions, so a pace that varied
+    /// either side of it — every ordinary walk does — oscillated
+    /// MOVING → SLOWING → STATIONARY → MOVING, and a completed countdown took
+    /// the continuous stream down while the user was still walking. The default
+    /// entry threshold was 1.5 m/s, above an average walking pace of ~1.4.
+    func testAWalkingPaceStaysMovingInsideTheHysteresisBand() {
+        makeManager(movingThreshold: 0.9, stationaryDelaySeconds: 60)
+
+        // Enters on a brisk fix, then drifts across the entry threshold the way
+        // a real walk does.
+        manager.onLocation(speed: 1.5)
+        XCTAssertEqual(manager.state, .moving)
+
+        for speed in [1.31, 0.85, 1.48, 0.72, 1.40] {
+            manager.onLocation(speed: speed)
+            XCTAssertEqual(
+                manager.state, .moving,
+                "\(speed) m/s is above the stationary threshold — a walk must not stand down"
+            )
+        }
+    }
+
+    func testDroppingBelowTheStationaryThresholdStillSlows() {
+        makeManager(movingThreshold: 0.9, stationaryDelaySeconds: 60)
+
+        manager.onLocation(speed: 1.5)
+        // 0.9 * 0.65 = 0.585, so this is genuinely stopped rather than walking.
+        manager.onLocation(speed: 0.2)
+        XCTAssertEqual(manager.state, .slowing)
+    }
+
+    func testAnExplicitStationaryThresholdIsClampedToTheMovingOne() {
+        makeManager(movingThreshold: 2.0, stationaryDelaySeconds: 60)
+        manager.speedStationaryThreshold = 5.0
+
+        XCTAssertEqual(
+            manager.effectiveStationaryThreshold, 2.0,
+            "an exit threshold above the entry one would re-create the flapping"
+        )
+    }
+
     // MARK: - MOVING -> SLOWING
 
     func testMovingTransitionsToSlowingBelowThreshold() {
