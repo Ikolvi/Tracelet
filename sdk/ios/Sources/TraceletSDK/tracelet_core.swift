@@ -8502,9 +8502,17 @@ public struct MotionConfig: Equatable, Hashable {
      */
     public var motionDetectionMode: Int32
     /**
-     * Speed moving threshold.
+     * Speed at or above which a stationary session is considered moving (m/s).
      */
     public var speedMovingThreshold: Double
+    /**
+     * Speed below which a *moving* session begins slowing down (m/s).
+     *
+     * The lower half of a hysteresis band. `<= 0` derives it from
+     * [`Self::speed_moving_threshold`] — see
+     * [`default_speed_stationary_threshold_ratio`].
+     */
+    public var speedStationaryThreshold: Double
     /**
      * Speed stationary delay.
      */
@@ -8575,8 +8583,15 @@ public struct MotionConfig: Equatable, Hashable {
          * Motion detection mode.
          */motionDetectionMode: Int32, 
         /**
-         * Speed moving threshold.
+         * Speed at or above which a stationary session is considered moving (m/s).
          */speedMovingThreshold: Double, 
+        /**
+         * Speed below which a *moving* session begins slowing down (m/s).
+         *
+         * The lower half of a hysteresis band. `<= 0` derives it from
+         * [`Self::speed_moving_threshold`] — see
+         * [`default_speed_stationary_threshold_ratio`].
+         */speedStationaryThreshold: Double, 
         /**
          * Speed stationary delay.
          */speedStationaryDelay: Int32, 
@@ -8608,6 +8623,7 @@ public struct MotionConfig: Equatable, Hashable {
         self.stillSampleCount = stillSampleCount
         self.motionDetectionMode = motionDetectionMode
         self.speedMovingThreshold = speedMovingThreshold
+        self.speedStationaryThreshold = speedStationaryThreshold
         self.speedStationaryDelay = speedStationaryDelay
         self.stationaryTrackingMode = stationaryTrackingMode
         self.stationaryPeriodicInterval = stationaryPeriodicInterval
@@ -8647,6 +8663,7 @@ public struct FfiConverterTypeMotionConfig: FfiConverterRustBuffer {
                 stillSampleCount: FfiConverterInt32.read(from: &buf), 
                 motionDetectionMode: FfiConverterInt32.read(from: &buf), 
                 speedMovingThreshold: FfiConverterDouble.read(from: &buf), 
+                speedStationaryThreshold: FfiConverterDouble.read(from: &buf), 
                 speedStationaryDelay: FfiConverterInt32.read(from: &buf), 
                 stationaryTrackingMode: FfiConverterInt32.read(from: &buf), 
                 stationaryPeriodicInterval: FfiConverterInt32.read(from: &buf), 
@@ -8672,6 +8689,7 @@ public struct FfiConverterTypeMotionConfig: FfiConverterRustBuffer {
         FfiConverterInt32.write(value.stillSampleCount, into: &buf)
         FfiConverterInt32.write(value.motionDetectionMode, into: &buf)
         FfiConverterDouble.write(value.speedMovingThreshold, into: &buf)
+        FfiConverterDouble.write(value.speedStationaryThreshold, into: &buf)
         FfiConverterInt32.write(value.speedStationaryDelay, into: &buf)
         FfiConverterInt32.write(value.stationaryTrackingMode, into: &buf)
         FfiConverterInt32.write(value.stationaryPeriodicInterval, into: &buf)

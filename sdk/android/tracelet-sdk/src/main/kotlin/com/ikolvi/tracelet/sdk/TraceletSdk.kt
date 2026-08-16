@@ -4570,6 +4570,7 @@ class TraceletSdk private constructor(private val context: Context) {
                     stillSampleCount = configManager.getStillSampleCount(),
                     motionDetectionMode = configManager.getMotionDetectionMode().value,
                     speedMovingThreshold = configManager.getSpeedMovingThreshold(),
+                    speedStationaryThreshold = configManager.getSpeedStationaryThreshold(),
                     speedStationaryDelay = configManager.getSpeedStationaryDelay(),
                     stationaryTrackingMode = configManager.getStationaryTrackingMode().value,
                     stationaryPeriodicInterval = configManager.getStationaryPeriodicInterval(),

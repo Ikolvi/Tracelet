@@ -4372,6 +4372,7 @@ extension TraceletSdk: SpeedMotionDelegate {
                     stillSampleCount: Int32(configManager.getStillSampleCount()),
                     motionDetectionMode: Int32(configManager.getMotionDetectionMode().rawValue),
                     speedMovingThreshold: configManager.getSpeedMovingThreshold(),
+                    speedStationaryThreshold: configManager.getSpeedStationaryThreshold(),
                     speedStationaryDelay: Int32(configManager.getSpeedStationaryDelay()),
                     stationaryTrackingMode: Int32(configManager.getStationaryTrackingMode().rawValue),
                     stationaryPeriodicInterval: Int32(configManager.getStationaryPeriodicInterval()),

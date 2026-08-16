@@ -12018,9 +12018,18 @@ data class MotionConfig (
     var `motionDetectionMode`: kotlin.Int
     , 
     /**
-     * Speed moving threshold.
+     * Speed at or above which a stationary session is considered moving (m/s).
      */
     var `speedMovingThreshold`: kotlin.Double
+    , 
+    /**
+     * Speed below which a *moving* session begins slowing down (m/s).
+     *
+     * The lower half of a hysteresis band. `<= 0` derives it from
+     * [`Self::speed_moving_threshold`] — see
+     * [`default_speed_stationary_threshold_ratio`].
+     */
+    var `speedStationaryThreshold`: kotlin.Double
     , 
     /**
      * Speed stationary delay.
@@ -12078,6 +12087,7 @@ public object FfiConverterTypeMotionConfig: FfiConverterRustBuffer<MotionConfig>
             FfiConverterInt.read(buf),
             FfiConverterInt.read(buf),
             FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
             FfiConverterInt.read(buf),
             FfiConverterInt.read(buf),
             FfiConverterInt.read(buf),
@@ -12103,6 +12113,7 @@ public object FfiConverterTypeMotionConfig: FfiConverterRustBuffer<MotionConfig>
             FfiConverterInt.allocationSize(value.`stillSampleCount`) +
             FfiConverterInt.allocationSize(value.`motionDetectionMode`) +
             FfiConverterDouble.allocationSize(value.`speedMovingThreshold`) +
+            FfiConverterDouble.allocationSize(value.`speedStationaryThreshold`) +
             FfiConverterInt.allocationSize(value.`speedStationaryDelay`) +
             FfiConverterInt.allocationSize(value.`stationaryTrackingMode`) +
             FfiConverterInt.allocationSize(value.`stationaryPeriodicInterval`) +
@@ -12127,6 +12138,7 @@ public object FfiConverterTypeMotionConfig: FfiConverterRustBuffer<MotionConfig>
             FfiConverterInt.write(value.`stillSampleCount`, buf)
             FfiConverterInt.write(value.`motionDetectionMode`, buf)
             FfiConverterDouble.write(value.`speedMovingThreshold`, buf)
+            FfiConverterDouble.write(value.`speedStationaryThreshold`, buf)
             FfiConverterInt.write(value.`speedStationaryDelay`, buf)
             FfiConverterInt.write(value.`stationaryTrackingMode`, buf)
             FfiConverterInt.write(value.`stationaryPeriodicInterval`, buf)

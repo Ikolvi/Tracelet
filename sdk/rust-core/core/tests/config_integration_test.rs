@@ -19,7 +19,11 @@ fn test_default_configurations() {
     assert_eq!(config.motion.stop_detection_delay, 0);
     assert_eq!(config.motion.stop_on_stationary, false);
     assert_eq!(config.motion.motion_detection_mode, 0);
-    assert_eq!(config.motion.speed_moving_threshold, 1.5);
+    // 0.9, not 1.5: the old default sat above an average walking pace of
+    // ~1.4 m/s, so the median pedestrian was classified as stationary.
+    assert_eq!(config.motion.speed_moving_threshold, 0.9);
+    // Unset by default; the hosts derive it at 65 % of the moving threshold.
+    assert_eq!(config.motion.speed_stationary_threshold, 0.0);
     assert_eq!(config.motion.speed_stationary_delay, 180);
     assert_eq!(config.motion.speed_wake_confirm_count, 1);
     assert_eq!(config.motion.still_sample_count, 25);
