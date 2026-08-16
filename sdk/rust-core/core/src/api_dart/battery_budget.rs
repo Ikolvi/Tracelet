@@ -37,12 +37,21 @@ impl BatteryBudgetEngineDart {
         let mut charging_state = self.is_charging.lock().unwrap();
         *charging_state = is_charging;
         
-        let adjustment = inner.process_sample(level, timestamp_ms);
+        // A charging device carries no throttle. The engine drops to level 0 and
+        // says so, rather than the sample being skipped and a throttle from an
+        // earlier discharge standing for the rest of the session (#396).
+        let adjustment = if is_charging {
+            inner.note_charging(timestamp_ms)
+        } else {
+            inner.process_sample(level, timestamp_ms)
+        };
         if let Some(adj) = adjustment {
             if let Some(interval) = adj.new_periodic_interval {
                 *self.interval_ms.lock().unwrap() = (interval as i64) * 1000;
             }
-            *self.throttled.lock().unwrap() = adj.new_distance_filter > 100.0;
+            // The ladder's own vocabulary, not a distance guessed back into a
+            // level: rungs 3 and 4 are the ones that trade fidelity for power.
+            *self.throttled.lock().unwrap() = inner.throttle_level() >= 3;
         }
         adjustment
     }

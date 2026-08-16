@@ -1145,6 +1145,16 @@ public final class TraceletSdk {
                 // newly-enabled budget and halts a newly-disabled one.
                 startBatteryBudgetSampling()
             }
+        } else if !valuesEqual(oldConfig["distanceFilter"], merged["distanceFilter"])
+            || !valuesEqual(oldConfig["desiredAccuracy"], merged["desiredAccuracy"])
+            || !valuesEqual(
+                oldConfig["periodicLocationInterval"], merged["periodicLocationInterval"])
+        {
+            // The ladder is expressed relative to the app's own parameters, so a
+            // change to those has to reach it — otherwise an overlay in force
+            // would keep enforcing rungs measured from the previous
+            // configuration (#396).
+            syncBatteryBudgetConfigured()
         }
 
         syncConfigToRustFlat()
@@ -3588,11 +3598,37 @@ public final class TraceletSdk {
             batteryBudgetEngine = TraceletBatteryBudgetEngine(
                 targetBudgetPerHour: budgetPerHour,
                 initialDistanceFilter: configManager.getDistanceFilter(),
-                initialAccuracyIndex: configManager.getDesiredAccuracy()
+                initialAccuracyIndex: configManager.getDesiredAccuracy(),
+                initialPeriodicInterval: configManager.getPeriodicLocationInterval()
             )
         } else {
             batteryBudgetEngine = nil
+            // Turning the budget off must lift whatever it had imposed, or the
+            // last overlay would outlive the engine that justified it (#396).
+            locationEngine.applyBudgetOverlay(
+                distanceFilter: nil, desiredAccuracy: nil, trackingAccuracyFloor: 0)
+            periodicRefreshScheduler.applyBudgetInterval(nil)
         }
+    }
+
+    /// Re-seeds the ladder's floor after the app changes its own tracking
+    /// parameters, so an overlay in force is recomputed against the new
+    /// configuration rather than against the one it was built with (#396).
+    private func syncBatteryBudgetConfigured() {
+        guard let engine = batteryBudgetEngine else { return }
+        engine.updateConfigured(
+            distanceFilter: configManager.getDistanceFilter(),
+            accuracyIndex: configManager.getDesiredAccuracy(),
+            periodicInterval: configManager.getPeriodicLocationInterval()
+        )
+        let state = engine.throttleState
+        guard state.level > 0 else { return }
+        locationEngine.applyBudgetOverlay(
+            distanceFilter: state.distanceFilter,
+            desiredAccuracy: Int(state.desiredAccuracy),
+            trackingAccuracyFloor: Int(state.trackingAccuracyFloor)
+        )
+        periodicRefreshScheduler.applyBudgetInterval(state.periodicInterval.map { Int($0) })
     }
 
     private func startBatteryBudgetSampling() {
@@ -3607,46 +3643,18 @@ public final class TraceletSdk {
             ) { [weak self] _ in
                 guard let self = self, self.stateManager.enabled else { return }
 
-                // Skip sampling while charging — drain will be negative and
-                // there's no reason to throttle accuracy on external power.
+                // On external power the ladder comes all the way down. Skipping
+                // the sample instead — as this did — left a throttle picked up
+                // during a discharge in force for the rest of the session (#396).
+                let event: TraceletBudgetAdjustmentEvent?
                 if BatteryUtils.isCharging() {
-                    return
+                    event = engine.noteCharging()
+                } else {
+                    event = engine.processSample(Double(BatteryUtils.getBatteryLevel()))
                 }
 
-                let level = Double(BatteryUtils.getBatteryLevel())
-                if let event = engine.processSample(level) {
-                    // ── Apply the computed adjustments to the live config ──
-                    // Without this, the engine calculates new values but the
-                    // LocationEngine keeps running with the original settings.
-                    self.configManager.setConfig([
-                        "distanceFilter": event.newDistanceFilter,
-                        "desiredAccuracy": event.newDesiredAccuracy,
-                    ])
-                    if let interval = event.newPeriodicInterval {
-                        self.configManager.setConfig([
-                            "periodicLocationInterval": interval,
-                        ])
-                    }
-
-                    // Restart the location engine so it picks up the new
-                    // distanceFilter and accuracy from ConfigManager.
-                    if self.stateManager.enabled {
-                        self.locationEngine.stop()
-                        self.locationEngine.start()
-                    }
-
-                    self.eventSender.sendBudgetAdjustment([
-                        "currentBatteryDrain": event.currentBatteryDrain,
-                        "targetBudget": event.targetBudget,
-                        "newDistanceFilter": event.newDistanceFilter,
-                        "newDesiredAccuracy": event.newDesiredAccuracy,
-                        "newPeriodicInterval": event.newPeriodicInterval as Any,
-                    ])
-                    self.logger.info(
-                        "BatteryBudget adjusted: df=\(event.newDistanceFilter), " +
-                        "acc=\(event.newDesiredAccuracy), drain=\(event.currentBatteryDrain)%/hr"
-                    )
-                }
+                guard let event else { return }
+                self.applyBudgetThrottle(engine: engine, event: event)
             }
         }
     }
@@ -3654,6 +3662,58 @@ public final class TraceletSdk {
     private func stopBatteryBudgetSampling() {
         batteryBudgetTimer?.invalidate()
         batteryBudgetTimer = nil
+    }
+
+    /// Puts a ladder movement into force as an overlay on the location engine.
+    ///
+    /// The pre-ladder version of this wrote the throttled values into
+    /// `ConfigManager` and restarted the engine. That is what made the throttle
+    /// permanent and invisible at once: `distanceFilter: 0` — the documented
+    /// "record every fix" opt-out — was clamped to 10 and written over the app's
+    /// own value, so `retune`'s protection for a configured zero no longer had
+    /// anything to protect, and `activeConfig` began reporting a configuration
+    /// the app had never set. The restart was the other half: it rebuilt the
+    /// processor with the throttled numbers as its *base* tuning (#393).
+    ///
+    /// The overlay does neither. The app's configuration is untouched, the
+    /// engine keeps running, and the whole thing lifts by passing `nil`.
+    private func applyBudgetThrottle(
+        engine: TraceletBatteryBudgetEngine,
+        event: TraceletBudgetAdjustmentEvent
+    ) {
+        let state = engine.throttleState
+        let throttled = state.level > 0
+
+        locationEngine.applyBudgetOverlay(
+            distanceFilter: throttled ? state.distanceFilter : nil,
+            desiredAccuracy: throttled ? Int(state.desiredAccuracy) : nil,
+            trackingAccuracyFloor: Int(state.trackingAccuracyFloor)
+        )
+        // Periodic mode re-reads its interval when it schedules the next
+        // wake-up, so the overlay reaches it without a restart.
+        periodicRefreshScheduler.applyBudgetInterval(
+            throttled ? state.periodicInterval.map { Int($0) } : nil)
+
+        eventSender.sendBudgetAdjustment([
+            "currentBatteryDrain": event.currentBatteryDrain,
+            "targetBudget": event.targetBudget,
+            "newDistanceFilter": event.newDistanceFilter,
+            "newDesiredAccuracy": event.newDesiredAccuracy,
+            "newPeriodicInterval": event.newPeriodicInterval as Any,
+            "throttleLevel": state.level,
+        ])
+
+        // Lifecycle, not info: a throttle that silently changes how a session
+        // behaves for the rest of its life is exactly the class of event a
+        // released app has to be able to report (#397). It fires a handful of
+        // times a session at most.
+        TraceletLog.lifecycle(String(
+            format: "battery budget: throttle level %d — drain %.1f%%/hr vs budget %.1f%%/hr "
+                + "(measured over %.0fs, ±%.1f%%/hr); overlay df=%.1fm acc=%d floor=%dm cadence=×%.2f",
+            state.level, state.lastDrain, event.targetBudget,
+            state.lastMeasurementSeconds, state.lastMeasurementResolution,
+            state.distanceFilter, state.desiredAccuracy, state.trackingAccuracyFloor,
+            state.cadenceMultiplier))
     }
 
     // MARK: - Private: stopAfterElapsedMinutes

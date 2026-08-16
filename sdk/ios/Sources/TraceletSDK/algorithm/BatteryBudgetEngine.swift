@@ -17,13 +17,20 @@ public struct TraceletBudgetAdjustmentEvent {
 /// Auto-adjusts tracking parameters to stay within a battery drain budget.
 ///
 /// Given a target maximum battery consumption per hour (% points), monitors
-/// actual battery drain and adjusts `distanceFilter`, `desiredAccuracy`, and
-/// (for periodic mode) the polling interval.
+/// actual battery drain and steps through a bounded ladder of sampling costs —
+/// see the Rust `BatteryBudgetEngine` for the ladder itself.
 ///
 /// Accuracy levels (ordered by battery cost, index 0 = highest):
 /// `high (0) → medium (1) → low (2) → veryLow (3) → passive (4)`
 public class TraceletBatteryBudgetEngine {
-    
+
+    /// iOS reports `UIDevice.batteryLevel` in 5 % steps.
+    ///
+    /// The engine needs this to know how much of a drain figure is real. Reading
+    /// a single step as drain is what produced "60 %/hr" from a device that had
+    /// simply crossed 0.25 → 0.20, and throttled a healthy session on it (#393).
+    private static let iosBatteryLevelQuantumPercent: Double = 5.0
+
     private let coreEngine: BatteryBudgetEngine
 
     /// Target maximum battery drain per hour (% points).
@@ -56,6 +63,28 @@ public class TraceletBatteryBudgetEngine {
             initialAccuracyIndex: Int32(initialAccuracyIndex),
             initialPeriodicInterval: initialPeriodicInterval.map { Int32($0) }
         )
+        coreEngine.setLevelQuantumPercent(quantum: Self.iosBatteryLevelQuantumPercent)
+    }
+
+    /// The current throttle rung, 0 (untouched) to 4 (most aggressive).
+    public var throttleLevel: Int { Int(coreEngine.throttleLevel()) }
+
+    /// Everything the ladder currently imposes, for hosts to apply and for the
+    /// bug report to show.
+    public var throttleState: BudgetThrottleState { coreEngine.throttleState() }
+
+    /// Re-reads the app's configured parameters after a `setConfig`, so the
+    /// overlay is recomputed against what the app now asks for.
+    public func updateConfigured(
+        distanceFilter: Double,
+        accuracyIndex: Int,
+        periodicInterval: Int?
+    ) {
+        coreEngine.setConfigured(
+            distanceFilter: distanceFilter,
+            accuracyIndex: Int32(accuracyIndex),
+            periodicInterval: periodicInterval.map { Int32($0) }
+        )
     }
 
     /// Process a new battery sample and return an adjustment if needed.
@@ -66,11 +95,28 @@ public class TraceletBatteryBudgetEngine {
     /// - Returns: adjustment event if parameters changed, nil otherwise
     public func processSample(_ batteryLevel: Double) -> TraceletBudgetAdjustmentEvent? {
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-        
+
         guard let event = coreEngine.processSample(batteryLevel: batteryLevel, nowMs: nowMs) else {
             return nil
         }
-        
+
+        return TraceletBudgetAdjustmentEvent(
+            currentBatteryDrain: event.currentBatteryDrain,
+            targetBudget: event.targetBudget,
+            newDistanceFilter: event.newDistanceFilter,
+            newDesiredAccuracy: Int(event.newDesiredAccuracy),
+            newPeriodicInterval: event.newPeriodicInterval.map { Int($0) }
+        )
+    }
+
+    /// Tell the engine the device is on external power, lifting any throttle.
+    ///
+    /// Hosts call this instead of skipping the sample: a charging device has no
+    /// reason to carry one, and simply returning early left a throttle from an
+    /// earlier discharge in force for the rest of the session.
+    public func noteCharging() -> TraceletBudgetAdjustmentEvent? {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        guard let event = coreEngine.noteCharging(nowMs: nowMs) else { return nil }
         return TraceletBudgetAdjustmentEvent(
             currentBatteryDrain: event.currentBatteryDrain,
             targetBudget: event.targetBudget,

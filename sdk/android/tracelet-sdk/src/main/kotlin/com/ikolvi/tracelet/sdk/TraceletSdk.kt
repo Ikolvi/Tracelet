@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.core.content.ContextCompat
 import com.ikolvi.tracelet.sdk.algorithm.BatteryBudgetEngine
+import com.ikolvi.tracelet.sdk.algorithm.BudgetAdjustmentEvent
 import com.ikolvi.tracelet.sdk.algorithm.TripManager
 import com.ikolvi.tracelet.sdk.attestation.DeviceAttestor
 import com.ikolvi.tracelet.sdk.audit.AuditTrailManager
@@ -1727,6 +1728,15 @@ class TraceletSdk private constructor(private val context: Context) {
                 // newly-enabled budget and halts a newly-disabled one.
                 startBatteryBudgetSampling()
             }
+        } else if (oldConfig["distanceFilter"] != merged["distanceFilter"] ||
+            oldConfig["desiredAccuracy"] != merged["desiredAccuracy"] ||
+            oldConfig["periodicLocationInterval"] != merged["periodicLocationInterval"]
+        ) {
+            // The ladder is expressed relative to the app's own parameters, so a
+            // change to those has to reach it — otherwise an overlay in force
+            // would keep enforcing rungs measured from the previous
+            // configuration (#396).
+            syncBatteryBudgetConfigured()
         }
 
         updateBootReceiverState()
@@ -4200,10 +4210,41 @@ class TraceletSdk private constructor(private val context: Context) {
                 targetBudgetPerHour = budgetPerHour,
                 initialDistanceFilter = configManager.getDistanceFilter(),
                 initialAccuracyIndex = configManager.getDesiredAccuracy(),
+                initialPeriodicInterval = configManager.getPeriodicLocationInterval(),
             )
         } else {
+            // Turning the budget off must lift whatever it had imposed, or the
+            // last overlay would outlive the engine that justified it (#396).
+            locationEngine.applyBudgetOverlay(
+                distanceFilter = null,
+                desiredAccuracy = null,
+                cadenceMultiplier = 1.0,
+                trackingAccuracyFloor = 0,
+            )
             null
         }
+    }
+
+    /**
+     * Re-seeds the ladder's floor after the app changes its own tracking
+     * parameters, so an overlay in force is recomputed against the new
+     * configuration rather than against the one it was built with (#396).
+     */
+    private fun syncBatteryBudgetConfigured() {
+        val engine = batteryBudgetEngine ?: return
+        engine.updateConfigured(
+            distanceFilter = configManager.getDistanceFilter(),
+            accuracyIndex = configManager.getDesiredAccuracy(),
+            periodicInterval = configManager.getPeriodicLocationInterval(),
+        )
+        val throttle = engine.throttleState
+        if (throttle.level == 0) return
+        locationEngine.applyBudgetOverlay(
+            distanceFilter = throttle.distanceFilter,
+            desiredAccuracy = throttle.desiredAccuracy,
+            cadenceMultiplier = throttle.cadenceMultiplier,
+            trackingAccuracyFloor = throttle.trackingAccuracyFloor,
+        )
     }
 
     private fun startBatteryBudgetSampling() {
@@ -4214,51 +4255,16 @@ class TraceletSdk private constructor(private val context: Context) {
             override fun run() {
                 if (!stateManager.enabled) return
 
-                // Skip sampling while charging — drain will be negative and
-                // there's no reason to throttle accuracy on external power.
-                if (BatteryUtils.isCharging(context)) {
-                    mainHandler.postDelayed(this, BATTERY_SAMPLE_INTERVAL_MS)
-                    return
+                // On external power the ladder comes all the way down. Skipping
+                // the sample instead — as this did — left a throttle picked up
+                // during a discharge in force for the rest of the session (#396).
+                val event = if (BatteryUtils.isCharging(context)) {
+                    engine.noteCharging()
+                } else {
+                    engine.processSample(BatteryUtils.getBatteryLevel(context))
                 }
-
-                val level = BatteryUtils.getBatteryLevel(context)
-                val event = engine.processSample(level)
                 if (event != null) {
-                    // ── Apply the computed adjustments to the live config ──
-                    // Without this, the engine calculates new values but the
-                    // LocationEngine keeps running with the original settings.
-                    configManager.setConfig(
-                        mapOf(
-                            "distanceFilter" to event.newDistanceFilter,
-                            "desiredAccuracy" to event.newDesiredAccuracy,
-                        )
-                    )
-                    event.newPeriodicInterval?.let { interval ->
-                        configManager.setConfig(
-                            mapOf("periodicLocationInterval" to interval)
-                        )
-                    }
-
-                    // Restart the location engine so it picks up the new
-                    // distanceFilter and accuracy from ConfigManager.
-                    if (stateManager.enabled) {
-                        locationEngine.stop()
-                        locationEngine.start()
-                    }
-
-                    eventSender.sendBudgetAdjustment(
-                        mapOf(
-                            "currentBatteryDrain" to event.currentBatteryDrain,
-                            "targetBudget" to event.targetBudget,
-                            "newDistanceFilter" to event.newDistanceFilter,
-                            "newDesiredAccuracy" to event.newDesiredAccuracy,
-                            "newPeriodicInterval" to event.newPeriodicInterval,
-                        )
-                    )
-                    logger.info(
-                        "BatteryBudget adjusted: df=${event.newDistanceFilter}, " +
-                        "acc=${event.newDesiredAccuracy}, drain=${event.currentBatteryDrain}%/hr"
-                    )
+                    applyBudgetThrottle(engine, event)
                 }
                 mainHandler.postDelayed(this, BATTERY_SAMPLE_INTERVAL_MS)
             }
@@ -4269,6 +4275,60 @@ class TraceletSdk private constructor(private val context: Context) {
     private fun stopBatteryBudgetSampling() {
         batteryBudgetRunnable?.let { mainHandler.removeCallbacks(it) }
         batteryBudgetRunnable = null
+    }
+
+    /**
+     * Puts a ladder movement into force as an overlay on the location engine.
+     *
+     * The pre-ladder version wrote the throttled values into [ConfigManager] and
+     * restarted the engine. That is what made the throttle permanent and
+     * invisible at once: `distanceFilter: 0` — the documented "record every fix"
+     * opt-out — was clamped to 10 and written over the app's own value, so the
+     * processor's protection for a configured zero no longer had anything to
+     * protect, and `activeConfig` began reporting a configuration the app had
+     * never set. The restart was the other half: it rebuilt the processor with
+     * the throttled numbers as its *base* tuning (#393).
+     *
+     * The overlay does neither. The app's configuration is untouched, the engine
+     * keeps running, and the whole thing lifts by passing nulls.
+     */
+    private fun applyBudgetThrottle(engine: BatteryBudgetEngine, event: BudgetAdjustmentEvent) {
+        val throttle = engine.throttleState
+        val throttled = throttle.level > 0
+
+        locationEngine.applyBudgetOverlay(
+            distanceFilter = if (throttled) throttle.distanceFilter else null,
+            desiredAccuracy = if (throttled) throttle.desiredAccuracy else null,
+            cadenceMultiplier = if (throttled) throttle.cadenceMultiplier else 1.0,
+            trackingAccuracyFloor = throttle.trackingAccuracyFloor,
+        )
+
+        eventSender.sendBudgetAdjustment(
+            mapOf(
+                "currentBatteryDrain" to event.currentBatteryDrain,
+                "targetBudget" to event.targetBudget,
+                "newDistanceFilter" to event.newDistanceFilter,
+                "newDesiredAccuracy" to event.newDesiredAccuracy,
+                "newPeriodicInterval" to event.newPeriodicInterval,
+                "throttleLevel" to throttle.level,
+            )
+        )
+
+        // Lifecycle, not info: a throttle that silently changes how a session
+        // behaves for the rest of its life is exactly the class of event a
+        // released app has to be able to report (#397). It fires a handful of
+        // times a session at most.
+        TraceletLog.lifecycle(
+            "battery budget: throttle level ${throttle.level} — " +
+                "drain ${"%.1f".format(throttle.lastDrain)}%/hr vs " +
+                "budget ${"%.1f".format(event.targetBudget)}%/hr " +
+                "(measured over ${"%.0f".format(throttle.lastMeasurementSeconds)}s, " +
+                "±${"%.1f".format(throttle.lastMeasurementResolution)}%/hr); " +
+                "overlay df=${"%.1f".format(throttle.distanceFilter)}m " +
+                "acc=${throttle.desiredAccuracy} " +
+                "floor=${throttle.trackingAccuracyFloor}m " +
+                "cadence=×${"%.2f".format(throttle.cadenceMultiplier)}",
+        )
     }
 
     private fun startStopAfterElapsedTimer() {

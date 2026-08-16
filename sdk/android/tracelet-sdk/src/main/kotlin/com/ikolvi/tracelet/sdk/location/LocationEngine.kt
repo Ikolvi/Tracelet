@@ -71,6 +71,16 @@ class LocationEngine(
         const val GPS_ACCURACY_THRESHOLD = 50f
 
         /**
+         * How long a tracking session may accept nothing before the SDK says so
+         * on the lifecycle channel (#397).
+         *
+         * Twice the processor's idle escape, so a stall this long means
+         * something the escape cannot fix — every fix failing the accuracy gate,
+         * a permission downgrade, a provider delivering nothing usable.
+         */
+        private const val STALL_ANNOUNCE_MS = 120_000L
+
+        /**
          * Determines if a location fix is GPS-sourced (not network/cell).
          * FusedLocationProvider uses "fused" as provider, so we also check
          * accuracy as a heuristic: GPS fixes typically have accuracy ≤ 50m.
@@ -222,6 +232,12 @@ class LocationEngine(
         )
         kalmanFilter?.destroy()
         kalmanFilter = if (config.getEnableKalmanFilter()) RustKalmanFilter() else null
+        // A rebuild must not drop a throttle that is still in force, or the gate
+        // would tighten back under fixes the ladder is deliberately coarsening
+        // (#396).
+        if (budgetTrackingAccuracyFloor > 0) {
+            locationProcessor?.setAccuracyFloor(budgetTrackingAccuracyFloor)
+        }
     }
 
     /** Returns the processor, building it if needed. */
@@ -481,8 +497,133 @@ class LocationEngine(
     private var runtimeDesiredAccuracy: Int? = null
     private var runtimeDistanceFilter: Double? = null
 
+    /**
+     * The battery-budget ladder's overlay, if one is in force (#393, #396).
+     *
+     * Separate from the runtime overrides above, and deliberately not a write
+     * into ConfigManager: the budget engine used to call `setConfig`, which made
+     * its throttled values indistinguishable from the app's own — permanently,
+     * since a configured `distanceFilter: 0` was clamped to 10 and nothing ever
+     * restored it. An explicit `updateLocationProviderOptions` still wins.
+     */
+    private var budgetDesiredAccuracy: Int? = null
+    private var budgetDistanceFilter: Double? = null
+    private var budgetCadenceMultiplier: Double = 1.0
+    private var budgetTrackingAccuracyFloor: Int = 0
+
     /** Whether continuous tracking is active. */
     val isTracking: Boolean get() = trackingCallback != null
+
+    // =========================================================================
+    // Stall watchdog (#397)
+    // =========================================================================
+
+    /** When the processor last accepted a fix; null before the first one. */
+    private var lastAcceptedFixAt: Long? = null
+
+    /** Rejections since the last accepted fix, by reason. */
+    private val rejectionsSinceAccept = mutableMapOf<String, Int>()
+
+    /** Whether the current stall has already been announced. */
+    private var stallAnnounced = false
+
+    /**
+     * Records the outcome of one filter decision and announces a stalled or
+     * recovered stream on the always-on lifecycle channel.
+     *
+     * A stream that accepts nothing for minutes is indistinguishable from a
+     * parked device in the logs, and both look like "tracking is running". That
+     * ambiguity is what made the field reports for #393/#394 take two exports
+     * and a source read to resolve — so the SDK now states it, at a level that
+     * survives a released app's default `logLevel` (#318, #397).
+     */
+    private fun noteFilterDecision(result: LocationProcessorResult, accepted: Boolean) {
+        val now = System.currentTimeMillis()
+        if (accepted) {
+            val since = lastAcceptedFixAt
+            if (stallAnnounced && since != null) {
+                TraceletLog.lifecycle(
+                    "location stream recovered after ${(now - since) / 1000}s — " +
+                        "${rejectionsSinceAccept.values.sum()} fix(es) rejected meanwhile " +
+                        "[${rejectionHistogram()}]" +
+                        if (result.idleEscape) ", admitted by the idle escape (#394)" else "",
+                )
+            }
+            if (result.idleEscape && !stallAnnounced) {
+                TraceletLog.lifecycle(
+                    "adaptive sampling held a fix for ${"%.0f".format(result.anchorAgeSeconds)}s " +
+                        "behind a ${"%.0f".format(result.effectiveDistanceFilter)}m gate — " +
+                        "admitted it at the configured filter instead (#394)",
+                )
+            }
+            if (result.anchorReseeded) {
+                TraceletLog.lifecycle(
+                    "anchor re-seeded after a ${"%.0f".format(result.anchorAgeSeconds)}s gap with " +
+                        "no observations — position taken, " +
+                        "${"%.0f".format(result.distance)}m span not counted as travel (#395)",
+                )
+            }
+            lastAcceptedFixAt = now
+            rejectionsSinceAccept.clear()
+            stallAnnounced = false
+            return
+        }
+
+        val reason = result.reason ?: "unknown"
+        rejectionsSinceAccept[reason] = (rejectionsSinceAccept[reason] ?: 0) + 1
+
+        val since = lastAcceptedFixAt
+        if (since == null) {
+            lastAcceptedFixAt = now
+            return
+        }
+        val stalledForMs = now - since
+        if (stallAnnounced || stalledForMs < STALL_ANNOUNCE_MS) return
+        stallAnnounced = true
+
+        TraceletLog.lifecycle(
+            "location stream stalled — nothing accepted for ${stalledForMs / 1000}s, " +
+                "${rejectionsSinceAccept.values.sum()} fix(es) rejected [${rejectionHistogram()}]; " +
+                "last gate=${"%.1f".format(result.effectiveDistanceFilter)}m " +
+                "(configured ${config.getDistanceFilter()}m), " +
+                "last fix acc=${"%.1f".format(result.accuracy)}m, " +
+                "in force: ${currentTuningDescription()}",
+        )
+    }
+
+    private fun rejectionHistogram(): String =
+        rejectionsSinceAccept.entries.sortedBy { it.key }.joinToString(" ") { "${it.key}=${it.value}" }
+
+    private fun resetStallWatchdog(seed: Boolean) {
+        lastAcceptedFixAt = if (seed) System.currentTimeMillis() else null
+        rejectionsSinceAccept.clear()
+        stallAnnounced = false
+    }
+
+    /**
+     * Installs the battery-budget ladder's overlay, or clears it when the ladder
+     * returns to level 0 (#396).
+     *
+     * The accuracy floor is the only piece that reaches the Rust processor, and
+     * it only ever *loosens* the tracking gate: a ladder that has asked the
+     * fused provider for balanced-power fixes must not leave a 15 m gate in
+     * place to reject them.
+     */
+    fun applyBudgetOverlay(
+        distanceFilter: Double?,
+        desiredAccuracy: Int?,
+        cadenceMultiplier: Double,
+        trackingAccuracyFloor: Int,
+    ) {
+        budgetDistanceFilter = distanceFilter
+        budgetDesiredAccuracy = desiredAccuracy
+        budgetCadenceMultiplier = if (cadenceMultiplier > 0) cadenceMultiplier else 1.0
+        budgetTrackingAccuracyFloor = maxOf(0, trackingAccuracyFloor)
+        locationProcessor?.setAccuracyFloor(budgetTrackingAccuracyFloor)
+        // The fused provider takes a new request in place; no restart, so no gap
+        // in the stream and no lost anchor.
+        reapplyProviderOptionsIfTracking()
+    }
 
     // =========================================================================
     // Dead Reckoning
@@ -509,6 +650,11 @@ class LocationEngine(
             return
         }
         stop() // Ensure clean state
+
+        // The stall clock starts now, not at the first accepted fix: a session
+        // that never accepts one at all is exactly the case worth announcing
+        // (#397).
+        resetStallWatchdog(seed = true)
 
         val request = buildLocationRequestWithGpsFallback()
 
@@ -552,6 +698,9 @@ class LocationEngine(
         gpsFallbackActive = false
         runtimeDesiredAccuracy = null
         runtimeDistanceFilter = null
+        // The budget overlay deliberately survives: a session that stops and
+        // starts again has not changed how fast the device is draining (#396).
+        resetStallWatchdog(seed = false)
         trackingCallback?.let {
             fusedClient.removeLocationUpdates(it)
             trackingCallback = null
@@ -1288,10 +1437,25 @@ class LocationEngine(
                 // line. Without it, a rejected fix's contribution to a
                 // stationary decision can only be inferred by cross-reading the
                 // speed-motion entries.
+                //
+                // #397: so do the numbers the decision was actually made on. A
+                // bare DISTANCE_FILTER cannot be checked against anything — an
+                // 8 m gate and the 750 m one adaptive sampling can inflate it to
+                // look identical in a log, and telling them apart is the whole
+                // diagnosis.
+                val tuning = locationProcessor?.currentTuning()
                 TraceletLog.debug(
                     "Location filtered by Rust processor: ${result.reason} " +
-                        "(speed=${result.effectiveSpeed} m/s fed to speed motion)",
+                        "(speed=${"%.2f".format(result.effectiveSpeed)} m/s fed to speed motion, " +
+                        "acc=${"%.1f".format(result.accuracy)}m, " +
+                        "moved=${"%.1f".format(result.distance)}m vs " +
+                        "gate=${"%.1f".format(result.effectiveDistanceFilter)}m, " +
+                        "anchor=${"%.0f".format(result.anchorAgeSeconds)}s, " +
+                        "thresholds df=${tuning?.distanceFilter}/" +
+                        "acc=${tuning?.trackingAccuracyThreshold}/" +
+                        "spd=${tuning?.maxImpliedSpeed})",
                 )
+                noteFilterDecision(result, accepted = false)
                 // Still update odometer if the processor computed a delta
                 if (result.odometerDelta > 0) {
                     state.addOdometer(result.odometerDelta)
@@ -1319,6 +1483,8 @@ class LocationEngine(
             // consume it in the meantime.
             if (isStartupFix) forcePersistNextFilteredLocation = true
         }
+
+        noteFilterDecision(result, accepted = true)
 
         // Odometer update from processor's computed delta
         if (result.odometerDelta > 0) {
@@ -1616,10 +1782,20 @@ class LocationEngine(
      * config values.
      */
     private fun effectiveDesiredAccuracy(): Int =
-        runtimeDesiredAccuracy ?: config.getDesiredAccuracy()
+        runtimeDesiredAccuracy ?: budgetDesiredAccuracy ?: config.getDesiredAccuracy()
 
     private fun effectiveDistanceFilter(): Double =
-        runtimeDistanceFilter ?: config.getDistanceFilter()
+        runtimeDistanceFilter ?: budgetDistanceFilter ?: config.getDistanceFilter()
+
+    /**
+     * The update interval, stretched while the battery-budget ladder is in
+     * force (#396).
+     *
+     * Cadence is the knob that actually costs power on Android, which is why the
+     * ladder reaches for it before it touches accuracy.
+     */
+    private fun effectiveUpdateInterval(): Long =
+        (config.getLocationUpdateInterval() * budgetCadenceMultiplier).toLong()
 
     private fun buildLocationRequest(): TraceletLocationRequest {
         val priority = accuracyToPriority(effectiveDesiredAccuracy())
@@ -1634,7 +1810,7 @@ class LocationEngine(
 
         return TraceletLocationRequest(
             priority = priority,
-            intervalMillis = config.getLocationUpdateInterval(),
+            intervalMillis = effectiveUpdateInterval(),
             minUpdateDistanceMeters = distanceFilter,
             minUpdateIntervalMillis = config.getFastestLocationUpdateInterval(),
             maxUpdateDelayMillis = if (deferTime > 0) deferTime else 0L

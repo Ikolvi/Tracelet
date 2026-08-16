@@ -169,6 +169,27 @@ pub struct LocationProcessorResult {
     pub reason: Option<String>,
     pub error_message: Option<String>,
     pub is_error: bool,
+    /// The distance gate this fix was actually measured against, after adaptive
+    /// sampling and elasticity have been applied to `LocationTuning`'s value.
+    ///
+    /// Reported because the two can differ by two orders of magnitude — a
+    /// configured 8 m becomes 750 m for a `Still` classification on a device
+    /// below 50 % battery — and a `DISTANCE_FILTER` line that names only the
+    /// reason cannot be checked against anything (#397).
+    pub effective_distance_filter: f64,
+    /// Age of the anchor this fix was compared against, in seconds. `0.0` when
+    /// there is no anchor yet.
+    pub anchor_age_seconds: f64,
+    /// The horizontal accuracy the fix arrived with, echoed back so hosts can
+    /// log the rejection and its cause on one line (#397).
+    pub accuracy: f64,
+    /// Accepted only because the anchor had gone stale under an inflated
+    /// distance gate — see [`LocationProcessor::set_idle_escape_seconds`] (#394).
+    pub idle_escape: bool,
+    /// Accepted as a re-seed of a stale anchor: the position is trusted, the
+    /// span since the previous fix is not — see
+    /// [`LocationProcessor::set_stale_anchor_seconds`] (#395).
+    pub anchor_reseeded: bool,
 }
 
 impl LocationProcessorResult {
@@ -181,7 +202,24 @@ impl LocationProcessorResult {
             reason: None,
             error_message: None,
             is_error: false,
+            effective_distance_filter: 0.0,
+            anchor_age_seconds: 0.0,
+            accuracy: 0.0,
+            idle_escape: false,
+            anchor_reseeded: false,
         }
+    }
+
+    /// Stamps the decision context every outcome carries, accepted or not.
+    ///
+    /// Applied once at the exit of `process()` rather than threaded through
+    /// each constructor, so a new rejection path cannot forget it and report a
+    /// fix that looks like it was measured against a zero gate.
+    fn with_context(mut self, effective_distance_filter: f64, anchor_age_seconds: f64, accuracy: f64) -> Self {
+        self.effective_distance_filter = effective_distance_filter;
+        self.anchor_age_seconds = anchor_age_seconds;
+        self.accuracy = accuracy;
+        self
     }
 
     /// A fix we decline to store still answers "how fast is this device?", and
@@ -209,6 +247,11 @@ impl LocationProcessorResult {
             reason: Some(reason.to_string()),
             error_message: None,
             is_error: false,
+            effective_distance_filter: 0.0,
+            anchor_age_seconds: 0.0,
+            accuracy: 0.0,
+            idle_escape: false,
+            anchor_reseeded: false,
         }
     }
 
@@ -222,6 +265,11 @@ impl LocationProcessorResult {
             reason: Some(reason.to_string()),
             error_message: Some(message.to_string()),
             is_error: true,
+            effective_distance_filter: 0.0,
+            anchor_age_seconds: 0.0,
+            accuracy: 0.0,
+            idle_escape: false,
+            anchor_reseeded: false,
         }
     }
 }
@@ -256,11 +304,32 @@ struct LocationProcessorState {
     /// accuracy gate, so coarse fixes defer distance rather than losing it.
     odo_last_latitude: Option<f64>,
     odo_last_longitude: Option<f64>,
+    /// The last fix the processor *examined*, accepted or not.
+    ///
+    /// Separate from the accepted anchor because a rejected fix is still an
+    /// observation of where the device was, and the implied-speed guard needs
+    /// the most recent one it has rather than the most recent one it liked
+    /// (#395).
+    last_seen_latitude: Option<f64>,
+    last_seen_longitude: Option<f64>,
+    last_seen_timestamp_ms: i64,
     /// Live thresholds. Seeded from the constructor, replaced by `retune`.
     tuning: LocationTuning,
     /// The constructor's thresholds, kept so `restore_base_tuning` can undo an
     /// auto-tune when the mode goes back to Unknown.
     base_tuning: LocationTuning,
+    /// Seconds of no accepted fix after which an inflated distance gate stops
+    /// being allowed to suppress a fix that cleared the un-inflated one.
+    /// `<= 0` disables (#394).
+    idle_escape_seconds: i32,
+    /// Anchor age beyond which the implied-speed guard refuses to draw a
+    /// conclusion and re-seeds instead. `<= 0` disables (#395).
+    stale_anchor_seconds: i32,
+    /// Lower bound on the tracking accuracy gate, in metres. Raised by the
+    /// battery-budget ladder when it asks the platform for coarser fixes, so
+    /// the SDK cannot spend power acquiring positions its own filter will
+    /// then discard. `<= 0` means no floor (#396).
+    accuracy_floor: i32,
 }
 
 /// Core location processing engine that handles filtering out inaccurate or redundant points.
@@ -322,10 +391,99 @@ impl LocationProcessor {
                 last_effective_speed: 0.0,
                 odo_last_latitude: None,
                 odo_last_longitude: None,
+                last_seen_latitude: None,
+                last_seen_longitude: None,
+                last_seen_timestamp_ms: 0,
                 tuning: base_tuning,
                 base_tuning,
+                idle_escape_seconds: Self::DEFAULT_IDLE_ESCAPE_SECONDS,
+                stale_anchor_seconds: Self::DEFAULT_STALE_ANCHOR_SECONDS,
+                accuracy_floor: 0,
             }),
         }
+    }
+
+    /// Seconds without an accepted fix after which the adaptive inflation of the
+    /// distance gate stops being able to withhold a fix — see
+    /// [`Self::set_idle_escape_seconds`].
+    pub fn idle_escape_seconds(&self) -> i32 {
+        self.state.lock().unwrap().idle_escape_seconds
+    }
+
+    /// Bounds how long adaptive sampling may withhold a fix (#394).
+    ///
+    /// `AdaptiveSamplingEngine` multiplies the distance gate by an activity
+    /// factor and a battery factor, and the product is unbounded: a `Still`
+    /// classification on a device below 50 % battery gates at 750 m. Because the
+    /// anchor advances only on an accepted fix, a mis-classified walk then
+    /// freezes the stream indefinitely — no positions, no odometer, no error.
+    ///
+    /// Past this many seconds without an accepted fix, a fix that clears the
+    /// *un-inflated* `LocationTuning::distance_filter` is accepted even though
+    /// it is inside the inflated gate. The un-inflated clause is what keeps a
+    /// genuinely parked device silent: its jitter never clears the configured
+    /// filter, so the escape cannot fire for it, and the wide `Still` distance
+    /// keeps doing the job it exists for.
+    ///
+    /// `<= 0` disables the escape and restores the unbounded behaviour.
+    pub fn set_idle_escape_seconds(&self, seconds: i32) {
+        self.state.lock().unwrap().idle_escape_seconds = seconds;
+    }
+
+    /// Observation gap past which the implied-speed guard stops trusting itself.
+    pub fn stale_anchor_seconds(&self) -> i32 {
+        self.state.lock().unwrap().stale_anchor_seconds
+    }
+
+    /// Bounds the interval the implied-speed guard is willing to reason about
+    /// (#395).
+    ///
+    /// The guard divides a jump by the age of the *accepted* anchor, and that
+    /// age is unbounded — so the longer a stream has been stalled, the larger
+    /// the teleport it waves through. A 1.65 km cell-derived fix arriving 196 s
+    /// after the last accepted one reads as 8.4 m/s, which clears any ceiling
+    /// meant for a car.
+    ///
+    /// Two changes bound it. First, the guard now measures from the last fix the
+    /// processor *observed* rather than the last one it accepted: rejected fixes
+    /// still say where the device was, and ignoring them was the actual defect —
+    /// during that 196 s stall the processor was being handed a fix every couple
+    /// of seconds, all of them beside the frozen anchor. Against the last
+    /// observation the same jump is 51 m/s, which no transport-mode tuning
+    /// permits.
+    ///
+    /// Second, when even the observation stream has been absent for longer than
+    /// this, no conclusion is available at all — the device may have been
+    /// suspended for an hour. The fix is then accepted for its position, the
+    /// anchor is re-seeded, and it is marked
+    /// [`LocationProcessorResult::anchor_reseeded`]: it contributes no odometer
+    /// distance and no derived speed, because both would be claims about an
+    /// interval nothing was observed over.
+    ///
+    /// `<= 0` disables the guard.
+    pub fn set_stale_anchor_seconds(&self, seconds: i32) {
+        self.state.lock().unwrap().stale_anchor_seconds = seconds;
+    }
+
+    /// The tracking accuracy gate's lower bound in metres; `0` when unset.
+    pub fn accuracy_floor(&self) -> i32 {
+        self.state.lock().unwrap().accuracy_floor
+    }
+
+    /// Raises the floor under the tracking accuracy gate (#396).
+    ///
+    /// Set by the battery-budget ladder whenever it asks the platform for a
+    /// coarser accuracy tier. Without it the two controllers work against each
+    /// other: the budget drops iOS from `kCLLocationAccuracyBest` to
+    /// `kCLLocationAccuracyHundredMeters`, and the 15 m tracking gate a
+    /// committed Walking mode installs then rejects every fix that arrives — so
+    /// the device spends the power to produce positions and stores none of
+    /// them.
+    ///
+    /// A floor rather than a replacement, so it composes with both the
+    /// configured value and a transport-mode auto-tune instead of racing them.
+    pub fn set_accuracy_floor(&self, metres: i32) {
+        self.state.lock().unwrap().accuracy_floor = metres;
     }
 
     pub fn last_effective_speed(&self) -> f64 {
@@ -483,62 +641,135 @@ impl LocationProcessor {
             effective_distance = tuning.distance_filter * speed_factor * multiplier;
         }
 
+        // Everything below decides whether to *store* the fix. Record that it
+        // was seen first, so a rejection still updates the observation the
+        // implied-speed guard measures from (#395). Mock rejections above
+        // deliberately return before this: a spoofed position must not become
+        // the reference a later fix is judged against.
+        // Presence is the *position*, not the timestamp: a fix stamped at the
+        // epoch is a real observation, and testing `> 0` would quietly treat it
+        // as "never seen anything".
+        let observation_gap = if state.last_seen_latitude.is_some() {
+            (timestamp_ms - state.last_seen_timestamp_ms) as f64 / 1000.0
+        } else {
+            0.0
+        };
+        let seen = (state.last_seen_latitude, state.last_seen_longitude);
+        state.last_seen_latitude = Some(latitude);
+        state.last_seen_longitude = Some(longitude);
+        state.last_seen_timestamp_ms = timestamp_ms;
+
         // The fix is merely too close to the last one to be worth storing —
         // nothing about it makes its speed less true (#332).
+        //
+        // Unless the gate that suppressed it is an inflated one and the anchor
+        // has gone stale underneath it, in which case the fix is admitted anyway
+        // (#394). See `set_idle_escape_seconds` for why the *un-inflated* filter
+        // is the right bar: it is what keeps a parked device silent.
+        let mut idle_escape = false;
         if state.last_latitude.is_some() && distance < effective_distance {
-            return LocationProcessorResult::filtered("DISTANCE_FILTER", effective_speed);
+            idle_escape = state.idle_escape_seconds > 0
+                && time_delta >= state.idle_escape_seconds as f64
+                && distance >= tuning.distance_filter;
+            if !idle_escape {
+                return LocationProcessorResult::filtered("DISTANCE_FILTER", effective_speed)
+                    .with_context(effective_distance, time_delta, accuracy);
+            }
         }
 
-        if tuning.tracking_accuracy_threshold > 0
-            && accuracy > tuning.tracking_accuracy_threshold as f64
-        {
+        // A floor the battery-budget ladder raises when it asks the platform for
+        // coarser fixes, so the SDK never discards positions it has just spent
+        // power coarsening on purpose (#396).
+        let accuracy_gate = tuning
+            .tracking_accuracy_threshold
+            .max(state.accuracy_floor);
+
+        if accuracy_gate > 0 && accuracy > accuracy_gate as f64 {
             match self.filter_policy {
                 2 => {
                     return LocationProcessorResult::error(
                         "ACCURACY_FILTER",
                         &format!(
                             "Location accuracy {}m exceeds threshold {}m",
-                            accuracy, tuning.tracking_accuracy_threshold
+                            accuracy, accuracy_gate
                         ),
                         effective_speed,
                     )
+                    .with_context(effective_distance, time_delta, accuracy)
                 }
                 // A coarse fix is a poor position but not a poor speedometer:
                 // the platform's reading is Doppler-derived, independent of
                 // horizontal accuracy (#332).
-                1 => return LocationProcessorResult::filtered("ACCURACY_FILTER", effective_speed),
+                1 => {
+                    return LocationProcessorResult::filtered("ACCURACY_FILTER", effective_speed)
+                        .with_context(effective_distance, time_delta, accuracy)
+                }
                 _ => {
                     if state.last_latitude.is_some() {
                         return LocationProcessorResult::filtered(
                             "ACCURACY_FILTER",
                             effective_speed,
-                        );
+                        )
+                        .with_context(effective_distance, time_delta, accuracy);
                     }
                 }
             }
         }
 
-        if tuning.max_implied_speed > 0 && state.last_latitude.is_some() && time_delta > 0.0 {
-            let implied_speed = distance / time_delta;
-            if implied_speed > tuning.max_implied_speed as f64 {
-                // The jump between the two positions is what failed, so the
-                // position-derived fallback in `effective_speed` *is* the
-                // rejected quantity and must not be reported onward. The
-                // platform's own reading is unaffected by the teleport, so pass
-                // it when there is one and 0.0 when there is not (#332).
-                let reported_speed = if speed > 0.0 { speed } else { 0.0 };
-                return if self.filter_policy == 2 {
-                    LocationProcessorResult::error(
-                        "SPEED_FILTER",
-                        &format!(
-                            "Implied speed {:.1}m/s exceeds max {}m/s",
-                            implied_speed, tuning.max_implied_speed
-                        ),
-                        reported_speed,
-                    )
-                } else {
-                    LocationProcessorResult::filtered("SPEED_FILTER", reported_speed)
+        // The implied-speed guard, measured from the last fix the processor
+        // *observed* rather than the last one it accepted (#395).
+        //
+        // Dividing by the accepted anchor's age is what let a 1.65 km cell fix
+        // through as 8.4 m/s after a 196 s stall: the processor had been handed
+        // a fix every couple of seconds throughout that stall, every one of them
+        // beside the frozen anchor, and threw that evidence away. Measured
+        // against the last observation the same jump is 51 m/s.
+        //
+        // `anchor_reseeded` is the other half: when nothing at all has been
+        // observed for `stale_anchor_seconds` the device may have been suspended
+        // for an hour, and no speed can be inferred either way. The position is
+        // taken, the span is not.
+        let mut anchor_reseeded = false;
+        if state.last_latitude.is_some() {
+            let observation_stale = state.stale_anchor_seconds > 0
+                && (seen.0.is_none() || observation_gap > state.stale_anchor_seconds as f64);
+            if observation_stale {
+                anchor_reseeded = true;
+            } else if tuning.max_implied_speed > 0 {
+                // Prefer the observation; fall back to the anchor when this is
+                // the first fix since the processor was built.
+                let (reference_distance, reference_seconds) = match seen {
+                    (Some(seen_lat), Some(seen_lng)) if observation_gap > 0.0 => (
+                        haversine(seen_lat, seen_lng, latitude, longitude),
+                        observation_gap,
+                    ),
+                    _ => (distance, time_delta),
                 };
+                if reference_seconds > 0.0 {
+                    let implied_speed = reference_distance / reference_seconds;
+                    if implied_speed > tuning.max_implied_speed as f64 {
+                        // The jump between the two positions is what failed, so
+                        // the position-derived fallback in `effective_speed` *is*
+                        // the rejected quantity and must not be reported onward.
+                        // The platform's own reading is unaffected by the
+                        // teleport, so pass it when there is one and 0.0 when
+                        // there is not (#332).
+                        let reported_speed = if speed > 0.0 { speed } else { 0.0 };
+                        return if self.filter_policy == 2 {
+                            LocationProcessorResult::error(
+                                "SPEED_FILTER",
+                                &format!(
+                                    "Implied speed {:.1}m/s exceeds max {}m/s",
+                                    implied_speed, tuning.max_implied_speed
+                                ),
+                                reported_speed,
+                            )
+                        } else {
+                            LocationProcessorResult::filtered("SPEED_FILTER", reported_speed)
+                        }
+                        .with_context(effective_distance, time_delta, accuracy);
+                    }
+                }
             }
         }
 
@@ -554,7 +785,7 @@ impl LocationProcessor {
         // hardest on foot, where the gate is tightest.
         let passes_odometer_gate = tuning.odometer_accuracy_threshold <= 0
             || accuracy <= tuning.odometer_accuracy_threshold as f64;
-        let odometer_delta = if passes_odometer_gate {
+        let odometer_delta = if passes_odometer_gate && !anchor_reseeded {
             match (state.odo_last_latitude, state.odo_last_longitude) {
                 (Some(prev_lat), Some(prev_lng)) => {
                     haversine(prev_lat, prev_lng, latitude, longitude)
@@ -563,6 +794,10 @@ impl LocationProcessor {
                 _ => 0.0,
             }
         } else {
+            // A re-seed measured nothing, so it may claim nothing. Crediting the
+            // span would put however far the device was carried while the
+            // processor was blind — or, worse, the width of a bogus cell fix —
+            // into the odometer as travel (#395).
             0.0
         };
 
@@ -583,7 +818,8 @@ impl LocationProcessor {
                     // This fix passed every quality gate and advanced the
                     // anchor; it is suppressed only to thin the stream, so its
                     // speed is as good as an accepted one's (#332).
-                    return LocationProcessorResult::filtered("SPARSE_FILTER", effective_speed);
+                    return LocationProcessorResult::filtered("SPARSE_FILTER", effective_speed)
+                        .with_context(effective_distance, time_delta, accuracy);
                 }
             }
             state.sparse_last_lat = Some(latitude);
@@ -591,16 +827,37 @@ impl LocationProcessor {
             state.sparse_last_timestamp_ms = timestamp_ms;
         }
 
+        // A re-seed contributes no derived speed either. `effective_speed` falls
+        // back to distance/time when the platform reports none, and across an
+        // unobserved gap that fallback is the same fabricated number the
+        // odometer just declined — 8.4 m/s, enough to wake a stationary session
+        // into MOVING on the strength of a fix nobody can vouch for (#395). A
+        // real Doppler reading still counts: it is a property of the fix, not of
+        // the interval.
+        let reported_speed = if anchor_reseeded {
+            if speed > 0.0 {
+                speed
+            } else {
+                0.0
+            }
+        } else {
+            effective_speed
+        };
+
         state.last_latitude = Some(latitude);
         state.last_longitude = Some(longitude);
         state.last_timestamp_ms = timestamp_ms;
-        state.last_effective_speed = effective_speed;
+        state.last_effective_speed = reported_speed;
         if passes_odometer_gate {
             state.odo_last_latitude = Some(latitude);
             state.odo_last_longitude = Some(longitude);
         }
 
-        LocationProcessorResult::accept(effective_speed, odometer_delta, distance)
+        let mut result = LocationProcessorResult::accept(reported_speed, odometer_delta, distance)
+            .with_context(effective_distance, time_delta, accuracy);
+        result.idle_escape = idle_escape;
+        result.anchor_reseeded = anchor_reseeded;
+        result
     }
 
     /// Clears the odometer's anchor alone, leaving the tracking anchor, the
@@ -635,7 +892,32 @@ impl LocationProcessor {
         state.sparse_last_timestamp_ms = 0;
         state.odo_last_latitude = None;
         state.odo_last_longitude = None;
+        state.last_seen_latitude = None;
+        state.last_seen_longitude = None;
+        state.last_seen_timestamp_ms = 0;
     }
+}
+
+impl LocationProcessor {
+    /// Seconds without an accepted fix after which an inflated distance gate can
+    /// no longer withhold one (#394).
+    ///
+    /// A minute. Long enough that adaptive sampling keeps doing its job — a
+    /// device at walking pace still has most of its fixes thinned away — and
+    /// short enough that a frozen map is measured in seconds rather than the
+    /// four minutes the field reports showed. For a device that is genuinely
+    /// stationary the escape never fires at all, because a parked device's
+    /// jitter does not clear the un-inflated filter.
+    const DEFAULT_IDLE_ESCAPE_SECONDS: i32 = 60;
+
+    /// Observation gap past which no speed can be inferred across an interval
+    /// (#395).
+    ///
+    /// Two minutes. Under the escape above a tracking session observes fixes far
+    /// more often than this, so reaching it means the stream itself stopped —
+    /// app suspended, permission dropped, radio off — which is exactly the case
+    /// where the interval carries no information.
+    const DEFAULT_STALE_ANCHOR_SECONDS: i32 = 120;
 }
 
 #[cfg(test)]
@@ -696,6 +978,231 @@ mod tests {
             false,
             None,
         )
+    }
+
+    /// A processor with adaptive sampling on, which is the shipped default and
+    /// the configuration that produced the field freeze.
+    fn adaptive_processor(tuning: LocationTuning) -> LocationProcessor {
+        LocationProcessor::new(
+            tuning.distance_filter,
+            true, // disable_elasticity — adaptive replaces it
+            1.0,
+            true, // enable_adaptive_mode
+            tuning.tracking_accuracy_threshold,
+            0,
+            tuning.max_implied_speed,
+            tuning.odometer_accuracy_threshold,
+            false,
+            0,
+            false,
+            0.0,
+            0,
+        )
+    }
+
+    /// The `Still` classification at medium confidence — a 500 m activity
+    /// distance, which a device below 50 % battery multiplies to 750 m.
+    fn still_context() -> AdaptiveContext {
+        AdaptiveContext {
+            battery_level: 0.25,
+            is_charging: false,
+            activity_type: ActivityType::Still,
+            activity_confidence: ActivityConfidence::High,
+            speed: 0.0,
+        }
+    }
+
+    fn fix_with_context(
+        p: &LocationProcessor,
+        metres: f64,
+        accuracy: f64,
+        ts_ms: i64,
+        ctx: AdaptiveContext,
+    ) -> LocationProcessorResult {
+        p.process(
+            BASE_LAT + metres / M_PER_DEG_LAT,
+            BASE_LNG,
+            accuracy,
+            0.0,
+            ts_ms,
+            false,
+            Some(ctx),
+        )
+    }
+
+    /// The field failure: a mis-classified walk behind a 750 m gate records
+    /// nothing at all, because the anchor advances only on an accepted fix
+    /// (#394).
+    #[test]
+    fn an_inflated_distance_gate_cannot_withhold_a_fix_forever() {
+        let p = adaptive_processor(walking());
+        assert!(fix_with_context(&p, 0.0, 5.0, 0, still_context()).accepted);
+
+        // Walking at ~1 m/s. Every one of these is inside the 750 m gate.
+        let mut last = LocationProcessorResult::filtered("", 0.0);
+        for step in 1..=59 {
+            last = fix_with_context(
+                &p,
+                step as f64,
+                5.0,
+                step * 1_000,
+                still_context(),
+            );
+            assert!(
+                !last.accepted,
+                "fix at {step} s should still be thinned by adaptive sampling"
+            );
+            assert_eq!(last.reason.as_deref(), Some("DISTANCE_FILTER"));
+        }
+        assert!(
+            last.effective_distance_filter > 700.0,
+            "expected the inflated gate, got {}",
+            last.effective_distance_filter
+        );
+
+        // One minute in, 60 m from the anchor: past the un-inflated 8 m filter,
+        // so the escape admits it rather than letting the map stay frozen.
+        let escaped = fix_with_context(&p, 60.0, 5.0, 60_000, still_context());
+        assert!(escaped.accepted, "the stream never recovered");
+        assert!(escaped.idle_escape);
+        assert!((escaped.odometer_delta - 60.0).abs() < 1.0);
+    }
+
+    /// The escape must not undo what the wide `Still` distance is for: a parked
+    /// device's jitter never clears the configured filter, so it never escapes.
+    #[test]
+    fn a_parked_device_still_records_nothing() {
+        let p = adaptive_processor(walking());
+        assert!(fix_with_context(&p, 0.0, 5.0, 0, still_context()).accepted);
+
+        for minute in 1..=10 {
+            // 3 m of GPS jitter, well inside the 8 m configured filter.
+            let r = fix_with_context(&p, 3.0, 5.0, minute * 60_000, still_context());
+            assert!(
+                !r.accepted,
+                "jitter escaped the gate at minute {minute} — a parked device \
+                 would record a track going nowhere"
+            );
+        }
+    }
+
+    #[test]
+    fn the_idle_escape_can_be_switched_off() {
+        let p = adaptive_processor(walking());
+        p.set_idle_escape_seconds(0);
+        assert!(fix_with_context(&p, 0.0, 5.0, 0, still_context()).accepted);
+        assert!(!fix_with_context(&p, 300.0, 5.0, 600_000, still_context()).accepted);
+    }
+
+    /// The teleport that produced the map spike: 1.65 km on a 90 m-accuracy
+    /// cell fix, 196 s after the last *accepted* one — but only ~30 s after the
+    /// last one the processor *saw* (#395).
+    #[test]
+    fn a_teleport_is_judged_against_the_last_observation_not_the_last_accept() {
+        let p = processor(LocationTuning {
+            distance_filter: 8.0,
+            // Wide enough to admit the 90 m cell fix, as the restored base
+            // tuning did in the field — the accuracy gate is not what is under
+            // test here.
+            tracking_accuracy_threshold: 100,
+            odometer_accuracy_threshold: 50,
+            // Cycling's ceiling. Anything below 51 m/s catches this jump once
+            // it is measured over the right interval; nothing catches it at
+            // 8.4 m/s, which is what the anchor's age made it look like.
+            max_implied_speed: 20,
+        });
+        assert!(fix_at(&p, 0.0, 5.0, 0).accepted);
+
+        // A stalled stream: fixes keep arriving beside the anchor and keep
+        // being rejected, right up to 164 s.
+        for step in 1..=41 {
+            let r = fix_at(&p, 2.0, 5.0, step * 4_000);
+            assert!(!r.accepted);
+        }
+
+        // 1650 m away, 196 s after the anchor: 8.4 m/s, which every ceiling
+        // above walking pace would wave through. Against the observation 32 s
+        // earlier it is 51 m/s.
+        let spike = fix_at(&p, 1650.0, 90.0, 196_000);
+        assert!(!spike.accepted, "the spike was accepted");
+        assert_eq!(spike.reason.as_deref(), Some("SPEED_FILTER"));
+    }
+
+    /// When nothing has been observed at all — a suspended app, a radio that
+    /// was off — no speed can be inferred either way, so the fix is taken for
+    /// its position and credited with no travel (#395).
+    #[test]
+    fn an_unobserved_gap_reseeds_instead_of_claiming_travel() {
+        let p = processor(vehicle());
+        assert!(fix_at(&p, 0.0, 5.0, 0).accepted);
+
+        // Nothing for five minutes, then a fix 2 km away.
+        let r = fix_at(&p, 2_000.0, 5.0, 300_000);
+        assert!(r.accepted, "the position is still the best we have");
+        assert!(r.anchor_reseeded);
+        assert_eq!(
+            r.odometer_delta, 0.0,
+            "a re-seed measured nothing and may claim nothing"
+        );
+        assert_eq!(
+            r.effective_speed, 0.0,
+            "an interval nothing was observed over cannot yield a speed"
+        );
+
+        // And the re-seed becomes the anchor, so ordinary tracking resumes.
+        let next = fix_at(&p, 2_050.0, 5.0, 305_000);
+        assert!(next.accepted);
+        assert!(!next.anchor_reseeded);
+        assert!((next.odometer_delta - 50.0).abs() < 1.0);
+    }
+
+    /// A real Doppler reading is a property of the fix, not of the interval, so
+    /// a re-seed still reports it.
+    #[test]
+    fn a_reseed_keeps_a_platform_reported_speed() {
+        let p = processor(vehicle());
+        assert!(fix_at(&p, 0.0, 5.0, 0).accepted);
+        let r = p.process(
+            BASE_LAT + 2_000.0 / M_PER_DEG_LAT,
+            BASE_LNG,
+            5.0,
+            12.5, // the platform says so
+            300_000,
+            false,
+            None,
+        );
+        assert!(r.anchor_reseeded);
+        assert_eq!(r.effective_speed, 12.5);
+    }
+
+    /// A coarsened accuracy request must relax the gate that judges its fixes,
+    /// or the budget ladder spends power producing positions the filter throws
+    /// away (#396).
+    #[test]
+    fn the_accuracy_floor_raises_the_tracking_gate() {
+        let p = processor(walking());
+        assert!(fix_at(&p, 0.0, 5.0, 0).accepted);
+        // 40 m fix against walking's 15 m gate.
+        assert!(!fix_at(&p, 50.0, 40.0, 10_000).accepted);
+
+        p.set_accuracy_floor(100);
+        let r = fix_at(&p, 50.0, 40.0, 20_000);
+        assert!(r.accepted, "the floor did not reach the gate");
+        assert_eq!(p.accuracy_floor(), 100);
+    }
+
+    /// Every outcome carries the numbers needed to check it, so a
+    /// `DISTANCE_FILTER` line in a bug report can be told from a 750 m one
+    /// (#397).
+    #[test]
+    fn every_decision_reports_the_gate_it_was_measured_against() {
+        let p = adaptive_processor(walking());
+        assert!(fix_with_context(&p, 0.0, 5.0, 0, still_context()).accepted);
+        let r = fix_with_context(&p, 3.0, 7.5, 30_000, still_context());
+        assert!(!r.accepted);
+        assert!(r.effective_distance_filter > 700.0);
+        assert_eq!(r.accuracy, 7.5);
+        assert!((r.anchor_age_seconds - 30.0).abs() < 1e-9);
     }
 
     #[test]
