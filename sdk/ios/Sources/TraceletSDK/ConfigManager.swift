@@ -250,7 +250,16 @@ public final class ConfigManager {
         }
         return .activity
     }
-    public func getSpeedMovingThreshold() -> Double { (cache["speedMovingThreshold"] as? NSNumber)?.doubleValue ?? 1.5 }
+    /// Speed at which a stationary session decides it is moving (m/s).
+    ///
+    /// Was 1.5, which is above an average walking pace of ~1.4 m/s, so the
+    /// median pedestrian straddled it and the session oscillated into
+    /// stationary while still walking (pedestrian pace hysteresis, PR #399).
+    public func getSpeedMovingThreshold() -> Double { (cache["speedMovingThreshold"] as? NSNumber)?.doubleValue ?? 0.9 }
+
+    /// Speed below which a moving session begins slowing (m/s); `0` derives it
+    /// from ``getSpeedMovingThreshold()`` (pedestrian pace hysteresis, PR #399).
+    public func getSpeedStationaryThreshold() -> Double { (cache["speedStationaryThreshold"] as? NSNumber)?.doubleValue ?? 0 }
     public func getSpeedStationaryDelay() -> Int { (cache["speedStationaryDelay"] as? NSNumber)?.intValue ?? 180 }
     public func getStationaryTrackingMode() -> StationaryTrackingMode {
         if let val = cache["stationaryTrackingMode"] as? Int, let mode = StationaryTrackingMode(rawValue: val) {

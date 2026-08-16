@@ -993,7 +993,10 @@ class MotionDetector(
 
         significantMotionListener = object : TriggerEventListener() {
             override fun onTrigger(event: TriggerEvent?) {
-                logger.debug("★★★ SIGNIFICANT MOTION TRIGGERED! — declaring moving")
+                com.ikolvi.tracelet.sdk.util.TraceletLog.lifecycle(
+                    "motion: significant-motion wake fired — the one-shot trigger is now " +
+                        "consumed and must be re-armed (stationary wake re-arm, PR #399)",
+                )
                 significantMotionListener = null
                 declareMoving()
             }

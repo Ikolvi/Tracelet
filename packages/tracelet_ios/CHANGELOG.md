@@ -1,3 +1,9 @@
+## 3.8.7
+
+**FIX**: the pinned native SDK carries the pedestrian pace hysteresis; no Dart or plugin change.
+
+**FIX**: the pinned native SDK carries the battery-budget ladder, the adaptive-sampling idle escape and the always-on stream diagnostics ([#393](https://github.com/Ikolvi/Tracelet/issues/393)–[#397](https://github.com/Ikolvi/Tracelet/issues/397)); no Dart or plugin change.
+
 ## 3.8.6
 
 **FIX**: the CocoaPods fallback links. Two things were missing when Swift Package Manager is disabled and Flutter installs the plugin as a `:path` pod. The published podspec pointed `s.source :http` at the GitHub Release zip, which CocoaPods never downloads for path pods — the podspec now fetches it during evaluation, the one hook that does run, and verifies its checksum the way the SPM binary target does. And CocoaPods links a *dependency's* vendored frameworks into a pod target but never the pod's own, so even once the binary was on disk the UniFFI stubs still had nothing to resolve `uniffi_tracelet_core_*` against ([#390](https://github.com/Ikolvi/Tracelet/issues/390)).

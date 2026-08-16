@@ -889,7 +889,28 @@ public func FfiConverterTypeAuditTrailEngine_lower(_ value: AuditTrailEngine) ->
 
 
 /**
- * Engine that calculates optimal distance filters and sampling rates to preserve battery while maintaining tracking quality.
+ * Keeps a tracking session inside a battery budget by stepping through a
+ * bounded ladder of sampling costs.
+ *
+ * The ladder replaces an unbounded multiplication. The previous engine
+ * multiplied the distance filter by 1.5 and coarsened the accuracy tier on
+ * every over-budget sample, with no dwell, no ceiling relative to the app's
+ * configuration, and a recovery factor too weak to undo either — so a session
+ * that throttled once kept throttling until it recorded nothing at all, which
+ * is a worse outcome for the app than the drain it was avoiding (#396).
+ *
+ * Three rules shape it:
+ *
+ * 1. **Cadence before fidelity.** Rungs 1 and 2 only ask the platform to report
+ * less often. Accuracy — the knob that decides whether a fix is usable —
+ * is touched at rung 3 and beyond, and only together with a matching floor
+ * under the tracking accuracy gate, so the SDK never spends power producing
+ * positions its own filter will discard.
+ * 2. **Evidence before action.** A level moves after [`DWELL_WINDOWS`]
+ * consecutive conclusive windows, where a window is conclusive only if the
+ * drain beats the budget by more than the measurement's own resolution.
+ * 3. **Symmetry.** The ladder comes back down on the same evidence it went up
+ * on, and drops to zero the moment the device is on a charger.
  */
 public protocol BatteryBudgetEngineProtocol: AnyObject, Sendable {
     
@@ -899,9 +920,25 @@ public protocol BatteryBudgetEngineProtocol: AnyObject, Sendable {
     func accuracyIndex()  -> Int32
     
     /**
+     * Returns the ladder to level 0 and forgets the measurement history.
+     */
+    func clearThrottle() 
+    
+    /**
      * Returns the currently enforced distance filter (in meters).
      */
     func distanceFilter()  -> Double
+    
+    /**
+     * Drops the ladder straight to level 0 because the device is on external
+     * power, returning an event when that changed anything.
+     *
+     * Hosts call this instead of skipping the sample outright: a charging
+     * device has no reason to carry a throttle, and the pre-ladder engine left
+     * one in force for the rest of the session because it simply returned
+     * early.
+     */
+    func noteCharging(nowMs: Int64)  -> BudgetAdjustmentEvent?
     
     /**
      * Returns the currently enforced periodic interval (if any).
@@ -909,18 +946,78 @@ public protocol BatteryBudgetEngineProtocol: AnyObject, Sendable {
     func periodicInterval()  -> Int32?
     
     /**
-     * Processes a new battery sample, updating the internal baseline and returning parameter adjustments if necessary.
+     * Processes a new battery sample, returning an adjustment when the ladder
+     * moves.
+     *
+     * Returns `None` — with no state change beyond the accumulating baseline —
+     * whenever the evidence is not there yet, which is the overwhelming
+     * majority of samples.
      */
     func processSample(batteryLevel: Double, nowMs: Int64)  -> BudgetAdjustmentEvent?
     
     /**
      * Discards all historical battery samples and resets the baseline for budget calculations.
+     *
+     * Leaves the ladder where it is: a `stop()`/`start()` pair does not make a
+     * device that was draining fast start draining slowly, and re-deciding from
+     * scratch is how the old engine's ratchet kept finding new ground.
      */
     func reset() 
     
+    /**
+     * Re-reads the app's configured parameters, e.g. after `setConfig`.
+     *
+     * The overlay is recomputed from the new values immediately, so a config
+     * change during an active throttle takes effect without waiting for the
+     * ladder to move.
+     */
+    func setConfigured(distanceFilter: Double, accuracyIndex: Int32, periodicInterval: Int32?) 
+    
+    /**
+     * Tells the engine how coarsely this platform reports battery level, in
+     * percentage points.
+     *
+     * Sets the resolution of every drain figure the engine computes: a window
+     * can only resolve drain to within one step per elapsed hour. iOS steps in
+     * 5 %, Android in 1 %, and getting this wrong in the optimistic direction
+     * is what made a normal discharge look like 60 %/hr (#393).
+     */
+    func setLevelQuantumPercent(quantum: Double) 
+    
+    /**
+     * The current rung, 0 (untouched) to 4 (most aggressive).
+     */
+    func throttleLevel()  -> Int32
+    
+    /**
+     * Everything the ladder currently imposes — see [`BudgetThrottleState`].
+     */
+    func throttleState()  -> BudgetThrottleState
+    
 }
 /**
- * Engine that calculates optimal distance filters and sampling rates to preserve battery while maintaining tracking quality.
+ * Keeps a tracking session inside a battery budget by stepping through a
+ * bounded ladder of sampling costs.
+ *
+ * The ladder replaces an unbounded multiplication. The previous engine
+ * multiplied the distance filter by 1.5 and coarsened the accuracy tier on
+ * every over-budget sample, with no dwell, no ceiling relative to the app's
+ * configuration, and a recovery factor too weak to undo either — so a session
+ * that throttled once kept throttling until it recorded nothing at all, which
+ * is a worse outcome for the app than the drain it was avoiding (#396).
+ *
+ * Three rules shape it:
+ *
+ * 1. **Cadence before fidelity.** Rungs 1 and 2 only ask the platform to report
+ * less often. Accuracy — the knob that decides whether a fix is usable —
+ * is touched at rung 3 and beyond, and only together with a matching floor
+ * under the tracking accuracy gate, so the SDK never spends power producing
+ * positions its own filter will discard.
+ * 2. **Evidence before action.** A level moves after [`DWELL_WINDOWS`]
+ * consecutive conclusive windows, where a window is conclusive only if the
+ * drain beats the budget by more than the measurement's own resolution.
+ * 3. **Symmetry.** The ladder comes back down on the same evidence it went up
+ * on, and drops to zero the moment the device is on a charger.
  */
 open class BatteryBudgetEngine: BatteryBudgetEngineProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
@@ -962,7 +1059,12 @@ open class BatteryBudgetEngine: BatteryBudgetEngineProtocol, @unchecked Sendable
         return try! rustCall { uniffi_tracelet_core_fn_clone_batterybudgetengine(self.handle, $0) }
     }
     /**
-     * Initializes the battery budget engine with the desired target budget and initial parameters.
+     * Initializes the engine with the app's configured tracking parameters.
+     *
+     * The parameters are remembered as the *floor* of the ladder rather than as
+     * a starting point to multiply: every rung is expressed relative to them,
+     * so throttling can never take a session below what the app asked for and
+     * `restore`-ing to level 0 always lands back on the app's own values.
      */
 public convenience init(targetBudgetPerHour: Double, initialDistanceFilter: Double, initialAccuracyIndex: Int32, initialPeriodicInterval: Int32?) {
     let handle =
@@ -1001,12 +1103,40 @@ open func accuracyIndex() -> Int32  {
 }
     
     /**
+     * Returns the ladder to level 0 and forgets the measurement history.
+     */
+open func clearThrottle()  {try! rustCall() {
+    uniffi_tracelet_core_fn_method_batterybudgetengine_clear_throttle(
+            self.uniffiCloneHandle(),$0
+    )
+}
+}
+    
+    /**
      * Returns the currently enforced distance filter (in meters).
      */
 open func distanceFilter() -> Double  {
     return try!  FfiConverterDouble.lift(try! rustCall() {
     uniffi_tracelet_core_fn_method_batterybudgetengine_distance_filter(
             self.uniffiCloneHandle(),$0
+    )
+})
+}
+    
+    /**
+     * Drops the ladder straight to level 0 because the device is on external
+     * power, returning an event when that changed anything.
+     *
+     * Hosts call this instead of skipping the sample outright: a charging
+     * device has no reason to carry a throttle, and the pre-ladder engine left
+     * one in force for the rest of the session because it simply returned
+     * early.
+     */
+open func noteCharging(nowMs: Int64) -> BudgetAdjustmentEvent?  {
+    return try!  FfiConverterOptionTypeBudgetAdjustmentEvent.lift(try! rustCall() {
+    uniffi_tracelet_core_fn_method_batterybudgetengine_note_charging(
+            self.uniffiCloneHandle(),
+        FfiConverterInt64.lower(nowMs),$0
     )
 })
 }
@@ -1023,7 +1153,12 @@ open func periodicInterval() -> Int32?  {
 }
     
     /**
-     * Processes a new battery sample, updating the internal baseline and returning parameter adjustments if necessary.
+     * Processes a new battery sample, returning an adjustment when the ladder
+     * moves.
+     *
+     * Returns `None` — with no state change beyond the accumulating baseline —
+     * whenever the evidence is not there yet, which is the overwhelming
+     * majority of samples.
      */
 open func processSample(batteryLevel: Double, nowMs: Int64) -> BudgetAdjustmentEvent?  {
     return try!  FfiConverterOptionTypeBudgetAdjustmentEvent.lift(try! rustCall() {
@@ -1037,12 +1172,72 @@ open func processSample(batteryLevel: Double, nowMs: Int64) -> BudgetAdjustmentE
     
     /**
      * Discards all historical battery samples and resets the baseline for budget calculations.
+     *
+     * Leaves the ladder where it is: a `stop()`/`start()` pair does not make a
+     * device that was draining fast start draining slowly, and re-deciding from
+     * scratch is how the old engine's ratchet kept finding new ground.
      */
 open func reset()  {try! rustCall() {
     uniffi_tracelet_core_fn_method_batterybudgetengine_reset(
             self.uniffiCloneHandle(),$0
     )
 }
+}
+    
+    /**
+     * Re-reads the app's configured parameters, e.g. after `setConfig`.
+     *
+     * The overlay is recomputed from the new values immediately, so a config
+     * change during an active throttle takes effect without waiting for the
+     * ladder to move.
+     */
+open func setConfigured(distanceFilter: Double, accuracyIndex: Int32, periodicInterval: Int32?)  {try! rustCall() {
+    uniffi_tracelet_core_fn_method_batterybudgetengine_set_configured(
+            self.uniffiCloneHandle(),
+        FfiConverterDouble.lower(distanceFilter),
+        FfiConverterInt32.lower(accuracyIndex),
+        FfiConverterOptionInt32.lower(periodicInterval),$0
+    )
+}
+}
+    
+    /**
+     * Tells the engine how coarsely this platform reports battery level, in
+     * percentage points.
+     *
+     * Sets the resolution of every drain figure the engine computes: a window
+     * can only resolve drain to within one step per elapsed hour. iOS steps in
+     * 5 %, Android in 1 %, and getting this wrong in the optimistic direction
+     * is what made a normal discharge look like 60 %/hr (#393).
+     */
+open func setLevelQuantumPercent(quantum: Double)  {try! rustCall() {
+    uniffi_tracelet_core_fn_method_batterybudgetengine_set_level_quantum_percent(
+            self.uniffiCloneHandle(),
+        FfiConverterDouble.lower(quantum),$0
+    )
+}
+}
+    
+    /**
+     * The current rung, 0 (untouched) to 4 (most aggressive).
+     */
+open func throttleLevel() -> Int32  {
+    return try!  FfiConverterInt32.lift(try! rustCall() {
+    uniffi_tracelet_core_fn_method_batterybudgetengine_throttle_level(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+    
+    /**
+     * Everything the ladder currently imposes — see [`BudgetThrottleState`].
+     */
+open func throttleState() -> BudgetThrottleState  {
+    return try!  FfiConverterTypeBudgetThrottleState_lift(try! rustCall() {
+    uniffi_tracelet_core_fn_method_batterybudgetengine_throttle_state(
+            self.uniffiCloneHandle(),$0
+    )
+})
 }
     
 
@@ -3310,11 +3505,23 @@ public func FfiConverterTypeKalmanLocationFilter_lower(_ value: KalmanLocationFi
 public protocol LocationProcessorProtocol: AnyObject, Sendable {
     
     /**
+     * The tracking accuracy gate's lower bound in metres; `0` when unset.
+     */
+    func accuracyFloor()  -> Int32
+    
+    /**
      * The thresholds currently in force.
      */
     func currentTuning()  -> LocationTuning
     
     func hasLastLocation()  -> Bool
+    
+    /**
+     * Seconds without an accepted fix after which the adaptive inflation of the
+     * distance gate stops being able to withhold a fix — see
+     * [`Self::set_idle_escape_seconds`].
+     */
+    func idleEscapeSeconds()  -> Int32
     
     func lastEffectiveSpeed()  -> Double
     
@@ -3376,6 +3583,22 @@ public protocol LocationProcessorProtocol: AnyObject, Sendable {
     func retune(tuning: LocationTuning) 
     
     /**
+     * Raises the floor under the tracking accuracy gate (#396).
+     *
+     * Set by the battery-budget ladder whenever it asks the platform for a
+     * coarser accuracy tier. Without it the two controllers work against each
+     * other: the budget drops iOS from `kCLLocationAccuracyBest` to
+     * `kCLLocationAccuracyHundredMeters`, and the 15 m tracking gate a
+     * committed Walking mode installs then rejects every fix that arrives — so
+     * the device spends the power to produce positions and stores none of
+     * them.
+     *
+     * A floor rather than a replacement, so it composes with both the
+     * configured value and a transport-mode auto-tune instead of racing them.
+     */
+    func setAccuracyFloor(metres: Int32) 
+    
+    /**
      * Replaces the *base* thresholds — the ones [`Self::restore_base_tuning`]
      * reverts to — so a host reconfiguration reaches the processor (#303).
      *
@@ -3397,6 +3620,61 @@ public protocol LocationProcessorProtocol: AnyObject, Sendable {
      * this cannot disagree with [`Self::retune`] about what is in force.
      */
     func setBaseTuning(tuning: LocationTuning) 
+    
+    /**
+     * Bounds how long adaptive sampling may withhold a fix (#394).
+     *
+     * `AdaptiveSamplingEngine` multiplies the distance gate by an activity
+     * factor and a battery factor, and the product is unbounded: a `Still`
+     * classification on a device below 50 % battery gates at 750 m. Because the
+     * anchor advances only on an accepted fix, a mis-classified walk then
+     * freezes the stream indefinitely — no positions, no odometer, no error.
+     *
+     * Past this many seconds without an accepted fix, a fix that clears the
+     * *un-inflated* `LocationTuning::distance_filter` is accepted even though
+     * it is inside the inflated gate. The un-inflated clause is what keeps a
+     * genuinely parked device silent: its jitter never clears the configured
+     * filter, so the escape cannot fire for it, and the wide `Still` distance
+     * keeps doing the job it exists for.
+     *
+     * `<= 0` disables the escape and restores the unbounded behaviour.
+     */
+    func setIdleEscapeSeconds(seconds: Int32) 
+    
+    /**
+     * Bounds the interval the implied-speed guard is willing to reason about
+     * (#395).
+     *
+     * The guard divides a jump by the age of the *accepted* anchor, and that
+     * age is unbounded — so the longer a stream has been stalled, the larger
+     * the teleport it waves through. A 1.65 km cell-derived fix arriving 196 s
+     * after the last accepted one reads as 8.4 m/s, which clears any ceiling
+     * meant for a car.
+     *
+     * Two changes bound it. First, the guard now measures from the last fix the
+     * processor *observed* rather than the last one it accepted: rejected fixes
+     * still say where the device was, and ignoring them was the actual defect —
+     * during that 196 s stall the processor was being handed a fix every couple
+     * of seconds, all of them beside the frozen anchor. Against the last
+     * observation the same jump is 51 m/s, which no transport-mode tuning
+     * permits.
+     *
+     * Second, when even the observation stream has been absent for longer than
+     * this, no conclusion is available at all — the device may have been
+     * suspended for an hour. The fix is then accepted for its position, the
+     * anchor is re-seeded, and it is marked
+     * [`LocationProcessorResult::anchor_reseeded`]: it contributes no odometer
+     * distance and no derived speed, because both would be claims about an
+     * interval nothing was observed over.
+     *
+     * `<= 0` disables the guard.
+     */
+    func setStaleAnchorSeconds(seconds: Int32) 
+    
+    /**
+     * Observation gap past which the implied-speed guard stops trusting itself.
+     */
+    func staleAnchorSeconds()  -> Int32
     
 }
 /**
@@ -3476,6 +3754,17 @@ public convenience init(distanceFilter: Double, disableElasticity: Bool, elastic
 
     
     /**
+     * The tracking accuracy gate's lower bound in metres; `0` when unset.
+     */
+open func accuracyFloor() -> Int32  {
+    return try!  FfiConverterInt32.lift(try! rustCall() {
+    uniffi_tracelet_core_fn_method_locationprocessor_accuracy_floor(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+    
+    /**
      * The thresholds currently in force.
      */
 open func currentTuning() -> LocationTuning  {
@@ -3489,6 +3778,19 @@ open func currentTuning() -> LocationTuning  {
 open func hasLastLocation() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
     uniffi_tracelet_core_fn_method_locationprocessor_has_last_location(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+    
+    /**
+     * Seconds without an accepted fix after which the adaptive inflation of the
+     * distance gate stops being able to withhold a fix — see
+     * [`Self::set_idle_escape_seconds`].
+     */
+open func idleEscapeSeconds() -> Int32  {
+    return try!  FfiConverterInt32.lift(try! rustCall() {
+    uniffi_tracelet_core_fn_method_locationprocessor_idle_escape_seconds(
             self.uniffiCloneHandle(),$0
     )
 })
@@ -3594,6 +3896,28 @@ open func retune(tuning: LocationTuning)  {try! rustCall() {
 }
     
     /**
+     * Raises the floor under the tracking accuracy gate (#396).
+     *
+     * Set by the battery-budget ladder whenever it asks the platform for a
+     * coarser accuracy tier. Without it the two controllers work against each
+     * other: the budget drops iOS from `kCLLocationAccuracyBest` to
+     * `kCLLocationAccuracyHundredMeters`, and the 15 m tracking gate a
+     * committed Walking mode installs then rejects every fix that arrives — so
+     * the device spends the power to produce positions and stores none of
+     * them.
+     *
+     * A floor rather than a replacement, so it composes with both the
+     * configured value and a transport-mode auto-tune instead of racing them.
+     */
+open func setAccuracyFloor(metres: Int32)  {try! rustCall() {
+    uniffi_tracelet_core_fn_method_locationprocessor_set_accuracy_floor(
+            self.uniffiCloneHandle(),
+        FfiConverterInt32.lower(metres),$0
+    )
+}
+}
+    
+    /**
      * Replaces the *base* thresholds — the ones [`Self::restore_base_tuning`]
      * reverts to — so a host reconfiguration reaches the processor (#303).
      *
@@ -3620,6 +3944,79 @@ open func setBaseTuning(tuning: LocationTuning)  {try! rustCall() {
         FfiConverterTypeLocationTuning_lower(tuning),$0
     )
 }
+}
+    
+    /**
+     * Bounds how long adaptive sampling may withhold a fix (#394).
+     *
+     * `AdaptiveSamplingEngine` multiplies the distance gate by an activity
+     * factor and a battery factor, and the product is unbounded: a `Still`
+     * classification on a device below 50 % battery gates at 750 m. Because the
+     * anchor advances only on an accepted fix, a mis-classified walk then
+     * freezes the stream indefinitely — no positions, no odometer, no error.
+     *
+     * Past this many seconds without an accepted fix, a fix that clears the
+     * *un-inflated* `LocationTuning::distance_filter` is accepted even though
+     * it is inside the inflated gate. The un-inflated clause is what keeps a
+     * genuinely parked device silent: its jitter never clears the configured
+     * filter, so the escape cannot fire for it, and the wide `Still` distance
+     * keeps doing the job it exists for.
+     *
+     * `<= 0` disables the escape and restores the unbounded behaviour.
+     */
+open func setIdleEscapeSeconds(seconds: Int32)  {try! rustCall() {
+    uniffi_tracelet_core_fn_method_locationprocessor_set_idle_escape_seconds(
+            self.uniffiCloneHandle(),
+        FfiConverterInt32.lower(seconds),$0
+    )
+}
+}
+    
+    /**
+     * Bounds the interval the implied-speed guard is willing to reason about
+     * (#395).
+     *
+     * The guard divides a jump by the age of the *accepted* anchor, and that
+     * age is unbounded — so the longer a stream has been stalled, the larger
+     * the teleport it waves through. A 1.65 km cell-derived fix arriving 196 s
+     * after the last accepted one reads as 8.4 m/s, which clears any ceiling
+     * meant for a car.
+     *
+     * Two changes bound it. First, the guard now measures from the last fix the
+     * processor *observed* rather than the last one it accepted: rejected fixes
+     * still say where the device was, and ignoring them was the actual defect —
+     * during that 196 s stall the processor was being handed a fix every couple
+     * of seconds, all of them beside the frozen anchor. Against the last
+     * observation the same jump is 51 m/s, which no transport-mode tuning
+     * permits.
+     *
+     * Second, when even the observation stream has been absent for longer than
+     * this, no conclusion is available at all — the device may have been
+     * suspended for an hour. The fix is then accepted for its position, the
+     * anchor is re-seeded, and it is marked
+     * [`LocationProcessorResult::anchor_reseeded`]: it contributes no odometer
+     * distance and no derived speed, because both would be claims about an
+     * interval nothing was observed over.
+     *
+     * `<= 0` disables the guard.
+     */
+open func setStaleAnchorSeconds(seconds: Int32)  {try! rustCall() {
+    uniffi_tracelet_core_fn_method_locationprocessor_set_stale_anchor_seconds(
+            self.uniffiCloneHandle(),
+        FfiConverterInt32.lower(seconds),$0
+    )
+}
+}
+    
+    /**
+     * Observation gap past which the implied-speed guard stops trusting itself.
+     */
+open func staleAnchorSeconds() -> Int32  {
+    return try!  FfiConverterInt32.lift(try! rustCall() {
+    uniffi_tracelet_core_fn_method_locationprocessor_stale_anchor_seconds(
+            self.uniffiCloneHandle(),$0
+    )
+})
 }
     
 
@@ -5335,6 +5732,12 @@ public func FfiConverterTypeAuditVerificationResult_lower(_ value: AuditVerifica
 
 /**
  * An event generated when the battery budget engine decides to throttle or modify tracking parameters.
+ *
+ * The field set is deliberately unchanged from the pre-ladder engine: it
+ * crosses the flutter_rust_bridge boundary as well as the uniffi one, and its
+ * wire layout is baked into committed generated code. The ladder's own
+ * vocabulary lives on [`BudgetThrottleState`], which native hosts read through
+ * [`BatteryBudgetEngine::throttle_state`].
  */
 public struct BudgetAdjustmentEvent: Equatable, Hashable {
     public var currentBatteryDrain: Double
@@ -5399,6 +5802,168 @@ public func FfiConverterTypeBudgetAdjustmentEvent_lift(_ buf: RustBuffer) throws
 #endif
 public func FfiConverterTypeBudgetAdjustmentEvent_lower(_ value: BudgetAdjustmentEvent) -> RustBuffer {
     return FfiConverterTypeBudgetAdjustmentEvent.lower(value)
+}
+
+
+/**
+ * Everything the ladder decided, for hosts to apply and for the bug report to
+ * show.
+ *
+ * This is an **overlay**, not a configuration. The host's own `distanceFilter`,
+ * `desiredAccuracy` and `periodicLocationInterval` are left exactly where the
+ * app put them; these values sit on top for as long as the throttle is in
+ * force and evaporate when it lifts. The previous engine wrote its output back
+ * into the live config, which destroyed the app's `distanceFilter: 0` opt-out
+ * permanently and left `Tracelet.activeConfig` — and every bug report built
+ * from it — describing a configuration the app had never asked for (#393).
+ */
+public struct BudgetThrottleState: Equatable, Hashable {
+    /**
+     * 0 = not throttled, 4 = most aggressive.
+     */
+    public var level: Int32
+    /**
+     * Distance filter to hand the *platform* (m). Never below the configured
+     * value, and never applied to the location processor's own gate: this
+     * thins how often the OS reports, it does not discard fixes already paid
+     * for.
+     */
+    public var distanceFilter: Double
+    /**
+     * Accuracy tier index to request from the platform (0 = best).
+     */
+    public var desiredAccuracy: Int32
+    /**
+     * Periodic-mode interval (s), when the host is in periodic mode.
+     */
+    public var periodicInterval: Int32?
+    /**
+     * What the host should multiply its own update cadence by.
+     */
+    public var cadenceMultiplier: Double
+    /**
+     * Floor to install under the tracking accuracy gate (m), so fixes the
+     * ladder has just made coarser are not then discarded for being coarse.
+     * `0` when the ladder has not touched accuracy.
+     */
+    public var trackingAccuracyFloor: Int32
+    /**
+     * Drain that produced the current level (%/hr), for reporting.
+     */
+    public var lastDrain: Double
+    /**
+     * Width of the window `last_drain` was measured over (s).
+     */
+    public var lastMeasurementSeconds: Double
+    /**
+     * The %/hr that one quantization step represents over that window — the
+     * resolution of the measurement, and the amount by which a drain figure
+     * must beat the budget before it is believed.
+     */
+    public var lastMeasurementResolution: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * 0 = not throttled, 4 = most aggressive.
+         */level: Int32, 
+        /**
+         * Distance filter to hand the *platform* (m). Never below the configured
+         * value, and never applied to the location processor's own gate: this
+         * thins how often the OS reports, it does not discard fixes already paid
+         * for.
+         */distanceFilter: Double, 
+        /**
+         * Accuracy tier index to request from the platform (0 = best).
+         */desiredAccuracy: Int32, 
+        /**
+         * Periodic-mode interval (s), when the host is in periodic mode.
+         */periodicInterval: Int32?, 
+        /**
+         * What the host should multiply its own update cadence by.
+         */cadenceMultiplier: Double, 
+        /**
+         * Floor to install under the tracking accuracy gate (m), so fixes the
+         * ladder has just made coarser are not then discarded for being coarse.
+         * `0` when the ladder has not touched accuracy.
+         */trackingAccuracyFloor: Int32, 
+        /**
+         * Drain that produced the current level (%/hr), for reporting.
+         */lastDrain: Double, 
+        /**
+         * Width of the window `last_drain` was measured over (s).
+         */lastMeasurementSeconds: Double, 
+        /**
+         * The %/hr that one quantization step represents over that window — the
+         * resolution of the measurement, and the amount by which a drain figure
+         * must beat the budget before it is believed.
+         */lastMeasurementResolution: Double) {
+        self.level = level
+        self.distanceFilter = distanceFilter
+        self.desiredAccuracy = desiredAccuracy
+        self.periodicInterval = periodicInterval
+        self.cadenceMultiplier = cadenceMultiplier
+        self.trackingAccuracyFloor = trackingAccuracyFloor
+        self.lastDrain = lastDrain
+        self.lastMeasurementSeconds = lastMeasurementSeconds
+        self.lastMeasurementResolution = lastMeasurementResolution
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension BudgetThrottleState: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBudgetThrottleState: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BudgetThrottleState {
+        return
+            try BudgetThrottleState(
+                level: FfiConverterInt32.read(from: &buf), 
+                distanceFilter: FfiConverterDouble.read(from: &buf), 
+                desiredAccuracy: FfiConverterInt32.read(from: &buf), 
+                periodicInterval: FfiConverterOptionInt32.read(from: &buf), 
+                cadenceMultiplier: FfiConverterDouble.read(from: &buf), 
+                trackingAccuracyFloor: FfiConverterInt32.read(from: &buf), 
+                lastDrain: FfiConverterDouble.read(from: &buf), 
+                lastMeasurementSeconds: FfiConverterDouble.read(from: &buf), 
+                lastMeasurementResolution: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: BudgetThrottleState, into buf: inout [UInt8]) {
+        FfiConverterInt32.write(value.level, into: &buf)
+        FfiConverterDouble.write(value.distanceFilter, into: &buf)
+        FfiConverterInt32.write(value.desiredAccuracy, into: &buf)
+        FfiConverterOptionInt32.write(value.periodicInterval, into: &buf)
+        FfiConverterDouble.write(value.cadenceMultiplier, into: &buf)
+        FfiConverterInt32.write(value.trackingAccuracyFloor, into: &buf)
+        FfiConverterDouble.write(value.lastDrain, into: &buf)
+        FfiConverterDouble.write(value.lastMeasurementSeconds, into: &buf)
+        FfiConverterDouble.write(value.lastMeasurementResolution, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBudgetThrottleState_lift(_ buf: RustBuffer) throws -> BudgetThrottleState {
+    return try FfiConverterTypeBudgetThrottleState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBudgetThrottleState_lower(_ value: BudgetThrottleState) -> RustBuffer {
+    return FfiConverterTypeBudgetThrottleState.lower(value)
 }
 
 
@@ -7352,10 +7917,67 @@ public struct LocationProcessorResult: Equatable, Hashable {
     public var reason: String?
     public var errorMessage: String?
     public var isError: Bool
+    /**
+     * The distance gate this fix was actually measured against, after adaptive
+     * sampling and elasticity have been applied to `LocationTuning`'s value.
+     *
+     * Reported because the two can differ by two orders of magnitude — a
+     * configured 8 m becomes 750 m for a `Still` classification on a device
+     * below 50 % battery — and a `DISTANCE_FILTER` line that names only the
+     * reason cannot be checked against anything (#397).
+     */
+    public var effectiveDistanceFilter: Double
+    /**
+     * Age of the anchor this fix was compared against, in seconds. `0.0` when
+     * there is no anchor yet.
+     */
+    public var anchorAgeSeconds: Double
+    /**
+     * The horizontal accuracy the fix arrived with, echoed back so hosts can
+     * log the rejection and its cause on one line (#397).
+     */
+    public var accuracy: Double
+    /**
+     * Accepted only because the anchor had gone stale under an inflated
+     * distance gate — see [`LocationProcessor::set_idle_escape_seconds`] (#394).
+     */
+    public var idleEscape: Bool
+    /**
+     * Accepted as a re-seed of a stale anchor: the position is trusted, the
+     * span since the previous fix is not — see
+     * [`LocationProcessor::set_stale_anchor_seconds`] (#395).
+     */
+    public var anchorReseeded: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(accepted: Bool, effectiveSpeed: Double, odometerDelta: Double, distance: Double, reason: String?, errorMessage: String?, isError: Bool) {
+    public init(accepted: Bool, effectiveSpeed: Double, odometerDelta: Double, distance: Double, reason: String?, errorMessage: String?, isError: Bool, 
+        /**
+         * The distance gate this fix was actually measured against, after adaptive
+         * sampling and elasticity have been applied to `LocationTuning`'s value.
+         *
+         * Reported because the two can differ by two orders of magnitude — a
+         * configured 8 m becomes 750 m for a `Still` classification on a device
+         * below 50 % battery — and a `DISTANCE_FILTER` line that names only the
+         * reason cannot be checked against anything (#397).
+         */effectiveDistanceFilter: Double, 
+        /**
+         * Age of the anchor this fix was compared against, in seconds. `0.0` when
+         * there is no anchor yet.
+         */anchorAgeSeconds: Double, 
+        /**
+         * The horizontal accuracy the fix arrived with, echoed back so hosts can
+         * log the rejection and its cause on one line (#397).
+         */accuracy: Double, 
+        /**
+         * Accepted only because the anchor had gone stale under an inflated
+         * distance gate — see [`LocationProcessor::set_idle_escape_seconds`] (#394).
+         */idleEscape: Bool, 
+        /**
+         * Accepted as a re-seed of a stale anchor: the position is trusted, the
+         * span since the previous fix is not — see
+         * [`LocationProcessor::set_stale_anchor_seconds`] (#395).
+         */anchorReseeded: Bool) {
         self.accepted = accepted
         self.effectiveSpeed = effectiveSpeed
         self.odometerDelta = odometerDelta
@@ -7363,6 +7985,11 @@ public struct LocationProcessorResult: Equatable, Hashable {
         self.reason = reason
         self.errorMessage = errorMessage
         self.isError = isError
+        self.effectiveDistanceFilter = effectiveDistanceFilter
+        self.anchorAgeSeconds = anchorAgeSeconds
+        self.accuracy = accuracy
+        self.idleEscape = idleEscape
+        self.anchorReseeded = anchorReseeded
     }
 
     
@@ -7387,7 +8014,12 @@ public struct FfiConverterTypeLocationProcessorResult: FfiConverterRustBuffer {
                 distance: FfiConverterDouble.read(from: &buf), 
                 reason: FfiConverterOptionString.read(from: &buf), 
                 errorMessage: FfiConverterOptionString.read(from: &buf), 
-                isError: FfiConverterBool.read(from: &buf)
+                isError: FfiConverterBool.read(from: &buf), 
+                effectiveDistanceFilter: FfiConverterDouble.read(from: &buf), 
+                anchorAgeSeconds: FfiConverterDouble.read(from: &buf), 
+                accuracy: FfiConverterDouble.read(from: &buf), 
+                idleEscape: FfiConverterBool.read(from: &buf), 
+                anchorReseeded: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -7399,6 +8031,11 @@ public struct FfiConverterTypeLocationProcessorResult: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.reason, into: &buf)
         FfiConverterOptionString.write(value.errorMessage, into: &buf)
         FfiConverterBool.write(value.isError, into: &buf)
+        FfiConverterDouble.write(value.effectiveDistanceFilter, into: &buf)
+        FfiConverterDouble.write(value.anchorAgeSeconds, into: &buf)
+        FfiConverterDouble.write(value.accuracy, into: &buf)
+        FfiConverterBool.write(value.idleEscape, into: &buf)
+        FfiConverterBool.write(value.anchorReseeded, into: &buf)
     }
 }
 
@@ -7865,9 +8502,17 @@ public struct MotionConfig: Equatable, Hashable {
      */
     public var motionDetectionMode: Int32
     /**
-     * Speed moving threshold.
+     * Speed at or above which a stationary session is considered moving (m/s).
      */
     public var speedMovingThreshold: Double
+    /**
+     * Speed below which a *moving* session begins slowing down (m/s).
+     *
+     * The lower half of a hysteresis band. `<= 0` derives it from
+     * [`Self::speed_moving_threshold`] — see
+     * [`default_speed_stationary_threshold_ratio`].
+     */
+    public var speedStationaryThreshold: Double
     /**
      * Speed stationary delay.
      */
@@ -7938,8 +8583,15 @@ public struct MotionConfig: Equatable, Hashable {
          * Motion detection mode.
          */motionDetectionMode: Int32, 
         /**
-         * Speed moving threshold.
+         * Speed at or above which a stationary session is considered moving (m/s).
          */speedMovingThreshold: Double, 
+        /**
+         * Speed below which a *moving* session begins slowing down (m/s).
+         *
+         * The lower half of a hysteresis band. `<= 0` derives it from
+         * [`Self::speed_moving_threshold`] — see
+         * [`default_speed_stationary_threshold_ratio`].
+         */speedStationaryThreshold: Double, 
         /**
          * Speed stationary delay.
          */speedStationaryDelay: Int32, 
@@ -7971,6 +8623,7 @@ public struct MotionConfig: Equatable, Hashable {
         self.stillSampleCount = stillSampleCount
         self.motionDetectionMode = motionDetectionMode
         self.speedMovingThreshold = speedMovingThreshold
+        self.speedStationaryThreshold = speedStationaryThreshold
         self.speedStationaryDelay = speedStationaryDelay
         self.stationaryTrackingMode = stationaryTrackingMode
         self.stationaryPeriodicInterval = stationaryPeriodicInterval
@@ -8010,6 +8663,7 @@ public struct FfiConverterTypeMotionConfig: FfiConverterRustBuffer {
                 stillSampleCount: FfiConverterInt32.read(from: &buf), 
                 motionDetectionMode: FfiConverterInt32.read(from: &buf), 
                 speedMovingThreshold: FfiConverterDouble.read(from: &buf), 
+                speedStationaryThreshold: FfiConverterDouble.read(from: &buf), 
                 speedStationaryDelay: FfiConverterInt32.read(from: &buf), 
                 stationaryTrackingMode: FfiConverterInt32.read(from: &buf), 
                 stationaryPeriodicInterval: FfiConverterInt32.read(from: &buf), 
@@ -8035,6 +8689,7 @@ public struct FfiConverterTypeMotionConfig: FfiConverterRustBuffer {
         FfiConverterInt32.write(value.stillSampleCount, into: &buf)
         FfiConverterInt32.write(value.motionDetectionMode, into: &buf)
         FfiConverterDouble.write(value.speedMovingThreshold, into: &buf)
+        FfiConverterDouble.write(value.speedStationaryThreshold, into: &buf)
         FfiConverterInt32.write(value.speedStationaryDelay, into: &buf)
         FfiConverterInt32.write(value.stationaryTrackingMode, into: &buf)
         FfiConverterInt32.write(value.stationaryPeriodicInterval, into: &buf)
@@ -10298,10 +10953,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_tracelet_core_checksum_method_adaptivesamplingengine_compute() != 3823) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_tracelet_core_checksum_method_locationprocessor_accuracy_floor() != 20065) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_tracelet_core_checksum_method_locationprocessor_current_tuning() != 27721) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_locationprocessor_has_last_location() != 24404) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tracelet_core_checksum_method_locationprocessor_idle_escape_seconds() != 64819) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_locationprocessor_last_effective_speed() != 13698) {
@@ -10322,7 +10983,19 @@ private let initializationResult: InitializationResult = {
     if (uniffi_tracelet_core_checksum_method_locationprocessor_retune() != 24226) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_tracelet_core_checksum_method_locationprocessor_set_accuracy_floor() != 44973) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_tracelet_core_checksum_method_locationprocessor_set_base_tuning() != 15053) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tracelet_core_checksum_method_locationprocessor_set_idle_escape_seconds() != 38303) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tracelet_core_checksum_method_locationprocessor_set_stale_anchor_seconds() != 58045) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tracelet_core_checksum_method_locationprocessor_stale_anchor_seconds() != 50319) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_scheduleparser_calculate_next_alarms() != 37817) {
@@ -10502,16 +11175,34 @@ private let initializationResult: InitializationResult = {
     if (uniffi_tracelet_core_checksum_method_batterybudgetengine_accuracy_index() != 65350) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_tracelet_core_checksum_method_batterybudgetengine_clear_throttle() != 59086) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_tracelet_core_checksum_method_batterybudgetengine_distance_filter() != 53495) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tracelet_core_checksum_method_batterybudgetengine_note_charging() != 7111) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_batterybudgetengine_periodic_interval() != 39961) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_tracelet_core_checksum_method_batterybudgetengine_process_sample() != 13825) {
+    if (uniffi_tracelet_core_checksum_method_batterybudgetengine_process_sample() != 360) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_tracelet_core_checksum_method_batterybudgetengine_reset() != 51841) {
+    if (uniffi_tracelet_core_checksum_method_batterybudgetengine_reset() != 26283) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tracelet_core_checksum_method_batterybudgetengine_set_configured() != 17271) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tracelet_core_checksum_method_batterybudgetengine_set_level_quantum_percent() != 4188) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tracelet_core_checksum_method_batterybudgetengine_throttle_level() != 52184) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tracelet_core_checksum_method_batterybudgetengine_throttle_state() != 12592) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_enginestate_get_config() != 36547) {
@@ -10604,7 +11295,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_tracelet_core_checksum_constructor_privacyzoneevaluator_new() != 8853) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_tracelet_core_checksum_constructor_batterybudgetengine_new() != 27221) {
+    if (uniffi_tracelet_core_checksum_constructor_batterybudgetengine_new() != 37010) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_constructor_enginestate_new() != 17691) {

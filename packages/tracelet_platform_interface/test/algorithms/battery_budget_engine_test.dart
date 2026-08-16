@@ -169,7 +169,16 @@ void main() async {
     });
   });
 
-  group('BatteryBudgetEngine — time-dependent (clock injection)', () {
+  /// The ladder replaced an unbounded multiplier in #393/#396, and these tests
+  /// replaced the ones that described it.
+  ///
+  /// Every assertion here used to encode the defect rather than a requirement:
+  /// a single one-hour window was enough to throttle, `distanceFilter` was
+  /// multiplied by 1.5 and clamped up to a floor of 10 m regardless of what the
+  /// app had configured, and accuracy was coarsened on the first over-budget
+  /// reading. The field failure that prompted the rewrite was a device that had
+  /// simply crossed one 5 % battery reporting step.
+  group('BatteryBudgetEngine — the throttle ladder (clock injection)', () {
     late DateTime fakeNow;
     late BatteryBudgetEngine engine;
 
@@ -192,221 +201,167 @@ void main() async {
       );
     }
 
-    test('throttles when draining too fast', () {
+    /// Two consecutive conclusive over-budget windows — the dwell one rung
+    /// takes. 20 %/hr over hour-long windows, well past the 5 %/hr such a
+    /// window can resolve at the default reporting granularity.
+    void climbOneRung(BatteryBudgetEngine engine, {double from = 0.95}) {
+      engine.processSample(from);
+      fakeNow = fakeNow.add(const Duration(hours: 1));
+      engine.processSample(from - 0.20);
+      fakeNow = fakeNow.add(const Duration(hours: 1));
+      engine.processSample(from - 0.40);
+    }
+
+    test('one conclusive window is not enough to throttle', () {
       engine = createEngine();
 
-      // Baseline at 95%
       engine.processSample(0.95);
-
-      // Advance 1 hour
       fakeNow = fakeNow.add(const Duration(hours: 1));
 
-      // Battery dropped to 85% → 10% drain/hr >> 3% budget
-      final result = engine.processSample(0.85);
+      // 20 %/hr against a 3 %/hr budget: conclusive, but a single window.
+      final result = engine.processSample(0.75);
 
-      expect(result, isNotNull);
-      expect(result!.currentBatteryDrain, closeTo(10.0, 0.1));
-      expect(result.targetBudget, 3.0);
-      // Distance filter should increase (10 * 1.5 = 15)
-      expect(engine.distanceFilter, closeTo(15.0, 0.1));
-      // Accuracy should degrade (0 → 1)
-      expect(engine.accuracyIndex, 1);
+      expect(result, isNull, reason: 'a lone window is not a dwell');
+      expect(engine.distanceFilter, 10.0);
+      expect(engine.accuracyIndex, 0);
     });
 
-    test('boosts when under budget', () {
+    test('a drain inside the measurement resolution never throttles', () {
+      engine = createEngine();
+
+      // 4 %/hr against a 3 %/hr budget, with a window that can only resolve
+      // 5 %/hr — indistinguishable from the reporting step itself.
+      for (var i = 0; i < 4; i++) {
+        engine.processSample(0.95 - i * 0.04);
+        fakeNow = fakeNow.add(const Duration(hours: 1));
+      }
+
+      expect(engine.distanceFilter, 10.0);
+      expect(engine.accuracyIndex, 0);
+    });
+
+    test('sustained heavy drain climbs one rung, cadence first', () {
+      engine = createEngine();
+
+      climbOneRung(engine);
+
+      // Rung 1 raises the platform distance filter to its floor and leaves
+      // accuracy alone: on iOS the tier below Best is 100 m, which a 15 m
+      // tracking gate would then reject wholesale.
+      expect(engine.distanceFilter, 10.0);
+      expect(engine.accuracyIndex, 0);
+    });
+
+    test('the ladder never goes below the configured values', () {
       engine = createEngine(
-        targetBudgetPerHour: 10,
-        initialDistanceFilter: 100,
-        initialAccuracyIndex: 3,
+        initialDistanceFilter: 250,
+        initialAccuracyIndex: 2,
       );
 
-      // Baseline at 95%
-      engine.processSample(0.95);
+      climbOneRung(engine);
 
-      // Advance 1 hour
-      fakeNow = fakeNow.add(const Duration(hours: 1));
-
-      // Battery dropped to 94% → 1% drain/hr << 10% budget
-      final result = engine.processSample(0.94);
-
-      expect(result, isNotNull);
-      expect(result!.currentBatteryDrain, closeTo(1.0, 0.1));
-      // Distance filter should decrease (100 * 0.8 = 80)
-      expect(engine.distanceFilter, closeTo(80.0, 0.1));
-      // Accuracy should improve (3 → 2)
-      expect(engine.accuracyIndex, 2);
+      expect(
+        engine.distanceFilter,
+        250.0,
+        reason: 'a configured filter wider than the rung stands',
+      );
+      expect(
+        engine.accuracyIndex,
+        2,
+        reason: 'a configured tier coarser than the rung stands',
+      );
     });
 
-    test('no adjustment when within error threshold', () {
+    test('a configured distanceFilter of 0 is never clamped up', () {
+      engine = createEngine(initialDistanceFilter: 0);
+
+      expect(engine.distanceFilter, 0.0);
+
+      climbOneRung(engine);
+
+      // The opt-out the old engine destroyed first: (0 * 1.5).clamp(10, 5000)
+      // became 10 m, permanently, since the recovery path clamped at 10 too.
+      expect(engine.distanceFilter, greaterThanOrEqualTo(0.0));
+    });
+
+    test('the accuracy index stays within 0-4 however long it throttles', () {
+      engine = createEngine(targetBudgetPerHour: 1, initialAccuracyIndex: 3);
+
+      for (var round = 0; round < 6; round++) {
+        engine.processSample(0.95);
+        fakeNow = fakeNow.add(const Duration(hours: 1));
+        engine.processSample(0.75);
+        fakeNow = fakeNow.add(const Duration(hours: 1));
+      }
+
+      expect(engine.accuracyIndex, inInclusiveRange(0, 4));
+    });
+
+    test(
+      'the periodic interval is stretched, never below the configured one',
+      () {
+        engine = createEngine(initialPeriodicInterval: 300);
+
+        climbOneRung(engine);
+
+        expect(engine.periodicInterval, isNotNull);
+        expect(
+          engine.periodicInterval,
+          greaterThanOrEqualTo(300),
+          reason: 'throttling stretches cadence, it never tightens it',
+        );
+        expect(engine.periodicInterval, lessThanOrEqualTo(43200));
+      },
+    );
+
+    test('no adjustment when the drain sits on budget', () {
       engine = createEngine();
 
-      // Baseline at 95%
       engine.processSample(0.95);
-
-      // Advance 1 hour
       fakeNow = fakeNow.add(const Duration(hours: 1));
 
-      // Battery dropped to 92% → 3% drain/hr == exactly on budget
-      final result = engine.processSample(0.92);
-
-      // Error = 3.0 - 3.0 = 0.0 < 0.5 threshold → no adjustment
-      expect(result, isNull);
+      // Exactly on budget: neither direction is conclusive.
+      expect(engine.processSample(0.92), isNull);
     });
 
     test('no adjustment when charging', () {
       engine = createEngine();
 
       engine.processSample(0.50);
-
       fakeNow = fakeNow.add(const Duration(hours: 1));
 
-      // Battery went UP (charging)
-      final result = engine.processSample(0.60);
-      expect(result, isNull);
+      // Battery went UP. One window cannot move the ladder in either
+      // direction, and there is nothing to lift at rung 0.
+      expect(engine.processSample(0.60), isNull);
     });
 
     test('too-soon sample is ignored', () {
       engine = createEngine();
 
       engine.processSample(0.95);
-
-      // Only 30 seconds later — too soon
       fakeNow = fakeNow.add(const Duration(seconds: 30));
 
-      final result = engine.processSample(0.50);
-      expect(result, isNull);
+      expect(engine.processSample(0.50), isNull);
     });
 
-    test('throttles periodic interval when draining fast', () {
-      engine = createEngine(initialPeriodicInterval: 300);
+    test('a throttled session comes back down when the drain does', () {
+      engine = createEngine();
 
-      engine.processSample(0.95);
-      fakeNow = fakeNow.add(const Duration(hours: 1));
+      climbOneRung(engine);
+      final throttledFilter = engine.distanceFilter;
 
-      // 10% drain/hr >> 3% budget
-      final result = engine.processSample(0.85);
+      // Two conclusive under-budget windows: 0.25 %/hr over four hours, where
+      // the window resolves 1.25 %/hr.
+      for (var i = 0; i < 2; i++) {
+        fakeNow = fakeNow.add(const Duration(hours: 4));
+        engine.processSample(0.50 - i * 0.01);
+      }
 
-      expect(result, isNotNull);
-      // 300 * 1.5 = 450
-      expect(engine.periodicInterval, 450);
-    });
-
-    test('boosts periodic interval when under budget', () {
-      engine = createEngine(
-        targetBudgetPerHour: 10,
-        initialPeriodicInterval: 300,
+      expect(
+        engine.distanceFilter,
+        lessThanOrEqualTo(throttledFilter),
+        reason: 'recovery uses the same evidence bar as escalation',
       );
-
-      engine.processSample(0.95);
-      fakeNow = fakeNow.add(const Duration(hours: 1));
-
-      // 1% drain/hr << 10% budget
-      final result = engine.processSample(0.94);
-
-      expect(result, isNotNull);
-      // 300 * 0.8 = 240
-      expect(engine.periodicInterval, 240);
-    });
-
-    test('accuracy index does not exceed 4 on repeated throttling', () {
-      engine = createEngine(targetBudgetPerHour: 1, initialAccuracyIndex: 3);
-
-      engine.processSample(0.95);
-      fakeNow = fakeNow.add(const Duration(hours: 1));
-      engine.processSample(0.85); // accuracy 3 → 4
-
-      expect(engine.accuracyIndex, 4);
-
-      // Throttle again — accuracy already at max
-      fakeNow = fakeNow.add(const Duration(hours: 1));
-      engine.processSample(0.75);
-      expect(engine.accuracyIndex, 4);
-    });
-
-    test('accuracy index does not go below 0 on repeated boosting', () {
-      engine = createEngine(targetBudgetPerHour: 50, initialAccuracyIndex: 1);
-
-      engine.processSample(0.95);
-      fakeNow = fakeNow.add(const Duration(hours: 1));
-      engine.processSample(0.94); // accuracy 1 → 0
-
-      expect(engine.accuracyIndex, 0);
-
-      fakeNow = fakeNow.add(const Duration(hours: 1));
-      engine.processSample(0.93);
-      expect(engine.accuracyIndex, 0);
-    });
-
-    test('distance filter clamped to min on aggressive boosting', () {
-      engine = createEngine(targetBudgetPerHour: 50, initialDistanceFilter: 11);
-
-      engine.processSample(0.95);
-      fakeNow = fakeNow.add(const Duration(hours: 1));
-      engine.processSample(0.94);
-
-      // 11 * 0.8 = 8.8 → clamped to 10.0
-      expect(engine.distanceFilter, 10.0);
-    });
-
-    test('distance filter clamped to max on aggressive throttling', () {
-      engine = createEngine(
-        targetBudgetPerHour: 0.1,
-        initialDistanceFilter: 4000,
-      );
-
-      engine.processSample(0.95);
-      fakeNow = fakeNow.add(const Duration(hours: 1));
-      engine.processSample(0.85);
-
-      // 4000 * 1.5 = 6000 → clamped to 5000
-      expect(engine.distanceFilter, 5000.0);
-    });
-
-    test('periodic interval clamped to min 60 on boosting', () {
-      engine = createEngine(
-        targetBudgetPerHour: 50,
-        initialPeriodicInterval: 65,
-      );
-
-      engine.processSample(0.95);
-      fakeNow = fakeNow.add(const Duration(hours: 1));
-      engine.processSample(0.94);
-
-      // 65 * 0.8 = 52 → clamped to 60
-      expect(engine.periodicInterval, 60);
-    });
-
-    test('periodic interval clamped to max 43200 on throttling', () {
-      engine = createEngine(
-        targetBudgetPerHour: 0.1,
-        initialPeriodicInterval: 40000,
-      );
-
-      engine.processSample(0.95);
-      fakeNow = fakeNow.add(const Duration(hours: 1));
-      engine.processSample(0.85);
-
-      // 40000 * 1.5 = 60000 → clamped to 43200
-      expect(engine.periodicInterval, 43200);
-    });
-
-    test('multiple successive adjustments accumulate', () {
-      engine = createEngine(targetBudgetPerHour: 1);
-
-      // Round 1: heavy drain
-      engine.processSample(0.95);
-      fakeNow = fakeNow.add(const Duration(hours: 1));
-      engine.processSample(0.85);
-
-      expect(engine.distanceFilter, closeTo(15.0, 0.1)); // 10 * 1.5
-      expect(engine.accuracyIndex, 1);
-
-      // Round 2: still draining heavy
-      fakeNow = fakeNow.add(const Duration(hours: 1));
-      engine.processSample(0.75);
-
-      expect(engine.distanceFilter, closeTo(22.5, 0.1)); // 15 * 1.5
-      expect(engine.accuracyIndex, 2);
     });
   });
 }

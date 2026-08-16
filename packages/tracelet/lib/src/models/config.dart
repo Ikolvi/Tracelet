@@ -1900,6 +1900,7 @@ class MotionConfig {
     int? stillSampleCount,
     MotionDetectionMode? motionDetectionMode,
     double? speedMovingThreshold,
+    double? speedStationaryThreshold,
     int? speedStationaryDelay,
     StationaryTrackingMode? stationaryTrackingMode,
     int? stationaryPeriodicInterval,
@@ -1922,6 +1923,7 @@ class MotionConfig {
        _stillSampleCount = stillSampleCount,
        _motionDetectionMode = motionDetectionMode,
        _speedMovingThreshold = speedMovingThreshold,
+       _speedStationaryThreshold = speedStationaryThreshold,
        _speedStationaryDelay = speedStationaryDelay,
        _stationaryTrackingMode = stationaryTrackingMode,
        _stationaryPeriodicInterval = stationaryPeriodicInterval,
@@ -2012,8 +2014,11 @@ class MotionConfig {
       motionDetectionMode: map.containsKey('motionDetectionMode')
           ? _parseMotionDetectionMode(map['motionDetectionMode'])
           : null,
+      speedStationaryThreshold: map.containsKey('speedStationaryThreshold')
+          ? ensureDouble(map['speedStationaryThreshold'], fallback: 0)
+          : null,
       speedMovingThreshold: map.containsKey('speedMovingThreshold')
-          ? ensureDouble(map['speedMovingThreshold'], fallback: 1.5)
+          ? ensureDouble(map['speedMovingThreshold'], fallback: 0.9)
           : null,
       speedStationaryDelay: map.containsKey('speedStationaryDelay')
           ? ensureInt(map['speedStationaryDelay'], fallback: 180)
@@ -2052,6 +2057,7 @@ class MotionConfig {
   final bool? _useSignificantChangesOnly;
   final MotionDetectionMode? _motionDetectionMode;
   final double? _speedMovingThreshold;
+  final double? _speedStationaryThreshold;
   final int? _speedStationaryDelay;
   final StationaryTrackingMode? _stationaryTrackingMode;
   final int? _stationaryPeriodicInterval;
@@ -2178,12 +2184,34 @@ class MotionConfig {
   MotionDetectionMode get motionDetectionMode =>
       _motionDetectionMode ?? MotionDetectionMode.accelerometer;
 
-  /// [Speed mode] Speed (m/s) below which a location fix counts as
-  /// "not moving."
+  /// [Speed mode] Speed (m/s) at or above which a stationary session decides
+  /// it is moving.
   ///
-  /// `1.5 m/s` ≈ 5.4 km/h — filters GPS drift while still catching
-  /// parking-lot crawl. Defaults to `1.5`.
-  double get speedMovingThreshold => _speedMovingThreshold ?? 1.5;
+  /// Defaults to `0.9` (≈ 3.2 km/h). Was `1.5`, which is *above* an
+  /// average walking pace of ~1.4 m/s — so the median pedestrian straddled it,
+  /// and because a single threshold governed both directions the session
+  /// oscillated MOVING → SLOWING → STATIONARY → MOVING and eventually stopped
+  /// the continuous stream while the user was still walking.
+  ///
+  /// Leaving MOVING now uses the lower [speedStationaryThreshold]; the gap
+  /// between the two is the hysteresis band.
+  double get speedMovingThreshold => _speedMovingThreshold ?? 0.9;
+
+  /// [Speed mode] Speed (m/s) below which a *moving* session begins slowing.
+  ///
+  /// The lower half of the hysteresis band. Defaults to 65 % of
+  /// [speedMovingThreshold], and is clamped to it if set higher — an exit
+  /// threshold above the entry one would re-create the flapping the band exists
+  /// to prevent (pedestrian pace hysteresis, PR #399).
+  double get speedStationaryThreshold {
+    final configured = _speedStationaryThreshold;
+    if (configured == null || configured <= 0) {
+      return speedMovingThreshold * 0.65;
+    }
+    return configured < speedMovingThreshold
+        ? configured
+        : speedMovingThreshold;
+  }
 
   /// [Speed mode] Seconds of continuous low-speed fixes before the state
   /// machine declares stationary and switches to the
@@ -2294,6 +2322,8 @@ class MotionConfig {
     stillSampleCount: other._stillSampleCount ?? _stillSampleCount,
     motionDetectionMode: other._motionDetectionMode ?? _motionDetectionMode,
     speedMovingThreshold: other._speedMovingThreshold ?? _speedMovingThreshold,
+    speedStationaryThreshold:
+        other._speedStationaryThreshold ?? _speedStationaryThreshold,
     speedStationaryDelay: other._speedStationaryDelay ?? _speedStationaryDelay,
     stationaryTrackingMode:
         other._stationaryTrackingMode ?? _stationaryTrackingMode,
@@ -2379,6 +2409,8 @@ class MotionConfig {
         'motionDetectionMode': _motionDetectionMode.index,
       if (_speedMovingThreshold != null)
         'speedMovingThreshold': _speedMovingThreshold,
+      if (_speedStationaryThreshold != null)
+        'speedStationaryThreshold': _speedStationaryThreshold,
       if (_speedStationaryDelay != null)
         'speedStationaryDelay': _speedStationaryDelay,
       if (_stationaryTrackingMode != null)

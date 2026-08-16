@@ -45,7 +45,29 @@ public final class PeriodicRefreshScheduler {
     private var currentInterval: TimeInterval = 900 // 15 min default
     private var isActive = false
 
+    /// The interval the app configured, before any battery-budget stretch.
+    ///
+    /// Kept so lifting the throttle restores it exactly, rather than leaving the
+    /// stretched value behind as the new normal (#396).
+    private var configuredInterval: TimeInterval = 900
+
     public init() {}
+
+    /// Stretches the wake-up interval while the battery-budget ladder is in
+    /// force; `nil` restores the configured one (#396).
+    ///
+    /// Takes effect at the next `scheduleNext()`, which is the next wake-up: a
+    /// `BGAppRefreshTaskRequest` already submitted is left alone rather than
+    /// cancelled and re-submitted, since iOS treats the interval as a hint and
+    /// re-submitting buys nothing but a lost wake-up.
+    public func applyBudgetInterval(_ seconds: Int?) {
+        let resolved = seconds.map { TimeInterval(max($0, 60)) } ?? configuredInterval
+        guard resolved != currentInterval else { return }
+        currentInterval = resolved
+        TraceletLog.debug(
+            "[Tracelet] PeriodicRefreshScheduler interval now \(Int(currentInterval))s "
+                + (seconds == nil ? "(budget throttle lifted)" : "(battery budget)"))
+    }
 
     // MARK: - Task Registration
 
@@ -76,6 +98,7 @@ public final class PeriodicRefreshScheduler {
     ///   iOS may not honor this exactly — it's an `earliestBeginDate` hint.
     public func start(interval: TimeInterval) {
         currentInterval = max(interval, 60) // floor at 1 minute
+        configuredInterval = currentInterval
         isActive = true
         scheduleNext()
         TraceletLog.debug("[Tracelet] PeriodicRefreshScheduler started (interval=\(Int(currentInterval))s)")

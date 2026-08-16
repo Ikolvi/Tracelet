@@ -54,6 +54,15 @@ def main():
 
     # Update Android SDK version
     update_file("sdk/android/gradle.properties", r'SDK_VERSION=.*', f'SDK_VERSION={version}')
+
+    # Update the Dart-side version constant the Doctor report reads (#398).
+    # Hand-maintaining it would guarantee drift, and a bug report naming the
+    # wrong version is worse than one naming none.
+    update_file(
+        "packages/tracelet/lib/src/version.dart",
+        r"const String traceletVersion = '.*';",
+        f"const String traceletVersion = '{version}';",
+    )
     
     # Update iOS SDK versions — root podspec, the sub podspec under sdk/ios
     # (was previously missed and drifted behind), and both plugin podspecs.

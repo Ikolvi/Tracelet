@@ -1,3 +1,7 @@
+## 3.8.7
+
+**FIX**: the bug report names the Tracelet version that produced it, and gained a **Location stream health** section — stalls, recoveries and battery-budget throttle movements lifted out of the general log, each stall line carrying the rejection histogram, the gate the last fix was measured against, the configured gate beside it and the thresholds in force. These are written on the always-on lifecycle channel, so the section is populated even for an app running at the default `logLevel` ([#397](https://github.com/Ikolvi/Tracelet/issues/397), [#398](https://github.com/Ikolvi/Tracelet/issues/398)).
+
 ## 3.8.6
 
 Version alignment with tracelet 3.8.6.

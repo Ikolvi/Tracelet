@@ -684,9 +684,13 @@ external fun uniffi_tracelet_core_checksum_method_kalmanlocationfilter_reset(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_adaptivesamplingengine_compute(
 ): Short
+external fun uniffi_tracelet_core_checksum_method_locationprocessor_accuracy_floor(
+): Short
 external fun uniffi_tracelet_core_checksum_method_locationprocessor_current_tuning(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_locationprocessor_has_last_location(
+): Short
+external fun uniffi_tracelet_core_checksum_method_locationprocessor_idle_escape_seconds(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_locationprocessor_last_effective_speed(
 ): Short
@@ -700,7 +704,15 @@ external fun uniffi_tracelet_core_checksum_method_locationprocessor_restore_base
 ): Short
 external fun uniffi_tracelet_core_checksum_method_locationprocessor_retune(
 ): Short
+external fun uniffi_tracelet_core_checksum_method_locationprocessor_set_accuracy_floor(
+): Short
 external fun uniffi_tracelet_core_checksum_method_locationprocessor_set_base_tuning(
+): Short
+external fun uniffi_tracelet_core_checksum_method_locationprocessor_set_idle_escape_seconds(
+): Short
+external fun uniffi_tracelet_core_checksum_method_locationprocessor_set_stale_anchor_seconds(
+): Short
+external fun uniffi_tracelet_core_checksum_method_locationprocessor_stale_anchor_seconds(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_scheduleparser_calculate_next_alarms(
 ): Short
@@ -820,13 +832,25 @@ external fun uniffi_tracelet_core_checksum_method_privacyzoneevaluator_evaluate(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_batterybudgetengine_accuracy_index(
 ): Short
+external fun uniffi_tracelet_core_checksum_method_batterybudgetengine_clear_throttle(
+): Short
 external fun uniffi_tracelet_core_checksum_method_batterybudgetengine_distance_filter(
+): Short
+external fun uniffi_tracelet_core_checksum_method_batterybudgetengine_note_charging(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_batterybudgetengine_periodic_interval(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_batterybudgetengine_process_sample(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_batterybudgetengine_reset(
+): Short
+external fun uniffi_tracelet_core_checksum_method_batterybudgetengine_set_configured(
+): Short
+external fun uniffi_tracelet_core_checksum_method_batterybudgetengine_set_level_quantum_percent(
+): Short
+external fun uniffi_tracelet_core_checksum_method_batterybudgetengine_throttle_level(
+): Short
+external fun uniffi_tracelet_core_checksum_method_batterybudgetengine_throttle_state(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_enginestate_get_config(
 ): Short
@@ -978,10 +1002,14 @@ external fun uniffi_tracelet_core_fn_free_locationprocessor(`handle`: Long,uniff
 ): Unit
 external fun uniffi_tracelet_core_fn_constructor_locationprocessor_new(`distanceFilter`: Double,`disableElasticity`: Byte,`elasticityMultiplier`: Double,`enableAdaptiveMode`: Byte,`trackingAccuracyThreshold`: Int,`filterPolicy`: Int,`maxImpliedSpeed`: Int,`odometerAccuracyThreshold`: Int,`rejectMockLocations`: Byte,`mockDetectionLevel`: Int,`enableSparseUpdates`: Byte,`sparseDistanceThreshold`: Double,`sparseMaxIdleSeconds`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
+external fun uniffi_tracelet_core_fn_method_locationprocessor_accuracy_floor(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
 external fun uniffi_tracelet_core_fn_method_locationprocessor_current_tuning(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun uniffi_tracelet_core_fn_method_locationprocessor_has_last_location(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
+external fun uniffi_tracelet_core_fn_method_locationprocessor_idle_escape_seconds(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
 external fun uniffi_tracelet_core_fn_method_locationprocessor_last_effective_speed(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Double
 external fun uniffi_tracelet_core_fn_method_locationprocessor_process(`ptr`: Long,`latitude`: Double,`longitude`: Double,`accuracy`: Double,`speed`: Double,`timestampMs`: Long,`isMock`: Byte,`adaptiveContext`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -994,8 +1022,16 @@ external fun uniffi_tracelet_core_fn_method_locationprocessor_restore_base_tunin
 ): Unit
 external fun uniffi_tracelet_core_fn_method_locationprocessor_retune(`ptr`: Long,`tuning`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+external fun uniffi_tracelet_core_fn_method_locationprocessor_set_accuracy_floor(`ptr`: Long,`metres`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 external fun uniffi_tracelet_core_fn_method_locationprocessor_set_base_tuning(`ptr`: Long,`tuning`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+external fun uniffi_tracelet_core_fn_method_locationprocessor_set_idle_escape_seconds(`ptr`: Long,`seconds`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_tracelet_core_fn_method_locationprocessor_set_stale_anchor_seconds(`ptr`: Long,`seconds`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_tracelet_core_fn_method_locationprocessor_stale_anchor_seconds(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
 external fun uniffi_tracelet_core_fn_clone_scheduleparser(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
 external fun uniffi_tracelet_core_fn_free_scheduleparser(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1174,14 +1210,26 @@ external fun uniffi_tracelet_core_fn_constructor_batterybudgetengine_new(`target
 ): Long
 external fun uniffi_tracelet_core_fn_method_batterybudgetengine_accuracy_index(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
+external fun uniffi_tracelet_core_fn_method_batterybudgetengine_clear_throttle(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 external fun uniffi_tracelet_core_fn_method_batterybudgetengine_distance_filter(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Double
+external fun uniffi_tracelet_core_fn_method_batterybudgetengine_note_charging(`ptr`: Long,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 external fun uniffi_tracelet_core_fn_method_batterybudgetengine_periodic_interval(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun uniffi_tracelet_core_fn_method_batterybudgetengine_process_sample(`ptr`: Long,`batteryLevel`: Double,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun uniffi_tracelet_core_fn_method_batterybudgetengine_reset(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+external fun uniffi_tracelet_core_fn_method_batterybudgetengine_set_configured(`ptr`: Long,`distanceFilter`: Double,`accuracyIndex`: Int,`periodicInterval`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_tracelet_core_fn_method_batterybudgetengine_set_level_quantum_percent(`ptr`: Long,`quantum`: Double,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_tracelet_core_fn_method_batterybudgetengine_throttle_level(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun uniffi_tracelet_core_fn_method_batterybudgetengine_throttle_state(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 external fun uniffi_tracelet_core_fn_clone_enginestate(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
 external fun uniffi_tracelet_core_fn_free_enginestate(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1429,10 +1477,16 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_tracelet_core_checksum_method_adaptivesamplingengine_compute() != 3823.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_accuracy_floor() != 20065.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_current_tuning() != 27721.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_has_last_location() != 24404.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_idle_escape_seconds() != 64819.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_last_effective_speed() != 13698.toShort()) {
@@ -1453,7 +1507,19 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_retune() != 24226.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_set_accuracy_floor() != 44973.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_set_base_tuning() != 15053.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_set_idle_escape_seconds() != 38303.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_set_stale_anchor_seconds() != 58045.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tracelet_core_checksum_method_locationprocessor_stale_anchor_seconds() != 50319.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_scheduleparser_calculate_next_alarms() != 37817.toShort()) {
@@ -1633,16 +1699,34 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_tracelet_core_checksum_method_batterybudgetengine_accuracy_index() != 65350.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_tracelet_core_checksum_method_batterybudgetengine_clear_throttle() != 59086.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_tracelet_core_checksum_method_batterybudgetengine_distance_filter() != 53495.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tracelet_core_checksum_method_batterybudgetengine_note_charging() != 7111.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_batterybudgetengine_periodic_interval() != 39961.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tracelet_core_checksum_method_batterybudgetengine_process_sample() != 13825.toShort()) {
+    if (lib.uniffi_tracelet_core_checksum_method_batterybudgetengine_process_sample() != 360.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tracelet_core_checksum_method_batterybudgetengine_reset() != 51841.toShort()) {
+    if (lib.uniffi_tracelet_core_checksum_method_batterybudgetengine_reset() != 26283.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tracelet_core_checksum_method_batterybudgetengine_set_configured() != 17271.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tracelet_core_checksum_method_batterybudgetengine_set_level_quantum_percent() != 4188.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tracelet_core_checksum_method_batterybudgetengine_throttle_level() != 52184.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tracelet_core_checksum_method_batterybudgetengine_throttle_state() != 12592.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_enginestate_get_config() != 36547.toShort()) {
@@ -1735,7 +1819,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_tracelet_core_checksum_constructor_privacyzoneevaluator_new() != 8853.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tracelet_core_checksum_constructor_batterybudgetengine_new() != 27221.toShort()) {
+    if (lib.uniffi_tracelet_core_checksum_constructor_batterybudgetengine_new() != 37010.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_constructor_enginestate_new() != 17691.toShort()) {
@@ -2790,7 +2874,28 @@ public object FfiConverterTypeAuditTrailEngine: FfiConverter<AuditTrailEngine, L
 
 
 /**
- * Engine that calculates optimal distance filters and sampling rates to preserve battery while maintaining tracking quality.
+ * Keeps a tracking session inside a battery budget by stepping through a
+ * bounded ladder of sampling costs.
+ *
+ * The ladder replaces an unbounded multiplication. The previous engine
+ * multiplied the distance filter by 1.5 and coarsened the accuracy tier on
+ * every over-budget sample, with no dwell, no ceiling relative to the app's
+ * configuration, and a recovery factor too weak to undo either — so a session
+ * that throttled once kept throttling until it recorded nothing at all, which
+ * is a worse outcome for the app than the drain it was avoiding (#396).
+ *
+ * Three rules shape it:
+ *
+ * 1. **Cadence before fidelity.** Rungs 1 and 2 only ask the platform to report
+ * less often. Accuracy — the knob that decides whether a fix is usable —
+ * is touched at rung 3 and beyond, and only together with a matching floor
+ * under the tracking accuracy gate, so the SDK never spends power producing
+ * positions its own filter will discard.
+ * 2. **Evidence before action.** A level moves after [`DWELL_WINDOWS`]
+ * consecutive conclusive windows, where a window is conclusive only if the
+ * drain beats the budget by more than the measurement's own resolution.
+ * 3. **Symmetry.** The ladder comes back down on the same evidence it went up
+ * on, and drops to zero the moment the device is on a charger.
  */
 public interface BatteryBudgetEngineInterface {
     
@@ -2800,9 +2905,25 @@ public interface BatteryBudgetEngineInterface {
     fun `accuracyIndex`(): kotlin.Int
     
     /**
+     * Returns the ladder to level 0 and forgets the measurement history.
+     */
+    fun `clearThrottle`()
+    
+    /**
      * Returns the currently enforced distance filter (in meters).
      */
     fun `distanceFilter`(): kotlin.Double
+    
+    /**
+     * Drops the ladder straight to level 0 because the device is on external
+     * power, returning an event when that changed anything.
+     *
+     * Hosts call this instead of skipping the sample outright: a charging
+     * device has no reason to carry a throttle, and the pre-ladder engine left
+     * one in force for the rest of the session because it simply returned
+     * early.
+     */
+    fun `noteCharging`(`nowMs`: kotlin.Long): BudgetAdjustmentEvent?
     
     /**
      * Returns the currently enforced periodic interval (if any).
@@ -2810,20 +2931,80 @@ public interface BatteryBudgetEngineInterface {
     fun `periodicInterval`(): kotlin.Int?
     
     /**
-     * Processes a new battery sample, updating the internal baseline and returning parameter adjustments if necessary.
+     * Processes a new battery sample, returning an adjustment when the ladder
+     * moves.
+     *
+     * Returns `None` — with no state change beyond the accumulating baseline —
+     * whenever the evidence is not there yet, which is the overwhelming
+     * majority of samples.
      */
     fun `processSample`(`batteryLevel`: kotlin.Double, `nowMs`: kotlin.Long): BudgetAdjustmentEvent?
     
     /**
      * Discards all historical battery samples and resets the baseline for budget calculations.
+     *
+     * Leaves the ladder where it is: a `stop()`/`start()` pair does not make a
+     * device that was draining fast start draining slowly, and re-deciding from
+     * scratch is how the old engine's ratchet kept finding new ground.
      */
     fun `reset`()
+    
+    /**
+     * Re-reads the app's configured parameters, e.g. after `setConfig`.
+     *
+     * The overlay is recomputed from the new values immediately, so a config
+     * change during an active throttle takes effect without waiting for the
+     * ladder to move.
+     */
+    fun `setConfigured`(`distanceFilter`: kotlin.Double, `accuracyIndex`: kotlin.Int, `periodicInterval`: kotlin.Int?)
+    
+    /**
+     * Tells the engine how coarsely this platform reports battery level, in
+     * percentage points.
+     *
+     * Sets the resolution of every drain figure the engine computes: a window
+     * can only resolve drain to within one step per elapsed hour. iOS steps in
+     * 5 %, Android in 1 %, and getting this wrong in the optimistic direction
+     * is what made a normal discharge look like 60 %/hr (#393).
+     */
+    fun `setLevelQuantumPercent`(`quantum`: kotlin.Double)
+    
+    /**
+     * The current rung, 0 (untouched) to 4 (most aggressive).
+     */
+    fun `throttleLevel`(): kotlin.Int
+    
+    /**
+     * Everything the ladder currently imposes — see [`BudgetThrottleState`].
+     */
+    fun `throttleState`(): BudgetThrottleState
     
     companion object
 }
 
 /**
- * Engine that calculates optimal distance filters and sampling rates to preserve battery while maintaining tracking quality.
+ * Keeps a tracking session inside a battery budget by stepping through a
+ * bounded ladder of sampling costs.
+ *
+ * The ladder replaces an unbounded multiplication. The previous engine
+ * multiplied the distance filter by 1.5 and coarsened the accuracy tier on
+ * every over-budget sample, with no dwell, no ceiling relative to the app's
+ * configuration, and a recovery factor too weak to undo either — so a session
+ * that throttled once kept throttling until it recorded nothing at all, which
+ * is a worse outcome for the app than the drain it was avoiding (#396).
+ *
+ * Three rules shape it:
+ *
+ * 1. **Cadence before fidelity.** Rungs 1 and 2 only ask the platform to report
+ * less often. Accuracy — the knob that decides whether a fix is usable —
+ * is touched at rung 3 and beyond, and only together with a matching floor
+ * under the tracking accuracy gate, so the SDK never spends power producing
+ * positions its own filter will discard.
+ * 2. **Evidence before action.** A level moves after [`DWELL_WINDOWS`]
+ * consecutive conclusive windows, where a window is conclusive only if the
+ * drain beats the budget by more than the measurement's own resolution.
+ * 3. **Symmetry.** The ladder comes back down on the same evidence it went up
+ * on, and drops to zero the moment the device is on a charger.
  */
 open class BatteryBudgetEngine: Disposable, AutoCloseable, BatteryBudgetEngineInterface
 {
@@ -2850,7 +3031,12 @@ open class BatteryBudgetEngine: Disposable, AutoCloseable, BatteryBudgetEngineIn
         this.cleanable = null
     }
     /**
-     * Initializes the battery budget engine with the desired target budget and initial parameters.
+     * Initializes the engine with the app's configured tracking parameters.
+     *
+     * The parameters are remembered as the *floor* of the ladder rather than as
+     * a starting point to multiply: every rung is expressed relative to them,
+     * so throttling can never take a session below what the app asked for and
+     * `restore`-ing to level 0 always lands back on the app's own values.
      */
     constructor(`targetBudgetPerHour`: kotlin.Double, `initialDistanceFilter`: kotlin.Double, `initialAccuracyIndex`: kotlin.Int, `initialPeriodicInterval`: kotlin.Int?) :
         this(UniffiWithHandle, 
@@ -2950,6 +3136,21 @@ open class BatteryBudgetEngine: Disposable, AutoCloseable, BatteryBudgetEngineIn
 
     
     /**
+     * Returns the ladder to level 0 and forgets the measurement history.
+     */override fun `clearThrottle`()
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_batterybudgetengine_clear_throttle(
+        it,
+        _status)
+}
+    }
+    
+    
+
+    
+    /**
      * Returns the currently enforced distance filter (in meters).
      */override fun `distanceFilter`(): kotlin.Double {
             return FfiConverterDouble.lift(
@@ -2958,6 +3159,28 @@ open class BatteryBudgetEngine: Disposable, AutoCloseable, BatteryBudgetEngineIn
     UniffiLib.uniffi_tracelet_core_fn_method_batterybudgetengine_distance_filter(
         it,
         _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Drops the ladder straight to level 0 because the device is on external
+     * power, returning an event when that changed anything.
+     *
+     * Hosts call this instead of skipping the sample outright: a charging
+     * device has no reason to carry a throttle, and the pre-ladder engine left
+     * one in force for the rest of the session because it simply returned
+     * early.
+     */override fun `noteCharging`(`nowMs`: kotlin.Long): BudgetAdjustmentEvent? {
+            return FfiConverterOptionalTypeBudgetAdjustmentEvent.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_batterybudgetengine_note_charging(
+        it,
+        FfiConverterLong.lower(`nowMs`),_status)
 }
     }
     )
@@ -2982,7 +3205,12 @@ open class BatteryBudgetEngine: Disposable, AutoCloseable, BatteryBudgetEngineIn
 
     
     /**
-     * Processes a new battery sample, updating the internal baseline and returning parameter adjustments if necessary.
+     * Processes a new battery sample, returning an adjustment when the ladder
+     * moves.
+     *
+     * Returns `None` — with no state change beyond the accumulating baseline —
+     * whenever the evidence is not there yet, which is the overwhelming
+     * majority of samples.
      */override fun `processSample`(`batteryLevel`: kotlin.Double, `nowMs`: kotlin.Long): BudgetAdjustmentEvent? {
             return FfiConverterOptionalTypeBudgetAdjustmentEvent.lift(
     callWithHandle {
@@ -2999,6 +3227,10 @@ open class BatteryBudgetEngine: Disposable, AutoCloseable, BatteryBudgetEngineIn
     
     /**
      * Discards all historical battery samples and resets the baseline for budget calculations.
+     *
+     * Leaves the ladder where it is: a `stop()`/`start()` pair does not make a
+     * device that was draining fast start draining slowly, and re-deciding from
+     * scratch is how the old engine's ratchet kept finding new ground.
      */override fun `reset`()
         = 
     callWithHandle {
@@ -3009,6 +3241,78 @@ open class BatteryBudgetEngine: Disposable, AutoCloseable, BatteryBudgetEngineIn
 }
     }
     
+    
+
+    
+    /**
+     * Re-reads the app's configured parameters, e.g. after `setConfig`.
+     *
+     * The overlay is recomputed from the new values immediately, so a config
+     * change during an active throttle takes effect without waiting for the
+     * ladder to move.
+     */override fun `setConfigured`(`distanceFilter`: kotlin.Double, `accuracyIndex`: kotlin.Int, `periodicInterval`: kotlin.Int?)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_batterybudgetengine_set_configured(
+        it,
+        FfiConverterDouble.lower(`distanceFilter`),FfiConverterInt.lower(`accuracyIndex`),FfiConverterOptionalInt.lower(`periodicInterval`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Tells the engine how coarsely this platform reports battery level, in
+     * percentage points.
+     *
+     * Sets the resolution of every drain figure the engine computes: a window
+     * can only resolve drain to within one step per elapsed hour. iOS steps in
+     * 5 %, Android in 1 %, and getting this wrong in the optimistic direction
+     * is what made a normal discharge look like 60 %/hr (#393).
+     */override fun `setLevelQuantumPercent`(`quantum`: kotlin.Double)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_batterybudgetengine_set_level_quantum_percent(
+        it,
+        FfiConverterDouble.lower(`quantum`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * The current rung, 0 (untouched) to 4 (most aggressive).
+     */override fun `throttleLevel`(): kotlin.Int {
+            return FfiConverterInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_batterybudgetengine_throttle_level(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Everything the ladder currently imposes — see [`BudgetThrottleState`].
+     */override fun `throttleState`(): BudgetThrottleState {
+            return FfiConverterTypeBudgetThrottleState.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_batterybudgetengine_throttle_state(
+        it,
+        _status)
+}
+    }
+    )
+    }
     
 
     
@@ -6518,11 +6822,23 @@ public object FfiConverterTypeKalmanLocationFilter: FfiConverter<KalmanLocationF
 public interface LocationProcessorInterface {
     
     /**
+     * The tracking accuracy gate's lower bound in metres; `0` when unset.
+     */
+    fun `accuracyFloor`(): kotlin.Int
+    
+    /**
      * The thresholds currently in force.
      */
     fun `currentTuning`(): LocationTuning
     
     fun `hasLastLocation`(): kotlin.Boolean
+    
+    /**
+     * Seconds without an accepted fix after which the adaptive inflation of the
+     * distance gate stops being able to withhold a fix — see
+     * [`Self::set_idle_escape_seconds`].
+     */
+    fun `idleEscapeSeconds`(): kotlin.Int
     
     fun `lastEffectiveSpeed`(): kotlin.Double
     
@@ -6584,6 +6900,22 @@ public interface LocationProcessorInterface {
     fun `retune`(`tuning`: LocationTuning)
     
     /**
+     * Raises the floor under the tracking accuracy gate (#396).
+     *
+     * Set by the battery-budget ladder whenever it asks the platform for a
+     * coarser accuracy tier. Without it the two controllers work against each
+     * other: the budget drops iOS from `kCLLocationAccuracyBest` to
+     * `kCLLocationAccuracyHundredMeters`, and the 15 m tracking gate a
+     * committed Walking mode installs then rejects every fix that arrives — so
+     * the device spends the power to produce positions and stores none of
+     * them.
+     *
+     * A floor rather than a replacement, so it composes with both the
+     * configured value and a transport-mode auto-tune instead of racing them.
+     */
+    fun `setAccuracyFloor`(`metres`: kotlin.Int)
+    
+    /**
      * Replaces the *base* thresholds — the ones [`Self::restore_base_tuning`]
      * reverts to — so a host reconfiguration reaches the processor (#303).
      *
@@ -6605,6 +6937,61 @@ public interface LocationProcessorInterface {
      * this cannot disagree with [`Self::retune`] about what is in force.
      */
     fun `setBaseTuning`(`tuning`: LocationTuning)
+    
+    /**
+     * Bounds how long adaptive sampling may withhold a fix (#394).
+     *
+     * `AdaptiveSamplingEngine` multiplies the distance gate by an activity
+     * factor and a battery factor, and the product is unbounded: a `Still`
+     * classification on a device below 50 % battery gates at 750 m. Because the
+     * anchor advances only on an accepted fix, a mis-classified walk then
+     * freezes the stream indefinitely — no positions, no odometer, no error.
+     *
+     * Past this many seconds without an accepted fix, a fix that clears the
+     * *un-inflated* `LocationTuning::distance_filter` is accepted even though
+     * it is inside the inflated gate. The un-inflated clause is what keeps a
+     * genuinely parked device silent: its jitter never clears the configured
+     * filter, so the escape cannot fire for it, and the wide `Still` distance
+     * keeps doing the job it exists for.
+     *
+     * `<= 0` disables the escape and restores the unbounded behaviour.
+     */
+    fun `setIdleEscapeSeconds`(`seconds`: kotlin.Int)
+    
+    /**
+     * Bounds the interval the implied-speed guard is willing to reason about
+     * (#395).
+     *
+     * The guard divides a jump by the age of the *accepted* anchor, and that
+     * age is unbounded — so the longer a stream has been stalled, the larger
+     * the teleport it waves through. A 1.65 km cell-derived fix arriving 196 s
+     * after the last accepted one reads as 8.4 m/s, which clears any ceiling
+     * meant for a car.
+     *
+     * Two changes bound it. First, the guard now measures from the last fix the
+     * processor *observed* rather than the last one it accepted: rejected fixes
+     * still say where the device was, and ignoring them was the actual defect —
+     * during that 196 s stall the processor was being handed a fix every couple
+     * of seconds, all of them beside the frozen anchor. Against the last
+     * observation the same jump is 51 m/s, which no transport-mode tuning
+     * permits.
+     *
+     * Second, when even the observation stream has been absent for longer than
+     * this, no conclusion is available at all — the device may have been
+     * suspended for an hour. The fix is then accepted for its position, the
+     * anchor is re-seeded, and it is marked
+     * [`LocationProcessorResult::anchor_reseeded`]: it contributes no odometer
+     * distance and no derived speed, because both would be claims about an
+     * interval nothing was observed over.
+     *
+     * `<= 0` disables the guard.
+     */
+    fun `setStaleAnchorSeconds`(`seconds`: kotlin.Int)
+    
+    /**
+     * Observation gap past which the implied-speed guard stops trusting itself.
+     */
+    fun `staleAnchorSeconds`(): kotlin.Int
     
     companion object
 }
@@ -6718,6 +7105,22 @@ open class LocationProcessor: Disposable, AutoCloseable, LocationProcessorInterf
 
     
     /**
+     * The tracking accuracy gate's lower bound in metres; `0` when unset.
+     */override fun `accuracyFloor`(): kotlin.Int {
+            return FfiConverterInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_locationprocessor_accuracy_floor(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * The thresholds currently in force.
      */override fun `currentTuning`(): LocationTuning {
             return FfiConverterTypeLocationTuning.lift(
@@ -6737,6 +7140,24 @@ open class LocationProcessor: Disposable, AutoCloseable, LocationProcessorInterf
     callWithHandle {
     uniffiRustCall() { _status ->
     UniffiLib.uniffi_tracelet_core_fn_method_locationprocessor_has_last_location(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Seconds without an accepted fix after which the adaptive inflation of the
+     * distance gate stops being able to withhold a fix — see
+     * [`Self::set_idle_escape_seconds`].
+     */override fun `idleEscapeSeconds`(): kotlin.Int {
+            return FfiConverterInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_locationprocessor_idle_escape_seconds(
         it,
         _status)
 }
@@ -6868,6 +7289,32 @@ open class LocationProcessor: Disposable, AutoCloseable, LocationProcessorInterf
 
     
     /**
+     * Raises the floor under the tracking accuracy gate (#396).
+     *
+     * Set by the battery-budget ladder whenever it asks the platform for a
+     * coarser accuracy tier. Without it the two controllers work against each
+     * other: the budget drops iOS from `kCLLocationAccuracyBest` to
+     * `kCLLocationAccuracyHundredMeters`, and the 15 m tracking gate a
+     * committed Walking mode installs then rejects every fix that arrives — so
+     * the device spends the power to produce positions and stores none of
+     * them.
+     *
+     * A floor rather than a replacement, so it composes with both the
+     * configured value and a transport-mode auto-tune instead of racing them.
+     */override fun `setAccuracyFloor`(`metres`: kotlin.Int)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_locationprocessor_set_accuracy_floor(
+        it,
+        FfiConverterInt.lower(`metres`),_status)
+}
+    }
+    
+    
+
+    
+    /**
      * Replaces the *base* thresholds — the ones [`Self::restore_base_tuning`]
      * reverts to — so a host reconfiguration reaches the processor (#303).
      *
@@ -6897,6 +7344,92 @@ open class LocationProcessor: Disposable, AutoCloseable, LocationProcessorInterf
 }
     }
     
+    
+
+    
+    /**
+     * Bounds how long adaptive sampling may withhold a fix (#394).
+     *
+     * `AdaptiveSamplingEngine` multiplies the distance gate by an activity
+     * factor and a battery factor, and the product is unbounded: a `Still`
+     * classification on a device below 50 % battery gates at 750 m. Because the
+     * anchor advances only on an accepted fix, a mis-classified walk then
+     * freezes the stream indefinitely — no positions, no odometer, no error.
+     *
+     * Past this many seconds without an accepted fix, a fix that clears the
+     * *un-inflated* `LocationTuning::distance_filter` is accepted even though
+     * it is inside the inflated gate. The un-inflated clause is what keeps a
+     * genuinely parked device silent: its jitter never clears the configured
+     * filter, so the escape cannot fire for it, and the wide `Still` distance
+     * keeps doing the job it exists for.
+     *
+     * `<= 0` disables the escape and restores the unbounded behaviour.
+     */override fun `setIdleEscapeSeconds`(`seconds`: kotlin.Int)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_locationprocessor_set_idle_escape_seconds(
+        it,
+        FfiConverterInt.lower(`seconds`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Bounds the interval the implied-speed guard is willing to reason about
+     * (#395).
+     *
+     * The guard divides a jump by the age of the *accepted* anchor, and that
+     * age is unbounded — so the longer a stream has been stalled, the larger
+     * the teleport it waves through. A 1.65 km cell-derived fix arriving 196 s
+     * after the last accepted one reads as 8.4 m/s, which clears any ceiling
+     * meant for a car.
+     *
+     * Two changes bound it. First, the guard now measures from the last fix the
+     * processor *observed* rather than the last one it accepted: rejected fixes
+     * still say where the device was, and ignoring them was the actual defect —
+     * during that 196 s stall the processor was being handed a fix every couple
+     * of seconds, all of them beside the frozen anchor. Against the last
+     * observation the same jump is 51 m/s, which no transport-mode tuning
+     * permits.
+     *
+     * Second, when even the observation stream has been absent for longer than
+     * this, no conclusion is available at all — the device may have been
+     * suspended for an hour. The fix is then accepted for its position, the
+     * anchor is re-seeded, and it is marked
+     * [`LocationProcessorResult::anchor_reseeded`]: it contributes no odometer
+     * distance and no derived speed, because both would be claims about an
+     * interval nothing was observed over.
+     *
+     * `<= 0` disables the guard.
+     */override fun `setStaleAnchorSeconds`(`seconds`: kotlin.Int)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_locationprocessor_set_stale_anchor_seconds(
+        it,
+        FfiConverterInt.lower(`seconds`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Observation gap past which the implied-speed guard stops trusting itself.
+     */override fun `staleAnchorSeconds`(): kotlin.Int {
+            return FfiConverterInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_locationprocessor_stale_anchor_seconds(
+        it,
+        _status)
+}
+    }
+    )
+    }
     
 
     
@@ -9316,6 +9849,12 @@ public object FfiConverterTypeAuditVerificationResult: FfiConverterRustBuffer<Au
 
 /**
  * An event generated when the battery budget engine decides to throttle or modify tracking parameters.
+ *
+ * The field set is deliberately unchanged from the pre-ladder engine: it
+ * crosses the flutter_rust_bridge boundary as well as the uniffi one, and its
+ * wire layout is baked into committed generated code. The ladder's own
+ * vocabulary lives on [`BudgetThrottleState`], which native hosts read through
+ * [`BatteryBudgetEngine::throttle_state`].
  */
 data class BudgetAdjustmentEvent (
     var `currentBatteryDrain`: kotlin.Double
@@ -9365,6 +9904,125 @@ public object FfiConverterTypeBudgetAdjustmentEvent: FfiConverterRustBuffer<Budg
             FfiConverterDouble.write(value.`newDistanceFilter`, buf)
             FfiConverterInt.write(value.`newDesiredAccuracy`, buf)
             FfiConverterOptionalInt.write(value.`newPeriodicInterval`, buf)
+    }
+}
+
+
+
+/**
+ * Everything the ladder decided, for hosts to apply and for the bug report to
+ * show.
+ *
+ * This is an **overlay**, not a configuration. The host's own `distanceFilter`,
+ * `desiredAccuracy` and `periodicLocationInterval` are left exactly where the
+ * app put them; these values sit on top for as long as the throttle is in
+ * force and evaporate when it lifts. The previous engine wrote its output back
+ * into the live config, which destroyed the app's `distanceFilter: 0` opt-out
+ * permanently and left `Tracelet.activeConfig` — and every bug report built
+ * from it — describing a configuration the app had never asked for (#393).
+ */
+data class BudgetThrottleState (
+    /**
+     * 0 = not throttled, 4 = most aggressive.
+     */
+    var `level`: kotlin.Int
+    , 
+    /**
+     * Distance filter to hand the *platform* (m). Never below the configured
+     * value, and never applied to the location processor's own gate: this
+     * thins how often the OS reports, it does not discard fixes already paid
+     * for.
+     */
+    var `distanceFilter`: kotlin.Double
+    , 
+    /**
+     * Accuracy tier index to request from the platform (0 = best).
+     */
+    var `desiredAccuracy`: kotlin.Int
+    , 
+    /**
+     * Periodic-mode interval (s), when the host is in periodic mode.
+     */
+    var `periodicInterval`: kotlin.Int?
+    , 
+    /**
+     * What the host should multiply its own update cadence by.
+     */
+    var `cadenceMultiplier`: kotlin.Double
+    , 
+    /**
+     * Floor to install under the tracking accuracy gate (m), so fixes the
+     * ladder has just made coarser are not then discarded for being coarse.
+     * `0` when the ladder has not touched accuracy.
+     */
+    var `trackingAccuracyFloor`: kotlin.Int
+    , 
+    /**
+     * Drain that produced the current level (%/hr), for reporting.
+     */
+    var `lastDrain`: kotlin.Double
+    , 
+    /**
+     * Width of the window `last_drain` was measured over (s).
+     */
+    var `lastMeasurementSeconds`: kotlin.Double
+    , 
+    /**
+     * The %/hr that one quantization step represents over that window — the
+     * resolution of the measurement, and the amount by which a drain figure
+     * must beat the budget before it is believed.
+     */
+    var `lastMeasurementResolution`: kotlin.Double
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeBudgetThrottleState: FfiConverterRustBuffer<BudgetThrottleState> {
+    override fun read(buf: ByteBuffer): BudgetThrottleState {
+        return BudgetThrottleState(
+            FfiConverterInt.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterInt.read(buf),
+            FfiConverterOptionalInt.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterInt.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: BudgetThrottleState) = (
+            FfiConverterInt.allocationSize(value.`level`) +
+            FfiConverterDouble.allocationSize(value.`distanceFilter`) +
+            FfiConverterInt.allocationSize(value.`desiredAccuracy`) +
+            FfiConverterOptionalInt.allocationSize(value.`periodicInterval`) +
+            FfiConverterDouble.allocationSize(value.`cadenceMultiplier`) +
+            FfiConverterInt.allocationSize(value.`trackingAccuracyFloor`) +
+            FfiConverterDouble.allocationSize(value.`lastDrain`) +
+            FfiConverterDouble.allocationSize(value.`lastMeasurementSeconds`) +
+            FfiConverterDouble.allocationSize(value.`lastMeasurementResolution`)
+    )
+
+    override fun write(value: BudgetThrottleState, buf: ByteBuffer) {
+            FfiConverterInt.write(value.`level`, buf)
+            FfiConverterDouble.write(value.`distanceFilter`, buf)
+            FfiConverterInt.write(value.`desiredAccuracy`, buf)
+            FfiConverterOptionalInt.write(value.`periodicInterval`, buf)
+            FfiConverterDouble.write(value.`cadenceMultiplier`, buf)
+            FfiConverterInt.write(value.`trackingAccuracyFloor`, buf)
+            FfiConverterDouble.write(value.`lastDrain`, buf)
+            FfiConverterDouble.write(value.`lastMeasurementSeconds`, buf)
+            FfiConverterDouble.write(value.`lastMeasurementResolution`, buf)
     }
 }
 
@@ -10878,6 +11536,42 @@ data class LocationProcessorResult (
     var `errorMessage`: kotlin.String?
     , 
     var `isError`: kotlin.Boolean
+    , 
+    /**
+     * The distance gate this fix was actually measured against, after adaptive
+     * sampling and elasticity have been applied to `LocationTuning`'s value.
+     *
+     * Reported because the two can differ by two orders of magnitude — a
+     * configured 8 m becomes 750 m for a `Still` classification on a device
+     * below 50 % battery — and a `DISTANCE_FILTER` line that names only the
+     * reason cannot be checked against anything (#397).
+     */
+    var `effectiveDistanceFilter`: kotlin.Double
+    , 
+    /**
+     * Age of the anchor this fix was compared against, in seconds. `0.0` when
+     * there is no anchor yet.
+     */
+    var `anchorAgeSeconds`: kotlin.Double
+    , 
+    /**
+     * The horizontal accuracy the fix arrived with, echoed back so hosts can
+     * log the rejection and its cause on one line (#397).
+     */
+    var `accuracy`: kotlin.Double
+    , 
+    /**
+     * Accepted only because the anchor had gone stale under an inflated
+     * distance gate — see [`LocationProcessor::set_idle_escape_seconds`] (#394).
+     */
+    var `idleEscape`: kotlin.Boolean
+    , 
+    /**
+     * Accepted as a re-seed of a stale anchor: the position is trusted, the
+     * span since the previous fix is not — see
+     * [`LocationProcessor::set_stale_anchor_seconds`] (#395).
+     */
+    var `anchorReseeded`: kotlin.Boolean
     
 ){
     
@@ -10901,6 +11595,11 @@ public object FfiConverterTypeLocationProcessorResult: FfiConverterRustBuffer<Lo
             FfiConverterOptionalString.read(buf),
             FfiConverterOptionalString.read(buf),
             FfiConverterBoolean.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
         )
     }
 
@@ -10911,7 +11610,12 @@ public object FfiConverterTypeLocationProcessorResult: FfiConverterRustBuffer<Lo
             FfiConverterDouble.allocationSize(value.`distance`) +
             FfiConverterOptionalString.allocationSize(value.`reason`) +
             FfiConverterOptionalString.allocationSize(value.`errorMessage`) +
-            FfiConverterBoolean.allocationSize(value.`isError`)
+            FfiConverterBoolean.allocationSize(value.`isError`) +
+            FfiConverterDouble.allocationSize(value.`effectiveDistanceFilter`) +
+            FfiConverterDouble.allocationSize(value.`anchorAgeSeconds`) +
+            FfiConverterDouble.allocationSize(value.`accuracy`) +
+            FfiConverterBoolean.allocationSize(value.`idleEscape`) +
+            FfiConverterBoolean.allocationSize(value.`anchorReseeded`)
     )
 
     override fun write(value: LocationProcessorResult, buf: ByteBuffer) {
@@ -10922,6 +11626,11 @@ public object FfiConverterTypeLocationProcessorResult: FfiConverterRustBuffer<Lo
             FfiConverterOptionalString.write(value.`reason`, buf)
             FfiConverterOptionalString.write(value.`errorMessage`, buf)
             FfiConverterBoolean.write(value.`isError`, buf)
+            FfiConverterDouble.write(value.`effectiveDistanceFilter`, buf)
+            FfiConverterDouble.write(value.`anchorAgeSeconds`, buf)
+            FfiConverterDouble.write(value.`accuracy`, buf)
+            FfiConverterBoolean.write(value.`idleEscape`, buf)
+            FfiConverterBoolean.write(value.`anchorReseeded`, buf)
     }
 }
 
@@ -11309,9 +12018,18 @@ data class MotionConfig (
     var `motionDetectionMode`: kotlin.Int
     , 
     /**
-     * Speed moving threshold.
+     * Speed at or above which a stationary session is considered moving (m/s).
      */
     var `speedMovingThreshold`: kotlin.Double
+    , 
+    /**
+     * Speed below which a *moving* session begins slowing down (m/s).
+     *
+     * The lower half of a hysteresis band. `<= 0` derives it from
+     * [`Self::speed_moving_threshold`] — see
+     * [`default_speed_stationary_threshold_ratio`].
+     */
+    var `speedStationaryThreshold`: kotlin.Double
     , 
     /**
      * Speed stationary delay.
@@ -11369,6 +12087,7 @@ public object FfiConverterTypeMotionConfig: FfiConverterRustBuffer<MotionConfig>
             FfiConverterInt.read(buf),
             FfiConverterInt.read(buf),
             FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
             FfiConverterInt.read(buf),
             FfiConverterInt.read(buf),
             FfiConverterInt.read(buf),
@@ -11394,6 +12113,7 @@ public object FfiConverterTypeMotionConfig: FfiConverterRustBuffer<MotionConfig>
             FfiConverterInt.allocationSize(value.`stillSampleCount`) +
             FfiConverterInt.allocationSize(value.`motionDetectionMode`) +
             FfiConverterDouble.allocationSize(value.`speedMovingThreshold`) +
+            FfiConverterDouble.allocationSize(value.`speedStationaryThreshold`) +
             FfiConverterInt.allocationSize(value.`speedStationaryDelay`) +
             FfiConverterInt.allocationSize(value.`stationaryTrackingMode`) +
             FfiConverterInt.allocationSize(value.`stationaryPeriodicInterval`) +
@@ -11418,6 +12138,7 @@ public object FfiConverterTypeMotionConfig: FfiConverterRustBuffer<MotionConfig>
             FfiConverterInt.write(value.`stillSampleCount`, buf)
             FfiConverterInt.write(value.`motionDetectionMode`, buf)
             FfiConverterDouble.write(value.`speedMovingThreshold`, buf)
+            FfiConverterDouble.write(value.`speedStationaryThreshold`, buf)
             FfiConverterInt.write(value.`speedStationaryDelay`, buf)
             FfiConverterInt.write(value.`stationaryTrackingMode`, buf)
             FfiConverterInt.write(value.`stationaryPeriodicInterval`, buf)

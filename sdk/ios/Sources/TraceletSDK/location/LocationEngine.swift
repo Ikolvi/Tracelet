@@ -49,6 +49,23 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     private var runtimeDesiredAccuracy: Int?
     private var runtimeDistanceFilter: Double?
 
+    /// The battery-budget ladder's overlay, if one is in force (#393, #396).
+    ///
+    /// Deliberately a separate pair from the runtime overrides above rather than
+    /// a write into ConfigManager. The budget engine used to call `setConfig`,
+    /// which made its throttled values indistinguishable from the app's own —
+    /// permanently, since `distanceFilter: 0` clamped up to 10 and nothing ever
+    /// restored it, and visibly, since `activeConfig` and every bug report built
+    /// from it then described a configuration the app had never asked for.
+    ///
+    /// An explicit `updateLocationProviderOptions` call still wins: the app
+    /// asking for something specific outranks the SDK's own economising.
+    private var budgetDesiredAccuracy: Int?
+    private var budgetDistanceFilter: Double?
+    /// Floor the ladder has put under the tracking accuracy gate, re-applied
+    /// whenever the processor is rebuilt.
+    private var budgetTrackingAccuracyFloor: Int = 0
+
     /// Background task ID for the current periodic fix request.
     /// Ended in didUpdateLocations/didFailWithError when periodic mode is active.
     private var periodicFixBgTaskId: UIBackgroundTaskIdentifier?
@@ -152,6 +169,12 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             sparseMaxIdleSeconds: Int32(configManager.getSparseMaxIdleSeconds())
         )
         kalmanFilter = configManager.getEnableKalmanFilter() ? KalmanLocationFilter() : nil
+        // A rebuild must not drop a throttle that is still in force, or the gate
+        // would tighten back under fixes the ladder is deliberately coarsening
+        // (#396).
+        if budgetTrackingAccuracyFloor > 0 {
+            locationProcessor?.setAccuracyFloor(metres: Int32(budgetTrackingAccuracyFloor))
+        }
     }
 
     /// Returns the processor, building it if needed.
@@ -437,6 +460,21 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         // must not survive onto the stream's first fix (#385).
         startupFixPending = false
 
+        // The stall clock starts now, not at the first accepted fix: a session
+        // that never accepts one at all is exactly the case worth announcing
+        // (#397).
+        lastAcceptedFixAt = Date()
+        rejectionsSinceAccept.removeAll()
+        stallAnnounced = false
+        staleFixesSincePace = 0
+
+        // Always-on: this is the transition the OS location indicator follows,
+        // so "the icon disappeared" is answerable from a released app's report.
+        TraceletLog.lifecycle(String(
+            format: "location stream: continuous updates starting — accuracy=%d distanceFilter=%.1fm",
+            runtimeDesiredAccuracy ?? budgetDesiredAccuracy ?? configManager.getDesiredAccuracy(),
+            runtimeDistanceFilter ?? budgetDistanceFilter ?? configManager.getDistanceFilter()))
+
         configureLocationManager()
         checkReducedAccuracy()
 
@@ -506,6 +544,15 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         stopPeriodicTimer()
         runtimeDesiredAccuracy = nil
         runtimeDistanceFilter = nil
+        // The budget overlay deliberately survives: a session that stops and
+        // starts again has not changed how fast the device is draining, and
+        // re-deciding from scratch each time is how the pre-ladder engine kept
+        // finding new ground to ratchet from (#396).
+        lastAcceptedFixAt = nil
+        rejectionsSinceAccept.removeAll()
+        stallAnnounced = false
+        staleFixesSincePace = 0
+        TraceletLog.lifecycle("location stream: continuous updates stopping")
 
         if #available(iOS 17.0, *) {
             #if canImport(ActivityKit)
@@ -838,12 +885,134 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         return true
     }
 
+    // MARK: - Stall watchdog (#397)
+
+    /// Consecutive fixes whose speed was too old to drive the pace machine.
+    ///
+    /// Bounds the always-on logging to one line per run rather than one per fix.
+    private var staleFixesSincePace = 0
+
+    /// When the processor last accepted a fix, or `nil` before the first one.
+    private var lastAcceptedFixAt: Date?
+    /// Rejections since the last accepted fix, by reason.
+    private var rejectionsSinceAccept: [String: Int] = [:]
+    /// Whether the current stall has already been announced, so the lifecycle
+    /// channel gets one line per stall rather than one per fix.
+    private var stallAnnounced = false
+
+    /// Oldest a fix may be and still be allowed to drive the pace machine.
+    ///
+    /// Ten seconds: comfortably longer than any live fix interval, and far
+    /// shorter than the gap across which a cached fix survives a stationary
+    /// period. A reading older than this describes a moment that has passed.
+    private static let maximumPaceFixAge: TimeInterval = 10
+
+    /// How long a tracking session may accept nothing before the SDK says so.
+    ///
+    /// Twice the processor's idle escape, so a stall this long means something
+    /// the escape cannot fix — every fix failing the accuracy gate, a permission
+    /// downgrade, a radio delivering nothing usable.
+    private static let stallAnnounceSeconds: TimeInterval = 120
+
+    /// Records the outcome of one filter decision and announces a stalled or
+    /// recovered stream on the always-on lifecycle channel.
+    ///
+    /// A stream that accepts nothing for minutes is indistinguishable from a
+    /// parked device in the logs, and both look like "tracking is running". That
+    /// ambiguity is what made the field reports for #393/#394 take two exports
+    /// and a source read to resolve — so the SDK now states it, at a level that
+    /// survives a released app's default `logLevel` (#318, #397).
+    private func noteFilterDecision(_ result: LocationProcessorResult, accepted: Bool) {
+        let now = Date()
+        if accepted {
+            if stallAnnounced, let since = lastAcceptedFixAt {
+                let histogram = rejectionsSinceAccept
+                    .sorted { $0.key < $1.key }
+                    .map { "\($0.key)=\($0.value)" }
+                    .joined(separator: " ")
+                TraceletLog.lifecycle(String(
+                    format: "location stream recovered after %.0fs — %d fix(es) rejected meanwhile [%@]%@",
+                    now.timeIntervalSince(since),
+                    rejectionsSinceAccept.values.reduce(0, +),
+                    histogram,
+                    result.idleEscape ? ", admitted by the idle escape (#394)" : ""))
+            }
+            if result.idleEscape && !stallAnnounced {
+                TraceletLog.lifecycle(String(
+                    format: "adaptive sampling held a fix for %.0fs behind a %.0fm gate — "
+                        + "admitted it at the configured filter instead (#394)",
+                    result.anchorAgeSeconds, result.effectiveDistanceFilter))
+            }
+            if result.anchorReseeded {
+                TraceletLog.lifecycle(String(
+                    format: "anchor re-seeded after a %.0fs gap with no observations — "
+                        + "position taken, %.0fm span not counted as travel (#395)",
+                    result.anchorAgeSeconds, result.distance))
+            }
+            lastAcceptedFixAt = now
+            rejectionsSinceAccept.removeAll()
+            stallAnnounced = false
+            return
+        }
+
+        rejectionsSinceAccept[result.reason ?? "unknown", default: 0] += 1
+
+        guard let since = lastAcceptedFixAt else {
+            // No fix has ever been accepted; `start()` seeds this, so reaching
+            // here means the very first one has not landed yet.
+            lastAcceptedFixAt = now
+            return
+        }
+        let stalledFor = now.timeIntervalSince(since)
+        guard !stallAnnounced, stalledFor >= Self.stallAnnounceSeconds else { return }
+        stallAnnounced = true
+
+        let histogram = rejectionsSinceAccept
+            .sorted { $0.key < $1.key }
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: " ")
+        TraceletLog.lifecycle(String(
+            format: "location stream stalled — nothing accepted for %.0fs, %d fix(es) rejected [%@]; "
+                + "last gate=%.1fm (configured %.1fm), last fix acc=%.1fm, in force: %@",
+            stalledFor,
+            rejectionsSinceAccept.values.reduce(0, +),
+            histogram,
+            result.effectiveDistanceFilter,
+            configManager.getDistanceFilter(),
+            result.accuracy,
+            currentTuningDescription()))
+    }
+
+    /// Installs the battery-budget ladder's overlay, or clears it when the
+    /// ladder returns to level 0 (#396).
+    ///
+    /// Nothing here touches ConfigManager: the app's configuration is what the
+    /// app set, and the throttle is a temporary lens over it. The accuracy floor
+    /// is the one piece that reaches the Rust processor, and it only ever
+    /// *loosens* the tracking gate — because a ladder that has asked iOS for
+    /// 100 m fixes must not leave a 15 m gate in place to reject them, which is
+    /// how the old engine managed to spend the battery and keep none of the
+    /// locations (#393).
+    public func applyBudgetOverlay(
+        distanceFilter: Double?,
+        desiredAccuracy: Int?,
+        trackingAccuracyFloor: Int
+    ) {
+        budgetDistanceFilter = distanceFilter
+        budgetDesiredAccuracy = desiredAccuracy
+        budgetTrackingAccuracyFloor = max(0, trackingAccuracyFloor)
+        locationProcessor?.setAccuracyFloor(metres: Int32(budgetTrackingAccuracyFloor))
+        if isTracking {
+            applyLocationProviderOptions()
+        }
+    }
+
     /// Applies only the location provider's live acquisition policy. Keeping
     /// this separate from ConfigManager and LocationProcessor lets callers
     /// throttle GPS acquisition temporarily without resetting track/odometer
     /// continuity or changing which delivered points are accepted.
     private func applyLocationProviderOptions() {
-        let accuracy = runtimeDesiredAccuracy ?? configManager.getDesiredAccuracy()
+        let accuracy = runtimeDesiredAccuracy ?? budgetDesiredAccuracy ?? configManager.getDesiredAccuracy()
         switch accuracy {
         case 0: locationManager.desiredAccuracy = kCLLocationAccuracyBest
         case 1: locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
@@ -852,7 +1021,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         default: locationManager.desiredAccuracy = kCLLocationAccuracyBest
         }
 
-        let distanceFilter = runtimeDistanceFilter ?? configManager.getDistanceFilter()
+        let distanceFilter = runtimeDistanceFilter ?? budgetDistanceFilter ?? configManager.getDistanceFilter()
         let isSpeedMode = configManager.getMotionDetectionMode() == .speed
         // High-accuracy geofence mode needs time-based delivery so a stationary
         // device still gets fixes to evaluate crossings against. Persistence
@@ -1388,7 +1557,42 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         // which is the silent override of a committed pace #344 exists to
         // prevent (#385).
         let motionSpeed = isStartupFix ? effectiveSpeed : result.effectiveSpeed
-        speedSink?(motionSpeed)
+        // Only a *current* fix may tell the pace machine how fast we are going.
+        //
+        // Core Location delivers a cached fix as soon as updates restart, and
+        // that fix carries the speed from whenever it was taken — which, on a
+        // session the accelerometer has just woken, is from before the device
+        // stopped. It stands the session back down in the same second it woke,
+        // so walking in the background cycles between waking and stopping
+        // instead of tracking.
+        //
+        // Persistence and dispatch are deliberately untouched: a cached fix is
+        // still a real position. It is only its *speed* that says nothing about
+        // now.
+        let fixAge = -location.timestamp.timeIntervalSinceNow
+        if fixAge <= Self.maximumPaceFixAge {
+            if staleFixesSincePace > 0 {
+                // Always-on: this is the moment the pace machine regains a real
+                // input, and its absence is what a "tracking stopped by itself"
+                // report is actually describing.
+                TraceletLog.lifecycle(String(
+                    format: "pace: a current fix again after %d stale one(s) — speed=%.2f m/s",
+                    staleFixesSincePace, motionSpeed))
+                staleFixesSincePace = 0
+            }
+            speedSink?(motionSpeed)
+        } else {
+            staleFixesSincePace += 1
+            // Once per run of stale fixes, not once per fix: the run is the
+            // event, and a released app has to be able to report it.
+            if staleFixesSincePace == 1 {
+                TraceletLog.lifecycle(String(
+                    format: "pace: ignoring a %.1fs-old fix's speed (%.2f m/s) — a reading older "
+                        + "than %.0fs says nothing about the current pace, and letting it "
+                        + "through stood a just-woken session back down",
+                    fixAge, motionSpeed, Self.maximumPaceFixAge))
+            }
+        }
 
         var isForcedAccept = false
         if !result.accepted, forceAcceptNextFilteredLocation {
@@ -1423,13 +1627,28 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             // #334: the speed handed to the motion machine belongs on this line.
             // Without it, a rejected fix's contribution to a stationary decision
             // can only be inferred by cross-reading the [SpeedMotion] entries.
-            TraceletLog.debug(String(format: "[Tracelet] Location filtered by Rust processor: %@ (speed=%.2f m/s fed to speed motion)",
-                                     result.reason ?? "unknown", result.effectiveSpeed))
+            //
+            // #397: so do the numbers the decision was actually made on. A bare
+            // `DISTANCE_FILTER` cannot be checked against anything — an 8 m gate
+            // and the 750 m one adaptive sampling can inflate it to look
+            // identical in a log, and telling them apart is the whole diagnosis.
+            TraceletLog.debug(String(
+                format: "[Tracelet] Location filtered by Rust processor: %@ "
+                    + "(speed=%.2f m/s fed to speed motion, acc=%.1fm, "
+                    + "moved=%.1fm vs gate=%.1fm, anchor=%.0fs, thresholds df=%.1f/acc=%d/spd=%d)",
+                result.reason ?? "unknown", result.effectiveSpeed, result.accuracy,
+                result.distance, result.effectiveDistanceFilter, result.anchorAgeSeconds,
+                currentTuning()?.distanceFilter ?? -1,
+                currentTuning()?.trackingAccuracyThreshold ?? -1,
+                currentTuning()?.maxImpliedSpeed ?? -1))
+            noteFilterDecision(result, accepted: false)
             if result.odometerDelta > 0 {
                 stateManager.addOdometer(distance: result.odometerDelta)
             }
             return
         }
+
+        noteFilterDecision(result, accepted: true)
 
         // Odometer update from processor's computed delta
         if result.odometerDelta > 0 {
