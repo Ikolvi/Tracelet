@@ -1,10 +1,10 @@
 {
-  "badgeTitle": "New in 3.8.5",
+  "badgeTitle": "New in 3.8.6",
   "items": [
     {
-      "title": "persistMode now applies to geofence crossings",
-      "description": "persistMode only ever gated ordinary GPS fixes, so 'location' and 'none' still wrote every geofence ENTER/EXIT to the local database and uploaded it in the next HTTP batch. An app that chose 'none' to get callbacks without the SDK retaining a location history was accumulating a record of every fence it crossed. Crossings are now stored only under 'all' and 'geofence'. Your onGeofence listener is unaffected in every mode — only the database write is gated.",
-      "href": "/core/geofencing"
+      "title": "iOS builds link again with Swift Package Manager disabled",
+      "description": "Flutter installs plugins as CocoaPods :path pods, and CocoaPods never downloads a podspec's s.source for those. The published podspecs pointed at the TraceletCore / TraceletSyncFFI release archives through exactly that mechanism, so the Rust core was simply absent and an iOS build failed at link time with hundreds of undefined UniFFI symbols — silently, with no warning from pod install. The podspecs now fetch and checksum their own binary when CocoaPods evaluates them, and each links the framework it vendors. Apps on Swift Package Manager, which is the default, were never affected.",
+      "href": "/getting-started/platform-setup/ios"
     }
   ]
 }

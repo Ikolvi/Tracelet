@@ -1,6 +1,6 @@
-## 3.8.6-alpha.1
+## 3.8.6
 
-Version alignment with tracelet 3.8.6-alpha.1.
+Version alignment with tracelet 3.8.6.
 
 ## 3.8.5
 

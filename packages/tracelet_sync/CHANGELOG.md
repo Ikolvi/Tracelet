@@ -1,4 +1,4 @@
-## 3.8.6-alpha.1
+## 3.8.6
 
 **FIX**: the CocoaPods fallback links. Two things were missing when Swift Package Manager is disabled and Flutter installs the plugin as a `:path` pod. The published podspec pointed `s.source :http` at the GitHub Release zip, which CocoaPods never downloads for path pods — the podspec now fetches it during evaluation, the one hook that does run, and verifies its checksum the way the SPM binary target does. And CocoaPods links a *dependency's* vendored frameworks into a pod target but never the pod's own, so even once the binary was on disk the Swift stubs still had nothing to resolve `ffi_tracelet_sync_*` against ([#390](https://github.com/Ikolvi/Tracelet/issues/390)).
 

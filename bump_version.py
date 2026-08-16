@@ -1,23 +1,23 @@
 import os
 import re
 
-version_from = "3.8.5"
-version_to = "3.8.6-alpha.1"
+version_from = "3.8.6-alpha.1"
+version_to = "3.8.6"
 
-# Prerelease, published to validate the #390 fix against the real artifact
-# rather than a simulation of it. The CocoaPods fallback only exists in the
-# *published* podspec — release.yml rewrites it at publish time — so the one
-# thing local verification cannot cover is whether the publish pipeline itself
-# emits a package a consumer can install. That is precisely where #391's
-# version failed, and precisely what a green CI run could not see.
+# Promotes 3.8.6-alpha.1 to stable. Same content, now served to everyone on a
+# `^3.8.5` constraint rather than only to whoever pinned the prerelease.
 #
-# An alpha rather than 3.8.6 proper because pub.dev does not serve prereleases
-# to a `^3.8.5` constraint: nobody is upgraded into this by accident, and if
-# the pipeline emits something wrong the blast radius is whoever opts in by
-# pinning the exact version.
+# The alpha did the job it was cut for: the #390 CocoaPods fallback was verified
+# against the real published artifact, not a simulation. A stock consumer app
+# and the full example app both resolved from pub.dev with Swift Package Manager
+# disabled, fetched TraceletCore/TraceletSyncFFI from their GitHub Releases at
+# `pod install`, and linked — the path that failed at `ld` before.
 #
-# Carries the #390 entries already sitting under `## Unreleased`. If the alpha
-# checks out, 3.8.6 proper follows with the same content.
+# The `## 3.8.6-alpha.1` changelog headings are renamed to `## 3.8.6` before
+# this runs. The promotion logic below keys on `## Unreleased`, so with the
+# entries already sitting under a prerelease heading it would have prepended an
+# empty "version alignment" block and stranded them — the same failure its own
+# has_version_heading() docstring records from the 3.8.0-beta.2 cycle.
 
 # 1. Bump version strings
 exact_replacements = [
