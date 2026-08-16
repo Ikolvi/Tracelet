@@ -1,5 +1,7 @@
 ## Unreleased
 
+**FIX**: `LocationEngine.start`/`stop` announce the continuous stream on the lifecycle channel; the stale-fix pace guard reports the start and end of each run via `staleFixesSincePace` rather than per fix; the seed-skip moves from `debug` to `lifecycle`; and `TraceletSdk` now observes `UIApplication.didEnterBackgroundNotification` — previously only the foreground edge was recorded, so a report could show the app returning but never leaving.
+
 **FIX**: `LocationEngine` gates `speedSink` on the fix's age against a ten-second `maximumPaceFixAge`, so the cached fix Core Location delivers when updates restart can no longer report a pre-stop speed as the current one.
 
 **FIX**: `TraceletSdk` seeds `SpeedMotionManager` from `locationEngine.lastEffectiveSpeed` only when `getLastLocation()` is non-nil, so a relaunched or resumed process no longer hands the machine a fabricated `0.0 m/s` and stands a moving session down.

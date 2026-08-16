@@ -527,6 +527,13 @@ class LocationEngine(
     // Stall watchdog (#397)
     // =========================================================================
 
+    /**
+     * Consecutive fixes whose speed was too old to drive the pace machine.
+     *
+     * Bounds the always-on logging to one line per run rather than one per fix.
+     */
+    private var staleFixesSincePace = 0
+
     /** When the processor last accepted a fix; null before the first one. */
     private var lastAcceptedFixAt: Long? = null
 
@@ -665,6 +672,15 @@ class LocationEngine(
         // (#397).
         resetStallWatchdog(seed = true)
 
+        // Always-on: this is the transition the OS location indicator follows,
+        // so "the icon disappeared" is answerable from a released app's report.
+        TraceletLog.lifecycle(
+            "location stream: continuous updates starting — " +
+                "accuracy=${effectiveDesiredAccuracy()} " +
+                "distanceFilter=${effectiveDistanceFilter()}m " +
+                "interval=${effectiveUpdateInterval()}ms",
+        )
+
         val request = buildLocationRequestWithGpsFallback()
 
         trackingCallback = object : TraceletLocationCallback {
@@ -710,6 +726,10 @@ class LocationEngine(
         // The budget overlay deliberately survives: a session that stops and
         // starts again has not changed how fast the device is draining (#396).
         resetStallWatchdog(seed = false)
+        staleFixesSincePace = 0
+        if (trackingCallback != null) {
+            TraceletLog.lifecycle("location stream: continuous updates stopping")
+        }
         trackingCallback?.let {
             fusedClient.removeLocationUpdates(it)
             trackingCallback = null
@@ -1461,13 +1481,29 @@ class LocationEngine(
         // keep it. It is only its *speed* that says nothing about now.
         val fixAgeMs = (SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos) / 1_000_000
         if (fixAgeMs <= MAX_PACE_FIX_AGE_MS) {
+            if (staleFixesSincePace > 0) {
+                // Always-on: this is the moment the pace machine regains a real
+                // input, and its absence is what a "tracking stopped by itself"
+                // report is actually describing.
+                TraceletLog.lifecycle(
+                    "pace: a current fix again after $staleFixesSincePace stale one(s) — " +
+                        "speed=${"%.2f".format(motionSpeed)} m/s",
+                )
+                staleFixesSincePace = 0
+            }
             speedMotionSpeedSink?.invoke(motionSpeed)
         } else {
-            TraceletLog.debug(
-                "Pace: ignoring a ${fixAgeMs}ms-old fix's speed " +
-                    "(${"%.2f".format(motionSpeed)} m/s) — older than " +
-                    "${MAX_PACE_FIX_AGE_MS}ms says nothing about the current pace",
-            )
+            staleFixesSincePace++
+            // Once per run of stale fixes, not once per fix: the run is the
+            // event, and a released app has to be able to report it.
+            if (staleFixesSincePace == 1) {
+                TraceletLog.lifecycle(
+                    "pace: ignoring a ${fixAgeMs}ms-old fix's speed " +
+                        "(${"%.2f".format(motionSpeed)} m/s) — a reading older than " +
+                        "${MAX_PACE_FIX_AGE_MS}ms says nothing about the current pace, and " +
+                        "letting it through stood a just-woken session back down",
+                )
+            }
         }
 
         var isForcedAccept = false

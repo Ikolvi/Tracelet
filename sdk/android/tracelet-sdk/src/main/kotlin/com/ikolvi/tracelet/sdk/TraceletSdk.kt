@@ -1028,9 +1028,9 @@ class TraceletSdk private constructor(private val context: Context) {
             if (locationEngine.getLastLocation() != null) {
                 speedMotionManager.onLocation(locationEngine.lastEffectiveSpeed)
             } else {
-                TraceletLog.debug(
-                    "Speed motion: no fix resolved yet — not seeding the machine with a " +
-                        "fabricated 0.0 m/s",
+                com.ikolvi.tracelet.sdk.util.TraceletLog.lifecycle(
+                    "pace: no fix resolved in this process yet — not seeding the machine " +
+                        "with a fabricated 0.0 m/s, which would stand a resumed session down",
                 )
             }
             
@@ -1073,9 +1073,9 @@ class TraceletSdk private constructor(private val context: Context) {
             if (locationEngine.getLastLocation() != null) {
                 speedMotionManager.onLocation(locationEngine.lastEffectiveSpeed)
             } else {
-                TraceletLog.debug(
-                    "Speed motion: no fix resolved yet — not seeding the machine with a " +
-                        "fabricated 0.0 m/s",
+                com.ikolvi.tracelet.sdk.util.TraceletLog.lifecycle(
+                    "pace: no fix resolved in this process yet — not seeding the machine " +
+                        "with a fabricated 0.0 m/s, which would stand a resumed session down",
                 )
             }
             

@@ -1,5 +1,7 @@
 ## Unreleased
 
+**FIX**: `LocationEngine.start`/`stop` announce the continuous stream on the lifecycle channel; the stale-fix pace guard reports the start and end of each run via `staleFixesSincePace` rather than per fix; `TraceletSdk`'s seed-skip and `LocationService`'s background/foreground and foreground-service promotion/demotion transitions move from `debug` to `lifecycle`.
+
 **FIX**: `LocationEngine` gates `speedMotionSpeedSink` on the fix's age, measured from `elapsedRealtimeNanos` against a ten-second `MAX_PACE_FIX_AGE_MS`. The fused provider's cached fix arrives the instant `requestLocationUpdates` is called and used to hand the pace machine a speed from before the device stopped.
 
 **FIX**: `TraceletSdk.startMotionDetection` seeds `SpeedMotionManager` from `locationEngine.lastEffectiveSpeed` only when `locationEngine.getLastLocation()` is non-null — the same "a null location is unknown, not zero" reading `SmartMotionCoordinator.resolvedSpeed` already takes. Both the SPEED and SMART branches were affected. `LocationEngine`'s periodic-fix dispatch no longer defaults a missing `speed` to `0.0` before invoking `speedMotionSpeedSink`.

@@ -317,8 +317,14 @@ public final class TraceletSdk {
         eventSender.sendMotionChange(motionMap)
     }
 
+    /// Records the background edge on the always-on channel.
+    @objc private func handleDidEnterBackground() {
+        TraceletLog.lifecycle(
+            "app: moved to BACKGROUND — tracking must continue from here")
+    }
+
     @objc private func handleWillEnterForeground() {
-        TraceletLog.debug("Tracelet: App moving to FOREGROUND — requesting state flush to Dart")
+        TraceletLog.lifecycle("app: moved to FOREGROUND")
         // #182: deliver any crash/fall confirmations whose deadline elapsed while
         // the app was backgrounded/suspended.
         drainDueConfirmations()
@@ -2538,6 +2544,16 @@ public final class TraceletSdk {
             object: nil
         )
 
+        // The background edge was never observed at all, so a report could show
+        // the app coming back but never leaving — and "tracking stops when I
+        // background it" is a claim about exactly that boundary.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleDidEnterBackground),
+            name: UIApplication.didEnterBackgroundNotification,
+            object: nil
+        )
+
         // Persistence
         // Note: iOS does not need a separate DatabaseEncryptionManager.
         // Android uses SQLCipher (application-level AES-256 encryption)
@@ -4155,9 +4171,9 @@ public final class TraceletSdk {
         if locationEngine.getLastLocation() != nil {
             smm.onLocation(speed: locationEngine.lastEffectiveSpeed)
         } else {
-            TraceletLog.debug(
-                "[Tracelet] Speed motion: no fix resolved yet — not seeding the machine "
-                    + "with a fabricated 0.0 m/s")
+            TraceletLog.lifecycle(
+                "pace: no fix resolved in this process yet — not seeding the machine with a "
+                    + "fabricated 0.0 m/s, which would stand a resumed session down")
         }
 
         TraceletLog.debug(String(format: "[Tracelet] Speed motion mode started (threshold=%.1f, delay=%ds, stationary=%@)",

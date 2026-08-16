@@ -466,6 +466,14 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         lastAcceptedFixAt = Date()
         rejectionsSinceAccept.removeAll()
         stallAnnounced = false
+        staleFixesSincePace = 0
+
+        // Always-on: this is the transition the OS location indicator follows,
+        // so "the icon disappeared" is answerable from a released app's report.
+        TraceletLog.lifecycle(String(
+            format: "location stream: continuous updates starting — accuracy=%d distanceFilter=%.1fm",
+            runtimeDesiredAccuracy ?? budgetDesiredAccuracy ?? configManager.getDesiredAccuracy(),
+            runtimeDistanceFilter ?? budgetDistanceFilter ?? configManager.getDistanceFilter()))
 
         configureLocationManager()
         checkReducedAccuracy()
@@ -543,6 +551,8 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         lastAcceptedFixAt = nil
         rejectionsSinceAccept.removeAll()
         stallAnnounced = false
+        staleFixesSincePace = 0
+        TraceletLog.lifecycle("location stream: continuous updates stopping")
 
         if #available(iOS 17.0, *) {
             #if canImport(ActivityKit)
@@ -876,6 +886,11 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     }
 
     // MARK: - Stall watchdog (#397)
+
+    /// Consecutive fixes whose speed was too old to drive the pace machine.
+    ///
+    /// Bounds the always-on logging to one line per run rather than one per fix.
+    private var staleFixesSincePace = 0
 
     /// When the processor last accepted a fix, or `nil` before the first one.
     private var lastAcceptedFixAt: Date?
@@ -1556,12 +1571,27 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         // now.
         let fixAge = -location.timestamp.timeIntervalSinceNow
         if fixAge <= Self.maximumPaceFixAge {
+            if staleFixesSincePace > 0 {
+                // Always-on: this is the moment the pace machine regains a real
+                // input, and its absence is what a "tracking stopped by itself"
+                // report is actually describing.
+                TraceletLog.lifecycle(String(
+                    format: "pace: a current fix again after %d stale one(s) — speed=%.2f m/s",
+                    staleFixesSincePace, motionSpeed))
+                staleFixesSincePace = 0
+            }
             speedSink?(motionSpeed)
         } else {
-            TraceletLog.debug(String(
-                format: "[Tracelet] Pace: ignoring a %.1fs-old fix's speed (%.2f m/s) — "
-                    + "older than %.0fs says nothing about the current pace",
-                fixAge, motionSpeed, Self.maximumPaceFixAge))
+            staleFixesSincePace += 1
+            // Once per run of stale fixes, not once per fix: the run is the
+            // event, and a released app has to be able to report it.
+            if staleFixesSincePace == 1 {
+                TraceletLog.lifecycle(String(
+                    format: "pace: ignoring a %.1fs-old fix's speed (%.2f m/s) — a reading older "
+                        + "than %.0fs says nothing about the current pace, and letting it "
+                        + "through stood a just-woken session back down",
+                    fixAge, motionSpeed, Self.maximumPaceFixAge))
+            }
         }
 
         var isForcedAccept = false

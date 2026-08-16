@@ -655,7 +655,7 @@ class LocationService : Service(), DefaultLifecycleObserver {
     }
 
     override fun onStart(owner: LifecycleOwner) {
-        TraceletLog.debug("App moved to FOREGROUND — checking notification visibility")
+        TraceletLog.lifecycle("app: moved to FOREGROUND")
         // ProcessLifecycleOwner is authoritative about UI foreground state —
         // pass it explicitly so we don't depend on the laggy process-importance
         // heuristic (which our own foreground service also skews).
@@ -672,7 +672,7 @@ class LocationService : Service(), DefaultLifecycleObserver {
     }
 
     override fun onStop(owner: LifecycleOwner) {
-        TraceletLog.debug("App moved to BACKGROUND — checking notification visibility")
+        TraceletLog.lifecycle("app: moved to BACKGROUND — tracking must continue from here")
         // Authoritative background transition — show the pause-only notification
         // even though the OS process importance may still report foreground
         // (our foreground service pins it, and importance updates lag).
@@ -1869,7 +1869,11 @@ class LocationService : Service(), DefaultLifecycleObserver {
         if (showOnPauseOnly) {
             if (inForeground) {
                 if (isForegroundService) {
-                    TraceletLog.debug("Suppressing notification (App in foreground)")
+                    TraceletLog.lifecycle(
+                        "foreground-service: demoting — notification suppressed while the app " +
+                            "is on screen. Background location depends on this promotion, and a " +
+                            "task removal in this window kills the process (#378)",
+                    )
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     isForegroundService = false
                     // #378: the health snapshot must say the service is no
@@ -1880,14 +1884,14 @@ class LocationService : Service(), DefaultLifecycleObserver {
             } else {
                 // Show in background if not already shown OR if we just transitioned.
                 if (!isForegroundService || changed) {
-                    TraceletLog.debug("Showing notification (App in background)")
+                    TraceletLog.lifecycle("foreground-service: promoting — app backgrounded")
                     isForegroundService = startForegroundWithNotification()
                 }
             }
         } else {
             // Persistent mode: Always ensure it's shown.
             if (!isForegroundService) {
-                TraceletLog.debug("Showing persistent notification")
+                TraceletLog.lifecycle("foreground-service: promoting — persistent notification")
                 isForegroundService = startForegroundWithNotification()
             } else if (changed && !inForeground) {
                 // Optimization: Re-show when moving to background in case it was
