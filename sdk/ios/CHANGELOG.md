@@ -1,5 +1,7 @@
 ## Unreleased
 
+**FIX**: `LocationEngine` gates `speedSink` on the fix's age against a ten-second `maximumPaceFixAge`, so the cached fix Core Location delivers when updates restart can no longer report a pre-stop speed as the current one.
+
 **FIX**: `TraceletSdk` seeds `SpeedMotionManager` from `locationEngine.lastEffectiveSpeed` only when `getLastLocation()` is non-nil, so a relaunched or resumed process no longer hands the machine a fabricated `0.0 m/s` and stands a moving session down.
 
 **FIX**: `ConfigManager.getSpeedMovingThreshold()` defaults to 0.9 m/s rather than 1.5, and `SpeedMotionManager` gains `speedStationaryThreshold` with an `effectiveStationaryThreshold` derived at 65 % of the moving threshold when unset. `handleMoving` leaves MOVING on that lower value, so a pace that varies either side of the entry threshold no longer oscillates into STATIONARY.

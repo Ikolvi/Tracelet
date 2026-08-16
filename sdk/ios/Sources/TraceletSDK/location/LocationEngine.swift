@@ -885,6 +885,13 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// channel gets one line per stall rather than one per fix.
     private var stallAnnounced = false
 
+    /// Oldest a fix may be and still be allowed to drive the pace machine.
+    ///
+    /// Ten seconds: comfortably longer than any live fix interval, and far
+    /// shorter than the gap across which a cached fix survives a stationary
+    /// period. A reading older than this describes a moment that has passed.
+    private static let maximumPaceFixAge: TimeInterval = 10
+
     /// How long a tracking session may accept nothing before the SDK says so.
     ///
     /// Twice the processor's idle escape, so a stall this long means something
@@ -1535,7 +1542,27 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         // which is the silent override of a committed pace #344 exists to
         // prevent (#385).
         let motionSpeed = isStartupFix ? effectiveSpeed : result.effectiveSpeed
-        speedSink?(motionSpeed)
+        // Only a *current* fix may tell the pace machine how fast we are going.
+        //
+        // Core Location delivers a cached fix as soon as updates restart, and
+        // that fix carries the speed from whenever it was taken — which, on a
+        // session the accelerometer has just woken, is from before the device
+        // stopped. It stands the session back down in the same second it woke,
+        // so walking in the background cycles between waking and stopping
+        // instead of tracking.
+        //
+        // Persistence and dispatch are deliberately untouched: a cached fix is
+        // still a real position. It is only its *speed* that says nothing about
+        // now.
+        let fixAge = -location.timestamp.timeIntervalSinceNow
+        if fixAge <= Self.maximumPaceFixAge {
+            speedSink?(motionSpeed)
+        } else {
+            TraceletLog.debug(String(
+                format: "[Tracelet] Pace: ignoring a %.1fs-old fix's speed (%.2f m/s) — "
+                    + "older than %.0fs says nothing about the current pace",
+                fixAge, motionSpeed, Self.maximumPaceFixAge))
+        }
 
         var isForcedAccept = false
         if !result.accepted, forceAcceptNextFilteredLocation {

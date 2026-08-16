@@ -1,5 +1,7 @@
 ## Unreleased
 
+**FIX**: `LocationEngine` gates `speedMotionSpeedSink` on the fix's age, measured from `elapsedRealtimeNanos` against a ten-second `MAX_PACE_FIX_AGE_MS`. The fused provider's cached fix arrives the instant `requestLocationUpdates` is called and used to hand the pace machine a speed from before the device stopped.
+
 **FIX**: `TraceletSdk.startMotionDetection` seeds `SpeedMotionManager` from `locationEngine.lastEffectiveSpeed` only when `locationEngine.getLastLocation()` is non-null — the same "a null location is unknown, not zero" reading `SmartMotionCoordinator.resolvedSpeed` already takes. Both the SPEED and SMART branches were affected. `LocationEngine`'s periodic-fix dispatch no longer defaults a missing `speed` to `0.0` before invoking `speedMotionSpeedSink`.
 
 **FIX**: `ConfigManager.DEFAULT_SPEED_MOVING_THRESHOLD` drops from 1.5 to 0.9 m/s and `SpeedMotionManager` gains a separate exit threshold. `onLocationMoving` now leaves MOVING on `effectiveStationaryThreshold` (the new `speedStationaryThreshold`, or 65 % of the moving threshold when unset) rather than on the entry threshold, which is what stopped a walking pace oscillating across a single value into STATIONARY_PERIODIC.

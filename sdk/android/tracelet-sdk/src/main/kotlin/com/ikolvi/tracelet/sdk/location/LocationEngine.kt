@@ -71,6 +71,15 @@ class LocationEngine(
         const val GPS_ACCURACY_THRESHOLD = 50f
 
         /**
+         * Oldest a fix may be and still be allowed to drive the pace machine.
+         *
+         * Ten seconds: comfortably longer than any live fix interval, and far
+         * shorter than the gap across which a cached fix survives a stationary
+         * period. A reading older than this describes a moment that has passed.
+         */
+        private const val MAX_PACE_FIX_AGE_MS = 10_000L
+
+        /**
          * How long a tracking session may accept nothing before the SDK says so
          * on the lifecycle channel (#397).
          *
@@ -1430,7 +1439,36 @@ class LocationEngine(
         // which is the silent override of a committed pace that #344 and
         // StartCommittedPaceTest exist to prevent (#385).
         val motionSpeed = if (isStartupFix) effectiveSpeed else result.effectiveSpeed
-        speedMotionSpeedSink?.invoke(motionSpeed)
+
+        // Only a *current* fix may tell the pace machine how fast we are going.
+        //
+        // The fused provider delivers its cached last-known fix the moment
+        // `requestLocationUpdates` is called, and that fix carries the speed
+        // from whenever it was taken — which, on a session the accelerometer
+        // has just woken, is from before the device stopped. The trace shows
+        // the consequence in the same second as the wake:
+        //
+        //   16:59:52 speed-motion: STATIONARY -> MOVING — manual pace change
+        //   16:59:52 speed-motion: MOVING -> SLOWING — speed=0.10 m/s
+        //
+        // and STATIONARY again 30 s later. Walking in the background therefore
+        // produced a cycle — accelerometer wakes the stream, a stale reading
+        // stands it down, the stream stops — instead of tracking, with the
+        // location indicator flickering off and staying off.
+        //
+        // Persistence and dispatch are deliberately untouched: a cached fix is
+        // still a real position and the processor's own gates decide whether to
+        // keep it. It is only its *speed* that says nothing about now.
+        val fixAgeMs = (SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos) / 1_000_000
+        if (fixAgeMs <= MAX_PACE_FIX_AGE_MS) {
+            speedMotionSpeedSink?.invoke(motionSpeed)
+        } else {
+            TraceletLog.debug(
+                "Pace: ignoring a ${fixAgeMs}ms-old fix's speed " +
+                    "(${"%.2f".format(motionSpeed)} m/s) — older than " +
+                    "${MAX_PACE_FIX_AGE_MS}ms says nothing about the current pace",
+            )
+        }
 
         var isForcedAccept = false
         if (!result.accepted) {
