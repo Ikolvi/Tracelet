@@ -153,6 +153,40 @@ class StartCommittedPaceTest {
         )
     }
 
+    /**
+     * The regression these tests missed.
+     *
+     * `a resume still inherits the restored moving pace` asserts
+     * `stateManager.isMoving`, and SLOWING counts as moving — so a machine that
+     * has *already begun standing down* satisfies it. The seed a few lines after
+     * the pace is adopted fed `lastEffectiveSpeed`, which is 0.0 in a process
+     * that has handled no fix (a killed-state relaunch, exactly this case), and
+     * that fabricated zero pushed MOVING -> SLOWING immediately. The session then
+     * reached STATIONARY when the countdown expired and switched the continuous
+     * stream off, which is what a user reports as tracking stopping after the app
+     * is backgrounded or killed.
+     *
+     * Asserting the machine's own state rather than the boolean is what catches
+     * it: MOVING and SLOWING are different, and only one of them is healthy.
+     */
+    @Test
+    fun `a resumed session is not stood down by the startup seed`() {
+        ready(mode = 2, isMoving = false)
+        leaveSpeedMachineMoving()
+        sdk.stateManager.isMoving = false
+
+        sdk.start(isResume = true)
+        idle()
+
+        assertEquals(
+            SpeedMotionState.MOVING,
+            sdk.stateManager.speedMotionState,
+            "a resume came up MOVING and no fix has been handled yet, so nothing has " +
+                "reported a speed — seeding 0.0 starts the countdown to STATIONARY and " +
+                "takes the continuous stream down with it",
+        )
+    }
+
     @Test
     fun `a moving committed pace is unaffected`() {
         ready(mode = 2, isMoving = true)
