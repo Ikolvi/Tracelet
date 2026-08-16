@@ -1,4 +1,4 @@
-## Unreleased
+## 3.8.7
 
 **FIX**: `LocationEngine.start`/`stop` announce the continuous stream on the lifecycle channel; the stale-fix pace guard reports the start and end of each run via `staleFixesSincePace` rather than per fix; `TraceletSdk`'s seed-skip and `LocationService`'s background/foreground and foreground-service promotion/demotion transitions move from `debug` to `lifecycle`.
 

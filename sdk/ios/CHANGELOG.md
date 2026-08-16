@@ -1,4 +1,4 @@
-## Unreleased
+## 3.8.7
 
 **FIX**: `LocationEngine.start`/`stop` announce the continuous stream on the lifecycle channel; the stale-fix pace guard reports the start and end of each run via `staleFixesSincePace` rather than per fix; the seed-skip moves from `debug` to `lifecycle`; and `TraceletSdk` now observes `UIApplication.didEnterBackgroundNotification` — previously only the foreground edge was recorded, so a report could show the app returning but never leaving.
 

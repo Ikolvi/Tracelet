@@ -1,4 +1,4 @@
-## Unreleased
+## 3.8.7
 
 **FIX**: the pinned native SDK carries the pedestrian pace hysteresis; no Dart or plugin change.
 

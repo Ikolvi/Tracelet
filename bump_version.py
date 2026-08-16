@@ -1,23 +1,28 @@
 import os
 import re
 
-version_from = "3.8.6-alpha.1"
-version_to = "3.8.6"
+version_from = "3.8.6"
+version_to = "3.8.7"
 
-# Promotes 3.8.6-alpha.1 to stable. Same content, now served to everyone on a
-# `^3.8.5` constraint rather than only to whoever pinned the prerelease.
+# A tracking-correctness release. 3.8.6 shipped a location pipeline that could
+# stop recording and stay stopped, in several independent ways:
 #
-# The alpha did the job it was cut for: the #390 CocoaPods fallback was verified
-# against the real published artifact, not a simulation. A stock consumer app
-# and the full example app both resolved from pub.dev with Swift Package Manager
-# disabled, fetched TraceletCore/TraceletSyncFFI from their GitHub Releases at
-# `pod install`, and linked — the path that failed at `ld` before.
+#   - the battery budget throttled on one battery-level quantization step, then
+#     wrote its throttle into the host's own configuration, destroying a
+#     configured `distanceFilter: 0` permanently (#393, #396)
+#   - adaptive sampling inflated the distance gate to 750 m with no time bound,
+#     and the anchor only advances on an accepted fix, so the stream froze (#394)
+#   - the implied-speed guard measured against an unbounded-age anchor, so a
+#     stalled stream accepted a 1.65 km cell-fix teleport as 8.4 m/s (#395)
+#   - the pace machine was stood down by fabricated and stale speeds, which is
+#     why tracking stopped when the app was backgrounded or killed
 #
-# The `## 3.8.6-alpha.1` changelog headings are renamed to `## 3.8.6` before
-# this runs. The promotion logic below keys on `## Unreleased`, so with the
-# entries already sitting under a prerelease heading it would have prepended an
-# empty "version alignment" block and stranded them — the same failure its own
-# has_version_heading() docstring records from the 3.8.0-beta.2 cycle.
+# The diagnostics that explain all of these now bypass `logLevel`, so a released
+# app can report them (#397), and the bug report names the version that produced
+# it (#398).
+#
+# Entries were written under `## Unreleased` as the work landed; the promotion
+# logic below renames that heading rather than prepending a second block.
 
 # 1. Bump version strings
 exact_replacements = [
@@ -33,6 +38,13 @@ exact_replacements = [
     ('packages/tracelet_supabase/pubspec.yaml', f'version: {version_from}', f'version: {version_to}'),
     ('packages/tracelet_firebase/pubspec.yaml', f'version: {version_from}', f'version: {version_to}'),
     ('packages/tracelet_doctor/pubspec.yaml', f'version: {version_from}', f'version: {version_to}'),
+
+    # The Dart-side constant the Doctor bug report prints (#398). Also synced by
+    # scripts/sync_native_versions.py for the Melos path; listed here too so a
+    # hand-run bump cannot ship a report naming the previous version.
+    ('packages/tracelet/lib/src/version.dart',
+     f"const String traceletVersion = '{version_from}';",
+     f"const String traceletVersion = '{version_to}';"),
 
     ('packages/tracelet_android/pubspec.yaml', f'tracelet_platform_interface: ^{version_from}', f'tracelet_platform_interface: ^{version_to}'),
     ('packages/tracelet_ios/pubspec.yaml', f'tracelet_platform_interface: ^{version_from}', f'tracelet_platform_interface: ^{version_to}'),

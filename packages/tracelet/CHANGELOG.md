@@ -1,4 +1,4 @@
-## Unreleased
+## 3.8.7
 
 **FIX**: (Android, iOS) the events that explain a background tracking failure are recorded on the always-on lifecycle channel, so a **release** build can report them. A released app runs at the default `logLevel`, where every `debug` line is discarded — which is why diagnosing the last round took repeated captures and a source read rather than one report. Now recorded regardless of level, and all per-session rather than per-fix: the continuous location stream starting and stopping (the transition the OS location indicator follows, so "the icon disappeared" is answerable); the app moving to background and to foreground — iOS never observed the background edge at all, so a report could show the app coming back but never leaving; foreground-service promotion and demotion, naming the demotion window in which a task removal is fatal; a pace machine refused a stale fix's speed, and the moment it gets a current one again; and a session start that declined to seed the pace machine because no fix had been resolved yet. The stale-fix lines are emitted once per run rather than once per fix, so a long run of them costs one line.
 

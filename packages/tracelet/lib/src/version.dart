@@ -11,5 +11,5 @@
 /// a report pasted into an issue weeks later could not answer at all (#398).
 library;
 
-/// The `tracelet` package version, e.g. `3.8.6`.
-const String traceletVersion = '3.8.6';
+/// The `tracelet` package version, e.g. `3.8.7`.
+const String traceletVersion = '3.8.7';
