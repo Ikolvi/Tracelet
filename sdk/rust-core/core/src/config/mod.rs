@@ -202,9 +202,16 @@ pub struct MotionConfig {
     /// Motion detection mode.
     #[serde(default)]
     pub motion_detection_mode: i32,
-    /// Speed moving threshold.
+    /// Speed at or above which a stationary session is considered moving (m/s).
     #[serde(default = "default_speed_moving_threshold")]
     pub speed_moving_threshold: f64,
+    /// Speed below which a *moving* session begins slowing down (m/s).
+    ///
+    /// The lower half of a hysteresis band. `<= 0` derives it from
+    /// [`Self::speed_moving_threshold`] — see
+    /// [`default_speed_stationary_threshold_ratio`].
+    #[serde(default)]
+    pub speed_stationary_threshold: f64,
     /// Speed stationary delay.
     #[serde(default = "default_speed_stationary_delay")]
     pub speed_stationary_delay: i32,
@@ -229,7 +236,38 @@ fn default_activity_recognition_interval() -> i32 { 1000 }
 fn default_min_activity_confidence() -> i32 { 75 }
 fn default_still_threshold() -> f64 { 0.4 }
 fn default_still_sample_count() -> i32 { 25 }
-fn default_speed_moving_threshold() -> f64 { 1.5 }
+/// Speed at which a stationary session decides it is moving (m/s).
+///
+/// Was 1.5 m/s, which is *above* an average walking pace of ~1.4 m/s — so the
+/// median pedestrian straddled it. A single threshold governed both directions,
+/// with no band between them, and the field trace shows the result: wake at
+/// 1.50-1.55, drop to SLOWING a second later at 1.31-1.48, run the countdown to
+/// STATIONARY with 26-28 consecutive fixes just below, wake again. Ending in
+/// STATIONARY_PERIODIC stops the continuous stream, which is what a walking
+/// user reports as "tracking stopped on its own" (pedestrian pace hysteresis, PR #399).
+///
+/// 0.9 m/s sits below a slow walk and well above the 0.1-0.3 m/s a parked
+/// device reports from GPS noise.
+fn default_speed_moving_threshold() -> f64 { 0.9 }
+
+/// Fraction of [`default_speed_moving_threshold`] at which a moving session
+/// starts slowing down, when the host has not set one explicitly.
+///
+/// The gap between the two is the hysteresis band that stops a walker
+/// oscillating across a single threshold. Two thirds keeps the band wide enough
+/// to cover the spread of one person's pace while still letting a genuine stop
+/// register promptly.
+pub fn default_speed_stationary_threshold_ratio() -> f64 { 0.65 }
+
+/// The speed below which a moving session begins slowing, resolving the
+/// derived default when the host has not set one.
+pub fn resolve_speed_stationary_threshold(moving: f64, configured: f64) -> f64 {
+    if configured > 0.0 {
+        configured.min(moving)
+    } else {
+        moving * default_speed_stationary_threshold_ratio()
+    }
+}
 fn default_speed_stationary_delay() -> i32 { 180 }
 fn default_stationary_periodic_interval() -> i32 { 120 }
 fn default_speed_wake_confirm_count() -> i32 { 1 }
@@ -253,6 +291,7 @@ impl Default for MotionConfig {
             still_sample_count: default_still_sample_count(),
             motion_detection_mode: 0,
             speed_moving_threshold: default_speed_moving_threshold(),
+            speed_stationary_threshold: 0.0,
             speed_stationary_delay: default_speed_stationary_delay(),
             stationary_tracking_mode: 0,
             stationary_periodic_interval: default_stationary_periodic_interval(),

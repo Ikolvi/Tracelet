@@ -3212,7 +3212,8 @@ class TraceletSdk private constructor(private val context: Context) {
         // and the problem is downstream (delivery, persistence, or sync).
         com.ikolvi.tracelet.sdk.util.TraceletLog.lifecycle(
             "motion (foreground): isMoving=$isMoving " +
-                "mode=${configManager.getMotionDetectionMode()}"
+                "mode=${configManager.getMotionDetectionMode()} " +
+                "sessionMoving=${stateManager.isMoving}"
         )
         if (configManager.getMotionDetectionMode() == com.ikolvi.tracelet.sdk.model.MotionDetectionMode.SMART) {
             // In SMART mode, route the accel event through the coordinator first.
@@ -3241,9 +3242,36 @@ class TraceletSdk private constructor(private val context: Context) {
                 }
             }
             
-            if (action == uniffi.tracelet_core.CoordinatorAction.SWITCH_TO_CONTINUOUS
-                && ::speedMotionManager.isInitialized) {
-                speedMotionManager.onManualPaceChange(true)
+            if (action == uniffi.tracelet_core.CoordinatorAction.SWITCH_TO_CONTINUOUS) {
+                if (::speedMotionManager.isInitialized) {
+                    speedMotionManager.onManualPaceChange(true)
+                }
+            } else if (isMoving && !stateManager.isMoving) {
+                // A wake the coordinator declined, with the session still
+                // stationary — and `declareMoving()` has already torn down both
+                // ways of noticing the next one (stationary wake re-arm, PR #399).
+                //
+                // TYPE_SIGNIFICANT_MOTION is a one-shot trigger sensor: firing
+                // consumes the registration, and re-arming it happens only on
+                // the stationary transition, which a declined wake never makes.
+                // `declareMoving()` also stops shake monitoring and switches the
+                // accelerometer to stillness detection, which by construction
+                // only notices the device *stopping*. So a declined wake leaves a
+                // stationary session with no armed wake source at all.
+                //
+                // In the foreground that self-heals — the CPU stays awake and a
+                // later shake or periodic fix rescues it. Backgrounded it does
+                // not: TYPE_ACCELEROMETER is a non-wakeup sensor and delivers
+                // nothing while the device is suspended, so significant motion
+                // was the only thing that could have woken it. The session stays
+                // stationary until the app is brought up and tracking restarted
+                // by hand, which is exactly how this is reported.
+                com.ikolvi.tracelet.sdk.util.TraceletLog.lifecycle(
+                    "motion: wake declined by the coordinator (action=$action) while the " +
+                        "session is stationary — re-arming the wake sensors so the next " +
+                        "movement can still be seen (stationary wake re-arm, PR #399)",
+                )
+                motionDetector.onManualPaceChange(false)
             }
             return
         }

@@ -94,7 +94,30 @@ public final class SpeedMotionManager {
     // MARK: - Config
 
     /// Speed (m/s) below which the device is considered not moving.
-    public var speedMovingThreshold: Double = 1.5
+    public var speedMovingThreshold: Double = 0.9
+
+    /// Speed below which a *moving* session begins slowing down (m/s).
+    ///
+    /// The lower half of a hysteresis band, and the reason a walker no longer
+    /// oscillates. One threshold used to govern both directions, so a pace that
+    /// varied either side of it — every ordinary walk does — produced
+    /// MOVING → SLOWING → STATIONARY → MOVING in a loop, and a completed
+    /// countdown stopped the continuous stream while the user was still
+    /// walking (pedestrian pace hysteresis, PR #399).
+    ///
+    /// `<= 0` derives it from ``speedMovingThreshold``.
+    public var speedStationaryThreshold: Double = 0
+
+    /// Fraction of ``speedMovingThreshold`` used when no explicit stationary
+    /// threshold is configured. Mirrors the Rust core's default.
+    private static let stationaryThresholdRatio: Double = 0.65
+
+    /// The speed a moving session must drop below to start slowing.
+    var effectiveStationaryThreshold: Double {
+        speedStationaryThreshold > 0
+            ? min(speedStationaryThreshold, speedMovingThreshold)
+            : speedMovingThreshold * Self.stationaryThresholdRatio
+    }
 
     /// Seconds of sustained low speed before transitioning to STATIONARY.
     public var speedStationaryDelay: Int = 180
@@ -262,7 +285,10 @@ public final class SpeedMotionManager {
     private var slowingTimerWorkItem: DispatchWorkItem?
 
     private func handleMoving(speed: Double, now: TimeInterval) {
-        if speed < speedMovingThreshold {
+        // The *stationary* threshold, not the moving one: leaving MOVING takes a
+        // clearer signal than entering it did, which is what keeps a walk whose
+        // pace varies either side of the entry threshold from flapping (pedestrian pace hysteresis, PR #399).
+        if speed < effectiveStationaryThreshold {
             let previousState = state
             state = .slowing
             lowSpeedCount = 1
@@ -274,7 +300,8 @@ public final class SpeedMotionManager {
             delegate?.speedMotionDidStartSlowing()
 
             commitTransition(from: previousState, because: String(
-                format: "speed=%.2f < threshold=%.2f", speed, speedMovingThreshold))
+                format: "speed=%.2f < stationary threshold=%.2f (moving threshold=%.2f)",
+                speed, effectiveStationaryThreshold, speedMovingThreshold))
         }
     }
 
@@ -419,6 +446,9 @@ public final class SpeedMotionManager {
     public func loadConfig(from motionConfig: [String: Any]) {
         if let threshold = motionConfig["speedMovingThreshold"] as? Double {
             speedMovingThreshold = threshold
+        }
+        if let threshold = motionConfig["speedStationaryThreshold"] as? Double {
+            speedStationaryThreshold = threshold
         }
         if let delay = motionConfig["speedStationaryDelay"] as? Int {
             speedStationaryDelay = delay

@@ -82,7 +82,12 @@ void main() {
     test('MotionConfig speed-mode defaults', () {
       const config = MotionConfig();
       expect(config.motionDetectionMode, MotionDetectionMode.accelerometer);
-      expect(config.speedMovingThreshold, 1.5);
+      // 0.9 m/s, not the old 1.5: that sat above an average walking pace of
+      // ~1.4 m/s, so the median pedestrian straddled it (pedestrian pace hysteresis, PR #399).
+      expect(config.speedMovingThreshold, 0.9);
+      // The lower half of the hysteresis band, derived at 65 % of the entry
+      // threshold when it is not set explicitly.
+      expect(config.speedStationaryThreshold, closeTo(0.585, 1e-9));
       expect(config.speedStationaryDelay, 180);
       expect(config.stationaryTrackingMode, StationaryTrackingMode.periodic);
       expect(config.stationaryPeriodicInterval, 120);

@@ -1,5 +1,7 @@
 ## Unreleased
 
+**FIX**: the pinned native SDK carries the pedestrian pace hysteresis; no Dart or plugin change.
+
 **FIX**: the pinned native SDK carries the battery-budget ladder, the adaptive-sampling idle escape and the always-on stream diagnostics ([#393](https://github.com/Ikolvi/Tracelet/issues/393)–[#397](https://github.com/Ikolvi/Tracelet/issues/397)); no Dart or plugin change.
 
 ## 3.8.6

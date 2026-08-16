@@ -2191,19 +2191,19 @@ class LocationEngine(
     ) {
         val resolveEnabled = config.getResolveAddress()
         val geocoderPresent = android.location.Geocoder.isPresent()
-        TraceletLog.debug("resolveAddressAndDispatch: resolveAddressConfig=$resolveEnabled, geocoderPresent=$geocoderPresent")
+        TraceletLog.verbose("resolveAddressAndDispatch: resolveAddressConfig=$resolveEnabled, geocoderPresent=$geocoderPresent")
         
         if (resolveEnabled && geocoderPresent) {
-            TraceletLog.debug("resolveAddressAndDispatch: Starting reverse geocode lookup for lat=${location.latitude}, lng=${location.longitude} on background thread.")
+            TraceletLog.verbose("resolveAddressAndDispatch: Starting reverse geocode lookup for lat=${location.latitude}, lng=${location.longitude} on background thread.")
             java.util.concurrent.Executors.newSingleThreadExecutor().execute {
                 try {
                     val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
                     val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
                     
                     if (!addresses.isNullOrEmpty()) {
-                        TraceletLog.debug("resolveAddressAndDispatch: Geocoder returned ${addresses.size} addresses.")
+                        TraceletLog.verbose("resolveAddressAndDispatch: Geocoder returned ${addresses.size} addresses.")
                         val addr = addresses[0]
-                        TraceletLog.debug("resolveAddressAndDispatch: First address: $addr")
+                        TraceletLog.verbose("resolveAddressAndDispatch: First address: $addr")
                         
                         val addressMap = mutableMapOf<String, Any?>()
                         addr.thoroughfare?.let { addressMap["street"] = it }
@@ -2215,7 +2215,7 @@ class LocationEngine(
                             addressMap["street"] = addr.featureName
                         }
                         
-                        TraceletLog.debug("resolveAddressAndDispatch: Parsed addressMap: $addressMap")
+                        TraceletLog.verbose("resolveAddressAndDispatch: Parsed addressMap: $addressMap")
                         
                         val mutableEnriched = enriched.toMutableMap()
                         if (addressMap.isNotEmpty()) mutableEnriched["address"] = addressMap
@@ -2231,7 +2231,7 @@ class LocationEngine(
                 }
             }
         } else {
-            TraceletLog.debug("resolveAddressAndDispatch: Skipping geocoding. resolveAddressConfig=$resolveEnabled, geocoderPresent=$geocoderPresent")
+            TraceletLog.verbose("resolveAddressAndDispatch: Skipping geocoding. resolveAddressConfig=$resolveEnabled, geocoderPresent=$geocoderPresent")
             dispatch(enriched)
         }
     }
@@ -2265,7 +2265,7 @@ internal fun isLocationMock(location: Location, level: Int, deferTimeMs: Int, co
         location.isFromMockProvider
     }
 
-    TraceletLog.debug("isLocationMock: platformFlag=$platformFlag, level=$level")
+    TraceletLog.verbose("isLocationMock: platformFlag=$platformFlag, level=$level")
 
     if (platformFlag) return true
     if (level < 2) return false
@@ -2275,7 +2275,7 @@ internal fun isLocationMock(location: Location, level: Int, deferTimeMs: Int, co
     val extras = location.extras
     val satellites = extras?.getInt("satellites", -1) ?: -1
 
-    TraceletLog.debug("isLocationMock: heuristic check — satellites=$satellites, gpsEnabled=$gpsEnabled, accuracy=${location.accuracy}")
+    TraceletLog.verbose("isLocationMock: heuristic check — satellites=$satellites, gpsEnabled=$gpsEnabled, accuracy=${location.accuracy}")
 
     if (gpsEnabled && satellites == 0 && location.accuracy < 50.0) {
         TraceletLog.debug("isLocationMock: detected via 0 satellites")
@@ -2287,7 +2287,7 @@ internal fun isLocationMock(location: Location, level: Int, deferTimeMs: Int, co
     val driftNanos = currentElapsedNanos - locationElapsedNanos
     val driftMs = driftNanos / 1_000_000.0
 
-    TraceletLog.debug("isLocationMock: driftMs=$driftMs ms")
+    TraceletLog.verbose("isLocationMock: driftMs=$driftMs ms")
 
     if (driftMs < -500.0) {
         TraceletLog.debug("isLocationMock: detected via negative elapsedRealtime drift (location from the future: $driftMs ms)")
@@ -2305,7 +2305,7 @@ internal fun isLocationMock(location: Location, level: Int, deferTimeMs: Int, co
     // or the elapsedRealtime was manipulated (common in mock location apps).
     val discrepancyMs = kotlin.math.abs(ageByWallClockMs - ageByMonotonicMs)
     val maxDriftMs = 10000L + deferTimeMs
-    TraceletLog.debug("isLocationMock: discrepancyMs=$discrepancyMs ms, maxDriftMs=$maxDriftMs ms")
+    TraceletLog.verbose("isLocationMock: discrepancyMs=$discrepancyMs ms, maxDriftMs=$maxDriftMs ms")
     if (discrepancyMs > maxDriftMs) {
         TraceletLog.debug("isLocationMock: detected via timestamp/elapsed mismatch (>10s)")
         return true

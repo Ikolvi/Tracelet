@@ -93,7 +93,14 @@ class ConfigManager(context: Context) {
         const val DEFAULT_STILL_SAMPLE_COUNT = 25
 
         // Speed-based motion detection defaults
-        const val DEFAULT_SPEED_MOVING_THRESHOLD = 1.5
+        /**
+         * Speed at which a stationary session decides it is moving (m/s).
+         *
+         * Was 1.5, which is above an average walking pace of ~1.4 m/s, so the
+         * median pedestrian straddled it and the session oscillated into
+         * STATIONARY_PERIODIC while still walking (pedestrian pace hysteresis, PR #399).
+         */
+        const val DEFAULT_SPEED_MOVING_THRESHOLD = 0.9
         const val DEFAULT_SPEED_STATIONARY_DELAY = 180
         const val DEFAULT_STATIONARY_PERIODIC_INTERVAL = 120
         const val DEFAULT_STATIONARY_PERIODIC_ACCURACY = 0 // DesiredAccuracy.high
@@ -682,6 +689,13 @@ class ConfigManager(context: Context) {
 
     fun getSpeedMovingThreshold(): Double =
         getDouble("speedMovingThreshold", DEFAULT_SPEED_MOVING_THRESHOLD)
+
+    /**
+     * Speed below which a moving session begins slowing (m/s); `0` derives it
+     * from [getSpeedMovingThreshold] (pedestrian pace hysteresis, PR #399).
+     */
+    fun getSpeedStationaryThreshold(): Double =
+        getDouble("speedStationaryThreshold", 0.0)
 
     fun getSpeedStationaryDelay(): Int =
         getInt("speedStationaryDelay", DEFAULT_SPEED_STATIONARY_DELAY)
