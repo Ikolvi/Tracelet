@@ -1,5 +1,7 @@
 ## Unreleased
 
+**FIX**: `TraceletSdk.startMotionDetection` seeds `SpeedMotionManager` from `locationEngine.lastEffectiveSpeed` only when `locationEngine.getLastLocation()` is non-null — the same "a null location is unknown, not zero" reading `SmartMotionCoordinator.resolvedSpeed` already takes. Both the SPEED and SMART branches were affected. `LocationEngine`'s periodic-fix dispatch no longer defaults a missing `speed` to `0.0` before invoking `speedMotionSpeedSink`.
+
 **FIX**: `ConfigManager.DEFAULT_SPEED_MOVING_THRESHOLD` drops from 1.5 to 0.9 m/s and `SpeedMotionManager` gains a separate exit threshold. `onLocationMoving` now leaves MOVING on `effectiveStationaryThreshold` (the new `speedStationaryThreshold`, or 65 % of the moving threshold when unset) rather than on the entry threshold, which is what stopped a walking pace oscillating across a single value into STATIONARY_PERIODIC.
 
 **FIX**: `TraceletSdk.handleMotionStateChange` re-arms the stationary wake sources when `SmartMotionCoordinator` declines a wake. `MotionDetector.declareMoving()` consumes the one-shot `TYPE_SIGNIFICANT_MOTION` registration, stops shake monitoring and switches to stillness detection before the coordinator is consulted, so a declined wake left a stationary session with nothing armed — unrecoverable in the background, where `TYPE_ACCELEROMETER` delivers nothing while suspended. The declined path now calls `motionDetector.onManualPaceChange(false)` and records it on the lifecycle channel, and the significant-motion trigger itself is recorded there too.

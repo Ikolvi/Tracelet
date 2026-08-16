@@ -798,11 +798,17 @@ class LocationEngine(
                         enriched["event"] = "periodic"
                         enriched["odometer"] = state.odometer
                         
-                        val speed = resolved["speed"] as? Double ?: 0.0
-                        speedMotionSpeedSink?.invoke(speed)
+                        // Only a speed the fix actually carried. `?: 0.0` here fed
+                        // the motion machine a fabricated "stopped" every time a
+                        // periodic fix arrived without one, which is the same
+                        // fabricated zero that drops a moving session to SLOWING.
+                        val speed = resolved["speed"] as? Double
+                        if (speed != null && speed > 0) {
+                            speedMotionSpeedSink?.invoke(speed)
+                        }
                         
                         events.sendLocation(enriched)
-                        TraceletLog.debug("periodic fix dispatched — lat=$lat, lng=$lng, acc=$accuracy, speed=$speed")
+                        TraceletLog.debug("periodic fix dispatched — lat=$lat, lng=$lng, acc=$accuracy, speed=${speed ?: "unknown"}")
 
                         // Notify proximity-based geofence monitoring.
                         //

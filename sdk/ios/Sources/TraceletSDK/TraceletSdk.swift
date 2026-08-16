@@ -4136,8 +4136,29 @@ public final class TraceletSdk {
             smm?.onLocation(speed: speed)
         }
 
-        // Feed the last known GPS speed immediately on startup to prevent deadlocks when physically stationary
-        smm.onLocation(speed: locationEngine.lastEffectiveSpeed)
+        // Seed the machine with the last GPS speed this process actually
+        // resolved — and only if there is one.
+        //
+        // `lastEffectiveSpeed` is 0.0 on a process that has not yet handled a
+        // fix, which is exactly the state a killed-state relaunch or a
+        // background takeover starts in. Feeding that 0.0 told a session that
+        // had just resumed as MOVING that it was stopped: it dropped straight to
+        // SLOWING and, `speedStationaryDelay` later, to STATIONARY — switching
+        // off the continuous stream while the user was still walking. The
+        // location indicator disappearing shortly after backgrounding the app is
+        // this, and nothing about the device had changed.
+        //
+        // 0.0 means "no speed reported", not "stopped" — the same distinction
+        // the processor draws for a fix that carries no speed. A null
+        // `lastLocation` is precisely "no fix handled in this process", which is
+        // unknown rather than zero, so there is nothing to seed with.
+        if locationEngine.getLastLocation() != nil {
+            smm.onLocation(speed: locationEngine.lastEffectiveSpeed)
+        } else {
+            TraceletLog.debug(
+                "[Tracelet] Speed motion: no fix resolved yet — not seeding the machine "
+                    + "with a fabricated 0.0 m/s")
+        }
 
         TraceletLog.debug(String(format: "[Tracelet] Speed motion mode started (threshold=%.1f, delay=%ds, stationary=%@)",
               smm.speedMovingThreshold, smm.speedStationaryDelay, smm.stationaryTrackingMode == .geofences ? "geofences" : "periodic"))

@@ -1008,8 +1008,31 @@ class TraceletSdk private constructor(private val context: Context) {
             if (!shouldForceMoving) adoptSpeedMotionPace(isResume)
             locationEngine.speedMotionSpeedSink = { speed -> speedMotionManager.onLocation(speed) }
             
-            // Feed the last known GPS speed immediately on startup to prevent deadlocks when physically stationary
-            speedMotionManager.onLocation(locationEngine.lastEffectiveSpeed)
+            // Seed the machine with the last GPS speed this process actually
+            // resolved — and only if there is one.
+            //
+            // `lastEffectiveSpeed` is 0.0 on a process that has not yet handled
+            // a fix, which is exactly the state a killed-state relaunch or a
+            // background takeover starts in. Feeding that 0.0 told a session
+            // that had just resumed as MOVING that it was stopped: it dropped
+            // straight to SLOWING and, `speedStationaryDelay` later, to
+            // STATIONARY — switching off the continuous stream while the user
+            // was still walking. The location indicator disappearing shortly
+            // after backgrounding or killing the app is this, and nothing about
+            // the device had changed.
+            //
+            // 0.0 means "no speed reported", not "stopped". A null
+            // `getLastLocation()` is precisely "no fix handled in this process",
+            // which is unknown rather than zero — the same reading
+            // SmartMotionCoordinator.resolvedSpeed already takes.
+            if (locationEngine.getLastLocation() != null) {
+                speedMotionManager.onLocation(locationEngine.lastEffectiveSpeed)
+            } else {
+                TraceletLog.debug(
+                    "Speed motion: no fix resolved yet — not seeding the machine with a " +
+                        "fabricated 0.0 m/s",
+                )
+            }
             
             if (shouldForceMoving || stateManager.isMoving) {
                 val locationMap = locationEngine.getLastLocation()?.let {
@@ -1030,8 +1053,31 @@ class TraceletSdk private constructor(private val context: Context) {
             if (!shouldForceMoving) adoptSpeedMotionPace(isResume)
             locationEngine.speedMotionSpeedSink = { speed -> speedMotionManager.onLocation(speed) }
             
-            // Feed the last known GPS speed immediately on startup to prevent deadlocks when physically stationary
-            speedMotionManager.onLocation(locationEngine.lastEffectiveSpeed)
+            // Seed the machine with the last GPS speed this process actually
+            // resolved — and only if there is one.
+            //
+            // `lastEffectiveSpeed` is 0.0 on a process that has not yet handled
+            // a fix, which is exactly the state a killed-state relaunch or a
+            // background takeover starts in. Feeding that 0.0 told a session
+            // that had just resumed as MOVING that it was stopped: it dropped
+            // straight to SLOWING and, `speedStationaryDelay` later, to
+            // STATIONARY — switching off the continuous stream while the user
+            // was still walking. The location indicator disappearing shortly
+            // after backgrounding or killing the app is this, and nothing about
+            // the device had changed.
+            //
+            // 0.0 means "no speed reported", not "stopped". A null
+            // `getLastLocation()` is precisely "no fix handled in this process",
+            // which is unknown rather than zero — the same reading
+            // SmartMotionCoordinator.resolvedSpeed already takes.
+            if (locationEngine.getLastLocation() != null) {
+                speedMotionManager.onLocation(locationEngine.lastEffectiveSpeed)
+            } else {
+                TraceletLog.debug(
+                    "Speed motion: no fix resolved yet — not seeding the machine with a " +
+                        "fabricated 0.0 m/s",
+                )
+            }
             
             if (shouldForceMoving || stateManager.isMoving) {
                 val locationMap = locationEngine.getLastLocation()?.let {
