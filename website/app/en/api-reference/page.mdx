@@ -305,6 +305,10 @@ Controls the network synchronization engine. [See Sync Story 📖](/en/core/trac
 - **`deltaCoordinatePrecision`**: `int` *(Default: `5`)*
 - **`sslPinningFingerprints`**: `List<String>?` *(Default: `null`)*
 - **`sslPinningCertificates`**: `List<String>?` *(Default: `null`)*
+- **`syncTelematics`**: `bool` *(Default: `false`)*
+  Uploads stored driving/impact events alongside your locations. Off by default, so an existing payload never changes underneath you. [See Telematics Sync 📖](/en/core/tracelet-sync#scenario-6-the-telematics-backend)
+- **`telematicsUrl`**: `String?` *(Default: `null`)*
+  Sends telematics to their own endpoint as `{"telematics": [...]}` instead of attaching them to the location payload. Requires `syncTelematics`. Pass an empty string (not `null`) to go back to the attached path — config is merged, not replaced.
 
 ---
 

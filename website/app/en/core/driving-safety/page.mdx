@@ -403,6 +403,15 @@ Events come back **newest first**, and syncing does not remove them from this
 view — enabling `syncTelematics` uploads events but leaves your local history
 intact.
 
+### Sending them to your backend
+
+Set `HttpConfig.syncTelematics: true` and the unsynced events ride your normal
+location sync — a root-level `telematics` array on the same POST, or their own
+request when you set `HttpConfig.telematicsUrl`. Failed uploads keep the events
+queued rather than dropping them. For the wire schema, the batching bounds and
+the separate-endpoint trade-off, see
+[Telematics Sync 📖](/en/core/tracelet-sync#scenario-6-the-telematics-backend).
+
 ### Simulating Events
 
 You can inject mock telematics events directly into the native tracking engines. This is perfect for testing your app's reaction (like showing an SOS screen on a crash) or testing your UI components. The example app's **Driving & Safety** page and the Tracelet Doctor overlay use this API to let developers trigger events via buttons.
@@ -445,4 +454,5 @@ In automated tests, you can also drive the engines directly from Dart (they're e
   network, no cloud model, same results on Android and iOS.
 - **Driving events also work on Web** (they're GPS-derived).
 - **Side-channel** — these events are delivered *alongside* your normal
-  `onLocation` stream; they never change your locations, odometer, or sync.
+  `onLocation` stream; they never change your locations or odometer, and they
+  join your sync payload only if you opt in with `syncTelematics`.

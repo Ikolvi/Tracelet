@@ -250,3 +250,105 @@ This allows your backend to accurately visualize battery drain over a route, or 
      tl.SQLQuery(where: "context_task_id = 'delivery-1234'")
    );
    ```
+
+
+---
+
+## Scenario 6: The Telematics Backend
+**Concepts Explored:** Telematics Sync, Event Payload Schema, Separate Endpoints
+
+### The Problem
+Your app already streams locations. Now the product team wants driving behaviour too — harsh braking, harsh acceleration, cornering, speeding — scored per driver. These events are recorded in the background, usually while the phone has no signal and nobody is looking at the screen. They are the rows you can least afford to lose, and there is no user around to tap "retry".
+
+### How Tracelet Sync Solves It
+
+1. **Opt in with `syncTelematics`**
+   Driving and impact events are *always* persisted locally — that is what `Tracelet.getTelematicsEvents()` reads. Uploading them is opt-in and off by default, so an existing integration's payload never changes underneath it.
+
+   ```dart
+   http: tl.HttpConfig(
+     url: 'https://api.example.com/locations',
+     method: tl.HttpMethod.post,
+     autoSync: true,
+     batchSync: true,
+     maxBatchSize: 50,
+     syncTelematics: true, // ← upload driving/impact events too
+   ),
+   ```
+
+2. **One request, one radio wake (the default)**
+   With `syncTelematics: true` and no `telematicsUrl`, events ride the location request as a **root-level `telematics` array**, next to your `location` array. A flush stays a single POST — the background radio wakes once, not twice.
+
+   ```json
+   {
+     "location": [ /* ...your usual location records... */ ],
+     "telematics": [
+       {
+         "id": 412,
+         "event_type": "harsh_braking",
+         "severity": 0.82,
+         "speed": 18.4,
+         "value": 0.47,
+         "latitude": 24.8607,
+         "longitude": 67.0011,
+         "timestamp": "2026-08-20T09:14:02.000Z",
+         "synced": false
+       }
+     ]
+   }
+   ```
+
+   | Field | Type | Meaning |
+   | --- | --- | --- |
+   | `id` | `int` | Primary key of the local SQLite row. Ascending per install — use it to de-duplicate on your side. |
+   | `event_type` | `String` | `harsh_braking`, `harsh_acceleration`, `harsh_cornering`, `speeding`, or an impact kind (`potential_crash`, `crash`, `potential_fall`, `fall`). |
+   | `severity` | `double` | Normalized `0.0–1.0` — how far past the detection threshold the event was. |
+   | `speed` | `double` | Speed at the event in **m/s**. For an impact, the speed going in. |
+   | `value` | `double` | The physical magnitude behind `severity`: **g** for harsh events and impacts, **km/h over the limit** for speeding. |
+   | `latitude` / `longitude` | `double` | Where it happened. |
+   | `timestamp` | `String` | ISO-8601. |
+   | `synced` | `bool` | The row's state when it was read — always `false` for an event on the wire. |
+
+   <Callout type="info">
+     `speed` and `value` joined the persisted row in **3.8.3**. Events recorded by an older install report `0` for both: the columns are non-nullable, so an upgraded database cannot tell an old row from a genuine zero.
+   </Callout>
+
+3. **Batching and retry**
+   Up to **250 unsynced events** go per flush, oldest first. That bound is independent of `maxBatchSize`, which sizes the location batch only.
+
+   Events are marked synced **only when the request that carried them succeeded**. A failed POST — offline, 401, 503 — leaves them queued for the next attempt instead of dropping them, exactly like locations.
+
+   Note that they are *marked*, not deleted: an uploaded event stays visible to `Tracelet.getTelematicsEvents()` so your app can still show the driver their own history. The synced tail is trimmed to the newest 1000 rows so the table cannot grow forever. Unsynced rows are never trimmed.
+
+4. **A separate endpoint (`telematicsUrl`)**
+   If your backend routes driving events somewhere other than locations, set `telematicsUrl`. Events then travel on their own POST — body `{"telematics": [...]}`, with the same headers, timeouts, retries and SSL pinning as `url` — instead of riding the location payload.
+
+   ```dart
+   http: tl.HttpConfig(
+     url: 'https://api.example.com/locations',
+     syncTelematics: true,
+     telematicsUrl: 'https://api.example.com/telematics',
+   ),
+   ```
+
+   The battery cost is smaller than it looks: both requests go back-to-back inside the *same* flush, so the second reuses a radio that is already awake. What drains a battery is a second uploader running on its own schedule, and that is not what this is. A telematics-only flush (events queued, no new locations) skips the location POST entirely rather than sending an empty one.
+
+   To go back to the attached path later, pass an **empty string** rather than `null` — config is merged, not replaced, so `null` means "leave whatever is already there".
+
+5. **Custom body builders see them too**
+   If you shape the body yourself, the unsynced events arrive on the context alongside the locations, using the same field names as the table above:
+
+   ```dart
+   Tracelet.setSyncBodyBuilder((context) async {
+     return {
+       'points': context.locations,
+       'events': context.telematics, // driving/impact events
+     };
+   });
+   ```
+
+   `context.telematics` is empty unless `syncTelematics` is enabled.
+
+<Callout type="warning">
+  **Trips are not persisted or synced.** `Tracelet.onTrip()` delivering the completed trip to your Dart callback is the *only* way a trip leaves the SDK: trip state is held in memory, never written to SQLite, and never sent to an HTTP endpoint. If the isolate that called `start()` goes away before the trip ends, no trip event is produced at all — offline is not the only way to lose one. Until trip persistence ships, save the trip yourself inside `onTrip()` if you need it to survive. See [#356](https://github.com/Ikolvi/Tracelet/issues/356).
+</Callout>
