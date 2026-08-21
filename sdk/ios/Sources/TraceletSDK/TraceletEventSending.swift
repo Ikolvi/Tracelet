@@ -47,6 +47,10 @@ public extension TraceletEventSending {
 
 /// Defaults for surface added after the protocol shipped, so an implementation
 /// outside the SDK keeps compiling across the addition (#402).
-extension TraceletEventSending {
+///
+/// `public` is load-bearing: the protocol is public, so an internal default
+/// cannot satisfy it from another module — `PluginEventDispatcher` lives in
+/// `tracelet_ios` and would fail to conform.
+public extension TraceletEventSending {
     func sendTripStart(_ data: [String: Any]) {}
 }
