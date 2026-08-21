@@ -1076,7 +1076,22 @@ class TraceletSdk private constructor(private val context: Context) {
             // MOVING again until the process was killed.
             smartMotionCoordinator.syncCurrentMode()
             speedMotionManager.start(forceMoving = shouldForceMoving)
-            if (!shouldForceMoving) adoptSpeedMotionPace(isResume)
+            if (!shouldForceMoving) {
+                adoptSpeedMotionPace(isResume)
+            } else {
+                // A forced-moving start left the coordinator's speed input on
+                // whatever the *previous* session ended with: only
+                // adoptSpeedMotionPace() ever writes it, and it does not run
+                // here. `isSpeedMoving` is process-lived state behind the FFI
+                // that no start() resets, so a session that parked stationary
+                // handed the next one a `false` — and the core dedupes a repeat
+                // of that flag to NONE, so the machine could never re-assert it
+                // either. The whole session then hung on the accelerometer
+                // alone. The mirror of the accel seed below: the machine was
+                // just forced to MOVING, so the coordinator has to be told
+                // (#409).
+                smartMotionCoordinator.onSpeedStateChange(true)
+            }
             locationEngine.speedMotionSpeedSink = { speed -> speedMotionManager.onLocation(speed) }
             
             // Seed the machine with the last GPS speed this process actually

@@ -31,6 +31,26 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     private var nextWatchId = 0
     public private(set) var isTracking = false
 
+    /// Whether `startUpdatingLocation()` is feeding the continuous stream *right
+    /// now* — as opposed to ``isTracking``, which answers the wider question
+    /// "is a session alive".
+    ///
+    /// The two came apart when the speed/smart pipeline learned to park without
+    /// tearing the session down: ``switchToStationaryPeriodic()`` and
+    /// ``switchToStationaryGeofences()`` stop continuous updates but deliberately
+    /// leave `isTracking` true so delegate callbacks are still processed. Anything
+    /// asking "is the stream running" therefore got `true` from a parked engine.
+    ///
+    /// `TraceletSmartMotionCoordinator.syncCurrentMode()` is exactly such a
+    /// caller: it ORs the committed pace with the engine's state to decide the
+    /// coordinator's posture (#409). Reading `isTracking` there writes Continuous
+    /// into a coordinator whose engine is parked, and the core emits no wake-up
+    /// for a posture it already believes is Continuous — #344's swallowed shake,
+    /// re-entered from the #409 side. This flag is the signal that question
+    /// actually meant. It is also what the always-on park/resume lifecycle lines
+    /// key off, so they cannot narrate a transition that did not happen.
+    public private(set) var isContinuousStreaming = false
+
     /// When `true`, `start()`/`stop()` leave the Live Activity untouched.
     ///
     /// A `setConfig()` that changes a restart-sensitive key rebuilds the
@@ -468,13 +488,6 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         stallAnnounced = false
         staleFixesSincePace = 0
 
-        // Always-on: this is the transition the OS location indicator follows,
-        // so "the icon disappeared" is answerable from a released app's report.
-        TraceletLog.lifecycle(String(
-            format: "location stream: continuous updates starting — accuracy=%d distanceFilter=%.1fm",
-            runtimeDesiredAccuracy ?? budgetDesiredAccuracy ?? configManager.getDesiredAccuracy(),
-            runtimeDistanceFilter ?? budgetDistanceFilter ?? configManager.getDistanceFilter()))
-
         configureLocationManager()
         checkReducedAccuracy()
 
@@ -496,9 +509,24 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             && !geofenceHighAccuracyMode
         let skipContinuousGps = configManager.getUseSignificantChangesOnly() || isLowPowerGeofences
 
+        // Always-on: this is the transition the OS location indicator follows,
+        // so "the icon disappeared" is answerable from a released app's report.
+        //
+        // Emitted here rather than before the branch, because the two skip modes
+        // deliberately start no stream and saying otherwise leaves a report with
+        // an unclosed interval — a start with no stop, which is exactly the shape
+        // of the session #409 is about.
         if !skipContinuousGps {
             locationManager.startUpdatingLocation()
             startGpsLossTimer()
+            announceContinuousStart(resuming: false)
+        } else {
+            isContinuousStreaming = false
+            TraceletLog.lifecycle(
+                "location stream: continuous updates skipped — "
+                    + (configManager.getUseSignificantChangesOnly()
+                        ? "useSignificantChangesOnly, significant-change monitoring is the only wake-up"
+                        : "low-power geofences, region monitoring is the only wake-up"))
         }
 
         if #available(iOS 17.0, *) {
@@ -552,7 +580,15 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         rejectionsSinceAccept.removeAll()
         stallAnnounced = false
         staleFixesSincePace = 0
-        TraceletLog.lifecycle("location stream: continuous updates stopping")
+        // Only if updates were actually flowing. A session parked by the
+        // speed/smart pipeline already announced its stop at the park, and a
+        // second line here would date the parking to the moment the user
+        // stopped tracking — minutes or hours late. Matches Android, which
+        // logs this only when a tracking callback is registered.
+        if isContinuousStreaming {
+            TraceletLog.lifecycle("location stream: continuous updates stopping")
+        }
+        isContinuousStreaming = false
 
         if #available(iOS 17.0, *) {
             #if canImport(ActivityKit)
@@ -589,6 +625,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         guard !isPeriodicTracking else { return }
         isPeriodicTracking = true
         isTracking = true // so delegate callbacks are processed
+        isContinuousStreaming = false
 
         let interval = configManager.getPeriodicLocationInterval()
         TraceletLog.debug(String(format: "[Tracelet] startPeriodic: interval=%ds, accuracy=%d", interval, configManager.getPeriodicDesiredAccuracy()))
@@ -633,6 +670,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// remain active.
     public func switchToStationaryPeriodic() {
         TraceletLog.debug("[Tracelet] switchToStationaryPeriodic: stopping continuous, starting periodic timer")
+        announceContinuousStop(becoming: "stationary periodic")
         locationManager.stopUpdatingLocation()
         cancelGpsLossTimer()
         deactivateDeadReckoning()
@@ -649,6 +687,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// active. Background sessions remain active.
     public func switchToStationaryGeofences() {
         TraceletLog.debug("[Tracelet] switchToStationaryGeofences: stopping continuous, geofences remain active")
+        announceContinuousStop(becoming: "stationary geofences")
         locationManager.stopUpdatingLocation()
         cancelGpsLossTimer()
         deactivateDeadReckoning()
@@ -679,8 +718,36 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         }
 
         configureLocationManager()
+        announceContinuousStart(resuming: true)
         locationManager.startUpdatingLocation()
         startGpsLossTimer()
+    }
+
+    /// Records the end of the continuous stream on the always-on channel, if it
+    /// was in fact running.
+    ///
+    /// The parks below stop `startUpdatingLocation()` without tearing the
+    /// session down, so they never went through ``stop()`` — the one place that
+    /// logged this. On Android the same transition runs through
+    /// `LocationEngine.stop()` and is recorded, so an iOS report was missing the
+    /// single line that says when GPS was parked: the evidence #409 was
+    /// diagnosed from, absent on exactly one of the two platforms.
+    private func announceContinuousStop(becoming mode: String) {
+        guard isContinuousStreaming else { return }
+        isContinuousStreaming = false
+        TraceletLog.lifecycle("location stream: continuous updates stopping — parking in \(mode)")
+    }
+
+    /// The mirror of ``announceContinuousStop(becoming:)``: the stream is now
+    /// feeding, from a fresh ``start()`` or from a resume out of a park.
+    private func announceContinuousStart(resuming: Bool) {
+        guard !isContinuousStreaming else { return }
+        isContinuousStreaming = true
+        TraceletLog.lifecycle(String(
+            format: "location stream: continuous updates starting — accuracy=%d distanceFilter=%.1fm%@",
+            runtimeDesiredAccuracy ?? budgetDesiredAccuracy ?? configManager.getDesiredAccuracy(),
+            runtimeDistanceFilter ?? budgetDistanceFilter ?? configManager.getDistanceFilter(),
+            resuming ? " (resuming from a stationary park)" : ""))
     }
 
     /// Configures CLLocationManager for periodic mode.
@@ -1183,6 +1250,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             configureLocationManager()
             locationManager.startUpdatingLocation()
             isTracking = true
+            isContinuousStreaming = true
         }
         return watchId
     }

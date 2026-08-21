@@ -133,6 +133,113 @@ class SmartMotionPostureSyncTest {
     }
 
     /**
+     * The same wedge one layer down, and what the #409 example card actually
+     * ran into: the decision was reached and then dropped on the floor.
+     *
+     * `onSpeedStateChange(false)` with a *moving* accelerometer and a near-zero
+     * resolved speed reads the accelerometer as hand tremor and overrides it to
+     * stationary. That override is a real accel transition, and when the speed
+     * flag is already stationary it is the transition that carries the whole
+     * stop decision — `evaluate_state` answers it with
+     * SWITCH_TO_STATIONARY_PERIODIC. The return value went unread, and the
+     * `onSpeedStateChange` that followed deduped to NONE because the flag it
+     * would have flipped was already false. Nothing was handled, the engine was
+     * never told, and continuous GPS ran on a parked device.
+     *
+     * A stale stationary speed flag is not exotic: `isSpeedMoving` is
+     * process-lived state behind the FFI, and until this fix only a
+     * *non*-forced start re-asserted it, so any session that parked handed the
+     * next forced-moving one a `false` it could never clear.
+     */
+    @Test
+    fun `a tremor override with a stale speed flag still stops the stream`() {
+        // A previous session that parked stationary.
+        state.isMoving = false
+        coordinator.syncCurrentMode()
+        coordinator.onSpeedStateChange(false)
+        idle()
+        assertFalse("precondition: the speed input is stale-stationary", coordinator.isSpeedMoving)
+
+        // The next session: a moving pace, a live stream, the accelerometer
+        // seeded moving exactly as start() seeds it.
+        state.isMoving = true
+        coordinator.syncCurrentMode()
+        coordinator.onAccelStateChange(true)
+        engine.start()
+        idle()
+        assertTrue("precondition: the stream is live", engine.isTracking)
+        assertTrue("precondition: only the accelerometer holds the OR up", coordinator.isAccelMoving)
+
+        // A phone lying on a desk: fixes keep arriving, all at ~0 m/s.
+        deliverFix(speedMps = 0f)
+        assertTrue(
+            "precondition: a resolved near-zero speed is what reads a moving " +
+                "accelerometer as hand tremor",
+            engine.getLastLocation() != null && engine.lastEffectiveSpeed <= 0.15,
+        )
+
+        coordinator.onSpeedStateChange(false)
+        idle()
+
+        assertFalse(
+            "#409: the tremor override produced the stationary switch and it was " +
+                "discarded, so the stop was never handled and GPS kept running " +
+                "for the rest of the session",
+            engine.isTracking,
+        )
+    }
+
+    /**
+     * The override must not fire on a device that is genuinely moving slowly —
+     * the walking case #333 protects. Pinned alongside the fix above so
+     * handling the action cannot quietly become "park on any low-speed fix".
+     */
+    @Test
+    fun `a slow walk keeps the stream open`() {
+        state.isMoving = true
+        coordinator.syncCurrentMode()
+        coordinator.onAccelStateChange(true)
+        engine.start()
+        idle()
+
+        deliverFix(speedMps = 0.8f) // above the 0.15 m/s tremor threshold
+        assertTrue(
+            "precondition: the walk is resolved above the tremor threshold",
+            engine.lastEffectiveSpeed > 0.15,
+        )
+
+        coordinator.onSpeedStateChange(false)
+        idle()
+
+        assertTrue(
+            "the accelerometer is the one telling the truth below the speed " +
+                "threshold — overruling it here is #333",
+            engine.isTracking,
+        )
+    }
+
+    /**
+     * Feeds one accepted fix so `resolvedSpeed` is a resolved ~0 rather than
+     * `null`, which the coordinator reads as *unknown* and refuses to override
+     * the accelerometer on (#333).
+     */
+    private fun deliverFix(speedMps: Float) {
+        client.callback?.onLocationResult(
+            listOf(
+                Location("fused").apply {
+                    latitude = 10.787929
+                    longitude = 76.684183
+                    accuracy = 5f
+                    speed = speedMps
+                    time = System.currentTimeMillis()
+                    elapsedRealtimeNanos = android.os.SystemClock.elapsedRealtimeNanos()
+                },
+            ),
+        )
+        idle()
+    }
+
+    /**
      * #344, which the #409 fix must not undo: a session that starts stationary
      * with no stream has to be able to wake up. Reading the posture off the
      * engine alone would write Continuous here and deafen the accelerometer.

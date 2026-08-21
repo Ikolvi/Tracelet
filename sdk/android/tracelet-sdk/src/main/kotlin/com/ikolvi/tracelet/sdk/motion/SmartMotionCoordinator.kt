@@ -65,6 +65,7 @@ class SmartMotionCoordinator(
      * Called when the GPS speed state changes.
      */
     fun onSpeedStateChange(isMoving: Boolean) {
+        var overrideAction = uniffi.tracelet_core.CoordinatorAction.NONE
         if (!isMoving && coreCoordinator.isAccelMoving()) {
             // Speed SM declared stationary (30s of speed < 1.5 m/s) but accel
             // still reports moving. This could be:
@@ -86,14 +87,24 @@ class SmartMotionCoordinator(
                     logger.info("SmartMotionCoordinator: no GPS speed resolved yet — trusting accel, staying continuous.")
                 lastSpeed <= TREMOR_SPEED_THRESHOLD -> {
                     logger.info("SmartMotionCoordinator: GPS speed near zero ($lastSpeed m/s) but accel moving — overriding accel to false (hand tremor).")
-                    coreCoordinator.onAccelStateChange(false)
+                    // Through [onAccelStateChange], so the action this produces
+                    // is *handled*. The accel flag is the second half of the OR:
+                    // when the speed flag is already stationary, flipping it here
+                    // is the transition that carries the whole stop decision.
+                    // `evaluate_state` returned SWITCH_TO_STATIONARY_PERIODIC and
+                    // the return value went unread, then the
+                    // `onSpeedStateChange` below deduped to NONE because the flag
+                    // it would have flipped was already false — so nothing was
+                    // ever handled, the engine was never told, and continuous GPS
+                    // ran on a parked device for the rest of the session (#409).
+                    overrideAction = onAccelStateChange(false)
                 }
                 else ->
                     logger.info("SmartMotionCoordinator: GPS speed $lastSpeed m/s is above the $TREMOR_SPEED_THRESHOLD m/s tremor threshold — trusting accel, staying continuous.")
             }
         }
         val action = coreCoordinator.onSpeedStateChange(isMoving)
-        logger.debug("SmartMotionCoordinator: onSpeedStateChange -> isMoving=$isMoving, action=$action, isAccelMoving=${coreCoordinator.isAccelMoving()}, isSpeedMoving=${coreCoordinator.isSpeedMoving()}")
+        logger.debug("SmartMotionCoordinator: onSpeedStateChange -> isMoving=$isMoving, action=$action, isAccelMoving=${coreCoordinator.isAccelMoving()}, isSpeedMoving=${coreCoordinator.isSpeedMoving()}, overrideAction=$overrideAction")
         handleAction(action)
     }
 

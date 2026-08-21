@@ -27,6 +27,19 @@ import 'package:tracelet_example/issues/issue_card_state.dart';
 ///
 /// Before the fix the run ends with the stream still open and no
 /// `location stream: continuous updates stopping` on the lifecycle channel.
+///
+/// **The iOS half.** The posture fix alone did not make this card pass there,
+/// for three more reasons. The coordinator resolves "speed says stationary,
+/// accelerometer says moving" by reading the last resolved speed, and a
+/// near-zero one overrides the accelerometer — an override that *is* the stop
+/// transition whenever the speed input is already stationary, and whose result
+/// was discarded. The speed input got into that state on its own: only a
+/// session starting stationary re-asserted it, so a session that parked handed
+/// the next started-moving one a value it could never clear. And the evidence
+/// this card reads did not exist on iOS: the motion pipeline parks by stopping
+/// location updates without ending the session, so it never went through the
+/// path that records the stop — the same reason `isTracking` (still true while
+/// parked) was the wrong signal for "is the stream live".
 class Issue409Card extends StatefulWidget {
   const Issue409Card({super.key});
 
@@ -131,7 +144,12 @@ class _Issue409CardState extends State<Issue409Card>
         'live stream. Reading the engine alone would be #344 again, because '
         'syncCurrentMode() runs before start() subscribes anything: a moving '
         'start would sync parked and then stream, wedged the same way from the '
-        'other side.',
+        'other side.\n\n'
+        'On iOS the same run also needed three more things: the stop the '
+        'tremor override produces is handled instead of discarded, the '
+        "coordinator's speed input is seeded on a started-moving session "
+        'instead of inheriting the last one, and parking the stream is '
+        'recorded on the always-on channel — which is the second check above.',
       );
     } catch (e) {
       setStatus('❌ FAILED: $e\n\n${results.join('\n')}');
