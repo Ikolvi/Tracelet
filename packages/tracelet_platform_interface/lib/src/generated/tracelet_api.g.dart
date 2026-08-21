@@ -3277,6 +3277,7 @@ class TlTelematicsRecord {
     required this.longitude,
     required this.timestamp,
     required this.synced,
+    this.tripId,
   });
 
   /// The primary key.
@@ -3313,6 +3314,9 @@ class TlTelematicsRecord {
   /// Whether the event has been synced to the server.
   bool synced;
 
+  /// The trip this event was recorded during, or `null` outside a trip (#402).
+  String? tripId;
+
   List<Object?> _toList() {
     return <Object?>[
       id,
@@ -3324,6 +3328,7 @@ class TlTelematicsRecord {
       longitude,
       timestamp,
       synced,
+      tripId,
     ];
   }
 
@@ -3343,6 +3348,7 @@ class TlTelematicsRecord {
       longitude: result[6]! as double,
       timestamp: result[7]! as String,
       synced: result[8]! as bool,
+      tripId: result[9] as String?,
     );
   }
 
@@ -3363,7 +3369,8 @@ class TlTelematicsRecord {
         _deepEquals(latitude, other.latitude) &&
         _deepEquals(longitude, other.longitude) &&
         _deepEquals(timestamp, other.timestamp) &&
-        _deepEquals(synced, other.synced);
+        _deepEquals(synced, other.synced) &&
+        _deepEquals(tripId, other.tripId);
   }
 
   @override

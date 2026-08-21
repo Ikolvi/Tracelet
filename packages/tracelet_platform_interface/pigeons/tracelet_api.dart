@@ -1205,6 +1205,7 @@ class TlTelematicsRecord {
     required this.synced,
     this.speed,
     this.value,
+    this.tripId,
   });
 
   /// The primary key.
@@ -1240,6 +1241,9 @@ class TlTelematicsRecord {
 
   /// Whether the event has been synced to the server.
   final bool synced;
+
+  /// The trip this event was recorded during, or `null` outside a trip (#402).
+  final String? tripId;
 }
 
 class TlLogEntry {

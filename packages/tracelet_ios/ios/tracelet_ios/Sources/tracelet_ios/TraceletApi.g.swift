@@ -2827,6 +2827,8 @@ struct TlTelematicsRecord: Hashable {
   var timestamp: String
   /// Whether the event has been synced to the server.
   var synced: Bool
+  /// The trip this event was recorded during, or `null` outside a trip (#402).
+  var tripId: String? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -2840,6 +2842,7 @@ struct TlTelematicsRecord: Hashable {
     let longitude = pigeonVar_list[6] as! Double
     let timestamp = pigeonVar_list[7] as! String
     let synced = pigeonVar_list[8] as! Bool
+    let tripId: String? = nilOrValue(pigeonVar_list[9])
 
     return TlTelematicsRecord(
       id: id,
@@ -2850,7 +2853,8 @@ struct TlTelematicsRecord: Hashable {
       latitude: latitude,
       longitude: longitude,
       timestamp: timestamp,
-      synced: synced
+      synced: synced,
+      tripId: tripId
     )
   }
   func toList() -> [Any?] {
@@ -2864,13 +2868,14 @@ struct TlTelematicsRecord: Hashable {
       longitude,
       timestamp,
       synced,
+      tripId,
     ]
   }
   static func == (lhs: TlTelematicsRecord, rhs: TlTelematicsRecord) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsTraceletApi(lhs.id, rhs.id) && deepEqualsTraceletApi(lhs.eventType, rhs.eventType) && deepEqualsTraceletApi(lhs.severity, rhs.severity) && deepEqualsTraceletApi(lhs.speed, rhs.speed) && deepEqualsTraceletApi(lhs.value, rhs.value) && deepEqualsTraceletApi(lhs.latitude, rhs.latitude) && deepEqualsTraceletApi(lhs.longitude, rhs.longitude) && deepEqualsTraceletApi(lhs.timestamp, rhs.timestamp) && deepEqualsTraceletApi(lhs.synced, rhs.synced)
+    return deepEqualsTraceletApi(lhs.id, rhs.id) && deepEqualsTraceletApi(lhs.eventType, rhs.eventType) && deepEqualsTraceletApi(lhs.severity, rhs.severity) && deepEqualsTraceletApi(lhs.speed, rhs.speed) && deepEqualsTraceletApi(lhs.value, rhs.value) && deepEqualsTraceletApi(lhs.latitude, rhs.latitude) && deepEqualsTraceletApi(lhs.longitude, rhs.longitude) && deepEqualsTraceletApi(lhs.timestamp, rhs.timestamp) && deepEqualsTraceletApi(lhs.synced, rhs.synced) && deepEqualsTraceletApi(lhs.tripId, rhs.tripId)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -2884,6 +2889,7 @@ struct TlTelematicsRecord: Hashable {
     deepHashTraceletApi(value: longitude, hasher: &hasher)
     deepHashTraceletApi(value: timestamp, hasher: &hasher)
     deepHashTraceletApi(value: synced, hasher: &hasher)
+    deepHashTraceletApi(value: tripId, hasher: &hasher)
   }
 }
 
