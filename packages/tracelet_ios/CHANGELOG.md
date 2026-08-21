@@ -1,5 +1,7 @@
 ## Unreleased
 
+**FIX**: the pinned native SDK cancels the speed machine's stationary countdown on stop; no Dart or plugin change ([#412](https://github.com/Ikolvi/Tracelet/issues/412)).
+
 **FIX**: the pinned native SDK opens the evaluator's location stream for an in-app-evaluated fence on a stationary start; no Dart or plugin change ([#412](https://github.com/Ikolvi/Tracelet/issues/412), [#357](https://github.com/Ikolvi/Tracelet/issues/357)).
 
 **FIX**: the pinned native SDK keeps a fresh `start()`'s committed pace against the last-known-speed seed, and stops verbose chatter evicting the lifecycle trace; no Dart or plugin change ([#344](https://github.com/Ikolvi/Tracelet/issues/344), [#318](https://github.com/Ikolvi/Tracelet/issues/318)).

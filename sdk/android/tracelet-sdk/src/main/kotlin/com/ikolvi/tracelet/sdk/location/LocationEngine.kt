@@ -777,6 +777,7 @@ class LocationEngine(
         // that never accepts one at all is exactly the case worth announcing
         // (#397).
         resetStallWatchdog(seed = true)
+        reportedFixWhileDisabled = false
 
         // Always-on: this is the transition the OS location indicator follows,
         // so "the icon disappeared" is answerable from a released app's report.
@@ -838,6 +839,14 @@ class LocationEngine(
      */
     @Volatile
     private var reportedFixWhileStopped = false
+
+    /**
+     * Guards the "fix after the session stopped" lifecycle line to one per
+     * stopped session, so a straggling delivery is named once rather than every
+     * fix still in the provider's pipeline.
+     */
+    @Volatile
+    private var reportedFixWhileDisabled = false
 
     /**
      * How many [LocationEngine] instances in this process currently hold a
@@ -1452,6 +1461,32 @@ class LocationEngine(
         // engine in the same process from a second registration on this one.
         // Rate-limited to one line per stopped period so it cannot itself
         // become the chatter that buries the trace (#412).
+        // A fix that arrives after the session was stopped is not ours to record.
+        //
+        // `removeLocationUpdates` is asynchronous: fixes already in the fused
+        // client's delivery pipeline still arrive after it returns, and the
+        // callback object they carry still references this engine. The field
+        // trace shows one landing a second after `session: stop`, and the whole
+        // pipeline ran for it — enrich, geocode, odometer, persist — appending a
+        // row to a database the user had just stopped filling.
+        //
+        // `state.enabled` is the master switch the rest of the SDK already
+        // gates on (`LocationService`'s stationary tick reads the same field),
+        // and it is false only once `stop()` has run. The one-shots that
+        // legitimately deliver without a continuous stream — the #385 startup
+        // fix, the stationary->moving immediate fix — all run inside an enabled
+        // session, and `getCurrentPosition()` never routes here at all (#412).
+        if (!state.enabled) {
+            if (!reportedFixWhileDisabled) {
+                reportedFixWhileDisabled = true
+                TraceletLog.lifecycle(
+                    "location stream: dropping a fix that arrived after the session " +
+                        "stopped — event=$event engine=${System.identityHashCode(this)} " +
+                        "startupFix=$isStartupFix",
+                )
+            }
+            return
+        }
         if (trackingCallback == null) {
             if (!reportedFixWhileStopped) {
                 reportedFixWhileStopped = true

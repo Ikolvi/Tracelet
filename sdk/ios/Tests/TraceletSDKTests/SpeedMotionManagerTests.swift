@@ -418,6 +418,35 @@ final class SpeedMotionManagerTests: XCTestCase {
 
     // MARK: - Recording doubles
 
+    /// #412: `stop()` cleared `isRunning` but left the scheduled SLOWING
+    /// countdown armed, and the work item's own guard tested `state`, not
+    /// `isRunning`.
+    ///
+    /// The transition it then ran is not inert — `switchToStationary()` drives
+    /// the coordinator into the stationary schedule, which arms a repeating
+    /// location timer on a session the user had already stopped. Same defect as
+    /// Android, found in an Android field trace.
+    func testAStoppedManagerDoesNotFireAnArmedSlowingCountdown() {
+        makeManager(stationaryDelaySeconds: 1)
+
+        manager.onLocation(speed: 5.0)
+        manager.onLocation(speed: 0.1)  // enter SLOWING, arming the countdown
+        XCTAssertEqual(manager.state, .slowing, "precondition: the countdown is armed")
+
+        manager.stop()
+
+        let pastTheCountdown = expectation(description: "past the countdown")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { pastTheCountdown.fulfill() }
+        waitForExpectations(timeout: 5)
+
+        XCTAssertFalse(
+            delegate.switchedToStationaryPeriodic,
+            "a stopped session must not be switched into the stationary schedule (#412)")
+        XCTAssertEqual(
+            manager.state, .slowing,
+            "and the stopped manager must not transition at all")
+    }
+
     private final class RecordingDelegate: SpeedMotionDelegate {
         var switchedToContinuous = false
         var switchedToStationaryPeriodic = false

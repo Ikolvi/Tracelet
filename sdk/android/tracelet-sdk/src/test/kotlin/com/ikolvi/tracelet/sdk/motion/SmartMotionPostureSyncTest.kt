@@ -87,6 +87,13 @@ class SmartMotionPostureSyncTest {
             ),
         )
         state = StateManager(context)
+        // These drive fixes through the engine as a *running* session does.
+        // `onLocationReceived` drops a fix when the session is not enabled,
+        // because after `stop()` a straggling delivery is not ours to record
+        // (#412) — and an engine streaming into a disabled session is a state
+        // production never reaches: `start()` sets this before it starts the
+        // engine or asks for the startup fix.
+        state.enabled = true
         state.trackingMode = TrackingMode.CONTINUOUS
 
         engine = LocationEngine(context, config, state, mock<TraceletEventSender>())

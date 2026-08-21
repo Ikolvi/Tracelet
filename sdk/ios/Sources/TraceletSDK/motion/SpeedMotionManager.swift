@@ -214,6 +214,13 @@ public final class SpeedMotionManager {
     public func stop() {
         guard isRunning else { return }
         isRunning = false
+        // The SLOWING countdown is a scheduled work item, and a stopped manager
+        // must not still be holding one. Leaving it armed let a session stopped
+        // mid-SLOWING transition to `.stationary` minutes later, and that
+        // transition runs `switchToStationary()` — which drives the coordinator
+        // into the stationary schedule and arms a repeating location timer on a
+        // session the user had already stopped. Same defect as Android (#412).
+        stopSlowingTimer()
         TraceletLog.debug("[SpeedMotion] stop")
     }
 
@@ -321,7 +328,10 @@ public final class SpeedMotionManager {
             guard let self = self else { return }
             let workItem = DispatchWorkItem { [weak self] in
                 guard let self = self else { return }
-                if self.state == .slowing {
+                // `isRunning` as well as the state: a scheduled item cannot be
+                // recalled once it fires, only ignored, and the state alone does
+                // not know the session ended (#412).
+                if self.isRunning, self.state == .slowing {
                     let previousState = self.state
                     self.state = .stationary
                     self.wakeCount = 0
