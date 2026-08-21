@@ -59,6 +59,40 @@ public class TraceletSmartMotionCoordinator {
     /// coordinator that is genuinely parked, and the core emits no wake-up for a
     /// posture it already believes is Continuous — #344's swallowed shake,
     /// re-entered through the #409 fix.
+    /// Re-reads the posture once ``TraceletSdk/start(isResume:)`` has settled the
+    /// engine, and lets the core act on what it finds.
+    ///
+    /// ``syncCurrentMode()`` runs *before* start() touches the engine, so it can
+    /// only ever read the pace committed a few lines earlier. Anything that opens
+    /// a stream afterwards leaves the coordinator holding a posture that is
+    /// merely a prediction — and when the prediction is wrong the core stays
+    /// silent, because `evaluate_state` speaks only on a *transition* and both
+    /// motion inputs are already where they were.
+    ///
+    /// The field report is a session that resumed while a fence too small for the
+    /// OS to resolve needed in-app evaluation: the #357 branch starts a stream so
+    /// the fence has something to be decided from, and a parked coordinator then
+    /// has nothing it can say that would ever stop it. What the device shows is
+    /// continuous GPS — every fix `isMoving: false`, at the configured interval,
+    /// with the location indicator lit — for the rest of the session.
+    ///
+    /// Reconciling asks the core to judge the state it is actually in rather than
+    /// waiting for a transition that will never come. A stationary session that
+    /// inherited a stream is parked into the stationary schedule, which still
+    /// feeds the in-app fence evaluator at the stationary cadence; a moving one
+    /// is left streaming (#409).
+    public func reconcilePosture() {
+        syncCurrentMode()
+        guard let core = coreCoordinator else { return }
+        let useGeofences = sdk?.configManager?.getStationaryTrackingMode() == .geofences
+        let action = core.evaluateConfigurationChange(useGeofences: useGeofences)
+        TraceletLog.debug(
+            "[Tracelet] SmartMotionCoordinator: reconcilePosture -> action=\(action), "
+                + "accelMoving=\(isAccelMoving) speedMoving=\(isSpeedMoving) "
+                + "streaming=\(sdk?.locationEngine?.isContinuousStreaming ?? false)")
+        handleAction(action)
+    }
+
     public func syncCurrentMode() {
         guard let stateManager = sdk?.stateManager else { return }
 

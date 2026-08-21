@@ -1209,6 +1209,21 @@ class TraceletSdk private constructor(private val context: Context) {
             }
         }
 
+        // The engine has settled: whatever this start() was going to open or
+        // leave closed, it has done. syncCurrentMode() above could only read the
+        // pace, because none of it had happened yet — so a session that ends up
+        // streaming while both motion inputs say stationary (the #357 branch
+        // right above is exactly that case) holds a parked posture over a live
+        // stream, and no transition will ever arrive to correct it. Ask the core
+        // to judge the state it is in rather than the one that was predicted
+        // (#409).
+        if (::smartMotionCoordinator.isInitialized &&
+            configManager.getMotionDetectionMode() ==
+            com.ikolvi.tracelet.sdk.model.MotionDetectionMode.SMART
+        ) {
+            smartMotionCoordinator.reconcilePosture()
+        }
+
         startHeartbeat()
         startStopAfterElapsedTimer()
         startBatteryBudgetSampling()
@@ -1476,6 +1491,18 @@ class TraceletSdk private constructor(private val context: Context) {
                     "fence — the session is stationary, so nothing was running (#357)"
             )
             locationEngine.start()
+            // The stream just opened behind the coordinator's back, exactly as it
+            // does on a stationary start. Reconciling parks it again when both
+            // motion inputs say stationary — the fence keeps its acquisition,
+            // because the stationary schedule fires its first one-shot
+            // immediately, and then runs at the stationary cadence instead of at
+            // full rate for the rest of the session (#412).
+            if (::smartMotionCoordinator.isInitialized &&
+                configManager.getMotionDetectionMode() ==
+                com.ikolvi.tracelet.sdk.model.MotionDetectionMode.SMART
+            ) {
+                smartMotionCoordinator.reconcilePosture()
+            }
         }
     }
 

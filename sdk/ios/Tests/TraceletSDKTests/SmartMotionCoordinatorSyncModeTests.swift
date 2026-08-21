@@ -71,6 +71,53 @@ final class SmartMotionCoordinatorSyncModeTests: XCTestCase {
             "returned .none before the posture accounted for the engine")
     }
 
+    /// The field report's shape: the engine is streaming while both motion inputs
+    /// say stationary, and no transition is available to say so.
+    ///
+    /// A session that starts or resumes stationary runs no stream by design —
+    /// until something else opens one, which the #357 in-app fence evaluator
+    /// does. `evaluate_state` speaks only on a *transition*, and both inputs are
+    /// already where they were, so re-asserting either is deduped to `.none` and
+    /// the stream survives every one of them. Only re-evaluating the state the
+    /// coordinator is actually in can end it.
+    func testAStreamInheritedByAStationarySessionIsEndedByAReEvaluation() {
+        let core = SmartMotionCoordinator(useGeofencesWhenStationary: false)
+        // A previous session settled stationary; `is_accel_moving` starts false.
+        _ = core.onSpeedStateChange(isMoving: false)
+        XCTAssertFalse(core.isSpeedMoving())
+        XCTAssertFalse(core.isAccelMoving())
+
+        // What reconcilePosture() writes: the engine's own state, not the pace.
+        core.setCurrentMode(
+            mode: TraceletSmartMotionCoordinator.coordinatorMode(
+                sessionMode: .continuous, isMoving: false, isStreamLive: true,
+                useGeofencesWhenStationary: false))
+
+        XCTAssertEqual(
+            core.onSpeedStateChange(isMoving: false), .none,
+            "precondition: a flag the core already holds is deduped away, so the "
+                + "session has nothing left to say that would stop the stream")
+
+        XCTAssertEqual(
+            core.evaluateConfigurationChange(useGeofences: false), .switchToStationaryPeriodic,
+            "#409: continuous GPS on a device both inputs report as parked has to "
+                + "end, and only a re-evaluation can end it")
+    }
+
+    /// The control: re-evaluating must not park a session that is genuinely moving.
+    func testAReEvaluationLeavesAMovingSessionStreaming() {
+        let core = SmartMotionCoordinator(useGeofencesWhenStationary: false)
+        _ = core.onAccelStateChange(isMoving: true)
+        core.setCurrentMode(
+            mode: TraceletSmartMotionCoordinator.coordinatorMode(
+                sessionMode: .continuous, isMoving: true, isStreamLive: true,
+                useGeofencesWhenStationary: false))
+
+        XCTAssertEqual(
+            core.evaluateConfigurationChange(useGeofences: false), .none,
+            "the accelerometer says the device is moving — the OR holds")
+    }
+
     func testContinuousSessionStartedStationaryMapsToStationaryPosture() {
         XCTAssertEqual(
             TraceletSmartMotionCoordinator.coordinatorMode(

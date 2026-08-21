@@ -133,6 +133,68 @@ class SmartMotionPostureSyncTest {
     }
 
     /**
+     * The field report, start to finish: a stationary start that also has a
+     * fence too small for the OS to resolve.
+     *
+     * The pace branch runs no stream by design, and then the #357 branch starts
+     * one so the fence has something to be decided from — leaving a full-rate
+     * stream (`distanceFilter=0.0m interval=2000ms`) on a device that never
+     * moved, with the location indicator lit for the whole session. Nothing the
+     * session could say would stop it: the coordinator was parked, and both
+     * motion inputs were already stationary, which the core dedupes to NONE.
+     */
+    @Test
+    fun `a stationary start that inherited a fence stream is parked`() {
+        state.isMoving = false
+        coordinator.syncCurrentMode()
+
+        // The #357 branch: the session starts stationary, so this is the only
+        // thing running.
+        engine.start()
+        idle()
+        assertTrue("precondition: the in-app fence evaluator's stream is live", engine.isTracking)
+
+        // A motion input re-asserting what it already said cannot rescue this —
+        // the core answers a repeat with NONE, so the stream survives it.
+        coordinator.onSpeedStateChange(false)
+        idle()
+        assertTrue(
+            "precondition: no transition is available to stop the stream",
+            engine.isTracking,
+        )
+
+        coordinator.reconcilePosture()
+        idle()
+
+        assertFalse(
+            "#409: a session whose engine is streaming while both motion inputs " +
+                "say stationary must be parked into the stationary schedule — the " +
+                "fence is still evaluated there, at the stationary cadence rather " +
+                "than at 2-second full rate",
+            engine.isTracking,
+        )
+    }
+
+    /** The control: reconciling must not park a session that is genuinely moving. */
+    @Test
+    fun `reconciling a moving session leaves its stream alone`() {
+        state.isMoving = true
+        coordinator.syncCurrentMode()
+        coordinator.onAccelStateChange(true)
+        engine.start()
+        idle()
+
+        coordinator.reconcilePosture()
+        idle()
+
+        assertTrue(
+            "the accelerometer says the device is moving — the OR holds and the " +
+                "stream stays open",
+            engine.isTracking,
+        )
+    }
+
+    /**
      * The same wedge one layer down, and what the #409 example card actually
      * ran into: the decision was reached and then dropped on the floor.
      *

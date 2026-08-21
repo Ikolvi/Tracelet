@@ -147,6 +147,51 @@ class SmartMotionCoordinator(
      * of the committed pace and the engine's actual state — the only reading
      * that survives both directions.
      */
+    /**
+     * Re-reads the posture once [TraceletSdk.start] has settled the engine, and
+     * lets the core act on what it finds.
+     *
+     * [syncCurrentMode] runs *before* start() touches the engine, so it can only
+     * ever read the pace that was committed a few lines earlier. Everything that
+     * opens a stream afterwards leaves the coordinator holding a posture that is
+     * merely a prediction — and when the prediction is wrong the core is silent,
+     * because `evaluate_state` only speaks on a *transition* and both motion
+     * inputs are already where they were.
+     *
+     * The field report is the stationary start of a session that also has a fence
+     * too small for the OS to resolve. The pace branch runs no stream, and then
+     * the #357 branch starts one so the fence has something to be decided from:
+     *
+     *   session: start — mode=continuous resume=false isMoving=false motionMode=SMART
+     *   location stream: continuous updates starting — distanceFilter=0.0m interval=2000ms
+     *   [geofence] starting the location stream for an in-app-evaluated fence
+     *   speed-motion: restored STATIONARY
+     *
+     * — and from there a 2-second GPS stream on a device that never moved, for
+     * the whole session, with the location indicator lit the entire time. The
+     * coordinator was parked, so nothing it could be told would stop the stream:
+     * both inputs were already stationary and the core dedupes a repeat.
+     *
+     * Reconciling asks the core to judge the state it is actually in rather than
+     * waiting for a transition that will never come. A stationary session that
+     * inherited a stream is parked into the stationary schedule — which still
+     * feeds the in-app fence evaluator, at the stationary cadence rather than at
+     * full rate — and a moving one is left streaming (#409).
+     */
+    fun reconcilePosture() {
+        syncCurrentMode()
+        val useGeofences = configManager.getStationaryTrackingMode() ==
+            com.ikolvi.tracelet.sdk.model.StationaryTrackingMode.GEOFENCES
+        val action = coreCoordinator.evaluateConfigurationChange(useGeofences)
+        logger.debug(
+            "SmartMotionCoordinator: reconcilePosture -> action=$action, " +
+                "isAccelMoving=${coreCoordinator.isAccelMoving()}, " +
+                "isSpeedMoving=${coreCoordinator.isSpeedMoving()}, " +
+                "isTracking=${locationEngine.isTracking}",
+        )
+        handleAction(action)
+    }
+
     fun syncCurrentMode() {
         val useGeofences = configManager.getStationaryTrackingMode() ==
             com.ikolvi.tracelet.sdk.model.StationaryTrackingMode.GEOFENCES
