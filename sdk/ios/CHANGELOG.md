@@ -1,3 +1,7 @@
+## Unreleased
+
+**FEAT**: `TraceletTripManager` mints a UUIDv4 at trip start and exposes it through `currentTripId`; `onMotionStateChanged` matches on the new `TripTransition` enum and a new `onTripStart` callback carries the id, start instant, and start location. `TraceletSdk` sets the id on the Rust `DatabaseManager` via `setActiveTripId(tripId:)` at trip start and clears it at trip end, so every insert path is stamped without a signature change. `telematicsDicts` emits `trip_id` (`NSNull` outside a trip), and `TraceletSyncPlugin` carries `tripId` from the row into `SyncLocationRecord`. `TraceletDelegate.tracelet(_:didStartTrip:)` and `TraceletEventSending.sendTripStart` ship with default implementations so an existing delegate or sender keeps compiling ([#402](https://github.com/Ikolvi/Tracelet/issues/402)).
+
 ## 3.8.7
 
 **FIX**: `LocationEngine.start`/`stop` announce the continuous stream on the lifecycle channel; the stale-fix pace guard reports the start and end of each run via `staleFixesSincePace` rather than per fix; the seed-skip moves from `debug` to `lifecycle`; and `TraceletSdk` now observes `UIApplication.didEnterBackgroundNotification` — previously only the foreground edge was recorded, so a report could show the app returning but never leaving.

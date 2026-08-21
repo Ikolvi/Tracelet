@@ -65,8 +65,7 @@ class TripStartEvent {
   };
 
   @override
-  String toString() =>
-      'TripStartEvent(tripId: $tripId, startedAt: $startedAt)';
+  String toString() => 'TripStartEvent(tripId: $tripId, startedAt: $startedAt)';
 
   @override
   bool operator ==(Object other) =>

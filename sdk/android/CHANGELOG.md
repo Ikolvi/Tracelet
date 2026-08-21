@@ -1,3 +1,7 @@
+## Unreleased
+
+**FEAT**: `TripManager` mints a UUIDv4 at trip start and exposes it through `currentTripId`; `onMotionStateChanged` now reports a `TripTransition` (`Started`/`Ended`) rather than only trip-end data, and a new `onTripStart` callback carries the id, start instant, and start location. `TraceletSdk` sets the id on the Rust `DatabaseManager` via `setActiveTripId` at trip start and clears it at trip end, so every insert — including the ones that never touch the trip manager, such as `PeriodicLocationWorker` and `GeofenceManager` — is stamped without a signature change. `telematicsJsonArray` emits `trip_id` (JSON `null` outside a trip), and `NativeSyncProvider` carries `tripId` from the row into `SyncLocationRecord` rather than resolving it at flush time. `TraceletListener.onTripStart` and `TraceletEventSending.sendTripStart` are defaulted no-ops so an implementation outside the SDK keeps compiling ([#402](https://github.com/Ikolvi/Tracelet/issues/402)).
+
 ## 3.8.7
 
 **FIX**: `LocationEngine.start`/`stop` announce the continuous stream on the lifecycle channel; the stale-fix pace guard reports the start and end of each run via `staleFixesSincePace` rather than per fix; `TraceletSdk`'s seed-skip and `LocationService`'s background/foreground and foreground-service promotion/demotion transitions move from `debug` to `lifecycle`.

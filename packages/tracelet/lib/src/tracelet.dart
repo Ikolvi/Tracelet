@@ -34,6 +34,7 @@ import 'package:tracelet/src/models/sql_query.dart';
 import 'package:tracelet/src/models/state.dart';
 import 'package:tracelet/src/models/sync_body_context.dart';
 import 'package:tracelet/src/models/trip_event.dart';
+import 'package:tracelet/src/models/trip_start_event.dart';
 import 'package:tracelet/src/models/speed_motion_event.dart';
 import 'package:tracelet/src/models/log_entry.dart';
 import 'package:tracelet/src/models/telematics_record.dart';
