@@ -784,7 +784,9 @@ class LocationEngine(
             "location stream: continuous updates starting — " +
                 "accuracy=${effectiveDesiredAccuracy()} " +
                 "distanceFilter=${effectiveDistanceFilter()}m " +
-                "interval=${effectiveUpdateInterval()}ms",
+                "interval=${effectiveUpdateInterval()}ms " +
+                "engine=${System.identityHashCode(this)} " +
+                "liveStreams=${LiveStreams.count.get() + 1}",
         )
 
         val request = buildLocationRequestWithGpsFallback()
@@ -822,6 +824,7 @@ class LocationEngine(
 
         try {
             fusedClient.requestLocationUpdates(request, trackingCallback!!, Looper.getMainLooper())
+            LiveStreams.count.incrementAndGet()
             startGpsLossTimer()
         } catch (e: SecurityException) {
             trackingCallback = null
@@ -829,6 +832,35 @@ class LocationEngine(
     }
 
     /** Stops continuous location tracking. */
+    /**
+     * Guards the "fix while stopped" lifecycle line to one per stopped period,
+     * so a leaked registration is named once rather than every second.
+     */
+    @Volatile
+    private var reportedFixWhileStopped = false
+
+<<<<<<< HEAD
+    /**
+     * How many [LocationEngine] instances in this process currently hold a
+     * registered continuous callback.
+     *
+     * Every registration inside one engine re-uses the single
+     * `trackingCallback` — `updateLocationProviderOptions`,
+     * `reapplyProviderOptionsIfTracking`, `activateGpsFallback` and
+     * `restoreOriginalPriority` all replace the request in place, and `stop()`
+     * removes it — so one engine cannot leak a second stream. A parked session
+     * that keeps recording fixes therefore means a *second engine*, and an
+     * engine cannot see its sibling. Counting them here makes
+     * `liveStreams>1` visible on the always-on channel, which is the one
+     * reading that separates "the park did not work" from "the park worked and
+     * something else is streaming" (#412).
+     */
+    private object LiveStreams {
+        val count = java.util.concurrent.atomic.AtomicInteger(0)
+    }
+
+=======
+>>>>>>> b760f07e286a157e16a01ad2f22a68e61717a880
     fun stop() {
         gpsFallbackActive = false
         runtimeDesiredAccuracy = null
@@ -837,12 +869,14 @@ class LocationEngine(
         // starts again has not changed how fast the device is draining (#396).
         resetStallWatchdog(seed = false)
         staleFixesSincePace = 0
-        if (trackingCallback != null) {
-            TraceletLog.lifecycle("location stream: continuous updates stopping")
-        }
         trackingCallback?.let {
             fusedClient.removeLocationUpdates(it)
             trackingCallback = null
+            val remaining = LiveStreams.count.decrementAndGet()
+            TraceletLog.lifecycle(
+                "location stream: continuous updates stopping — " +
+                    "engine=${System.identityHashCode(this)} liveStreams=$remaining",
+            )
         }
         // Cancel any in-flight stationary→moving one-shot so its success
         // callback won’t fire after stop().
@@ -1407,6 +1441,33 @@ class LocationEngine(
      * speed motion machine — see the sink below.
      */
     private fun onLocationReceived(location: Location, event: String, isStartupFix: Boolean = false) {
+        // Always-on: a fix arriving while the continuous stream is stopped.
+        //
+        // `stop()` removes `trackingCallback` and announces "continuous updates
+        // stopping", so after a park that callback cannot be the source. A
+        // field report shows a parked session still recording roughly a fix a
+        // second for the whole stationary window, with no `continuous updates
+        // starting` line between the park and the next wake-up — so something
+        // else is delivering, and the trace as it stands cannot say what.
+        //
+        // `event` names the caller (`watchPosition`, `getCurrentPosition`, the
+        // periodic tick, the heartbeat) and the identity distinguishes a second
+        // engine in the same process from a second registration on this one.
+        // Rate-limited to one line per stopped period so it cannot itself
+        // become the chatter that buries the trace (#412).
+        if (trackingCallback == null) {
+            if (!reportedFixWhileStopped) {
+                reportedFixWhileStopped = true
+                TraceletLog.lifecycle(
+                    "location stream: a fix arrived while continuous updates are stopped — " +
+                        "event=$event engine=${System.identityHashCode(this)} " +
+                        "periodic=$isPeriodicTracking watchers=${watchers.size} " +
+                        "startupFix=$isStartupFix",
+                )
+            }
+        } else {
+            reportedFixWhileStopped = false
+        }
         // Only reset DR timer when GPS hardware is enabled AND the fix
         // is GPS-quality.  When the user has toggled GPS off,
         // FusedLocationProvider can still deliver accurate Wi-Fi / cell
