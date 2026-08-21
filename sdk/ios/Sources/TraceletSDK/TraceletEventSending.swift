@@ -24,6 +24,10 @@ public protocol TraceletEventSending: AnyObject {
     func sendWatchPosition(_ data: [String: Any])
     func sendRemoteConfigEvent(_ data: [String: Any])
     func sendTrip(_ data: [String: Any])
+
+    /// Emitted when a trip begins, carrying the id every record written during
+    /// it will be stamped with (#402).
+    func sendTripStart(_ data: [String: Any])
     func sendBudgetAdjustment(_ data: [String: Any])
     func sendDrivingEvent(_ data: [String: Any])
     func sendImpact(_ data: [String: Any])
@@ -39,4 +43,14 @@ public protocol TraceletEventSending: AnyObject {
 public extension TraceletEventSending {
     /// Default no-op for hosts that don't surface crash-model status.
     func sendCrashModelStatus(_ data: [String: Any]) {}
+}
+
+/// Defaults for surface added after the protocol shipped, so an implementation
+/// outside the SDK keeps compiling across the addition (#402).
+///
+/// `public` is load-bearing: the protocol is public, so an internal default
+/// cannot satisfy it from another module — `PluginEventDispatcher` lives in
+/// `tracelet_ios` and would fail to conform.
+public extension TraceletEventSending {
+    func sendTripStart(_ data: [String: Any]) {}
 }

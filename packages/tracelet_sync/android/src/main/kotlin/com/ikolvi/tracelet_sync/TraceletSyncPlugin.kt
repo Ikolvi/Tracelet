@@ -135,6 +135,8 @@ class TraceletSyncSink(private val sdk: TraceletSdk) : LocationDataSink, Tracele
                 activity = it.activity,
                 event = it.eventType,
                 routeContext = it.routeContext,
+                // #402: carried from the row, not resolved at flush time.
+                tripId = it.tripId,
                 address = it.address  // #212: carry reverse-geocoded address into the default payload
             )
         }

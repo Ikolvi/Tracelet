@@ -1,3 +1,7 @@
+## Unreleased
+
+**FEAT**: `SyncLocationRecord` carries `tripId`, emitted into the default payload as `trip_id` on each location — taken from the stored row rather than the trip running at flush time ([#402](https://github.com/Ikolvi/Tracelet/issues/402)).
+
 ## 3.8.7
 
 Version alignment with tracelet 3.8.7.

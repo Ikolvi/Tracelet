@@ -26,6 +26,9 @@ class TripEvent {
     required this.startLocation,
     required this.stopLocation,
     this.waypoints = const <Location>[],
+    this.tripId,
+    this.startedAt,
+    this.endedAt,
   });
 
   /// Creates a [TripEvent] from a platform map.
@@ -44,7 +47,23 @@ class TripEvent {
           .whereType<Map<Object?, Object?>>()
           .map((wp) => Location.fromMap(wp.cast<String, Object?>()))
           .toList(),
+      tripId: map['tripId'] as String?,
+      startedAt: _epochMs(map['startedAt']),
+      endedAt: _epochMs(map['endedAt']),
     );
+  }
+
+  /// Reads an epoch-milliseconds field written by the native layer, which
+  /// sends it as an `int` (or a `BigInt` through the Rust bridge).
+  static DateTime? _epochMs(Object? value) {
+    final ms = value is int
+        ? value
+        : value is BigInt
+        ? value.toInt()
+        : value is num
+        ? value.toInt()
+        : null;
+    return ms == null ? null : DateTime.fromMillisecondsSinceEpoch(ms);
   }
 
   /// Whether the device is currently moving (`true` = trip started,
@@ -68,6 +87,24 @@ class TripEvent {
   /// Empty if no tracking locations were recorded between start and stop.
   final List<Location> waypoints;
 
+  /// The trip's identifier, shared with every location and driving event
+  /// recorded during it (#402).
+  ///
+  /// A UUIDv4 minted by the SDK when the trip started. Treat it as opaque —
+  /// it carries no information and does not sort chronologically; order trips
+  /// by [startedAt] instead. `null` for trips produced by an SDK version
+  /// before trip identity existed.
+  final String? tripId;
+
+  /// When the trip started (#402).
+  ///
+  /// [duration] alone cannot place a trip on a timeline; this and [endedAt]
+  /// can. `null` on records from before trip identity existed.
+  final DateTime? startedAt;
+
+  /// When the trip ended (#402).
+  final DateTime? endedAt;
+
   /// The average speed (m/s) during the trip.
   double get averageSpeed => duration > 0 ? distance / duration : 0.0;
 
@@ -80,12 +117,15 @@ class TripEvent {
       'startLocation': startLocation.toMap(),
       'stopLocation': stopLocation.toMap(),
       'waypoints': waypoints.map((w) => w.toMap()).toList(),
+      'tripId': tripId,
+      'startedAt': startedAt?.millisecondsSinceEpoch,
+      'endedAt': endedAt?.millisecondsSinceEpoch,
     };
   }
 
   @override
   String toString() =>
-      'TripEvent(isMoving: $isMoving, distance: $distance, '
+      'TripEvent(tripId: $tripId, isMoving: $isMoving, distance: $distance, '
       'duration: $duration, averageSpeed: $averageSpeed)';
 
   @override
@@ -97,9 +137,20 @@ class TripEvent {
           distance == other.distance &&
           duration == other.duration &&
           startLocation == other.startLocation &&
-          stopLocation == other.stopLocation;
+          stopLocation == other.stopLocation &&
+          tripId == other.tripId &&
+          startedAt == other.startedAt &&
+          endedAt == other.endedAt;
 
   @override
-  int get hashCode =>
-      Object.hash(isMoving, distance, duration, startLocation, stopLocation);
+  int get hashCode => Object.hash(
+    isMoving,
+    distance,
+    duration,
+    startLocation,
+    stopLocation,
+    tripId,
+    startedAt,
+    endedAt,
+  );
 }

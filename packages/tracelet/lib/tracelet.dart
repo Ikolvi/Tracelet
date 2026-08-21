@@ -87,6 +87,7 @@ export 'src/models/sql_query.dart';
 export 'src/models/state.dart';
 export 'src/models/sync_body_context.dart';
 export 'src/models/trip_event.dart';
+export 'src/models/trip_start_event.dart';
 // Main API
 export 'src/tracelet.dart';
 // The package's own version, for bug reports and diagnostics (#398).

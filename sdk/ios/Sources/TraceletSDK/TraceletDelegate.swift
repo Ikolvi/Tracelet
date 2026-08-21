@@ -50,6 +50,13 @@ public protocol TraceletDelegate: AnyObject {
     /// Called when a trip ends.
     func tracelet(_ sdk: TraceletSdk, didEndTrip data: [String: Any])
 
+    /// Called when a trip starts, with `tripId`, `startedAt`, and
+    /// `startLocation` (#402).
+    ///
+    /// Every location and driving event recorded until the matching
+    /// `didEndTrip` carries this `tripId`.
+    func tracelet(_ sdk: TraceletSdk, didStartTrip data: [String: Any])
+
     /// Called when the battery budget engine adjusts parameters.
     func tracelet(_ sdk: TraceletSdk, didAdjustBudget data: [String: Any])
 }
@@ -71,5 +78,6 @@ public extension TraceletDelegate {
     func tracelet(_ sdk: TraceletSdk, didChangeEnabled enabled: Bool) {}
     func tracelet(_ sdk: TraceletSdk, didAuthorize data: [String: Any]) {}
     func tracelet(_ sdk: TraceletSdk, didEndTrip data: [String: Any]) {}
+    func tracelet(_ sdk: TraceletSdk, didStartTrip data: [String: Any]) {}
     func tracelet(_ sdk: TraceletSdk, didAdjustBudget data: [String: Any]) {}
 }

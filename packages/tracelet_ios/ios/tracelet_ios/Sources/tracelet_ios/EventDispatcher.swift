@@ -294,6 +294,11 @@ public final class PluginEventDispatcher: NSObject, TraceletEventSending {
         if let auditPreviousHash = data["audit_previous_hash"] as? String {
             synthesizedExtras["audit_previous_hash"] = auditPreviousHash
         }
+        // #402: the trip in force when this event was emitted, so Dart-side
+        // trip detection adopts the native id instead of minting its own.
+        if let tripId = data["tripId"] as? String {
+            synthesizedExtras["tripId"] = tripId
+        }
         if let auditChainIndex = data["audit_chain_index"] as? Int {
             synthesizedExtras["audit_chain_index"] = auditChainIndex
         }

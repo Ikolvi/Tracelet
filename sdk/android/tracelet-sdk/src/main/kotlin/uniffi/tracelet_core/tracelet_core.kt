@@ -730,6 +730,8 @@ external fun uniffi_tracelet_core_checksum_method_transportmodeclassifier_curren
 ): Short
 external fun uniffi_tracelet_core_checksum_method_transportmodeclassifier_reset(
 ): Short
+external fun uniffi_tracelet_core_checksum_method_tripmanager_current_trip_id(
+): Short
 external fun uniffi_tracelet_core_checksum_method_tripmanager_is_trip_active(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_tripmanager_on_location_received(
@@ -743,6 +745,8 @@ external fun uniffi_tracelet_core_checksum_method_audittrailengine_generate_next
 external fun uniffi_tracelet_core_checksum_method_audittrailengine_reset_state(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_audittrailengine_verify_chain(
+): Short
+external fun uniffi_tracelet_core_checksum_method_databasemanager_active_trip_id(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_clear_audit_trail(
 ): Short
@@ -811,6 +815,8 @@ external fun uniffi_tracelet_core_checksum_method_databasemanager_prune_logs(
 external fun uniffi_tracelet_core_checksum_method_databasemanager_prune_logs_older_than(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_prune_synced_telematics(
+): Short
+external fun uniffi_tracelet_core_checksum_method_databasemanager_set_active_trip_id(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_set_encryption_key(
 ): Short
@@ -1072,6 +1078,8 @@ external fun uniffi_tracelet_core_fn_free_tripmanager(`handle`: Long,uniffi_out_
 ): Unit
 external fun uniffi_tracelet_core_fn_constructor_tripmanager_new(uniffi_out_err: UniffiRustCallStatus, 
 ): Long
+external fun uniffi_tracelet_core_fn_method_tripmanager_current_trip_id(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 external fun uniffi_tracelet_core_fn_method_tripmanager_is_trip_active(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
 external fun uniffi_tracelet_core_fn_method_tripmanager_on_location_received(`ptr`: Long,`latitude`: Double,`longitude`: Double,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1098,6 +1106,8 @@ external fun uniffi_tracelet_core_fn_free_databasemanager(`handle`: Long,uniffi_
 ): Unit
 external fun uniffi_tracelet_core_fn_constructor_databasemanager_new(`dbPath`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
+external fun uniffi_tracelet_core_fn_method_databasemanager_active_trip_id(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 external fun uniffi_tracelet_core_fn_method_databasemanager_clear_audit_trail(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 external fun uniffi_tracelet_core_fn_method_databasemanager_clear_geofences(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1166,6 +1176,8 @@ external fun uniffi_tracelet_core_fn_method_databasemanager_prune_logs_older_tha
 ): Unit
 external fun uniffi_tracelet_core_fn_method_databasemanager_prune_synced_telematics(`ptr`: Long,`keep`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
+external fun uniffi_tracelet_core_fn_method_databasemanager_set_active_trip_id(`ptr`: Long,`tripId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 external fun uniffi_tracelet_core_fn_method_databasemanager_set_encryption_key(`ptr`: Long,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 external fun uniffi_tracelet_core_fn_clone_eventdispatcher(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1546,13 +1558,16 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_tracelet_core_checksum_method_transportmodeclassifier_reset() != 4812.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_tracelet_core_checksum_method_tripmanager_current_trip_id() != 22248.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_tracelet_core_checksum_method_tripmanager_is_trip_active() != 47274.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_tripmanager_on_location_received() != 23895.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tracelet_core_checksum_method_tripmanager_on_motion_state_changed() != 58332.toShort()) {
+    if (lib.uniffi_tracelet_core_checksum_method_tripmanager_on_motion_state_changed() != 46018.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_tripmanager_reset() != 31344.toShort()) {
@@ -1565,6 +1580,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_audittrailengine_verify_chain() != 38541.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tracelet_core_checksum_method_databasemanager_active_trip_id() != 20167.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_clear_audit_trail() != 16473.toShort()) {
@@ -1667,6 +1685,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_prune_synced_telematics() != 11319.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tracelet_core_checksum_method_databasemanager_set_active_trip_id() != 51416.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_set_encryption_key() != 2884.toShort()) {
@@ -3823,6 +3844,11 @@ public object FfiConverterTypeCrashModel: FfiConverter<CrashModel, Long> {
 public interface DatabaseManagerInterface {
     
     /**
+     * The trip subsequent inserts will be stamped with, if any (#402).
+     */
+    fun `activeTripId`(): kotlin.String?
+    
+    /**
      * Deletes all audit trail records from the database.
      * Used when the hashing logic changes and old chain data must be discarded.
      */
@@ -4068,6 +4094,16 @@ public interface DatabaseManagerInterface {
     fun `pruneSyncedTelematics`(`keep`: kotlin.Int): kotlin.ULong
     
     /**
+     * Sets the trip that subsequent inserts are stamped with (#402).
+     *
+     * Called with the id minted by the trip manager at trip start, and with
+     * `None` at trip end. Records written outside a trip carry no trip id;
+     * they are not retroactively assigned one when the next trip begins,
+     * because the value records the state at the moment of the write.
+     */
+    fun `setActiveTripId`(`tripId`: kotlin.String?)
+    
+    /**
      * Sets the encryption key (32 bytes max). If the string is empty or invalid, encryption is disabled.
      */
     fun `setEncryptionKey`(`key`: kotlin.String)
@@ -4185,6 +4221,22 @@ open class DatabaseManager: Disposable, AutoCloseable, DatabaseManagerInterface
             UniffiLib.uniffi_tracelet_core_fn_clone_databasemanager(handle, status)
         }
     }
+
+    
+    /**
+     * The trip subsequent inserts will be stamped with, if any (#402).
+     */override fun `activeTripId`(): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_databasemanager_active_trip_id(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
 
     
     /**
@@ -4818,6 +4870,26 @@ open class DatabaseManager: Disposable, AutoCloseable, DatabaseManagerInterface
     }
     )
     }
+    
+
+    
+    /**
+     * Sets the trip that subsequent inserts are stamped with (#402).
+     *
+     * Called with the id minted by the trip manager at trip start, and with
+     * `None` at trip end. Records written outside a trip carry no trip id;
+     * they are not retroactively assigned one when the next trip begins,
+     * because the value records the state at the moment of the write.
+     */override fun `setActiveTripId`(`tripId`: kotlin.String?)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_databasemanager_set_active_trip_id(
+        it,
+        FfiConverterOptionalString.lower(`tripId`),_status)
+}
+    }
+    
     
 
     
@@ -9172,6 +9244,15 @@ public object FfiConverterTypeTransportModeClassifier: FfiConverter<TransportMod
 public interface TripManagerInterface {
     
     /**
+     * The active trip's id, or `None` when no trip is running (#402).
+     *
+     * Readable at any time, including from a headless process, which is what
+     * lets an insert stamp the id it was written under rather than having it
+     * back-filled at sync time.
+     */
+    fun `currentTripId`(): kotlin.String?
+    
+    /**
      * Returns true if a trip is currently being tracked.
      */
     fun `isTripActive`(): kotlin.Boolean
@@ -9182,10 +9263,15 @@ public interface TripManagerInterface {
     fun `onLocationReceived`(`latitude`: kotlin.Double, `longitude`: kotlin.Double, `timestampMs`: kotlin.Long)
     
     /**
-     * Evaluates a motion state transition to determine if a trip has started or ended.
-     * If a trip ended, it returns the accumulated `TripData`.
+     * Evaluates a motion state transition and reports the trip boundary it
+     * crossed, if any.
+     *
+     * Returns `Started` when a trip begins — carrying the freshly minted
+     * `trip_id` — and `Ended` with the accumulated `TripData` when it
+     * finishes. Before #402 a trip start produced no value at all, so callers
+     * could only observe a trip once it was over.
      */
-    fun `onMotionStateChanged`(`isMoving`: kotlin.Boolean, `latitude`: kotlin.Double?, `longitude`: kotlin.Double?, `timestampMs`: kotlin.Long, `nowMs`: kotlin.Long): TripData?
+    fun `onMotionStateChanged`(`isMoving`: kotlin.Boolean, `latitude`: kotlin.Double?, `longitude`: kotlin.Double?, `timestampMs`: kotlin.Long, `nowMs`: kotlin.Long): TripTransition?
     
     /**
      * Resets the trip manager, discarding any active trip and path data.
@@ -9307,6 +9393,26 @@ open class TripManager: Disposable, AutoCloseable, TripManagerInterface
 
     
     /**
+     * The active trip's id, or `None` when no trip is running (#402).
+     *
+     * Readable at any time, including from a headless process, which is what
+     * lets an insert stamp the id it was written under rather than having it
+     * back-filled at sync time.
+     */override fun `currentTripId`(): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_tripmanager_current_trip_id(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Returns true if a trip is currently being tracked.
      */override fun `isTripActive`(): kotlin.Boolean {
             return FfiConverterBoolean.lift(
@@ -9338,10 +9444,15 @@ open class TripManager: Disposable, AutoCloseable, TripManagerInterface
 
     
     /**
-     * Evaluates a motion state transition to determine if a trip has started or ended.
-     * If a trip ended, it returns the accumulated `TripData`.
-     */override fun `onMotionStateChanged`(`isMoving`: kotlin.Boolean, `latitude`: kotlin.Double?, `longitude`: kotlin.Double?, `timestampMs`: kotlin.Long, `nowMs`: kotlin.Long): TripData? {
-            return FfiConverterOptionalTypeTripData.lift(
+     * Evaluates a motion state transition and reports the trip boundary it
+     * crossed, if any.
+     *
+     * Returns `Started` when a trip begins — carrying the freshly minted
+     * `trip_id` — and `Ended` with the accumulated `TripData` when it
+     * finishes. Before #402 a trip start produced no value at all, so callers
+     * could only observe a trip once it was over.
+     */override fun `onMotionStateChanged`(`isMoving`: kotlin.Boolean, `latitude`: kotlin.Double?, `longitude`: kotlin.Double?, `timestampMs`: kotlin.Long, `nowMs`: kotlin.Long): TripTransition? {
+            return FfiConverterOptionalTypeTripTransition.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
     UniffiLib.uniffi_tracelet_core_fn_method_tripmanager_on_motion_state_changed(
@@ -10398,6 +10509,13 @@ data class DbLocationRecord (
      * Populated when `resolveAddress` is enabled (#187). `None` otherwise.
      */
     var `address`: kotlin.String?
+    , 
+    /**
+     * The trip this row was written during (#402), or `None` if no trip was
+     * active. Stamped at INSERT and never rewritten, so a row uploaded hours
+     * later still carries the trip it actually belongs to.
+     */
+    var `tripId`: kotlin.String?
     
 ){
     
@@ -10431,6 +10549,7 @@ public object FfiConverterTypeDbLocationRecord: FfiConverterRustBuffer<DbLocatio
             FfiConverterString.read(buf),
             FfiConverterOptionalString.read(buf),
             FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
         )
     }
 
@@ -10451,7 +10570,8 @@ public object FfiConverterTypeDbLocationRecord: FfiConverterRustBuffer<DbLocatio
             FfiConverterOptionalString.allocationSize(value.`routeContext`) +
             FfiConverterString.allocationSize(value.`eventType`) +
             FfiConverterOptionalString.allocationSize(value.`eventPayload`) +
-            FfiConverterOptionalString.allocationSize(value.`address`)
+            FfiConverterOptionalString.allocationSize(value.`address`) +
+            FfiConverterOptionalString.allocationSize(value.`tripId`)
     )
 
     override fun write(value: DbLocationRecord, buf: ByteBuffer) {
@@ -10472,6 +10592,7 @@ public object FfiConverterTypeDbLocationRecord: FfiConverterRustBuffer<DbLocatio
             FfiConverterString.write(value.`eventType`, buf)
             FfiConverterOptionalString.write(value.`eventPayload`, buf)
             FfiConverterOptionalString.write(value.`address`, buf)
+            FfiConverterOptionalString.write(value.`tripId`, buf)
     }
 }
 
@@ -10505,6 +10626,11 @@ data class DbTelematicsRecord (
     var `timestamp`: kotlin.String
     , 
     var `synced`: kotlin.Boolean
+    , 
+    /**
+     * The trip this event occurred during (#402), or `None` outside a trip.
+     */
+    var `tripId`: kotlin.String?
     
 ){
     
@@ -10530,6 +10656,7 @@ public object FfiConverterTypeDbTelematicsRecord: FfiConverterRustBuffer<DbTelem
             FfiConverterDouble.read(buf),
             FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
+            FfiConverterOptionalString.read(buf),
         )
     }
 
@@ -10542,7 +10669,8 @@ public object FfiConverterTypeDbTelematicsRecord: FfiConverterRustBuffer<DbTelem
             FfiConverterDouble.allocationSize(value.`latitude`) +
             FfiConverterDouble.allocationSize(value.`longitude`) +
             FfiConverterString.allocationSize(value.`timestamp`) +
-            FfiConverterBoolean.allocationSize(value.`synced`)
+            FfiConverterBoolean.allocationSize(value.`synced`) +
+            FfiConverterOptionalString.allocationSize(value.`tripId`)
     )
 
     override fun write(value: DbTelematicsRecord, buf: ByteBuffer) {
@@ -10555,6 +10683,7 @@ public object FfiConverterTypeDbTelematicsRecord: FfiConverterRustBuffer<DbTelem
             FfiConverterDouble.write(value.`longitude`, buf)
             FfiConverterString.write(value.`timestamp`, buf)
             FfiConverterBoolean.write(value.`synced`, buf)
+            FfiConverterOptionalString.write(value.`tripId`, buf)
     }
 }
 
@@ -12422,9 +12551,24 @@ public object FfiConverterTypeTelematicsConfig: FfiConverterRustBuffer<Telematic
  * Summarized data for a tracked trip, including distance, duration, and path.
  */
 data class TripData (
+    /**
+     * The UUIDv4 minted when this trip started (#402). The same value was
+     * stamped on every location and driving event written while it ran, so it
+     * is the join key between this summary and those rows.
+     */
+    var `tripId`: kotlin.String
+    , 
     var `distanceMeters`: kotlin.Double
     , 
     var `durationSeconds`: kotlin.Double
+    , 
+    /**
+     * Absolute trip bounds (#402). `duration_seconds` alone cannot place a
+     * trip on a timeline, so a consumer could not window a query against it.
+     */
+    var `startedAtMs`: kotlin.Long
+    , 
+    var `endedAtMs`: kotlin.Long
     , 
     var `startLocation`: TripLocation?
     , 
@@ -12447,8 +12591,11 @@ data class TripData (
 public object FfiConverterTypeTripData: FfiConverterRustBuffer<TripData> {
     override fun read(buf: ByteBuffer): TripData {
         return TripData(
+            FfiConverterString.read(buf),
             FfiConverterDouble.read(buf),
             FfiConverterDouble.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterLong.read(buf),
             FfiConverterOptionalTypeTripLocation.read(buf),
             FfiConverterOptionalTypeTripLocation.read(buf),
             FfiConverterSequenceTypeTripWaypoint.read(buf),
@@ -12456,16 +12603,22 @@ public object FfiConverterTypeTripData: FfiConverterRustBuffer<TripData> {
     }
 
     override fun allocationSize(value: TripData) = (
+            FfiConverterString.allocationSize(value.`tripId`) +
             FfiConverterDouble.allocationSize(value.`distanceMeters`) +
             FfiConverterDouble.allocationSize(value.`durationSeconds`) +
+            FfiConverterLong.allocationSize(value.`startedAtMs`) +
+            FfiConverterLong.allocationSize(value.`endedAtMs`) +
             FfiConverterOptionalTypeTripLocation.allocationSize(value.`startLocation`) +
             FfiConverterOptionalTypeTripLocation.allocationSize(value.`stopLocation`) +
             FfiConverterSequenceTypeTripWaypoint.allocationSize(value.`waypoints`)
     )
 
     override fun write(value: TripData, buf: ByteBuffer) {
+            FfiConverterString.write(value.`tripId`, buf)
             FfiConverterDouble.write(value.`distanceMeters`, buf)
             FfiConverterDouble.write(value.`durationSeconds`, buf)
+            FfiConverterLong.write(value.`startedAtMs`, buf)
+            FfiConverterLong.write(value.`endedAtMs`, buf)
             FfiConverterOptionalTypeTripLocation.write(value.`startLocation`, buf)
             FfiConverterOptionalTypeTripLocation.write(value.`stopLocation`, buf)
             FfiConverterSequenceTypeTripWaypoint.write(value.`waypoints`, buf)
@@ -12510,6 +12663,57 @@ public object FfiConverterTypeTripLocation: FfiConverterRustBuffer<TripLocation>
     override fun write(value: TripLocation, buf: ByteBuffer) {
             FfiConverterDouble.write(value.`latitude`, buf)
             FfiConverterDouble.write(value.`longitude`, buf)
+    }
+}
+
+
+
+/**
+ * The moment a trip begins (#402).
+ *
+ * Previously unobservable: `on_motion_state_changed` returned data only at
+ * trip *end*, so nothing outside the state machine could tell that a trip had
+ * started, and an application wanting a trip identity had to re-derive the
+ * boundary from raw motion changes.
+ */
+data class TripStart (
+    var `tripId`: kotlin.String
+    , 
+    var `startedAtMs`: kotlin.Long
+    , 
+    var `startLocation`: TripLocation?
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTripStart: FfiConverterRustBuffer<TripStart> {
+    override fun read(buf: ByteBuffer): TripStart {
+        return TripStart(
+            FfiConverterString.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterOptionalTypeTripLocation.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TripStart) = (
+            FfiConverterString.allocationSize(value.`tripId`) +
+            FfiConverterLong.allocationSize(value.`startedAtMs`) +
+            FfiConverterOptionalTypeTripLocation.allocationSize(value.`startLocation`)
+    )
+
+    override fun write(value: TripStart, buf: ByteBuffer) {
+            FfiConverterString.write(value.`tripId`, buf)
+            FfiConverterLong.write(value.`startedAtMs`, buf)
+            FfiConverterOptionalTypeTripLocation.write(value.`startLocation`, buf)
     }
 }
 
@@ -12895,6 +13099,92 @@ public object FfiConverterTypeTransportMode: FfiConverterRustBuffer<TransportMod
 
     override fun write(value: TransportMode, buf: ByteBuffer) {
         buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * A trip boundary crossed by a motion state change (#402).
+ */
+sealed class TripTransition {
+    
+    data class Started(
+        val `start`: uniffi.tracelet_core.TripStart) : TripTransition()
+        
+    {
+        
+
+        companion object
+    }
+    
+    data class Ended(
+        val `data`: uniffi.tracelet_core.TripData) : TripTransition()
+        
+    {
+        
+
+        companion object
+    }
+    
+
+    
+
+    
+    
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTripTransition : FfiConverterRustBuffer<TripTransition>{
+    override fun read(buf: ByteBuffer): TripTransition {
+        return when(buf.getInt()) {
+            1 -> TripTransition.Started(
+                FfiConverterTypeTripStart.read(buf),
+                )
+            2 -> TripTransition.Ended(
+                FfiConverterTypeTripData.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: TripTransition) = when(value) {
+        is TripTransition.Started -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeTripStart.allocationSize(value.`start`)
+            )
+        }
+        is TripTransition.Ended -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeTripData.allocationSize(value.`data`)
+            )
+        }
+    }
+
+    override fun write(value: TripTransition, buf: ByteBuffer) {
+        when(value) {
+            is TripTransition.Started -> {
+                buf.putInt(1)
+                FfiConverterTypeTripStart.write(value.`start`, buf)
+                Unit
+            }
+            is TripTransition.Ended -> {
+                buf.putInt(2)
+                FfiConverterTypeTripData.write(value.`data`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
     }
 }
 
@@ -13418,38 +13708,6 @@ public object FfiConverterOptionalTypeTelematicsConfig: FfiConverterRustBuffer<T
 /**
  * @suppress
  */
-public object FfiConverterOptionalTypeTripData: FfiConverterRustBuffer<TripData?> {
-    override fun read(buf: ByteBuffer): TripData? {
-        if (buf.get().toInt() == 0) {
-            return null
-        }
-        return FfiConverterTypeTripData.read(buf)
-    }
-
-    override fun allocationSize(value: TripData?): ULong {
-        if (value == null) {
-            return 1UL
-        } else {
-            return 1UL + FfiConverterTypeTripData.allocationSize(value)
-        }
-    }
-
-    override fun write(value: TripData?, buf: ByteBuffer) {
-        if (value == null) {
-            buf.put(0)
-        } else {
-            buf.put(1)
-            FfiConverterTypeTripData.write(value, buf)
-        }
-    }
-}
-
-
-
-
-/**
- * @suppress
- */
 public object FfiConverterOptionalTypeTripLocation: FfiConverterRustBuffer<TripLocation?> {
     override fun read(buf: ByteBuffer): TripLocation? {
         if (buf.get().toInt() == 0) {
@@ -13472,6 +13730,38 @@ public object FfiConverterOptionalTypeTripLocation: FfiConverterRustBuffer<TripL
         } else {
             buf.put(1)
             FfiConverterTypeTripLocation.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeTripTransition: FfiConverterRustBuffer<TripTransition?> {
+    override fun read(buf: ByteBuffer): TripTransition? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeTripTransition.read(buf)
+    }
+
+    override fun allocationSize(value: TripTransition?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeTripTransition.allocationSize(value)
+        }
+    }
+
+    override fun write(value: TripTransition?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeTripTransition.write(value, buf)
         }
     }
 }

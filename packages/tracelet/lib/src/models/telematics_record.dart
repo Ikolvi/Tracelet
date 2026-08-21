@@ -13,6 +13,7 @@ class TelematicsRecord {
     required this.synced,
     this.speed,
     this.value,
+    this.tripId,
   });
 
   /// Converts from Pigeon [TlTelematicsRecord].
@@ -27,6 +28,7 @@ class TelematicsRecord {
       synced: tl.synced,
       speed: tl.speed,
       value: tl.value,
+      tripId: tl.tripId,
     );
   }
 
@@ -68,4 +70,12 @@ class TelematicsRecord {
 
   /// Whether it has been synced.
   final bool synced;
+
+  /// The trip this event was recorded during, or `null` if it happened outside
+  /// one (#402).
+  ///
+  /// Stamped when the event was written, not when it is read, so grouping
+  /// stored events by trip stays correct for a backlog recorded across several
+  /// trips. Matches [TripEvent.tripId] on the summary for the same trip.
+  final String? tripId;
 }

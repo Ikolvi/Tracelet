@@ -43,6 +43,10 @@ let package = Package(
                 // `wait(for:timeout:)` below uses. A 1 s bound flaked Build iOS
                 // on a loaded runner (#329).
                 "AsyncWaitTimeout.swift",
+                // #402: the trip id minted at trip start and the trip-start edge.
+                // Deliberately a new file — AlgorithmTests.swift is not in this
+                // list, so its trip tests have never run.
+                "TripIdentityTests.swift",
                 "LocationEngineRuntimeProviderOptionsTests.swift",
                 "MotionDetectorTests.swift",
                 "BatteryBudgetRemoteConfigTests.swift",

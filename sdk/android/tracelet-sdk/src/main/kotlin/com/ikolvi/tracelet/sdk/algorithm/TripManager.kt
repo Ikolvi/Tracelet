@@ -13,11 +13,24 @@ class TripManager {
     /** Callback invoked when a trip ends with the full trip data map. */
     var onTripEnd: ((Map<String, Any?>) -> Unit)? = null
 
+    /**
+     * Callback invoked when a trip *starts*, with its freshly minted id (#402).
+     *
+     * Before #402 a trip only became observable once it was over, so anything
+     * wanting to tag records with the trip they belong to had no moment to act
+     * on and had to re-derive the boundary from raw motion changes.
+     */
+    var onTripStart: ((Map<String, Any?>) -> Unit)? = null
+
     private val rustTripManager = RustTripManager()
 
     /** Whether a trip is currently active. */
     val isTripActive: Boolean
         get() = rustTripManager.isTripActive()
+
+    /** The active trip's id, or null between trips (#402). */
+    val currentTripId: String?
+        get() = rustTripManager.currentTripId()
 
     /**
      * Called on every motion state change.
@@ -36,13 +49,32 @@ class TripManager {
         val nowMs = System.currentTimeMillis()
         val timestampMs = (timestamp as? Number)?.toLong() ?: nowMs
 
-        val tripData = rustTripManager.onMotionStateChanged(
+        val transition = rustTripManager.onMotionStateChanged(
             isMoving,
             latitude,
             longitude,
             timestampMs,
             nowMs
         )
+
+        if (transition is uniffi.tracelet_core.TripTransition.Started) {
+            val start = transition.start
+            val startMap = mutableMapOf<String, Any?>()
+            start.startLocation?.let {
+                startMap["latitude"] = it.latitude
+                startMap["longitude"] = it.longitude
+            }
+            onTripStart?.invoke(
+                mapOf(
+                    "tripId" to start.tripId,
+                    "startedAt" to start.startedAtMs,
+                    "startLocation" to startMap,
+                ),
+            )
+            return
+        }
+
+        val tripData = (transition as? uniffi.tracelet_core.TripTransition.Ended)?.data
 
         if (tripData != null) {
             val startMap = mutableMapOf<String, Any?>()
@@ -67,6 +99,11 @@ class TripManager {
 
             val outMap = mapOf<String, Any?>(
                 "isMoving" to false,
+                // #402: the join key shared with every location and driving
+                // event recorded during this trip.
+                "tripId" to tripData.tripId,
+                "startedAt" to tripData.startedAtMs,
+                "endedAt" to tripData.endedAtMs,
                 "distance" to tripData.distanceMeters,
                 "duration" to tripData.durationSeconds,
                 "startLocation" to startMap,

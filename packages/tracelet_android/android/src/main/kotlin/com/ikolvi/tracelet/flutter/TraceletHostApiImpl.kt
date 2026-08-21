@@ -992,7 +992,9 @@ class TraceletHostApiImpl(
                     latitude = e.latitude,
                     longitude = e.longitude,
                     timestamp = e.timestamp,
-                    synced = e.synced
+                    synced = e.synced,
+                    // #402: the trip this event was recorded during.
+                    tripId = e.tripId
                 )
             }
             callback(Result.success(mapped))

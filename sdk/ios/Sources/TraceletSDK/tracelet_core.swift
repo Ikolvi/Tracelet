@@ -1513,6 +1513,11 @@ public func FfiConverterTypeCrashModel_lower(_ value: CrashModel) -> UInt64 {
 public protocol DatabaseManagerProtocol: AnyObject, Sendable {
     
     /**
+     * The trip subsequent inserts will be stamped with, if any (#402).
+     */
+    func activeTripId()  -> String?
+    
+    /**
      * Deletes all audit trail records from the database.
      * Used when the hashing logic changes and old chain data must be discarded.
      */
@@ -1758,6 +1763,16 @@ public protocol DatabaseManagerProtocol: AnyObject, Sendable {
     func pruneSyncedTelematics(keep: Int32) throws  -> UInt64
     
     /**
+     * Sets the trip that subsequent inserts are stamped with (#402).
+     *
+     * Called with the id minted by the trip manager at trip start, and with
+     * `None` at trip end. Records written outside a trip carry no trip id;
+     * they are not retroactively assigned one when the next trip begins,
+     * because the value records the state at the moment of the write.
+     */
+    func setActiveTripId(tripId: String?) 
+    
+    /**
      * Sets the encryption key (32 bytes max). If the string is empty or invalid, encryption is disabled.
      */
     func setEncryptionKey(key: String) 
@@ -1830,6 +1845,17 @@ public convenience init(dbPath: String)throws  {
 
     
 
+    
+    /**
+     * The trip subsequent inserts will be stamped with, if any (#402).
+     */
+open func activeTripId() -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+    uniffi_tracelet_core_fn_method_databasemanager_active_trip_id(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
     
     /**
      * Deletes all audit trail records from the database.
@@ -2323,6 +2349,22 @@ open func pruneSyncedTelematics(keep: Int32)throws  -> UInt64  {
         FfiConverterInt32.lower(keep),$0
     )
 })
+}
+    
+    /**
+     * Sets the trip that subsequent inserts are stamped with (#402).
+     *
+     * Called with the id minted by the trip manager at trip start, and with
+     * `None` at trip end. Records written outside a trip carry no trip id;
+     * they are not retroactively assigned one when the next trip begins,
+     * because the value records the state at the moment of the write.
+     */
+open func setActiveTripId(tripId: String?)  {try! rustCall() {
+    uniffi_tracelet_core_fn_method_databasemanager_set_active_trip_id(
+            self.uniffiCloneHandle(),
+        FfiConverterOptionString.lower(tripId),$0
+    )
+}
 }
     
     /**
@@ -4968,6 +5010,15 @@ public func FfiConverterTypeTransportModeClassifier_lower(_ value: TransportMode
 public protocol TripManagerProtocol: AnyObject, Sendable {
     
     /**
+     * The active trip's id, or `None` when no trip is running (#402).
+     *
+     * Readable at any time, including from a headless process, which is what
+     * lets an insert stamp the id it was written under rather than having it
+     * back-filled at sync time.
+     */
+    func currentTripId()  -> String?
+    
+    /**
      * Returns true if a trip is currently being tracked.
      */
     func isTripActive()  -> Bool
@@ -4978,10 +5029,15 @@ public protocol TripManagerProtocol: AnyObject, Sendable {
     func onLocationReceived(latitude: Double, longitude: Double, timestampMs: Int64) 
     
     /**
-     * Evaluates a motion state transition to determine if a trip has started or ended.
-     * If a trip ended, it returns the accumulated `TripData`.
+     * Evaluates a motion state transition and reports the trip boundary it
+     * crossed, if any.
+     *
+     * Returns `Started` when a trip begins — carrying the freshly minted
+     * `trip_id` — and `Ended` with the accumulated `TripData` when it
+     * finishes. Before #402 a trip start produced no value at all, so callers
+     * could only observe a trip once it was over.
      */
-    func onMotionStateChanged(isMoving: Bool, latitude: Double?, longitude: Double?, timestampMs: Int64, nowMs: Int64)  -> TripData?
+    func onMotionStateChanged(isMoving: Bool, latitude: Double?, longitude: Double?, timestampMs: Int64, nowMs: Int64)  -> TripTransition?
     
     /**
      * Resets the trip manager, discarding any active trip and path data.
@@ -5056,6 +5112,21 @@ public convenience init() {
 
     
     /**
+     * The active trip's id, or `None` when no trip is running (#402).
+     *
+     * Readable at any time, including from a headless process, which is what
+     * lets an insert stamp the id it was written under rather than having it
+     * back-filled at sync time.
+     */
+open func currentTripId() -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+    uniffi_tracelet_core_fn_method_tripmanager_current_trip_id(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+    
+    /**
      * Returns true if a trip is currently being tracked.
      */
 open func isTripActive() -> Bool  {
@@ -5080,11 +5151,16 @@ open func onLocationReceived(latitude: Double, longitude: Double, timestampMs: I
 }
     
     /**
-     * Evaluates a motion state transition to determine if a trip has started or ended.
-     * If a trip ended, it returns the accumulated `TripData`.
+     * Evaluates a motion state transition and reports the trip boundary it
+     * crossed, if any.
+     *
+     * Returns `Started` when a trip begins — carrying the freshly minted
+     * `trip_id` — and `Ended` with the accumulated `TripData` when it
+     * finishes. Before #402 a trip start produced no value at all, so callers
+     * could only observe a trip once it was over.
      */
-open func onMotionStateChanged(isMoving: Bool, latitude: Double?, longitude: Double?, timestampMs: Int64, nowMs: Int64) -> TripData?  {
-    return try!  FfiConverterOptionTypeTripData.lift(try! rustCall() {
+open func onMotionStateChanged(isMoving: Bool, latitude: Double?, longitude: Double?, timestampMs: Int64, nowMs: Int64) -> TripTransition?  {
+    return try!  FfiConverterOptionTypeTripTransition.lift(try! rustCall() {
     uniffi_tracelet_core_fn_method_tripmanager_on_motion_state_changed(
             self.uniffiCloneHandle(),
         FfiConverterBool.lower(isMoving),
@@ -6426,6 +6502,12 @@ public struct DbLocationRecord: Equatable, Hashable {
      * Populated when `resolveAddress` is enabled (#187). `None` otherwise.
      */
     public var address: String?
+    /**
+     * The trip this row was written during (#402), or `None` if no trip was
+     * active. Stamped at INSERT and never rewritten, so a row uploaded hours
+     * later still carries the trip it actually belongs to.
+     */
+    public var tripId: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -6444,7 +6526,12 @@ public struct DbLocationRecord: Equatable, Hashable {
          * Optional reverse-geocoded address as a JSON object string (e.g.
          * `{"street":..,"city":..,"state":..,"postalCode":..,"country":..}`).
          * Populated when `resolveAddress` is enabled (#187). `None` otherwise.
-         */address: String?) {
+         */address: String?, 
+        /**
+         * The trip this row was written during (#402), or `None` if no trip was
+         * active. Stamped at INSERT and never rewritten, so a row uploaded hours
+         * later still carries the trip it actually belongs to.
+         */tripId: String?) {
         self.id = id
         self.uuid = uuid
         self.timestamp = timestamp
@@ -6462,6 +6549,7 @@ public struct DbLocationRecord: Equatable, Hashable {
         self.eventType = eventType
         self.eventPayload = eventPayload
         self.address = address
+        self.tripId = tripId
     }
 
     
@@ -6496,7 +6584,8 @@ public struct FfiConverterTypeDbLocationRecord: FfiConverterRustBuffer {
                 routeContext: FfiConverterOptionString.read(from: &buf), 
                 eventType: FfiConverterString.read(from: &buf), 
                 eventPayload: FfiConverterOptionString.read(from: &buf), 
-                address: FfiConverterOptionString.read(from: &buf)
+                address: FfiConverterOptionString.read(from: &buf), 
+                tripId: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -6518,6 +6607,7 @@ public struct FfiConverterTypeDbLocationRecord: FfiConverterRustBuffer {
         FfiConverterString.write(value.eventType, into: &buf)
         FfiConverterOptionString.write(value.eventPayload, into: &buf)
         FfiConverterOptionString.write(value.address, into: &buf)
+        FfiConverterOptionString.write(value.tripId, into: &buf)
     }
 }
 
@@ -6557,6 +6647,10 @@ public struct DbTelematicsRecord: Equatable, Hashable {
     public var longitude: Double
     public var timestamp: String
     public var synced: Bool
+    /**
+     * The trip this event occurred during (#402), or `None` outside a trip.
+     */
+    public var tripId: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -6567,7 +6661,10 @@ public struct DbTelematicsRecord: Equatable, Hashable {
         /**
          * The measured magnitude that triggered it: g for harsh events, km/h over
          * the limit for speeding. 0.0 for rows written before #367.
-         */value: Double, latitude: Double, longitude: Double, timestamp: String, synced: Bool) {
+         */value: Double, latitude: Double, longitude: Double, timestamp: String, synced: Bool, 
+        /**
+         * The trip this event occurred during (#402), or `None` outside a trip.
+         */tripId: String?) {
         self.id = id
         self.eventType = eventType
         self.severity = severity
@@ -6577,6 +6674,7 @@ public struct DbTelematicsRecord: Equatable, Hashable {
         self.longitude = longitude
         self.timestamp = timestamp
         self.synced = synced
+        self.tripId = tripId
     }
 
     
@@ -6603,7 +6701,8 @@ public struct FfiConverterTypeDbTelematicsRecord: FfiConverterRustBuffer {
                 latitude: FfiConverterDouble.read(from: &buf), 
                 longitude: FfiConverterDouble.read(from: &buf), 
                 timestamp: FfiConverterString.read(from: &buf), 
-                synced: FfiConverterBool.read(from: &buf)
+                synced: FfiConverterBool.read(from: &buf), 
+                tripId: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -6617,6 +6716,7 @@ public struct FfiConverterTypeDbTelematicsRecord: FfiConverterRustBuffer {
         FfiConverterDouble.write(value.longitude, into: &buf)
         FfiConverterString.write(value.timestamp, into: &buf)
         FfiConverterBool.write(value.synced, into: &buf)
+        FfiConverterOptionString.write(value.tripId, into: &buf)
     }
 }
 
@@ -9097,17 +9197,41 @@ public func FfiConverterTypeTelematicsConfig_lower(_ value: TelematicsConfig) ->
  * Summarized data for a tracked trip, including distance, duration, and path.
  */
 public struct TripData: Equatable, Hashable {
+    /**
+     * The UUIDv4 minted when this trip started (#402). The same value was
+     * stamped on every location and driving event written while it ran, so it
+     * is the join key between this summary and those rows.
+     */
+    public var tripId: String
     public var distanceMeters: Double
     public var durationSeconds: Double
+    /**
+     * Absolute trip bounds (#402). `duration_seconds` alone cannot place a
+     * trip on a timeline, so a consumer could not window a query against it.
+     */
+    public var startedAtMs: Int64
+    public var endedAtMs: Int64
     public var startLocation: TripLocation?
     public var stopLocation: TripLocation?
     public var waypoints: [TripWaypoint]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(distanceMeters: Double, durationSeconds: Double, startLocation: TripLocation?, stopLocation: TripLocation?, waypoints: [TripWaypoint]) {
+    public init(
+        /**
+         * The UUIDv4 minted when this trip started (#402). The same value was
+         * stamped on every location and driving event written while it ran, so it
+         * is the join key between this summary and those rows.
+         */tripId: String, distanceMeters: Double, durationSeconds: Double, 
+        /**
+         * Absolute trip bounds (#402). `duration_seconds` alone cannot place a
+         * trip on a timeline, so a consumer could not window a query against it.
+         */startedAtMs: Int64, endedAtMs: Int64, startLocation: TripLocation?, stopLocation: TripLocation?, waypoints: [TripWaypoint]) {
+        self.tripId = tripId
         self.distanceMeters = distanceMeters
         self.durationSeconds = durationSeconds
+        self.startedAtMs = startedAtMs
+        self.endedAtMs = endedAtMs
         self.startLocation = startLocation
         self.stopLocation = stopLocation
         self.waypoints = waypoints
@@ -9129,8 +9253,11 @@ public struct FfiConverterTypeTripData: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TripData {
         return
             try TripData(
+                tripId: FfiConverterString.read(from: &buf), 
                 distanceMeters: FfiConverterDouble.read(from: &buf), 
                 durationSeconds: FfiConverterDouble.read(from: &buf), 
+                startedAtMs: FfiConverterInt64.read(from: &buf), 
+                endedAtMs: FfiConverterInt64.read(from: &buf), 
                 startLocation: FfiConverterOptionTypeTripLocation.read(from: &buf), 
                 stopLocation: FfiConverterOptionTypeTripLocation.read(from: &buf), 
                 waypoints: FfiConverterSequenceTypeTripWaypoint.read(from: &buf)
@@ -9138,8 +9265,11 @@ public struct FfiConverterTypeTripData: FfiConverterRustBuffer {
     }
 
     public static func write(_ value: TripData, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.tripId, into: &buf)
         FfiConverterDouble.write(value.distanceMeters, into: &buf)
         FfiConverterDouble.write(value.durationSeconds, into: &buf)
+        FfiConverterInt64.write(value.startedAtMs, into: &buf)
+        FfiConverterInt64.write(value.endedAtMs, into: &buf)
         FfiConverterOptionTypeTripLocation.write(value.startLocation, into: &buf)
         FfiConverterOptionTypeTripLocation.write(value.stopLocation, into: &buf)
         FfiConverterSequenceTypeTripWaypoint.write(value.waypoints, into: &buf)
@@ -9216,6 +9346,72 @@ public func FfiConverterTypeTripLocation_lift(_ buf: RustBuffer) throws -> TripL
 #endif
 public func FfiConverterTypeTripLocation_lower(_ value: TripLocation) -> RustBuffer {
     return FfiConverterTypeTripLocation.lower(value)
+}
+
+
+/**
+ * The moment a trip begins (#402).
+ *
+ * Previously unobservable: `on_motion_state_changed` returned data only at
+ * trip *end*, so nothing outside the state machine could tell that a trip had
+ * started, and an application wanting a trip identity had to re-derive the
+ * boundary from raw motion changes.
+ */
+public struct TripStart: Equatable, Hashable {
+    public var tripId: String
+    public var startedAtMs: Int64
+    public var startLocation: TripLocation?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(tripId: String, startedAtMs: Int64, startLocation: TripLocation?) {
+        self.tripId = tripId
+        self.startedAtMs = startedAtMs
+        self.startLocation = startLocation
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension TripStart: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTripStart: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TripStart {
+        return
+            try TripStart(
+                tripId: FfiConverterString.read(from: &buf), 
+                startedAtMs: FfiConverterInt64.read(from: &buf), 
+                startLocation: FfiConverterOptionTypeTripLocation.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: TripStart, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.tripId, into: &buf)
+        FfiConverterInt64.write(value.startedAtMs, into: &buf)
+        FfiConverterOptionTypeTripLocation.write(value.startLocation, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTripStart_lift(_ buf: RustBuffer) throws -> TripStart {
+    return try FfiConverterTypeTripStart.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTripStart_lower(_ value: TripStart) -> RustBuffer {
+    return FfiConverterTypeTripStart.lower(value)
 }
 
 
@@ -9892,6 +10088,82 @@ public func FfiConverterTypeTransportMode_lower(_ value: TransportMode) -> RustB
 }
 
 
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * A trip boundary crossed by a motion state change (#402).
+ */
+
+public enum TripTransition: Equatable, Hashable {
+    
+    case started(start: TripStart
+    )
+    case ended(data: TripData
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension TripTransition: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTripTransition: FfiConverterRustBuffer {
+    typealias SwiftType = TripTransition
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TripTransition {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .started(start: try FfiConverterTypeTripStart.read(from: &buf)
+        )
+        
+        case 2: return .ended(data: try FfiConverterTypeTripData.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: TripTransition, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .started(start):
+            writeInt(&buf, Int32(1))
+            FfiConverterTypeTripStart.write(start, into: &buf)
+            
+        
+        case let .ended(data):
+            writeInt(&buf, Int32(2))
+            FfiConverterTypeTripData.write(data, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTripTransition_lift(_ buf: RustBuffer) throws -> TripTransition {
+    return try FfiConverterTypeTripTransition.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTripTransition_lower(_ value: TripTransition) -> RustBuffer {
+    return FfiConverterTypeTripTransition.lower(value)
+}
+
+
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
@@ -10279,30 +10551,6 @@ fileprivate struct FfiConverterOptionTypeTelematicsConfig: FfiConverterRustBuffe
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterOptionTypeTripData: FfiConverterRustBuffer {
-    typealias SwiftType = TripData?
-
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
-        guard let value = value else {
-            writeInt(&buf, Int8(0))
-            return
-        }
-        writeInt(&buf, Int8(1))
-        FfiConverterTypeTripData.write(value, into: &buf)
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
-        switch try readInt(&buf) as Int8 {
-        case 0: return nil
-        case 1: return try FfiConverterTypeTripData.read(from: &buf)
-        default: throw UniffiInternalError.unexpectedOptionalTag
-        }
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
 fileprivate struct FfiConverterOptionTypeTripLocation: FfiConverterRustBuffer {
     typealias SwiftType = TripLocation?
 
@@ -10319,6 +10567,30 @@ fileprivate struct FfiConverterOptionTypeTripLocation: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeTripLocation.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeTripTransition: FfiConverterRustBuffer {
+    typealias SwiftType = TripTransition?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeTripTransition.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeTripTransition.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -11022,13 +11294,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_tracelet_core_checksum_method_transportmodeclassifier_reset() != 4812) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_tracelet_core_checksum_method_tripmanager_current_trip_id() != 22248) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_tracelet_core_checksum_method_tripmanager_is_trip_active() != 47274) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_tripmanager_on_location_received() != 23895) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_tracelet_core_checksum_method_tripmanager_on_motion_state_changed() != 58332) {
+    if (uniffi_tracelet_core_checksum_method_tripmanager_on_motion_state_changed() != 46018) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_tripmanager_reset() != 31344) {
@@ -11041,6 +11316,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_audittrailengine_verify_chain() != 38541) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tracelet_core_checksum_method_databasemanager_active_trip_id() != 20167) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_databasemanager_clear_audit_trail() != 16473) {
@@ -11143,6 +11421,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_databasemanager_prune_synced_telematics() != 11319) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tracelet_core_checksum_method_databasemanager_set_active_trip_id() != 51416) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_databasemanager_set_encryption_key() != 2884) {

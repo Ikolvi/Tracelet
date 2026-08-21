@@ -1560,6 +1560,13 @@ data class SyncLocationRecord (
      * backend receives it without a custom body builder.
      */
     var `address`: kotlin.String?
+    , 
+    /**
+     * The trip this record was written during (#402), or `None` if none was
+     * active. Carried straight from the row rather than resolved at flush
+     * time, so a queued record uploads with the trip it belongs to.
+     */
+    var `tripId`: kotlin.String?
     
 ){
     
@@ -1591,6 +1598,7 @@ public object FfiConverterTypeSyncLocationRecord: FfiConverterRustBuffer<SyncLoc
             FfiConverterString.read(buf),
             FfiConverterOptionalString.read(buf),
             FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
         )
     }
 
@@ -1609,7 +1617,8 @@ public object FfiConverterTypeSyncLocationRecord: FfiConverterRustBuffer<SyncLoc
             FfiConverterString.allocationSize(value.`activity`) +
             FfiConverterString.allocationSize(value.`event`) +
             FfiConverterOptionalString.allocationSize(value.`routeContext`) +
-            FfiConverterOptionalString.allocationSize(value.`address`)
+            FfiConverterOptionalString.allocationSize(value.`address`) +
+            FfiConverterOptionalString.allocationSize(value.`tripId`)
     )
 
     override fun write(value: SyncLocationRecord, buf: ByteBuffer) {
@@ -1628,6 +1637,7 @@ public object FfiConverterTypeSyncLocationRecord: FfiConverterRustBuffer<SyncLoc
             FfiConverterString.write(value.`event`, buf)
             FfiConverterOptionalString.write(value.`routeContext`, buf)
             FfiConverterOptionalString.write(value.`address`, buf)
+            FfiConverterOptionalString.write(value.`tripId`, buf)
     }
 }
 

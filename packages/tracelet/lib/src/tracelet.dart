@@ -34,6 +34,7 @@ import 'package:tracelet/src/models/sql_query.dart';
 import 'package:tracelet/src/models/state.dart';
 import 'package:tracelet/src/models/sync_body_context.dart';
 import 'package:tracelet/src/models/trip_event.dart';
+import 'package:tracelet/src/models/trip_start_event.dart';
 import 'package:tracelet/src/models/speed_motion_event.dart';
 import 'package:tracelet/src/models/log_entry.dart';
 import 'package:tracelet/src/models/telematics_record.dart';
@@ -89,6 +90,10 @@ class Tracelet {
   /// StreamController for trip events (computed in Dart, not native).
   static final StreamController<TripEvent> _tripController =
       StreamController<TripEvent>.broadcast();
+
+  /// StreamController for trip *start* events (#402).
+  static final StreamController<TripStartEvent> _tripStartController =
+      StreamController<TripStartEvent>.broadcast();
 
   /// Internal subscriptions that drive the TripManager.
   static StreamSubscription<Location>? _tripLocationSub;
@@ -296,7 +301,10 @@ class Tracelet {
       _applyRemoteConfig,
     );
 
-    // Wire trip manager output to the Dart stream controller.
+    // Wire trip manager output to the Dart stream controllers.
+    _tripManager.onTripStart = (tripData) {
+      _tripStartController.add(TripStartEvent.fromMap(tripData));
+    };
     _tripManager.onTripEnd = (tripData) {
       _tripController.add(TripEvent.fromMap(tripData));
     };
@@ -2671,6 +2679,33 @@ class Tracelet {
     return _tracked(_tripController.stream.listen(callback));
   }
 
+  /// Subscribe to trip *start* events (#402).
+  ///
+  /// Fires when a trip begins (device transitions from stationary to moving),
+  /// carrying the [TripStartEvent.tripId] that every location and driving
+  /// event recorded until the matching [onTrip] will be stamped with.
+  ///
+  /// Previously a trip only became observable once it had ended, so an app
+  /// wanting to group records by trip had to re-derive the boundary from
+  /// [onMotionChange] and would drift from the SDK's own trip detection.
+  ///
+  /// ```dart
+  /// Tracelet.onTripStart((trip) {
+  ///   print('Trip ${trip.tripId} started at ${trip.startedAt}');
+  /// });
+  /// ```
+  static StreamSubscription<TripStartEvent> onTripStart(
+    void Function(TripStartEvent) callback,
+  ) {
+    return _tracked(_tripStartController.stream.listen(callback));
+  }
+
+  /// The active trip's id, or `null` when no trip is running (#402).
+  ///
+  /// The same value the SDK is stamping onto records as they are written, so
+  /// an app can tag its own data with the trip in force right now.
+  static String? get currentTripId => _tripManager.currentTripId;
+
   /// Subscribe to battery budget adjustment events.
   ///
   /// Fires when the battery budget engine adjusts tracking parameters
@@ -2787,6 +2822,10 @@ class Tracelet {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
         timestamp: location.timestamp,
+        // #402: the native layer's id for this trip, which is the one stamped
+        // onto the stored records. Without it this manager would mint a second
+        // id for the same journey and nothing would join up.
+        nativeTripId: location.extras['tripId'] as String?,
       );
     });
 

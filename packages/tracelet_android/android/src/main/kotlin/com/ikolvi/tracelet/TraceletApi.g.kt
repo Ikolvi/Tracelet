@@ -2870,7 +2870,9 @@ data class TlTelematicsRecord (
   /** The ISO8601 timestamp string. */
   val timestamp: String,
   /** Whether the event has been synced to the server. */
-  val synced: Boolean
+  val synced: Boolean,
+  /** The trip this event was recorded during, or `null` outside a trip (#402). */
+  val tripId: String? = null
 )
  {
   companion object {
@@ -2884,7 +2886,8 @@ data class TlTelematicsRecord (
       val longitude = pigeonVar_list[6] as Double
       val timestamp = pigeonVar_list[7] as String
       val synced = pigeonVar_list[8] as Boolean
-      return TlTelematicsRecord(id, eventType, severity, speed, value, latitude, longitude, timestamp, synced)
+      val tripId = pigeonVar_list[9] as String?
+      return TlTelematicsRecord(id, eventType, severity, speed, value, latitude, longitude, timestamp, synced, tripId)
     }
   }
   fun toList(): List<Any?> {
@@ -2898,6 +2901,7 @@ data class TlTelematicsRecord (
       longitude,
       timestamp,
       synced,
+      tripId,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -2908,7 +2912,7 @@ data class TlTelematicsRecord (
       return true
     }
     val other = other as TlTelematicsRecord
-    return TraceletApiPigeonUtils.deepEquals(this.id, other.id) && TraceletApiPigeonUtils.deepEquals(this.eventType, other.eventType) && TraceletApiPigeonUtils.deepEquals(this.severity, other.severity) && TraceletApiPigeonUtils.deepEquals(this.speed, other.speed) && TraceletApiPigeonUtils.deepEquals(this.value, other.value) && TraceletApiPigeonUtils.deepEquals(this.latitude, other.latitude) && TraceletApiPigeonUtils.deepEquals(this.longitude, other.longitude) && TraceletApiPigeonUtils.deepEquals(this.timestamp, other.timestamp) && TraceletApiPigeonUtils.deepEquals(this.synced, other.synced)
+    return TraceletApiPigeonUtils.deepEquals(this.id, other.id) && TraceletApiPigeonUtils.deepEquals(this.eventType, other.eventType) && TraceletApiPigeonUtils.deepEquals(this.severity, other.severity) && TraceletApiPigeonUtils.deepEquals(this.speed, other.speed) && TraceletApiPigeonUtils.deepEquals(this.value, other.value) && TraceletApiPigeonUtils.deepEquals(this.latitude, other.latitude) && TraceletApiPigeonUtils.deepEquals(this.longitude, other.longitude) && TraceletApiPigeonUtils.deepEquals(this.timestamp, other.timestamp) && TraceletApiPigeonUtils.deepEquals(this.synced, other.synced) && TraceletApiPigeonUtils.deepEquals(this.tripId, other.tripId)
   }
 
   override fun hashCode(): Int {
@@ -2922,6 +2926,7 @@ data class TlTelematicsRecord (
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.longitude)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.timestamp)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.synced)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.tripId)
     return result
   }
 }

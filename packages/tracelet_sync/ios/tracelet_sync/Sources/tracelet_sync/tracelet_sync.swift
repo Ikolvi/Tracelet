@@ -826,6 +826,12 @@ public struct SyncLocationRecord: Equatable, Hashable {
      * backend receives it without a custom body builder.
      */
     public var address: String?
+    /**
+     * The trip this record was written during (#402), or `None` if none was
+     * active. Carried straight from the row rather than resolved at flush
+     * time, so a queued record uploads with the trip it belongs to.
+     */
+    public var tripId: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -841,7 +847,12 @@ public struct SyncLocationRecord: Equatable, Hashable {
          * Reverse-geocoded address as a JSON object string (#212). Mirrors
          * `DbLocationRecord.address`; emitted into the default payload so the
          * backend receives it without a custom body builder.
-         */address: String?) {
+         */address: String?, 
+        /**
+         * The trip this record was written during (#402), or `None` if none was
+         * active. Carried straight from the row rather than resolved at flush
+         * time, so a queued record uploads with the trip it belongs to.
+         */tripId: String?) {
         self.id = id
         self.uuid = uuid
         self.timestamp = timestamp
@@ -857,6 +868,7 @@ public struct SyncLocationRecord: Equatable, Hashable {
         self.event = event
         self.routeContext = routeContext
         self.address = address
+        self.tripId = tripId
     }
 
     
@@ -889,7 +901,8 @@ public struct FfiConverterTypeSyncLocationRecord: FfiConverterRustBuffer {
                 activity: FfiConverterString.read(from: &buf), 
                 event: FfiConverterString.read(from: &buf), 
                 routeContext: FfiConverterOptionString.read(from: &buf), 
-                address: FfiConverterOptionString.read(from: &buf)
+                address: FfiConverterOptionString.read(from: &buf), 
+                tripId: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -909,6 +922,7 @@ public struct FfiConverterTypeSyncLocationRecord: FfiConverterRustBuffer {
         FfiConverterString.write(value.event, into: &buf)
         FfiConverterOptionString.write(value.routeContext, into: &buf)
         FfiConverterOptionString.write(value.address, into: &buf)
+        FfiConverterOptionString.write(value.tripId, into: &buf)
     }
 }
 
