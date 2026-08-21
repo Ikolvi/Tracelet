@@ -314,7 +314,24 @@ public final class TraceletSdk {
         let locationMap = locationEngine.getLastGpsLocation().map { locationEngine.buildLocationMap($0) }
         var motionMap = locationMap ?? [:]
         motionMap["isMoving"] = isMoving
-        eventSender.sendMotionChange(motionMap)
+        sendMotionChangeWithTrip(motionMap)
+    }
+
+    /// Emits a motionchange carrying the trip in force at that moment (#402).
+    ///
+    /// The Dart layer runs its own trip detection for waypoints and distance,
+    /// and would otherwise mint a *second* id for the same journey — one that
+    /// matched nothing in the database. Attaching it to the event that opened
+    /// or closed the trip also makes it race-free: the id is read right after
+    /// the transition that set it, rather than fetched afterwards, by which
+    /// time trip end may already have cleared it.
+    ///
+    /// Assigning `nil` removes the key, which is the intended shape: no key
+    /// means no trip was active.
+    private func sendMotionChangeWithTrip(_ data: [String: Any]) {
+        var withTrip = data
+        withTrip["tripId"] = tripManager.currentTripId
+        eventSender.sendMotionChange(withTrip)
     }
 
     /// Records the background edge on the always-on channel.
@@ -4255,9 +4272,9 @@ extension TraceletSdk: SpeedMotionDelegate {
                 var map = locationEngine.buildLocationMap(loc, speed: locationEngine.lastEffectiveSpeed)
                 map["isMoving"] = true
                 map["event"] = "motionchange"
-                eventSender.sendMotionChange(map)
+                sendMotionChangeWithTrip(map)
             } else {
-                eventSender.sendMotionChange(["isMoving": true])
+                sendMotionChangeWithTrip(["isMoving": true])
             }
         }
     }
@@ -4295,9 +4312,9 @@ extension TraceletSdk: SpeedMotionDelegate {
                 var map = locationEngine.buildLocationMap(loc, speed: locationEngine.lastEffectiveSpeed)
                 map["isMoving"] = false
                 map["event"] = "motionchange"
-                eventSender.sendMotionChange(map)
+                sendMotionChangeWithTrip(map)
             } else {
-                eventSender.sendMotionChange(["isMoving": false])
+                sendMotionChangeWithTrip(["isMoving": false])
             }
 
             // Handle stopOnStationary
@@ -4342,9 +4359,9 @@ extension TraceletSdk: SpeedMotionDelegate {
                 var map = locationEngine.buildLocationMap(loc, speed: locationEngine.lastEffectiveSpeed)
                 map["isMoving"] = false
                 map["event"] = "motionchange"
-                eventSender.sendMotionChange(map)
+                sendMotionChangeWithTrip(map)
             } else {
-                eventSender.sendMotionChange(["isMoving": false])
+                sendMotionChangeWithTrip(["isMoving": false])
             }
 
             // Handle stopOnStationary

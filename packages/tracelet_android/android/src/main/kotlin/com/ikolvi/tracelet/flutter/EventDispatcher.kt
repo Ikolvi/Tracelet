@@ -411,6 +411,9 @@ class EventDispatcher : TraceletEventSender {
         (data["audit_hash"] as? String)?.let { synthesizedExtras["audit_hash"] = it }
         (data["audit_previous_hash"] as? String)?.let { synthesizedExtras["audit_previous_hash"] = it }
         (data["audit_chain_index"] as? Number)?.let { synthesizedExtras["audit_chain_index"] = it }
+        // #402: the trip in force when this event was emitted, so Dart-side
+        // trip detection adopts the native id instead of minting its own.
+        (data["tripId"] as? String)?.let { synthesizedExtras["tripId"] = it }
 
         return TlLocation(
             coords = TlCoords(

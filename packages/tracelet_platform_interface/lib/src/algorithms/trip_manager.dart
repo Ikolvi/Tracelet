@@ -26,7 +26,17 @@ class TripManager {
   bool get isTripActive => _inner?.isTripActive() ?? false;
 
   /// The active trip's id, or `null` between trips (#402).
-  String? get currentTripId => _inner?.currentTripId();
+  ///
+  /// Prefers the id supplied by the native layer, which is the one actually
+  /// stamped onto database rows. This manager's own Rust instance mints an id
+  /// too — it has to, since it runs the same state machine — but that one is
+  /// only a fallback for a platform that does not report its trip.
+  String? get currentTripId => _nativeTripId ?? _inner?.currentTripId();
+
+  /// The native layer's id for the trip currently running, when it reported
+  /// one. Adopted at trip start and held until trip end, so the summary can be
+  /// labelled with it after the native side has already cleared its own.
+  String? _nativeTripId;
 
   /// Feeds motion state changes to the engine to start or stop a trip.
   void onMotionStateChanged({
@@ -34,6 +44,7 @@ class TripManager {
     double? latitude,
     double? longitude,
     Object? timestamp,
+    String? nativeTripId,
   }) {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     var timestampMs = nowMs;
@@ -56,13 +67,18 @@ class TripManager {
 
     final start = transition?.started;
     if (start != null) {
+      // Adopt the native id if one came with the event. Without this the two
+      // trip managers — this one and the platform's — would label the same
+      // journey with two different ids, and the one an app received here would
+      // match nothing in the synced records.
+      _nativeTripId = nativeTripId;
       final startLocation = <String, Object?>{};
       if (start.startLocation != null) {
         startLocation['latitude'] = start.startLocation!.latitude;
         startLocation['longitude'] = start.startLocation!.longitude;
       }
       onTripStart?.call(<String, Object?>{
-        'tripId': start.tripId,
+        'tripId': nativeTripId ?? start.tripId,
         'startedAt': _asInt(start.startedAtMs),
         'startLocation': startLocation,
       });
@@ -93,11 +109,13 @@ class TripManager {
         };
       }).toList();
 
+      final resolvedTripId = _nativeTripId ?? tripData.tripId;
+      _nativeTripId = null;
       onTripEnd!({
         'isMoving': false,
         // #402: the join key shared with every location and driving event
         // recorded during this trip.
-        'tripId': tripData.tripId,
+        'tripId': resolvedTripId,
         'startedAt': _asInt(tripData.startedAtMs),
         'endedAt': _asInt(tripData.endedAtMs),
         'distance': tripData.distanceMeters,
@@ -135,6 +153,7 @@ class TripManager {
 
   /// Resets the trip manager, clearing any active trips.
   void reset() {
+    _nativeTripId = null;
     _inner?.reset();
   }
 

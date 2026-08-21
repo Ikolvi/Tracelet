@@ -3370,7 +3370,17 @@ class TraceletSdk private constructor(private val context: Context) {
             timestamp = locationMap["timestamp"],
         )
 
-        eventSender.sendMotionChange(locationMap)
+        // #402: the trip id travels with the motion change that opened or
+        // closed the trip. The Dart layer runs its own trip detection for
+        // waypoints and distance, and would otherwise mint a *second* id for
+        // the same journey — one that matched nothing in the database. Sending
+        // it here rather than having Dart ask for it afterwards also makes it
+        // race-free: the id is read on the same thread that just set it,
+        // before the event leaves.
+        val motionMap = locationMap.toMutableMap()
+        motionMap["tripId"] = tripManager.currentTripId
+
+        eventSender.sendMotionChange(motionMap)
     }
 
     private fun handleScheduleStart() {

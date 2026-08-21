@@ -2822,6 +2822,10 @@ class Tracelet {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
         timestamp: location.timestamp,
+        // #402: the native layer's id for this trip, which is the one stamped
+        // onto the stored records. Without it this manager would mint a second
+        // id for the same journey and nothing would join up.
+        nativeTripId: location.extras['tripId'] as String?,
       );
     });
 
