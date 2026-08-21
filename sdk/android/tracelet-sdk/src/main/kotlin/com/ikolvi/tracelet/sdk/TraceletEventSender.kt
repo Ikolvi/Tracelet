@@ -45,6 +45,15 @@ interface TraceletEventSender {
 
     fun sendTrip(data: Map<String, Any?>)
 
+    /**
+     * Emitted when a trip begins, carrying the id every record written during
+     * it will be stamped with (#402).
+     *
+     * Defaulted to a no-op: this is a public interface, so an implementation
+     * outside the SDK must keep compiling across the addition.
+     */
+    fun sendTripStart(data: Map<String, Any?>) {}
+
     fun sendBudgetAdjustment(data: Map<String, Any?>)
 
     fun sendDrivingEvent(data: Map<String, Any?>)

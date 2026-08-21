@@ -100,6 +100,10 @@ final class DelegateEventSender: TraceletEventSending {
         dispatch { sdk, delegate in delegate.tracelet(sdk, didEndTrip: data) }
     }
 
+    func sendTripStart(_ data: [String: Any]) {
+        dispatch { sdk, delegate in delegate.tracelet(sdk, didStartTrip: data) }
+    }
+
     func sendBudgetAdjustment(_ data: [String: Any]) {
         dispatch { sdk, delegate in delegate.tracelet(sdk, didAdjustBudget: data) }
     }

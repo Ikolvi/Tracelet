@@ -100,6 +100,9 @@ internal class ListenerEventSender : TraceletEventSender {
     override fun sendTrip(data: Map<String, Any?>) =
         dispatch("trip", data) { listener?.onTrip(data) }
 
+    override fun sendTripStart(data: Map<String, Any?>) =
+        dispatch("tripstart", data) { listener?.onTripStart(data) }
+
     override fun sendBudgetAdjustment(data: Map<String, Any?>) =
         dispatch("budgetadjustment", data) { listener?.onBudgetAdjustment(data) }
 

@@ -514,7 +514,20 @@ class TraceletSdk private constructor(private val context: Context) {
 
         // Trip manager
         tripManager = TripManager()
-        tripManager.onTripEnd = { data -> eventSender.sendTrip(data) }
+        // #402: the database is told the trip *before* any location for it is
+        // written, so every row recorded during the trip is stamped with it.
+        // Both edges run on the motion-change thread that produced them, ahead
+        // of the location that follows.
+        tripManager.onTripStart = { data ->
+            rustDatabase?.setActiveTripId(data["tripId"] as? String)
+            eventSender.sendTripStart(data)
+        }
+        tripManager.onTripEnd = { data ->
+            eventSender.sendTrip(data)
+            // Cleared only after the summary is out, and never restored: the
+            // next trip mints its own id.
+            rustDatabase?.setActiveTripId(null)
+        }
 
         // Motion detector
         motionDetector = MotionDetector(
@@ -2558,6 +2571,9 @@ class TraceletSdk private constructor(private val context: Context) {
             obj.put("longitude", event.longitude)
             obj.put("timestamp", event.timestamp)
             obj.put("synced", event.synced)
+            // #402: the trip this event was recorded during, or JSON null
+            // outside one. Present either way so the key can be relied on.
+            obj.put("trip_id", event.tripId ?: org.json.JSONObject.NULL)
             jsonArray.put(obj)
         }
         return jsonArray

@@ -61,6 +61,15 @@ interface TraceletListener {
     /** Called when a trip ends. */
     fun onTrip(data: Map<String, Any?>) {}
 
+    /**
+     * Called when a trip starts, with `tripId`, `startedAt`, and
+     * `startLocation` (#402).
+     *
+     * Every location and driving event recorded until the matching [onTrip]
+     * carries this `tripId`.
+     */
+    fun onTripStart(data: Map<String, Any?>) {}
+
     /** Called when the battery budget engine adjusts parameters. */
     fun onBudgetAdjustment(data: Map<String, Any?>) {}
 

@@ -1894,7 +1894,10 @@ public final class TraceletSdk {
                 "latitude": event.latitude,
                 "longitude": event.longitude,
                 "timestamp": event.timestamp,
-                "synced": event.synced
+                "synced": event.synced,
+                // #402: the trip this event was recorded during, or JSON null
+                // outside one. Present either way so the key can be relied on.
+                "trip_id": event.tripId ?? NSNull()
             ]
         }
     }
@@ -2631,8 +2634,17 @@ public final class TraceletSdk {
 
         // Trip manager
         tripManager = TraceletTripManager()
+        // #402: the database is told the trip *before* any location for it is
+        // written, so every row recorded during the trip is stamped with it.
+        tripManager.onTripStart = { [weak self] data in
+            self?.rustDatabase?.setActiveTripId(tripId: data["tripId"] as? String)
+            self?.eventSender.sendTripStart(data)
+        }
         tripManager.onTripEnd = { [weak self] data in
             self?.eventSender.sendTrip(data)
+            // Cleared only after the summary is out, and never restored: the
+            // next trip mints its own id.
+            self?.rustDatabase?.setActiveTripId(tripId: nil)
         }
 
         // Motion detector
