@@ -1,5 +1,4 @@
 package com.ikolvi.tracelet.sdk.service
-import com.ikolvi.tracelet.sdk.util.TraceletLog
 
 import android.Manifest
 import android.app.*
@@ -31,7 +30,9 @@ import com.ikolvi.tracelet.sdk.location.LocationEngine
 import com.ikolvi.tracelet.sdk.location.PeriodicLocationWorker
 import com.ikolvi.tracelet.sdk.receiver.GeofenceBroadcastReceiver
 import com.ikolvi.tracelet.sdk.model.TrackingMode
+import com.ikolvi.tracelet.sdk.util.BackgroundRestrictions
 import com.ikolvi.tracelet.sdk.util.OemCompat
+import com.ikolvi.tracelet.sdk.util.TraceletLog
 
 /**
  * Applies the self-ticking elapsed timer: count-up only, future [startedAt]
@@ -153,6 +154,32 @@ class LocationService : Service(), DefaultLifecycleObserver {
         @Volatile
         private var lastPromotionTimestampMs: Long = 0L
 
+        /**
+         * Whether the process was in the foreground when this service's
+         * ServiceRecord was created (#405).
+         *
+         * Android 12+ latches `mAllowWhileInUsePermissionInFgs` when the record
+         * is created — at `startService()`, *not* at `startForeground()` — and
+         * the value lives for the life of the record. A record created from the
+         * background yields a foreground service that can post its notification,
+         * report `isForeground=true` and carry
+         * `FOREGROUND_SERVICE_TYPE_LOCATION`, while the OS withholds the
+         * foreground-location capability: GPS never starts, the status-bar
+         * location indicator never appears, and the stream stays silent until
+         * the app is reopened.
+         *
+         * `null` before the service has been created. Captured in `onCreate`,
+         * which is the earliest point the SDK runs — the latch itself happens a
+         * moment earlier in the caller, so this is a faithful proxy and not the
+         * OS flag itself.
+         */
+        @Volatile
+        private var serviceCreatedInForeground: Boolean? = null
+
+        /** Whether [announceLocationBlindPromotion] has already fired for this record. */
+        @Volatile
+        private var locationBlindAnnounced = false
+
         /** Records the outcome of a foreground-promotion attempt (#255). */
         private fun recordPromotion(
             result: String,
@@ -213,7 +240,39 @@ class LocationService : Service(), DefaultLifecycleObserver {
             "lastForegroundPromotionFailureClass" to lastPromotionFailureClass,
             "lastForegroundPromotionFailureMessage" to lastPromotionFailureMessage,
             "lastForegroundTransitionAt" to lastPromotionTimestampMs.takeIf { it > 0L },
+            // #405: the two fields that separate "promoted" from "promoted and
+            // allowed to use location". Without them a location-blind service
+            // is indistinguishable from a healthy one in a bug report — the
+            // failure this snapshot exists to make visible.
+            "serviceStartedInForeground" to serviceCreatedInForeground,
+            "locationCapabilityLikelyDenied" to
+                (foregroundPromoted && serviceCreatedInForeground == false),
         )
+
+        /**
+         * Announces a promotion that Android will refuse to give location to
+         * (#405).
+         *
+         * On the always-on lifecycle channel, because this is invisible by
+         * construction: every observable signal the SDK has says the service is
+         * healthy, and the only symptom is that no fix ever arrives. A released
+         * app at the default `logLevel` has to be able to report it (#318).
+         *
+         * Once per record — the condition cannot change without a new record,
+         * so repeating it would only crowd the channel.
+         */
+        private fun announceLocationBlindPromotion() {
+            if (locationBlindAnnounced) return
+            locationBlindAnnounced = true
+            TraceletLog.lifecycle(
+                "foreground-service: promoted, but this service was started while the app " +
+                    "was in the background — Android denies a background-started foreground " +
+                    "service the location capability for the life of the service, so the " +
+                    "notification will show and no fix will ever arrive. Tracking recovers " +
+                    "only when the service is re-created from the foreground, i.e. the next " +
+                    "time the app is opened (#405)."
+            )
+        }
 
         // Boot-mode native tracking state — accessible by the plugin.
         @JvmStatic
@@ -646,7 +705,32 @@ class LocationService : Service(), DefaultLifecycleObserver {
         } catch (e: Throwable) {
             TraceletLog.warning("Could not attach the persistent logger: ${e.message}")
         }
-        TraceletLog.lifecycle("service: onCreate")
+        // #405: capture the procstate the record was created in, before
+        // anything else can change it. This is what decides, for the whole life
+        // of this service, whether Android will let its foreground service
+        // touch location — see [serviceCreatedInForeground].
+        val createdInForeground = isAppInForeground()
+        serviceCreatedInForeground = createdInForeground
+        locationBlindAnnounced = false
+        TraceletLog.lifecycle(
+            "service: onCreate — startedInForeground=$createdInForeground" +
+                if (!createdInForeground) {
+                    " (a background-started service is denied location by Android; #405)"
+                } else {
+                    ""
+                }
+        )
+        if (BackgroundRestrictions.isBackgroundRestricted(applicationContext)) {
+            // #406: the Doze allowlist and Forced App Standby are independent,
+            // and only the first was ever checked. This one stops the service
+            // being promoted at all.
+            TraceletLog.lifecycle(
+                "background-restricted: the OS has this app in the \"Restricted\" battery " +
+                    "state, which blocks background service starts and foreground-service " +
+                    "promotion. Background tracking cannot work until it is set to " +
+                    "\"Unrestricted\" in Settings → Apps → Battery (#406)."
+            )
+        }
 
         // Layer 1: Process-level lifecycle monitoring.
         // We register as an observer to automatically manage notification
@@ -896,6 +980,10 @@ class LocationService : Service(), DefaultLifecycleObserver {
         isRunning = false
         // #255: the service is gone — it is no longer a foreground service.
         foregroundPromoted = false
+        // #405: the next record gets its own latch; this one's says nothing
+        // about it.
+        serviceCreatedInForeground = null
+        locationBlindAnnounced = false
         super<Service>.onDestroy()
     }
 
@@ -1687,6 +1775,10 @@ class LocationService : Service(), DefaultLifecycleObserver {
             }
             // #255: record the successful promotion for the health snapshot.
             recordPromotion(result = "success", promoted = true)
+            // #405: a promotion that succeeded is not a promotion that can
+            // track. Say so here, where the success is recorded, so the two
+            // never appear apart.
+            if (serviceCreatedInForeground == false) announceLocationBlindPromotion()
             true
         } catch (e: SecurityException) {
             TraceletLog.warning("SecurityException starting foreground service (missing permissions?): ${e.message}")

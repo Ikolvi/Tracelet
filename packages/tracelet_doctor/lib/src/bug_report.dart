@@ -213,10 +213,85 @@ class TraceletBugReport {
         '| Last transition (ms) '
         '| ${health['lastForegroundTransitionAt']} |',
       );
+      buffer.writeln(
+        '| Started in foreground '
+        '| ${health['serviceStartedInForeground']} |',
+      );
+      buffer.writeln(
+        '| Background restricted | ${health['backgroundRestricted']} |',
+      );
+      buffer.writeln(
+        '| Standby bucket '
+        '| ${health['standbyBucketName']} (${health['standbyBucket']}) |',
+      );
+      buffer.writeln();
+      _writeForegroundServiceVerdict(buffer, health);
     } catch (e) {
       buffer.writeln('_Could not read foreground-service health: ${e}_');
     }
     buffer.writeln();
+  }
+
+  /// States, in words, whether the foreground service can actually track.
+  ///
+  /// The table above is every field a maintainer needs and none of the
+  /// conclusion. A service that is promoted, running, carrying
+  /// `FOREGROUND_SERVICE_TYPE_LOCATION` and denied location by the OS renders as
+  /// six green rows (#405), which is how a report from a device that had
+  /// recorded nothing for 52 seconds read as healthy. So the report draws the
+  /// conclusion itself rather than leaving it to be inferred from a row that
+  /// says `true`.
+  static void _writeForegroundServiceVerdict(
+    StringBuffer buffer,
+    Map<String, Object?> health,
+  ) {
+    final findings = <String>[];
+
+    if (health['locationCapabilityLikelyDenied'] == true) {
+      findings.add(
+        '🔴 **The foreground service is promoted but cannot use location.** It '
+        'was started while the app was in the background, and Android denies a '
+        'background-started foreground service the location capability for the '
+        "service's entire life — regardless of manifest "
+        '`foregroundServiceType`, `ACCESS_BACKGROUND_LOCATION`, or the Doze '
+        'allowlist. The notification shows and no fix will arrive. Tracking '
+        'recovers only when the service is re-created from the foreground, '
+        'i.e. the next time the app is opened. (#405)',
+      );
+    }
+
+    if (health['backgroundRestricted'] == true) {
+      findings.add(
+        '🔴 **The app is in the "Restricted" battery state** (Forced App '
+        'Standby). The OS blocks background service starts and '
+        'foreground-service promotion outright. This is independent of the '
+        'battery-optimization exemption reported in the health check above, '
+        'which may well say `true` at the same time. Fix: Settings → Apps → '
+        'this app → Battery → Unrestricted. (#406)',
+      );
+    }
+
+    if (health['standbyBucketName'] == 'restricted') {
+      findings.add(
+        '⚠️ The app is in the `restricted` standby bucket, so jobs and alarms '
+        'are heavily deferred.',
+      );
+    }
+
+    if (findings.isEmpty) {
+      buffer.writeln(
+        '**Verdict:** no foreground-service restriction detected. Note this '
+        'covers promotion and location capability only — see the stream-health '
+        'section for whether fixes are actually arriving.',
+      );
+      return;
+    }
+    buffer.writeln('**Verdict:**');
+    buffer.writeln();
+    for (final f in findings) {
+      buffer.writeln('- $f');
+      buffer.writeln();
+    }
   }
 
   /// Writes the location-filter thresholds **actually in force**, next to the
@@ -393,6 +468,11 @@ class TraceletBugReport {
   static const List<String> _streamHealthMarkers = [
     'location stream stalled',
     'location stream recovered',
+    // #407: silence is a different fault from rejection, and until it was
+    // announced on its own timer a stream delivering nothing produced no marker
+    // at all — so this section reported it as health.
+    'location stream silent',
+    'location stream resumed',
     'battery budget:',
     'anchor re-seeded',
     'adaptive sampling held',
@@ -421,10 +501,14 @@ class TraceletBugReport {
           .where((log) => _streamHealthMarkers.any(log.message.contains))
           .toList();
       if (trace.isEmpty) {
+        // Deliberately not "the stream has been accepting fixes". It said that
+        // over a 52-second window in which it accepted nothing, because the
+        // only watchdog was fix-driven and silence never reached it (#405,
+        // #407). The absence of markers is the absence of markers.
         buffer.writeln(
-          '_No stalls or battery-budget adjustments in the last $limit log '
-          'entries — the stream has been accepting fixes and the budget has '
-          'not throttled._',
+          '_No stall, silence or battery-budget entries in the last $limit log '
+          'entries. That means none were recorded — check the lifecycle trace '
+          'and the fix timestamps above before reading it as health._',
         );
       } else {
         buffer.writeln('```');

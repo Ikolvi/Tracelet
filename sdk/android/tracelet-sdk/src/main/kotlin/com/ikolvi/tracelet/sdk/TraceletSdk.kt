@@ -3085,6 +3085,17 @@ class TraceletSdk private constructor(private val context: Context) {
         health["desiredEnabled"] = stateManager.enabled
         health["foregroundServiceEnabled"] = configManager.isForegroundServiceEnabled()
         health["platform"] = "android"
+        // #406: Forced App Standby is independent of the Doze allowlist the
+        // health check already reports, and it is the stronger restriction —
+        // it blocks the foreground-service promotion outright. Reported here
+        // rather than in HealthCheck because this map is the snapshot that
+        // exists to say whether background tracking is operational.
+        val bucket = com.ikolvi.tracelet.sdk.util.BackgroundRestrictions.standbyBucket(context)
+        health["backgroundRestricted"] =
+            com.ikolvi.tracelet.sdk.util.BackgroundRestrictions.isBackgroundRestricted(context)
+        health["standbyBucket"] = bucket?.toLong()
+        health["standbyBucketName"] =
+            com.ikolvi.tracelet.sdk.util.BackgroundRestrictions.standbyBucketName(bucket)
         return health
     }
 

@@ -90,6 +90,20 @@ class LocationEngine(
         private const val STALL_ANNOUNCE_MS = 120_000L
 
         /**
+         * How long a *continuous* stream may deliver nothing at all before the
+         * SDK says so on the lifecycle channel (#407).
+         *
+         * Shorter than [STALL_ANNOUNCE_MS], because silence is a harder
+         * failure than rejection: rejection means the pipeline is alive and
+         * mis-tuned, silence means the OS has stopped talking to the app, which
+         * no threshold change can recover.
+         */
+        private const val SILENCE_ANNOUNCE_MS = 45_000L
+
+        /** How often the silence watchdog checks. Cheap; it only reads a clock. */
+        private const val SILENCE_POLL_MS = 15_000L
+
+        /**
          * Determines if a location fix is GPS-sourced (not network/cell).
          * FusedLocationProvider uses "fused" as provider, so we also check
          * accuracy as a heuristic: GPS fixes typically have accuracy ≤ 50m.
@@ -614,6 +628,98 @@ class LocationEngine(
         lastAcceptedFixAt = if (seed) System.currentTimeMillis() else null
         rejectionsSinceAccept.clear()
         stallAnnounced = false
+        if (seed) armSilenceWatchdog() else cancelSilenceWatchdog()
+    }
+
+    // =========================================================================
+    // Silence watchdog (#407)
+    // =========================================================================
+
+    /**
+     * When the last location callback arrived, or `null` if none has since the
+     * stream started.
+     *
+     * Deliberately separate from [lastAcceptedFixAt]: that one tracks the
+     * *filter*, this one tracks the *provider*. A stream that is delivering
+     * fixes the filter rejects and a stream that is delivering nothing are
+     * different faults with different fixes, and until #407 both were reported
+     * as neither.
+     *
+     * On [android.os.SystemClock.elapsedRealtime], not the wall clock. This is
+     * an interval measurement, and a wall clock that an NTP sync or a manual
+     * change steps forward would announce a silence that never happened —
+     * stepped backwards, it would hide a real one indefinitely.
+     */
+    private var lastCallbackAt: Long? = null
+
+    private val silenceHandler = Handler(Looper.getMainLooper())
+    private var silenceRunnable: Runnable? = null
+    private var silenceAnnounced = false
+
+    /**
+     * Starts the timer that announces a stream delivering nothing at all.
+     *
+     * [noteFilterDecision] cannot do this: it only runs when a fix arrives, so
+     * total silence — the case where the SDK is most blind — never reached it.
+     * That is how a 52-second dead window came back from the field reported as
+     * "the stream has been accepting fixes" (#405/#407).
+     */
+    private fun armSilenceWatchdog() {
+        cancelSilenceWatchdog()
+        silenceAnnounced = false
+        lastCallbackAt = null
+        val started = android.os.SystemClock.elapsedRealtime()
+        val runnable = object : Runnable {
+            override fun run() {
+                // Periodic mode's silence between ticks is the design, not a
+                // fault, so only a stream that is supposed to be continuous is
+                // worth announcing.
+                if (trackingCallback == null) return
+                val last = lastCallbackAt
+                val silentSinceMs = android.os.SystemClock.elapsedRealtime() - (last ?: started)
+                if (silentSinceMs >= SILENCE_ANNOUNCE_MS && !silenceAnnounced) {
+                    silenceAnnounced = true
+                    TraceletLog.lifecycle(
+                        "location stream silent — no fix delivered for " +
+                            "${silentSinceMs / 1000}s" +
+                            (if (last == null) " since the stream started" else "") +
+                            ", requested accuracy=${effectiveDesiredAccuracy()} " +
+                            "interval=${effectiveUpdateInterval()}ms " +
+                            "distanceFilter=${effectiveDistanceFilter()}m. " +
+                            "The provider is delivering nothing — this is not the filter " +
+                            "rejecting fixes (#407).",
+                    )
+                }
+                silenceHandler.postDelayed(this, SILENCE_POLL_MS)
+            }
+        }
+        silenceRunnable = runnable
+        silenceHandler.postDelayed(runnable, SILENCE_POLL_MS)
+    }
+
+    private fun cancelSilenceWatchdog() {
+        silenceRunnable?.let { silenceHandler.removeCallbacks(it) }
+        silenceRunnable = null
+        silenceAnnounced = false
+        lastCallbackAt = null
+    }
+
+    /**
+     * Records that the provider delivered something, whatever the filter later
+     * decides about it, and announces recovery from an earlier silence.
+     */
+    private fun noteCallbackDelivered() {
+        val wasSilent = silenceAnnounced
+        val since = lastCallbackAt
+        val now = android.os.SystemClock.elapsedRealtime()
+        lastCallbackAt = now
+        silenceAnnounced = false
+        if (wasSilent) {
+            TraceletLog.lifecycle(
+                "location stream resumed after ${(now - (since ?: now)) / 1000}s " +
+                    "of silence (#407)",
+            )
+        }
     }
 
     /**
@@ -685,6 +791,10 @@ class LocationEngine(
 
         trackingCallback = object : TraceletLocationCallback {
             override fun onLocationResult(locations: List<Location>) {
+                // #407: before the filter gets a say. What the provider
+                // delivered and what the filter kept are separate questions,
+                // and the watchdogs that answer them must not share a clock.
+                noteCallbackDelivered()
                 for (location in locations) {
                     onLocationReceived(location, "location")
                 }
