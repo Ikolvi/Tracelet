@@ -46,7 +46,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.12.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1608306581;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1458619607;
 
 // Section: executor
 
@@ -1823,6 +1823,54 @@ fn wire__crate__api_dart__transport_mode__TransportModeClassifierDart_reset_impl
         },
     )
 }
+fn wire__crate__api_dart__trip__TripManagerDart_current_trip_id_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "TripManagerDart_current_trip_id",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<TripManagerDart>,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let mut api_that_guard = None;
+                let decode_indices_ =
+                    flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                        flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                            &api_that, 0, false,
+                        ),
+                    ]);
+                for i in decode_indices_ {
+                    match i {
+                        0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                        _ => unreachable!(),
+                    }
+                }
+                let api_that_guard = api_that_guard.unwrap();
+                let output_ok = Result::<_, ()>::Ok(
+                    crate::api_dart::trip::TripManagerDart::current_trip_id(&*api_that_guard),
+                )?;
+                Ok(output_ok)
+            })())
+        },
+    )
+}
 fn wire__crate__api_dart__trip__TripManagerDart_is_trip_active_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -2496,6 +2544,17 @@ impl SseDecode for crate::algorithms::transport_mode::ModeResult {
     }
 }
 
+impl SseDecode for Option<String> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<String>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
 impl SseDecode for Option<crate::state::battery_budget::BudgetAdjustmentEvent> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2609,6 +2668,32 @@ impl SseDecode for Option<crate::api_dart::trip::TripLocationDart> {
     }
 }
 
+impl SseDecode for Option<crate::api_dart::trip::TripStartDart> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<crate::api_dart::trip::TripStartDart>::sse_decode(
+                deserializer,
+            ));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<crate::api_dart::trip::TripTransitionDart> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<crate::api_dart::trip::TripTransitionDart>::sse_decode(
+                deserializer,
+            ));
+        } else {
+            return None;
+        }
+    }
+}
+
 impl SseDecode for crate::api_dart::schedule::ScheduleAlarmsDart {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2677,8 +2762,11 @@ impl SseDecode for crate::algorithms::transport_mode::TransportMode {
 impl SseDecode for crate::api_dart::trip::TripDataDart {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_tripId = <String>::sse_decode(deserializer);
         let mut var_distanceMeters = <f64>::sse_decode(deserializer);
         let mut var_durationSeconds = <f64>::sse_decode(deserializer);
+        let mut var_startedAtMs = <i64>::sse_decode(deserializer);
+        let mut var_endedAtMs = <i64>::sse_decode(deserializer);
         let mut var_startLocation =
             <Option<crate::api_dart::trip::TripLocationDart>>::sse_decode(deserializer);
         let mut var_stopLocation =
@@ -2686,8 +2774,11 @@ impl SseDecode for crate::api_dart::trip::TripDataDart {
         let mut var_waypoints =
             <Vec<crate::api_dart::trip::TripWaypointDart>>::sse_decode(deserializer);
         return crate::api_dart::trip::TripDataDart {
+            trip_id: var_tripId,
             distance_meters: var_distanceMeters,
             duration_seconds: var_durationSeconds,
+            started_at_ms: var_startedAtMs,
+            ended_at_ms: var_endedAtMs,
             start_location: var_startLocation,
             stop_location: var_stopLocation,
             waypoints: var_waypoints,
@@ -2703,6 +2794,34 @@ impl SseDecode for crate::api_dart::trip::TripLocationDart {
         return crate::api_dart::trip::TripLocationDart {
             latitude: var_latitude,
             longitude: var_longitude,
+        };
+    }
+}
+
+impl SseDecode for crate::api_dart::trip::TripStartDart {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_tripId = <String>::sse_decode(deserializer);
+        let mut var_startedAtMs = <i64>::sse_decode(deserializer);
+        let mut var_startLocation =
+            <Option<crate::api_dart::trip::TripLocationDart>>::sse_decode(deserializer);
+        return crate::api_dart::trip::TripStartDart {
+            trip_id: var_tripId,
+            started_at_ms: var_startedAtMs,
+            start_location: var_startLocation,
+        };
+    }
+}
+
+impl SseDecode for crate::api_dart::trip::TripTransitionDart {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_started =
+            <Option<crate::api_dart::trip::TripStartDart>>::sse_decode(deserializer);
+        let mut var_ended = <Option<crate::api_dart::trip::TripDataDart>>::sse_decode(deserializer);
+        return crate::api_dart::trip::TripTransitionDart {
+            started: var_started,
+            ended: var_ended,
         };
     }
 }
@@ -2798,11 +2917,12 @@ fn pde_ffi_dispatcher_sync_impl(
 35 => wire__crate__api_dart__transport_mode__TransportModeClassifierDart_classify_samples_impl(ptr, rust_vec_len, data_len),
 36 => wire__crate__api_dart__transport_mode__TransportModeClassifierDart_new_impl(ptr, rust_vec_len, data_len),
 37 => wire__crate__api_dart__transport_mode__TransportModeClassifierDart_reset_impl(ptr, rust_vec_len, data_len),
-38 => wire__crate__api_dart__trip__TripManagerDart_is_trip_active_impl(ptr, rust_vec_len, data_len),
-39 => wire__crate__api_dart__trip__TripManagerDart_new_impl(ptr, rust_vec_len, data_len),
-40 => wire__crate__api_dart__trip__TripManagerDart_on_location_received_impl(ptr, rust_vec_len, data_len),
-41 => wire__crate__api_dart__trip__TripManagerDart_on_motion_state_changed_impl(ptr, rust_vec_len, data_len),
-42 => wire__crate__api_dart__trip__TripManagerDart_reset_impl(ptr, rust_vec_len, data_len),
+38 => wire__crate__api_dart__trip__TripManagerDart_current_trip_id_impl(ptr, rust_vec_len, data_len),
+39 => wire__crate__api_dart__trip__TripManagerDart_is_trip_active_impl(ptr, rust_vec_len, data_len),
+40 => wire__crate__api_dart__trip__TripManagerDart_new_impl(ptr, rust_vec_len, data_len),
+41 => wire__crate__api_dart__trip__TripManagerDart_on_location_received_impl(ptr, rust_vec_len, data_len),
+42 => wire__crate__api_dart__trip__TripManagerDart_on_motion_state_changed_impl(ptr, rust_vec_len, data_len),
+43 => wire__crate__api_dart__trip__TripManagerDart_reset_impl(ptr, rust_vec_len, data_len),
                         _ => unreachable!(),
                     }
 }
@@ -3199,8 +3319,11 @@ impl flutter_rust_bridge::IntoIntoDart<crate::algorithms::transport_mode::Transp
 impl flutter_rust_bridge::IntoDart for crate::api_dart::trip::TripDataDart {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
+            self.trip_id.into_into_dart().into_dart(),
             self.distance_meters.into_into_dart().into_dart(),
             self.duration_seconds.into_into_dart().into_dart(),
+            self.started_at_ms.into_into_dart().into_dart(),
+            self.ended_at_ms.into_into_dart().into_dart(),
             self.start_location.into_into_dart().into_dart(),
             self.stop_location.into_into_dart().into_dart(),
             self.waypoints.into_into_dart().into_dart(),
@@ -3237,6 +3360,49 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api_dart::trip::TripLocationDart>
     for crate::api_dart::trip::TripLocationDart
 {
     fn into_into_dart(self) -> crate::api_dart::trip::TripLocationDart {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api_dart::trip::TripStartDart {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.trip_id.into_into_dart().into_dart(),
+            self.started_at_ms.into_into_dart().into_dart(),
+            self.start_location.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api_dart::trip::TripStartDart
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api_dart::trip::TripStartDart>
+    for crate::api_dart::trip::TripStartDart
+{
+    fn into_into_dart(self) -> crate::api_dart::trip::TripStartDart {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api_dart::trip::TripTransitionDart {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.started.into_into_dart().into_dart(),
+            self.ended.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api_dart::trip::TripTransitionDart
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api_dart::trip::TripTransitionDart>
+    for crate::api_dart::trip::TripTransitionDart
+{
+    fn into_into_dart(self) -> crate::api_dart::trip::TripTransitionDart {
         self
     }
 }
@@ -3604,6 +3770,16 @@ impl SseEncode for crate::algorithms::transport_mode::ModeResult {
     }
 }
 
+impl SseEncode for Option<String> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <String>::sse_encode(value, serializer);
+        }
+    }
+}
+
 impl SseEncode for Option<crate::state::battery_budget::BudgetAdjustmentEvent> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -3694,6 +3870,26 @@ impl SseEncode for Option<crate::api_dart::trip::TripLocationDart> {
     }
 }
 
+impl SseEncode for Option<crate::api_dart::trip::TripStartDart> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::api_dart::trip::TripStartDart>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<crate::api_dart::trip::TripTransitionDart> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::api_dart::trip::TripTransitionDart>::sse_encode(value, serializer);
+        }
+    }
+}
+
 impl SseEncode for crate::api_dart::schedule::ScheduleAlarmsDart {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -3756,8 +3952,11 @@ impl SseEncode for crate::algorithms::transport_mode::TransportMode {
 impl SseEncode for crate::api_dart::trip::TripDataDart {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.trip_id, serializer);
         <f64>::sse_encode(self.distance_meters, serializer);
         <f64>::sse_encode(self.duration_seconds, serializer);
+        <i64>::sse_encode(self.started_at_ms, serializer);
+        <i64>::sse_encode(self.ended_at_ms, serializer);
         <Option<crate::api_dart::trip::TripLocationDart>>::sse_encode(
             self.start_location,
             serializer,
@@ -3775,6 +3974,26 @@ impl SseEncode for crate::api_dart::trip::TripLocationDart {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <f64>::sse_encode(self.latitude, serializer);
         <f64>::sse_encode(self.longitude, serializer);
+    }
+}
+
+impl SseEncode for crate::api_dart::trip::TripStartDart {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.trip_id, serializer);
+        <i64>::sse_encode(self.started_at_ms, serializer);
+        <Option<crate::api_dart::trip::TripLocationDart>>::sse_encode(
+            self.start_location,
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::api_dart::trip::TripTransitionDart {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Option<crate::api_dart::trip::TripStartDart>>::sse_encode(self.started, serializer);
+        <Option<crate::api_dart::trip::TripDataDart>>::sse_encode(self.ended, serializer);
     }
 }
 

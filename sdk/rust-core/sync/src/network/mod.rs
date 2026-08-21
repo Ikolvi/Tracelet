@@ -50,6 +50,10 @@ pub struct SyncLocationRecord {
     /// `DbLocationRecord.address`; emitted into the default payload so the
     /// backend receives it without a custom body builder.
     pub address: Option<String>,
+    /// The trip this record was written during (#402), or `None` if none was
+    /// active. Carried straight from the row rather than resolved at flush
+    /// time, so a queued record uploads with the trip it belongs to.
+    pub trip_id: Option<String>,
 }
 
 #[derive(uniffi::Object)]
@@ -182,6 +186,17 @@ impl SyncManager {
                     }
                 }
 
+                // #402: always present so a consumer can rely on the key, and
+                // explicitly null outside a trip rather than absent — the two
+                // are different to most JSON parsers. Additive: nothing else
+                // moves or is renamed.
+                if let Some(obj) = base_json.as_object_mut() {
+                    obj.insert(
+                        "trip_id".to_string(),
+                        r.trip_id.clone().map_or(serde_json::Value::Null, serde_json::Value::String),
+                    );
+                }
+
                 let record_route_context: Option<serde_json::Value> = r.route_context.as_ref()
                     .and_then(|rc| serde_json::from_str(rc).ok());
 
@@ -232,6 +247,17 @@ impl SyncManager {
                             .unwrap_or_else(|_| serde_json::Value::String(addr.clone()));
                         obj.insert("address".to_string(), val);
                     }
+                }
+
+                // #402: always present so a consumer can rely on the key, and
+                // explicitly null outside a trip rather than absent — the two
+                // are different to most JSON parsers. Additive: nothing else
+                // moves or is renamed.
+                if let Some(obj) = base_json.as_object_mut() {
+                    obj.insert(
+                        "trip_id".to_string(),
+                        r.trip_id.clone().map_or(serde_json::Value::Null, serde_json::Value::String),
+                    );
                 }
 
                 let record_route_context: Option<serde_json::Value> = r.route_context.as_ref()
@@ -461,6 +487,7 @@ mod tests {
             is_moving: true,
             activity: "moving".to_string(),
             event: "location".to_string(),
+            trip_id: None,
             route_context: None,
             address: None,
         }
@@ -590,5 +617,37 @@ mod tests {
         // Assert extras are attached at the root level of the payload as an object
         let extras = payload.get("extras").expect("Missing 'extras' object in payload");
         assert_eq!(extras.get("custom_meta").and_then(serde_json::Value::as_i64), Some(123), "extras were not attached to the payload!");
+    }
+
+    #[test]
+    fn payload_carries_trip_id_in_both_batch_modes() {
+        // #402: present as an explicit null outside a trip, so a consumer can
+        // rely on the key existing rather than distinguishing absent from null.
+        for batch in [true, false] {
+            let payload = SyncManager::build_sync_payload(&get_test_config(batch), &[get_test_record()]);
+            let node = payload.get("location").unwrap();
+            let record = if batch { &node.as_array().unwrap()[0] } else { node };
+            assert_eq!(
+                record.get("trip_id"),
+                Some(&Value::Null),
+                "batch_sync={batch}: trip_id must be present and null outside a trip"
+            );
+        }
+    }
+
+    #[test]
+    fn payload_emits_the_trip_the_row_was_written_under() {
+        let mut record = get_test_record();
+        record.trip_id = Some("9f2c0f1e-4c31-4b2a-9a77-1d0f3b5e7c88".to_string());
+        let payload = SyncManager::build_sync_payload(&get_test_config(true), &[record]);
+        let first = &payload.get("location").unwrap().as_array().unwrap()[0];
+        assert_eq!(
+            first.get("trip_id").and_then(Value::as_str),
+            Some("9f2c0f1e-4c31-4b2a-9a77-1d0f3b5e7c88")
+        );
+        // Additive: the pre-existing shape is untouched.
+        assert_eq!(first.get("id").and_then(Value::as_i64), Some(1));
+        assert_eq!(first.get("event").and_then(Value::as_str), Some("location"));
+        assert!(first.get("coords").is_some());
     }
 }

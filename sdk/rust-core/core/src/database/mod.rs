@@ -19,6 +19,16 @@ use crate::algorithms::geo_utils::Coordinate;
 pub struct DatabaseManager {
     conn: Mutex<Connection>,
     encryption_key: RwLock<Option<[u8; 32]>>,
+    /// The trip every subsequent insert is stamped with (#402), or `None`
+    /// between trips.
+    ///
+    /// Held here rather than threaded through `insert_location` /
+    /// `insert_telematics_event` so that *every* write path picks it up —
+    /// including the ones that never touch the trip manager, such as the
+    /// periodic-fix worker, the geofence writer, and the four native telematics
+    /// call sites. A parameter would have to be remembered at each of them and
+    /// silently produces a NULL when it is not.
+    active_trip_id: RwLock<Option<String>>,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -57,6 +67,10 @@ pub struct DbLocationRecord {
     /// `{"street":..,"city":..,"state":..,"postalCode":..,"country":..}`).
     /// Populated when `resolveAddress` is enabled (#187). `None` otherwise.
     pub address: Option<String>,
+    /// The trip this row was written during (#402), or `None` if no trip was
+    /// active. Stamped at INSERT and never rewritten, so a row uploaded hours
+    /// later still carries the trip it actually belongs to.
+    pub trip_id: Option<String>,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -100,6 +114,8 @@ pub struct DbTelematicsRecord {
     pub longitude: f64,
     pub timestamp: String,
     pub synced: bool,
+    /// The trip this event occurred during (#402), or `None` outside a trip.
+    pub trip_id: Option<String>,
 }
 
 #[uniffi::export]
@@ -232,6 +248,18 @@ impl DatabaseManager {
         let _ = conn.execute("ALTER TABLE tracelet_telematics ADD COLUMN speed REAL NOT NULL DEFAULT 0.0", []);
         let _ = conn.execute("ALTER TABLE tracelet_telematics ADD COLUMN event_value REAL NOT NULL DEFAULT 0.0", []);
 
+        // #402: the trip correlation key. Stamped at INSERT from the active
+        // trip, so it records the trip a row was *written* under rather than
+        // whatever happens to be running when it finally uploads — the
+        // distinction that makes an offline queue correct. Stays a plaintext
+        // column under encryption for the same reason `route_context` does:
+        // it has to be queryable to correlate, and an opaque random id is not
+        // coordinate-level PII. Rows written before this migration read NULL.
+        let _ = conn.execute("ALTER TABLE location_events ADD COLUMN trip_id TEXT", []);
+        let _ = conn.execute("ALTER TABLE tracelet_telematics ADD COLUMN trip_id TEXT", []);
+        let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_location_events_trip_id ON location_events(trip_id)", []);
+        let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_tracelet_telematics_trip_id ON tracelet_telematics(trip_id)", []);
+
         // Migrate and backfill timestamp_ms
         let _ = conn.execute("ALTER TABLE location_events ADD COLUMN timestamp_ms INTEGER DEFAULT 0", []);
         let _ = conn.execute("UPDATE location_events SET timestamp_ms = CAST((julianday(timestamp) - 2440587.5) * 86400000 AS INTEGER) WHERE timestamp_ms IS NULL OR timestamp_ms = 0", []);
@@ -249,7 +277,23 @@ impl DatabaseManager {
         Ok(Self {
             conn: Mutex::new(conn),
             encryption_key: RwLock::new(None),
+            active_trip_id: RwLock::new(None),
         })
+    }
+
+    /// Sets the trip that subsequent inserts are stamped with (#402).
+    ///
+    /// Called with the id minted by the trip manager at trip start, and with
+    /// `None` at trip end. Records written outside a trip carry no trip id;
+    /// they are not retroactively assigned one when the next trip begins,
+    /// because the value records the state at the moment of the write.
+    pub fn set_active_trip_id(&self, trip_id: Option<String>) {
+        *self.active_trip_id.write().unwrap() = trip_id.filter(|t| !t.is_empty());
+    }
+
+    /// The trip subsequent inserts will be stamped with, if any (#402).
+    pub fn active_trip_id(&self) -> Option<String> {
+        self.active_trip_id.read().unwrap().clone()
     }
 
     /// Sets the encryption key (32 bytes max). If the string is empty or invalid, encryption is disabled.
@@ -328,6 +372,10 @@ impl DatabaseManager {
         // geofence payload (identifier/action) is not coordinate-level PII.
         let event_type = event_type.unwrap_or_else(|| "location".to_string());
 
+        // #402: the trip in force at this instant. Read here, at the write, so
+        // the row is stamped with the trip it was recorded under.
+        let trip_id = self.active_trip_id.read().unwrap().clone();
+
         let is_encrypted = self.encryption_key.read().unwrap().is_some();
         if is_encrypted {
             let record = serde_json::json!({
@@ -350,9 +398,9 @@ impl DatabaseManager {
                 // activity_confidence follows activity: zeroed-out plaintext column
                 // (-1 = unset), real value inside the encrypted payload (#245).
                 conn.execute(
-                    "INSERT INTO location_events (uuid, timestamp, latitude, longitude, accuracy, speed, heading, altitude, is_mock, is_moving, activity, activity_confidence, encrypted_payload, route_context, timestamp_ms, event_type, event_payload, address)
-                     VALUES (?1, ?2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, '', -1, ?3, ?4, ?5, ?6, ?7, NULL)",
-                    params![uuid, timestamp, payload, route_context, timestamp_ms, event_type, event_payload],
+                    "INSERT INTO location_events (uuid, timestamp, latitude, longitude, accuracy, speed, heading, altitude, is_mock, is_moving, activity, activity_confidence, encrypted_payload, route_context, timestamp_ms, event_type, event_payload, address, trip_id)
+                     VALUES (?1, ?2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, '', -1, ?3, ?4, ?5, ?6, ?7, NULL, ?8)",
+                    params![uuid, timestamp, payload, route_context, timestamp_ms, event_type, event_payload, trip_id],
                 ).map_err(|e| TraceletError::Database(e.to_string()))?;
                 return Ok(conn.last_insert_rowid());
             }
@@ -360,9 +408,9 @@ impl DatabaseManager {
 
         // Fallback or unencrypted
         conn.execute(
-            "INSERT INTO location_events (uuid, timestamp, latitude, longitude, accuracy, speed, heading, altitude, is_mock, is_moving, activity, activity_confidence, encrypted_payload, route_context, timestamp_ms, event_type, event_payload, address)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, NULL, ?13, ?14, ?15, ?16, ?17)",
-            params![uuid, timestamp, lat, lng, acc, speed, heading, altitude, if is_mock { 1 } else { 0 }, if is_moving { 1 } else { 0 }, activity, activity_confidence, route_context, timestamp_ms, event_type, event_payload, address],
+            "INSERT INTO location_events (uuid, timestamp, latitude, longitude, accuracy, speed, heading, altitude, is_mock, is_moving, activity, activity_confidence, encrypted_payload, route_context, timestamp_ms, event_type, event_payload, address, trip_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, NULL, ?13, ?14, ?15, ?16, ?17, ?18)",
+            params![uuid, timestamp, lat, lng, acc, speed, heading, altitude, if is_mock { 1 } else { 0 }, if is_moving { 1 } else { 0 }, activity, activity_confidence, route_context, timestamp_ms, event_type, event_payload, address, trip_id],
         ).map_err(|e| TraceletError::Database(e.to_string()))?;
 
         Ok(conn.last_insert_rowid())
@@ -373,7 +421,7 @@ impl DatabaseManager {
         use rusqlite::types::Value;
         let conn = self.conn.lock().unwrap();
         
-        let mut sql = "SELECT id, uuid, timestamp, latitude, longitude, accuracy, speed, heading, altitude, is_mock, is_moving, activity, encrypted_payload, route_context, event_type, event_payload, address, activity_confidence FROM location_events WHERE 1=1".to_string();
+        let mut sql = "SELECT id, uuid, timestamp, latitude, longitude, accuracy, speed, heading, altitude, is_mock, is_moving, activity, encrypted_payload, route_context, event_type, event_payload, address, activity_confidence, trip_id FROM location_events WHERE 1=1".to_string();
         let mut params: Vec<Value> = Vec::new();
         
         // No limit specified → return ALL matching rows (-1 = no LIMIT, handled
@@ -433,6 +481,8 @@ impl DatabaseManager {
             let event_type: String = row.get::<_, Option<String>>(14).unwrap_or(None).unwrap_or_else(|| "location".to_string());
             let event_payload: Option<String> = row.get(15).unwrap_or(None);
             let mut address: Option<String> = row.get(16).unwrap_or(None);
+            // #402: plaintext column in both storage modes — see the migration.
+            let trip_id: Option<String> = row.get(18).unwrap_or(None);
 
             if let Some(payload_bytes) = encrypted_payload {
                 if let Some(plaintext) = self.decrypt_payload(&payload_bytes) {
@@ -472,6 +522,7 @@ impl DatabaseManager {
                 event_type,
                 event_payload,
                 address,
+                trip_id,
             })
         }).map_err(|e| TraceletError::Database(e.to_string()))?;
 
@@ -503,7 +554,7 @@ impl DatabaseManager {
     /// Gets the total count of locations persisted in the database.
     pub fn get_location_for_audit(&self, uuid: &str) -> Result<Option<DbLocationRecord>, TraceletError> {
         let conn = self.conn.lock().unwrap();
-        let sql = "SELECT id, uuid, timestamp, latitude, longitude, accuracy, speed, heading, altitude, is_mock, is_moving, activity, encrypted_payload, route_context, event_type, event_payload, address, activity_confidence FROM location_events WHERE uuid = ?1 LIMIT 1";
+        let sql = "SELECT id, uuid, timestamp, latitude, longitude, accuracy, speed, heading, altitude, is_mock, is_moving, activity, encrypted_payload, route_context, event_type, event_payload, address, activity_confidence, trip_id FROM location_events WHERE uuid = ?1 LIMIT 1";
         
         let mut stmt = conn.prepare(sql).map_err(|e| TraceletError::Database(e.to_string()))?;
         
@@ -524,6 +575,8 @@ impl DatabaseManager {
             let event_type: String = row.get::<_, Option<String>>(14).unwrap_or(None).unwrap_or_else(|| "location".to_string());
             let event_payload: Option<String> = row.get(15).unwrap_or(None);
             let mut address: Option<String> = row.get(16).unwrap_or(None);
+            // #402: plaintext column in both storage modes — see the migration.
+            let trip_id: Option<String> = row.get(18).unwrap_or(None);
 
             if let Some(payload_bytes) = encrypted_payload {
                 if let Some(plaintext) = self.decrypt_payload(&payload_bytes) {
@@ -562,6 +615,7 @@ impl DatabaseManager {
                 event_type,
                 event_payload,
                 address,
+                trip_id,
             })
         }).map_err(|e| TraceletError::Database(e.to_string()))?;
 
@@ -988,9 +1042,13 @@ impl DatabaseManager {
     /// flag and no physical quantity behind it (#367).
     pub fn insert_telematics_event(&self, event_type: &str, severity: f64, speed: f64, value: f64, lat: f64, lng: f64) -> Result<i64, TraceletError> {
         let conn = self.conn.lock().unwrap();
+        // #402: stamped from the active trip at write time, exactly as
+        // locations are, so a driving event correlates with the locations
+        // recorded around it.
+        let trip_id = self.active_trip_id.read().unwrap().clone();
         conn.execute(
-            "INSERT INTO tracelet_telematics (event_type, severity, speed, event_value, latitude, longitude) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![event_type, severity, speed, value, lat, lng]
+            "INSERT INTO tracelet_telematics (event_type, severity, speed, event_value, latitude, longitude, trip_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![event_type, severity, speed, value, lat, lng, trip_id]
         ).map_err(|e| TraceletError::Database(e.to_string()))?;
         Ok(conn.last_insert_rowid())
     }
@@ -1005,7 +1063,7 @@ impl DatabaseManager {
     /// user-facing (#313).
     pub fn get_telematics_events(&self, limit: i32) -> Result<Vec<DbTelematicsRecord>, TraceletError> {
         self.query_telematics(
-            "SELECT id, event_type, severity, latitude, longitude, timestamp, synced, speed, event_value FROM tracelet_telematics WHERE synced = 0 ORDER BY id ASC LIMIT ?1",
+            "SELECT id, event_type, severity, latitude, longitude, timestamp, synced, speed, event_value, trip_id FROM tracelet_telematics WHERE synced = 0 ORDER BY id ASC LIMIT ?1",
             limit,
         )
     }
@@ -1022,7 +1080,7 @@ impl DatabaseManager {
     /// most recent n it documented.
     pub fn get_telematics_history(&self, limit: i32) -> Result<Vec<DbTelematicsRecord>, TraceletError> {
         self.query_telematics(
-            "SELECT id, event_type, severity, latitude, longitude, timestamp, synced, speed, event_value FROM tracelet_telematics ORDER BY id DESC LIMIT ?1",
+            "SELECT id, event_type, severity, latitude, longitude, timestamp, synced, speed, event_value, trip_id FROM tracelet_telematics ORDER BY id DESC LIMIT ?1",
             limit,
         )
     }
@@ -1094,6 +1152,9 @@ impl DatabaseManager {
                 // aligned with the pre-existing column order.
                 speed: row.get(7)?,
                 value: row.get(8)?,
+                // #402: appended last for the same reason — the SELECT lists of
+                // both readers stay aligned with the existing column order.
+                trip_id: row.get(9).unwrap_or(None),
             })
         }).map_err(|e| TraceletError::Database(e.to_string()))?;
 
@@ -1941,5 +2002,116 @@ mod tests {
         assert_eq!(db.prune_synced_telematics(0).unwrap(), 0);
         assert_eq!(db.prune_synced_telematics(-1).unwrap(), 0);
         assert_eq!(db.get_telematics_history(10).unwrap().len(), 4);
+    }
+
+    // ---- #402: trip correlation -------------------------------------------
+
+    #[test]
+    fn location_is_stamped_with_the_active_trip() {
+        let db = DatabaseManager::new(":memory:").unwrap();
+        db.set_encryption_key("");
+
+        db.insert_location(None, 1.0, 1.0, 5.0, 0.0, 0.0, 0.0, false, false, "still", -1, None, None, None, None, None).unwrap();
+        db.set_active_trip_id(Some("trip-a".into()));
+        db.insert_location(None, 2.0, 2.0, 5.0, 0.0, 0.0, 0.0, false, true, "in_vehicle", -1, None, None, None, None, None).unwrap();
+        db.set_active_trip_id(None);
+        db.insert_location(None, 3.0, 3.0, 5.0, 0.0, 0.0, 0.0, false, false, "still", -1, None, None, None, None, None).unwrap();
+
+        let rows = db.get_locations_batch(None).unwrap();
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0].trip_id, None, "written before the trip started");
+        assert_eq!(rows[1].trip_id.as_deref(), Some("trip-a"));
+        assert_eq!(rows[2].trip_id, None, "written after the trip ended");
+    }
+
+    #[test]
+    fn a_later_trip_does_not_backfill_earlier_rows() {
+        // The offline case this design exists for: rows queued during trip A
+        // must still upload as trip A's, even though trip B is what is running
+        // when the flush finally happens. Stamping at sync time would give the
+        // opposite, and silently reassign the backlog.
+        let db = DatabaseManager::new(":memory:").unwrap();
+        db.set_encryption_key("");
+
+        db.set_active_trip_id(Some("trip-a".into()));
+        db.insert_location(None, 1.0, 1.0, 5.0, 0.0, 0.0, 0.0, false, true, "in_vehicle", -1, None, None, None, None, None).unwrap();
+        db.insert_telematics_event("harsh_braking", 0.8, 18.4, 0.47, 1.0, 1.0).unwrap();
+
+        // Trip A ends, hours pass offline, trip B begins — nothing has flushed.
+        db.set_active_trip_id(None);
+        db.set_active_trip_id(Some("trip-b".into()));
+        db.insert_location(None, 9.0, 9.0, 5.0, 0.0, 0.0, 0.0, false, true, "in_vehicle", -1, None, None, None, None, None).unwrap();
+
+        let rows = db.get_locations_batch(None).unwrap();
+        assert_eq!(rows[0].trip_id.as_deref(), Some("trip-a"), "backlog was reassigned to the running trip");
+        assert_eq!(rows[1].trip_id.as_deref(), Some("trip-b"));
+
+        let events = db.get_telematics_events(10).unwrap();
+        assert_eq!(events[0].trip_id.as_deref(), Some("trip-a"));
+    }
+
+    #[test]
+    fn telematics_event_is_stamped_with_the_active_trip() {
+        let db = DatabaseManager::new(":memory:").unwrap();
+        db.insert_telematics_event("speeding", 0.4, 30.0, 12.0, 1.0, 2.0).unwrap();
+        db.set_active_trip_id(Some("trip-x".into()));
+        db.insert_telematics_event("harsh_cornering", 0.6, 12.0, 0.3, 3.0, 4.0).unwrap();
+
+        let events = db.get_telematics_events(10).unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].trip_id, None, "recorded outside a trip");
+        assert_eq!(events[1].trip_id.as_deref(), Some("trip-x"));
+    }
+
+    #[test]
+    fn trip_id_survives_encrypted_storage() {
+        // trip_id is a plaintext column in both modes — it has to be queryable
+        // to correlate, and an opaque random id is not coordinate-level PII.
+        let db = DatabaseManager::new(":memory:").unwrap();
+        db.set_encryption_key("my_super_secret_encryption_key_!");
+        db.set_active_trip_id(Some("trip-enc".into()));
+        db.insert_location(None, 40.7, -74.0, 5.0, 0.0, 0.0, 0.0, false, true, "in_vehicle", -1, None, None, None, None, None).unwrap();
+
+        let rows = db.get_locations_batch(None).unwrap();
+        assert_eq!(rows[0].trip_id.as_deref(), Some("trip-enc"));
+        assert_eq!(rows[0].latitude, 40.7, "encrypted payload still round-trips");
+    }
+
+    #[test]
+    fn empty_trip_id_is_treated_as_no_trip() {
+        // Guards the FFI edge: a native caller passing "" rather than null must
+        // not write empty strings that a backend then has to distinguish.
+        let db = DatabaseManager::new(":memory:").unwrap();
+        db.set_encryption_key("");
+        db.set_active_trip_id(Some(String::new()));
+        assert_eq!(db.active_trip_id(), None);
+
+        db.insert_location(None, 1.0, 1.0, 5.0, 0.0, 0.0, 0.0, false, false, "still", -1, None, None, None, None, None).unwrap();
+        assert_eq!(db.get_locations_batch(None).unwrap()[0].trip_id, None);
+    }
+
+    #[test]
+    fn rows_written_before_the_migration_read_as_no_trip() {
+        // Simulates an upgrade: a row inserted without the column present.
+        let db = DatabaseManager::new(":memory:").unwrap();
+        db.set_encryption_key("");
+        {
+            let conn = db.conn.lock().unwrap();
+            // The index is built on the column, so it goes first.
+            conn.execute("DROP INDEX IF EXISTS idx_location_events_trip_id", []).unwrap();
+            conn.execute("ALTER TABLE location_events DROP COLUMN trip_id", []).unwrap();
+            conn.execute(
+                "INSERT INTO location_events (uuid, timestamp, latitude, longitude, accuracy, speed, heading, altitude, is_mock, is_moving, activity, activity_confidence, timestamp_ms) \
+                 VALUES ('legacy', '2026-01-01T00:00:00Z', 1.0, 2.0, 5.0, 0.0, 0.0, 0.0, 0, 0, 'walking', -1, 0)",
+                [],
+            ).unwrap();
+            conn.execute("ALTER TABLE location_events ADD COLUMN trip_id TEXT", []).unwrap();
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_location_events_trip_id ON location_events(trip_id)", []).unwrap();
+        }
+
+        let rows = db.get_locations_batch(None).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].trip_id, None);
+        assert_eq!(rows[0].uuid.as_deref(), Some("legacy"));
     }
 }
