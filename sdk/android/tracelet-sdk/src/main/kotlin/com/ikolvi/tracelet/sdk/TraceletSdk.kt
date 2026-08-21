@@ -253,6 +253,19 @@ class TraceletSdk private constructor(private val context: Context) {
     val isTracking: Boolean
         get() = ::locationEngine.isInitialized && (locationEngine.isTracking || LocationService.isServiceRunning())
 
+    /**
+     * Whether *this* process already has a live session engine (#410).
+     *
+     * Deliberately narrower than [isTracking], which is true whenever the
+     * service is running — including from inside the service itself, where it
+     * answers a different question and is always true. This one asks only
+     * whether the SDK's own engine is currently producing fixes, which is what
+     * decides whether a second, boot-mode engine would be a duplicate.
+     */
+    val hasLiveSessionEngine: Boolean
+        get() = ::locationEngine.isInitialized &&
+            (locationEngine.isTracking || locationEngine.isPeriodicTracking)
+
     interface SyncProvider {
         fun syncBatchBlocking(config: uniffi.tracelet_core.HttpConfig, records: List<uniffi.tracelet_core.DbLocationRecord>): Long
 

@@ -45,6 +45,12 @@ public class TraceletSmartMotionCoordinator {
     /// stayed parked — no fixes recorded, nothing to sync — until the process
     /// was killed. Reading the posture off `isMoving` keeps the two in step, and
     /// the first real accel or speed event produces the wake-up.
+    ///
+    /// #409 is the same wedge from the other side: `isMoving` false with a *live*
+    /// stream parked the coordinator while the engine kept streaming, and
+    /// `evaluate_state` returns `.none` for that pair too. The posture is now the
+    /// OR of the committed pace and the engine's actual state — the only reading
+    /// that survives both directions.
     public func syncCurrentMode() {
         guard let stateManager = sdk?.stateManager else { return }
 
@@ -53,21 +59,39 @@ public class TraceletSmartMotionCoordinator {
             mode: TraceletSmartMotionCoordinator.coordinatorMode(
                 sessionMode: stateManager.trackingMode,
                 isMoving: stateManager.isMoving,
+                isStreamLive: sdk?.locationEngine?.isTracking ?? false,
                 useGeofencesWhenStationary: useGeofences))
         coreCoordinator?.setUseGeofencesWhenStationary(useGeofences: useGeofences)
     }
 
-    /// The posture the coordinator should be holding, given the session mode and
-    /// the committed pace. Pure so the mapping in #344 can be pinned directly.
+    /// The posture the coordinator should be holding, given the session mode, the
+    /// committed pace, and whether the engine is streaming right now. Pure so the
+    /// mappings in #344 and #409 can be pinned directly.
     static func coordinatorMode(
         sessionMode: TraceletTrackingMode,
         isMoving: Bool,
+        isStreamLive: Bool,
         useGeofencesWhenStationary: Bool
     ) -> TrackingMode {
         let stationary: TrackingMode = useGeofencesWhenStationary ? .stationaryGeofences : .stationaryPeriodic
         switch sessionMode {
         case .continuous:
-            return isMoving ? .continuous : stationary
+            // `isMoving` predicts what start() is *about* to do; `isStreamLive`
+            // reports what the engine is doing *now*. Either alone gets a case
+            // wrong, so the posture is the OR of them (#409).
+            //
+            // `isMoving` alone was the wedge. start() syncs before it touches the
+            // engine, so a session resuming stationary while a stream was still
+            // live wrote a stationary posture into a coordinator whose engine was
+            // streaming — and `evaluate_state` only emits the stop action when it
+            // believes the posture is `.continuous`. Every later stationary
+            // decision returned `.none` and GPS ran at the configured interval for
+            // the rest of the session, on a device correctly reported as parked.
+            //
+            // `isStreamLive` alone breaks #344's direction: this runs before
+            // start() starts the engine, so a moving start would sync stationary
+            // and then stream — the same wedge, mirrored.
+            return (isMoving || isStreamLive) ? .continuous : stationary
         case .geofences:
             return .stationaryGeofences
         case .periodic:

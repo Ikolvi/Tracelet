@@ -129,6 +129,12 @@ class SmartMotionCoordinator(
      * the session stayed parked — no fixes recorded, nothing to sync — until the
      * process was killed. Reading the posture off `isMoving` keeps the two in
      * step, and the first real accel or speed event produces the wake-up.
+     *
+     * #409 is the same wedge from the other side: `isMoving` false with a *live*
+     * stream parked the coordinator while the engine kept streaming, and
+     * `evaluate_state` returns None for that pair too. The posture is now the OR
+     * of the committed pace and the engine's actual state — the only reading
+     * that survives both directions.
      */
     fun syncCurrentMode() {
         val useGeofences = configManager.getStationaryTrackingMode() ==
@@ -140,7 +146,28 @@ class SmartMotionCoordinator(
         }
         val mode = when (stateManager.trackingMode) {
             TrackingMode.CONTINUOUS ->
-                if (stateManager.isMoving) uniffi.tracelet_core.TrackingMode.CONTINUOUS else stationaryMode
+                // `isMoving` predicts what start() is *about* to do; `isTracking`
+                // reports what the engine is doing *now*. Either alone gets a case
+                // wrong, so the posture is the OR of them (#409).
+                //
+                // `isMoving` alone was the wedge. start() syncs before it touches
+                // the engine, so a session resuming stationary while a stream was
+                // still live — a ready() takeover after the boot engine handed
+                // over — wrote StationaryPeriodic into a coordinator whose engine
+                // was streaming. evaluate_state only emits the stop action when it
+                // believes the mode is Continuous, so every later stationary
+                // decision returned None and the stream ran at the configured
+                // interval for the rest of the session, on a device the SDK
+                // correctly reported as parked.
+                //
+                // `isTracking` alone breaks the other direction: this runs before
+                // start() starts the engine, so a moving start would sync
+                // stationary and then stream — the same wedge, mirrored.
+                if (stateManager.isMoving || locationEngine.isTracking) {
+                    uniffi.tracelet_core.TrackingMode.CONTINUOUS
+                } else {
+                    stationaryMode
+                }
             TrackingMode.GEOFENCES -> uniffi.tracelet_core.TrackingMode.STATIONARY_GEOFENCES
             TrackingMode.PERIODIC -> uniffi.tracelet_core.TrackingMode.STATIONARY_PERIODIC
             else -> uniffi.tracelet_core.TrackingMode.CONTINUOUS

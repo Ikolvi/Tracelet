@@ -1115,6 +1115,12 @@ class LocationService : Service(), DefaultLifecycleObserver {
 
         // HTTP sync is handled natively by Rust Core now
         val sdk = com.ikolvi.tracelet.sdk.TraceletSdk.getInstance(ctx)
+        // #410: read this *before* bootstrapForBackground(), which runs
+        // initialize() when the SDK has not been set up yet and assigns a fresh
+        // `locationEngine` in the process. The question is whether a session was
+        // already running when this background trigger arrived, and a re-init
+        // must not be able to answer it "no".
+        val sessionEngineWasLive = sdk.hasLiveSessionEngine
         // Wait for the SDK to finish initializing before touching any manager.
         // bootstrapForBackground() now blocks on the init latch and returns false
         // if the Rust DB / geofenceManager are not ready. On a cold boot the
@@ -1157,6 +1163,37 @@ class LocationService : Service(), DefaultLifecycleObserver {
                 "isMoving=${state.isMoving} speedState=${state.speedMotionState} " +
                 "motionMode=${config.getMotionDetectionMode()}"
         )
+
+        // #410: the SDK's own engine may still be alive and producing fixes in
+        // this process. Task removal tears down the Flutter engine but keeps the
+        // SDK ("onDetachedFromEngine: secondary engines still active, SDK
+        // preserved"), so the session engine, its motion detector and its
+        // heartbeat all survive — and boot mode used to build a second set
+        // beside them. Two engines then stream in parallel with separate fix
+        // caches, and a stationary switch stops only the one its own coordinator
+        // holds: the field report showed the boot engine parked on a 5.7-minute
+        // stale fix while the session engine streamed at 2 s, indefinitely.
+        //
+        // Boot mode exists for the case where there is no session left to do the
+        // work — a cold boot, a sticky restart after process death. When there
+        // is one, the right number of engines is one.
+        //
+        // `bootstrapForBackground` above has already rewired the event sender for
+        // background dispatch, so the surviving session engine keeps delivering.
+        // The geofence re-registration below is deliberately skipped with the
+        // rest: it exists because Play Services drops every fence across a
+        // *reboot*, and a reboot has no session engine to find here — the guard
+        // cannot trip on that path. Task removal leaves the session's fences
+        // registered exactly as they were.
+        if (sessionEngineWasLive) {
+            TraceletLog.lifecycle(
+                "boot-tracking: the session engine is already live in this process — " +
+                    "not starting a second one. Two engines stream in parallel with " +
+                    "separate fix caches, and a stationary switch stops only the one " +
+                    "its own coordinator holds (#410)."
+            )
+            return
+        }
 
         when (trackingMode) {
             TrackingMode.PERIODIC -> {

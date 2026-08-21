@@ -1,5 +1,7 @@
 ## Unreleased
 
+**FIX**: `TraceletSmartMotionCoordinator.coordinatorMode(sessionMode:isMoving:isStreamLive:useGeofencesWhenStationary:)` takes the engine's live state as a fourth input and ORs it with the committed pace. Reading the pace alone parked the coordinator over a running stream, and the core only emits the stop action from a continuous posture — so the stationary switch was never reached and GPS ran for the rest of the session ([#409](https://github.com/Ikolvi/Tracelet/issues/409)). #410 does not apply: iOS constructs exactly one `LocationEngine` per process and has no boot-mode second engine.
+
 **FEAT**: `TraceletTripManager` mints a UUIDv4 at trip start and exposes it through `currentTripId`; `onMotionStateChanged` matches on the new `TripTransition` enum and a new `onTripStart` callback carries the id, start instant, and start location. `TraceletSdk` sets the id on the Rust `DatabaseManager` via `setActiveTripId(tripId:)` at trip start and clears it at trip end, so every insert path is stamped without a signature change. `telematicsDicts` emits `trip_id` (`NSNull` outside a trip), and `TraceletSyncPlugin` carries `tripId` from the row into `SyncLocationRecord`. `TraceletDelegate.tracelet(_:didStartTrip:)` and `TraceletEventSending.sendTripStart` ship with default implementations so an existing delegate or sender keeps compiling ([#402](https://github.com/Ikolvi/Tracelet/issues/402)).
 
 ## 3.8.7
