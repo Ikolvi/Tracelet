@@ -536,6 +536,26 @@ public final class TraceletSdk {
             startBackgroundActivitySessionIfNeeded()
         } else {
             _ = changePace(false)
+            // A session that starts stationary runs no stream — that is the
+            // point of the branch. A fence the OS cannot resolve is decided
+            // *from* that stream (#355), so one already stored at start() would
+            // otherwise stay dead until the device happened to move.
+            //
+            // `applyGeofenceEvaluationCadence()` cannot cover this: it exists
+            // for a fence added *after* start() and returns early unless
+            // ownership changed, and `wireGeofenceLocationCallbacks()` has
+            // already set `geofenceHighAccuracyMode` from the stored fences a
+            // few lines above. So for fences that were there before the session
+            // was, the flag is set, the guard sees no change, and nothing ever
+            // opens the stream the evaluator needs. Android has carried this
+            // branch since #357; iOS never did (#412).
+            if locationEngine.geofenceHighAccuracyMode {
+                TraceletLog.lifecycle(
+                    "[geofence] starting the location stream for an "
+                        + "in-app-evaluated fence — the session starts stationary, "
+                        + "which otherwise runs no stream (#357)")
+                locationEngine.start()
+            }
             // A stationary start is dark otherwise: no continuous stream (by
             // design), and `changePace(false)` changes nothing in subsystems
             // that are already stationary. The app was left with no position at
