@@ -72,7 +72,7 @@ android {
         // Real org.json so ConfigManager's JSON persistence works under unit
         // tests (Android's bundled org.json is stubbed to return null when
         // unitTests.returnDefaultValues=true). Mirrors the tracelet-sdk module.
-        testImplementation("org.json:json:20260719")
+        testImplementation("org.json:json:20260814")
         // Optional SDK deps that some duplicated SDK-behavior tests exercise.
         testImplementation("androidx.security:security-crypto:1.1.0")
         testImplementation("com.google.android.play:integrity:1.6.0")
