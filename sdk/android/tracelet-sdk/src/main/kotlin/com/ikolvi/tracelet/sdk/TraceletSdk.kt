@@ -67,6 +67,27 @@ class TraceletSdk private constructor(private val context: Context) {
         @Volatile
         private var instance: TraceletSdk? = null
 
+        /**
+         * Whether this session's pace came from the *previous* session rather
+         * than from the caller — the only case the last-known-speed seed in
+         * [start] applies to.
+         *
+         * Pure so the rule can be pinned directly, the same way
+         * [com.ikolvi.tracelet.sdk.motion.SmartMotionCoordinator.syncCurrentMode]'s
+         * posture mapping is.
+         *
+         * * `isResume` — a relaunch or auto-resume restores a pace it has no
+         *   other record of, and seeding a fabricated 0.0 into that is what
+         *   stood a still-walking session down.
+         * * `forceMoving` — the start took its pace from where the last session
+         *   ended, so the same reasoning applies.
+         *
+         * Everything else is a fresh `start()` that committed `motion.isMoving`
+         * a few lines earlier and owns its pace — the rule #344 established.
+         */
+        internal fun paceWasInherited(isResume: Boolean, forceMoving: Boolean): Boolean =
+            isResume || forceMoving
+
         /** Battery budget sampling interval: 5 minutes. */
         private const val BATTERY_SAMPLE_INTERVAL_MS = 5 * 60 * 1000L
 
@@ -982,6 +1003,14 @@ class TraceletSdk private constructor(private val context: Context) {
 
         val shouldForceMoving = stateManager.isMoving
 
+        // Whether this session's pace came from the *previous* one rather than
+        // from the caller. A resume restores a pace it has no other record of,
+        // and a forced-moving start takes the pace the last session ended in;
+        // a fresh stationary start committed `motion.isMoving` a few lines
+        // above and owns it. Only the first two may be seeded from a stale
+        // reading — see the last-known-speed seed below (#344).
+        val paceWasInherited = paceWasInherited(isResume, shouldForceMoving)
+
         if (configManager.isForegroundServiceEnabled()) {
             LocationService.start(context)
         } else if (configManager.isRestrictedOem()) {
@@ -1051,7 +1080,22 @@ class TraceletSdk private constructor(private val context: Context) {
             // `getLastLocation()` is precisely "no fix handled in this process",
             // which is unknown rather than zero — the same reading
             // SmartMotionCoordinator.resolvedSpeed already takes.
-            if (locationEngine.getLastLocation() != null) {
+            //
+            // And only when the pace was *inherited*. That is the case this
+            // exists for, and the seed can only ever push the machine *up*: one
+            // fix at or above `speedMovingThreshold` wakes it, and the pace is
+            // then read back off the machine — so a fresh `start()` that
+            // committed `motion.isMoving: false` comes up moving on the
+            // strength of a stale reading. It is also why the first `start()`
+            // of a process and the second disagree: the first has no fix to
+            // seed with and stays stationary as asked, the second seeds from
+            // the fix the first one acquired (#344).
+            if (!paceWasInherited) {
+                com.ikolvi.tracelet.sdk.util.TraceletLog.lifecycle(
+                    "pace: start() committed a stationary pace — not seeding the machine " +
+                        "from the last resolved speed, which could only overrule it",
+                )
+            } else if (locationEngine.getLastLocation() != null) {
                 speedMotionManager.onLocation(locationEngine.lastEffectiveSpeed)
             } else {
                 com.ikolvi.tracelet.sdk.util.TraceletLog.lifecycle(
@@ -1120,7 +1164,22 @@ class TraceletSdk private constructor(private val context: Context) {
             // `getLastLocation()` is precisely "no fix handled in this process",
             // which is unknown rather than zero — the same reading
             // SmartMotionCoordinator.resolvedSpeed already takes.
-            if (locationEngine.getLastLocation() != null) {
+            //
+            // And only when the pace was *inherited*. That is the case this
+            // exists for, and the seed can only ever push the machine *up*: one
+            // fix at or above `speedMovingThreshold` wakes it, and the pace is
+            // then read back off the machine — so a fresh `start()` that
+            // committed `motion.isMoving: false` comes up moving on the
+            // strength of a stale reading. It is also why the first `start()`
+            // of a process and the second disagree: the first has no fix to
+            // seed with and stays stationary as asked, the second seeds from
+            // the fix the first one acquired (#344).
+            if (!paceWasInherited) {
+                com.ikolvi.tracelet.sdk.util.TraceletLog.lifecycle(
+                    "pace: start() committed a stationary pace — not seeding the machine " +
+                        "from the last resolved speed, which could only overrule it",
+                )
+            } else if (locationEngine.getLastLocation() != null) {
                 speedMotionManager.onLocation(locationEngine.lastEffectiveSpeed)
             } else {
                 com.ikolvi.tracelet.sdk.util.TraceletLog.lifecycle(

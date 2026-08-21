@@ -93,6 +93,9 @@ let package = Package(
                 // after that returned `none` — the device could not leave the
                 // stationary state for the rest of the process.
                 "SmartMotionCoordinatorSyncModeTests.swift",
+                // A fresh start()'s committed pace must survive the
+                // last-known-speed seed, which can only ever wake the machine.
+                "PaceSeedInheritanceTests.swift",
                 "SmartMotionCoordinatorTests.swift",
                 // #361: the persistence retention caps, across the FFI boundary.
                 // Both keys were accepted and enforced by nothing after the

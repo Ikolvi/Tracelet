@@ -1,5 +1,7 @@
 ## Unreleased
 
+**FIX**: the pinned native SDK keeps a fresh `start()`'s committed pace against the last-known-speed seed, and stops verbose chatter evicting the lifecycle trace; no Dart or plugin change ([#344](https://github.com/Ikolvi/Tracelet/issues/344), [#318](https://github.com/Ikolvi/Tracelet/issues/318)).
+
 **FIX**: the pinned native SDK keeps a fence wake-up from committing a moving pace; no Dart or plugin change ([#414](https://github.com/Ikolvi/Tracelet/issues/414)).
 
 **FIX**: the pinned native SDK stops the stream it inherited when the motion pipeline parks; no Dart or plugin change ([#409](https://github.com/Ikolvi/Tracelet/issues/409)).

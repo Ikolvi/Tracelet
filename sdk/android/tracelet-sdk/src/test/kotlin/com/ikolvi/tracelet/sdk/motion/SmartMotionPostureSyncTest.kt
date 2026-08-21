@@ -281,6 +281,91 @@ class SmartMotionPostureSyncTest {
     }
 
     /**
+     * The half #409, #412 and #414 left open, and what the field report shows:
+     * the park itself moves the session out of the branch that can park it.
+     *
+     * Android's stationary switch writes `trackingMode = PERIODIC` — iOS
+     * deliberately leaves it alone — so once a session has parked *once*, every
+     * later `syncCurrentMode()` takes the PERIODIC branch, which used to answer
+     * STATIONARY_PERIODIC without ever looking at the engine. That is the
+     * posture the core already holds, and `evaluate_state` emits the stop only
+     * from Continuous, so the reconcile returned NONE.
+     *
+     * Both routes that open a stream behind the coordinator run *after* the
+     * first park in a real session — a fence added from the map
+     * (`applyGeofenceEvaluationCadence`, #357) and an OS wake-up near an in-app
+     * fence (`resumeStreamForEvaluator`, #414) — and both then ask for exactly
+     * this reconcile. The device trace is a phone on a desk reporting
+     * `Is moving: false` in `periodic` mode while delivering a fix every two
+     * seconds, with the location indicator lit until tracking was stopped.
+     */
+    @Test
+    fun `a stream opened after the session has parked is still parked again`() {
+        // The park: this is what writes PERIODIC, exactly as a real session does.
+        // The core defaults `is_speed_moving` to true, so the speed machine has
+        // to report stationary before both halves of the OR are down.
+        state.isMoving = false
+        coordinator.syncCurrentMode()
+        engine.start()
+        idle()
+        coordinator.onSpeedStateChange(false)
+        coordinator.reconcilePosture()
+        idle()
+        assertFalse("precondition: the session parked", engine.isTracking)
+        org.junit.Assert.assertEquals(
+            "precondition: the stationary switch moved the session mode to PERIODIC",
+            TrackingMode.PERIODIC,
+            state.trackingMode,
+        )
+
+        // A fence too small for the OS is added from the map: #357 opens a
+        // stream for the in-app evaluator, behind the coordinator's back.
+        engine.start()
+        idle()
+        assertTrue("precondition: the evaluator's stream is live", engine.isTracking)
+
+        coordinator.reconcilePosture()
+        idle()
+
+        assertFalse(
+            "#412/#414: both motion inputs still say stationary, so the borrowed " +
+                "stream must be handed back — the session mode being PERIODIC is " +
+                "what the park itself wrote, not evidence that nothing is running",
+            engine.isTracking,
+        )
+    }
+
+    /**
+     * The control for the branch above: a parked session whose device really did
+     * start moving keeps the stream it was given.
+     */
+    @Test
+    fun `a parked session that is moving again keeps its stream`() {
+        state.isMoving = false
+        coordinator.syncCurrentMode()
+        engine.start()
+        idle()
+        coordinator.onSpeedStateChange(false)
+        coordinator.reconcilePosture()
+        idle()
+        assertFalse("precondition: the session parked", engine.isTracking)
+
+        // The wake-up: the accelerometer fires and the coordinator resumes.
+        coordinator.onAccelStateChange(true)
+        idle()
+        assertTrue("precondition: the wake-up resumed the stream", engine.isTracking)
+
+        coordinator.reconcilePosture()
+        idle()
+
+        assertTrue(
+            "an input that says moving holds the OR up — reconciling must not " +
+                "park a session the device is actually driving",
+            engine.isTracking,
+        )
+    }
+
+    /**
      * Feeds one accepted fix so `resolvedSpeed` is a resolved ~0 rather than
      * `null`, which the coordinator reads as *unknown* and refuses to override
      * the accelerometer on (#333).

@@ -62,15 +62,22 @@ class TraceletBugReport {
   ///   header (your `package_info_plus` values, for example).
   /// - [includeConfig] — set `false` to omit the configuration section.
   /// - [geofenceTraceLimit] — how many recent log entries to scan for the
-  ///   geofence decision trace (default 2000). Scans deeper than [logLimit]
+  ///   geofence decision trace (default 5000). Scans deeper than [logLimit]
   ///   because transitions are rare and routine chatter can bury them.
   /// - [lifecycleTraceLimit] — how many recent log entries to scan for the
-  ///   session lifecycle trace (default 2000), for the same reason.
+  ///   session lifecycle trace (default 5000), for the same reason.
+  ///
+  /// Both defaults were 2000, which is also the SDK's row cap at
+  /// `logLevel: verbose` — so the scan could see the whole table and no more.
+  /// The cap is now applied per channel, and the always-on `LIFECYCLE`
+  /// rows are kept *behind* up to a full cap of level-based chatter; a 2000-row
+  /// scan would now stop short of exactly the entries these sections exist to
+  /// surface.
   static Future<String> build({
     int logLimit = 500,
     int telematicsLimit = 100,
-    int geofenceTraceLimit = 2000,
-    int lifecycleTraceLimit = 2000,
+    int geofenceTraceLimit = 5000,
+    int lifecycleTraceLimit = 5000,
     String? appName,
     String? appVersion,
     bool includeConfig = true,
@@ -102,10 +109,28 @@ class TraceletBugReport {
     await _writeLocationTuning(buffer);
     if (includeConfig) _writeConfig(buffer);
     await _writeTelematics(buffer, telematicsLimit);
-    await _writeStreamHealth(buffer, lifecycleTraceLimit);
-    await _writeLifecycleTrace(buffer, lifecycleTraceLimit);
-    await _writeGeofenceTrace(buffer, geofenceTraceLimit);
-    await _writeLogs(buffer, logLimit);
+
+    // One read for all four log sections. They used to make four separate
+    // `getLogs` calls — the same rows over the platform channel up to four
+    // times — which is what kept the scan depth timid. Fetching the deepest
+    // window once and slicing it costs less than the old 2000x4 did.
+    final scanLimit = [
+      logLimit,
+      geofenceTraceLimit,
+      lifecycleTraceLimit,
+    ].reduce((a, b) => a > b ? a : b);
+    List<LogEntry>? logs;
+    Object? logsError;
+    try {
+      logs = await Tracelet.getLogs(scanLimit);
+    } catch (e) {
+      logsError = e;
+    }
+
+    _writeStreamHealth(buffer, logs, logsError, lifecycleTraceLimit);
+    _writeLifecycleTrace(buffer, logs, logsError, lifecycleTraceLimit);
+    _writeGeofenceTrace(buffer, logs, logsError, geofenceTraceLimit);
+    _writeLogs(buffer, logs, logsError, logLimit);
 
     return buffer.toString();
   }
@@ -434,15 +459,19 @@ class TraceletBugReport {
   /// `termination:` line with no `relaunch:` after it means the app was never
   /// relaunched — expected after a user force-quit, a bug otherwise — and a
   /// `relaunch: declined to resume` line names the precondition that failed.
-  static Future<void> _writeLifecycleTrace(
+  static void _writeLifecycleTrace(
     StringBuffer buffer,
+    List<LogEntry>? logs,
+    Object? error,
     int limit,
-  ) async {
+  ) {
     buffer.writeln('## Session lifecycle (background & killed-state trace)');
     buffer.writeln();
-    try {
-      final logs = await Tracelet.getLogs(limit);
+    if (logs == null) {
+      buffer.writeln('_Could not read the lifecycle trace: ${error}_');
+    } else {
       final trace = logs
+          .take(limit)
           .where((log) => log.level.toUpperCase() == 'LIFECYCLE')
           .toList();
       if (trace.isEmpty) {
@@ -454,8 +483,6 @@ class TraceletBugReport {
         }
         buffer.writeln('```');
       }
-    } catch (e) {
-      buffer.writeln('_Could not read the lifecycle trace: ${e}_');
     }
     buffer.writeln();
   }
@@ -492,12 +519,19 @@ class TraceletBugReport {
   /// force. Each budget line carries the rung, the drain that justified it, and
   /// the resolution of the measurement that produced the drain — so a throttle
   /// fired on quantization noise is visible as such.
-  static Future<void> _writeStreamHealth(StringBuffer buffer, int limit) async {
+  static void _writeStreamHealth(
+    StringBuffer buffer,
+    List<LogEntry>? logs,
+    Object? error,
+    int limit,
+  ) {
     buffer.writeln('## Location stream health (stalls & battery budget)');
     buffer.writeln();
-    try {
-      final logs = await Tracelet.getLogs(limit);
+    if (logs == null) {
+      buffer.writeln('_Could not read the stream-health trace: ${error}_');
+    } else {
       final trace = logs
+          .take(limit)
           .where((log) => _streamHealthMarkers.any(log.message.contains))
           .toList();
       if (trace.isEmpty) {
@@ -517,8 +551,6 @@ class TraceletBugReport {
         }
         buffer.writeln('```');
       }
-    } catch (e) {
-      buffer.writeln('_Could not read the stream-health trace: ${e}_');
     }
     buffer.writeln();
   }
@@ -536,15 +568,19 @@ class TraceletBugReport {
   /// Each transition line carries the distance, radius, hysteresis buffer,
   /// exit threshold, and both the raw and post-clamp accuracy, which is what
   /// distinguishes a genuine departure from a drift-induced false EXIT.
-  static Future<void> _writeGeofenceTrace(
+  static void _writeGeofenceTrace(
     StringBuffer buffer,
+    List<LogEntry>? logs,
+    Object? error,
     int limit,
-  ) async {
+  ) {
     buffer.writeln('## Geofence transitions (decision trace)');
     buffer.writeln();
-    try {
-      final logs = await Tracelet.getLogs(limit);
+    if (logs == null) {
+      buffer.writeln('_Could not read the geofence trace: ${error}_');
+    } else {
       final trace = logs
+          .take(limit)
           .where((log) => log.message.contains('[geofence]'))
           .toList();
       if (trace.isEmpty) {
@@ -560,17 +596,22 @@ class TraceletBugReport {
         }
         buffer.writeln('```');
       }
-    } catch (e) {
-      buffer.writeln('_Could not read the geofence trace: ${e}_');
     }
     buffer.writeln();
   }
 
-  static Future<void> _writeLogs(StringBuffer buffer, int limit) async {
+  static void _writeLogs(
+    StringBuffer buffer,
+    List<LogEntry>? allLogs,
+    Object? error,
+    int limit,
+  ) {
     buffer.writeln('## Logs (last $limit)');
     buffer.writeln();
-    try {
-      final logs = await Tracelet.getLogs(limit);
+    if (allLogs == null) {
+      buffer.writeln('_Could not read logs: ${error}_');
+    } else {
+      final logs = allLogs.take(limit).toList();
       if (logs.isEmpty) {
         buffer.writeln('_No logs recorded._');
       } else {
@@ -582,8 +623,6 @@ class TraceletBugReport {
         }
         buffer.writeln('```');
       }
-    } catch (e) {
-      buffer.writeln('_Could not read logs: ${e}_');
     }
     buffer.writeln();
   }

@@ -182,7 +182,15 @@ public final class SpeedMotionManager {
             stateManager.speedLowCount = 0
             stateManager.speedWakeCount = 0
             stateManager.isMoving = true
-            TraceletLog.debug("[SpeedMotion] start() — forced to MOVING state")
+            // Always-on, and the mirror of the `speed-motion: restored` line in
+            // the `else` branch below: between them they say what pace this
+            // session began at and where it came from. A report that shows a
+            // session moving on a parked device — or stationary on a moving one
+            // — has to name that, and a release build runs at the default
+            // logLevel where a `debug` line is discarded (#318).
+            TraceletLog.lifecycle(
+                "speed-motion: forced to MOVING by start() — the session begins at "
+                    + "the pace it was asked for, not the one it restored")
         } else {
             // #334: a relaunched process inherits this state, and inheriting
             // STATIONARY is indistinguishable from "tracking silently stopped"

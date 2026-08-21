@@ -4216,6 +4216,24 @@ public final class TraceletSdk {
     ///   (relaunch / auto-resume) rather than the app asking for a fresh one.
     ///   Only a resume inherits the previous session's pace — see the reconcile
     ///   step below.
+    /// Whether this session's pace came from the *previous* session rather than
+    /// from the caller — the only case the last-known-speed seed applies to.
+    ///
+    /// Pure so the rule can be pinned directly, the same way ``coordinatorMode``
+    /// is for #344/#409.
+    ///
+    /// * `isResume` — a relaunch or auto-resume restores a pace it has no other
+    ///   record of, and seeding a fabricated 0.0 into it is what stood a walking
+    ///   session down.
+    /// * `forceMoving` — the start took its pace from where the last session
+    ///   ended, so the same reasoning applies.
+    ///
+    /// Everything else is a fresh `start()` that committed `motion.isMoving` a
+    /// few lines earlier and owns its pace — the rule #344 established.
+    static func paceWasInherited(isResume: Bool, forceMoving: Bool) -> Bool {
+        isResume || forceMoving
+    }
+
     private func startSpeedMotionManager(forceMoving: Bool = false, isResume: Bool = false) {
         let smm = SpeedMotionManager(stateManager: stateManager)
         smm.speedMovingThreshold = configManager.getSpeedMovingThreshold()
@@ -4268,7 +4286,30 @@ public final class TraceletSdk {
         // the processor draws for a fix that carries no speed. A null
         // `lastLocation` is precisely "no fix handled in this process", which is
         // unknown rather than zero, so there is nothing to seed with.
-        if locationEngine.getLastLocation() != nil {
+        //
+        // And only when the pace was *inherited*. That is the whole case this
+        // exists for — a resume, or a forced-moving start, both of which take
+        // their pace from the previous session rather than from the caller. A
+        // fresh `start()` committed its pace from `motion.isMoving` a few lines
+        // earlier, and the seed can only ever push the machine *up*: one fix at
+        // or above `speedMovingThreshold` wakes it, the `!forceMoving` sync
+        // below then reads `.moving` off the machine and writes
+        // `stateManager.isMoving = true` — an explicit `motion.isMoving: false`
+        // overruled by a stale reading, which is exactly what the restored-state
+        // override above refuses to allow through the other door.
+        //
+        // It is also why the first `start()` of a process and the second behave
+        // differently: the first has no fix to seed with and stays stationary as
+        // asked, the second seeds from the fix the first one acquired and comes
+        // up moving. Same call, same config, two answers — #344's rule, evaded
+        // through a different door.
+        let paceWasInherited = TraceletSdk.paceWasInherited(
+            isResume: isResume, forceMoving: forceMoving)
+        if !paceWasInherited {
+            TraceletLog.lifecycle(
+                "pace: start() committed a stationary pace — not seeding the machine from "
+                    + "the last resolved speed, which could only overrule it")
+        } else if locationEngine.getLastLocation() != nil {
             smm.onLocation(speed: locationEngine.lastEffectiveSpeed)
         } else {
             TraceletLog.lifecycle(

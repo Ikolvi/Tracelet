@@ -230,7 +230,38 @@ class SmartMotionCoordinator(
                     stationaryMode
                 }
             TrackingMode.GEOFENCES -> uniffi.tracelet_core.TrackingMode.STATIONARY_GEOFENCES
-            TrackingMode.PERIODIC -> uniffi.tracelet_core.TrackingMode.STATIONARY_PERIODIC
+            TrackingMode.PERIODIC ->
+                // The same OR, for the session mode a *parked* continuous
+                // session is sitting in.
+                //
+                // Android's stationary switch writes `trackingMode = PERIODIC`
+                // (iOS deliberately leaves it alone), so every reconcile after
+                // the first park arrives here rather than in the CONTINUOUS
+                // branch above — and this used to answer STATIONARY_PERIODIC
+                // unconditionally, a posture the core is already holding.
+                // `evaluate_state` emits the stop only from Continuous, so it
+                // returned None and the stream was never parked again.
+                //
+                // Anything that opens a stream behind the coordinator after
+                // that first park was therefore permanent: the in-app fence
+                // branch of [TraceletSdk.applyGeofenceEvaluationCadence] (#357)
+                // and [LocationService.resumeStreamForEvaluator] (#414) both
+                // call `locationEngine.start()` and then ask for a reconcile
+                // that could not do anything. What the device shows is
+                // full-rate GPS with the location indicator lit for the rest of
+                // the session, on a phone reported as `Is moving: false` in
+                // `periodic` mode — the report #412 and #414 were written from,
+                // reappearing because their fix could not reach this branch.
+                //
+                // `isTracking` is the continuous stream specifically
+                // (`trackingCallback != null`), which `startPeriodic()` never
+                // registers, so a genuine periodic *session* still reads as
+                // stationary here.
+                if (locationEngine.isTracking) {
+                    uniffi.tracelet_core.TrackingMode.CONTINUOUS
+                } else {
+                    uniffi.tracelet_core.TrackingMode.STATIONARY_PERIODIC
+                }
             else -> uniffi.tracelet_core.TrackingMode.CONTINUOUS
         }
         coreCoordinator.setCurrentMode(mode)
