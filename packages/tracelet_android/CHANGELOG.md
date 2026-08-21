@@ -1,5 +1,7 @@
 ## Unreleased
 
+**FIX**: the pinned native SDK re-arms the accelerometer's stop countdown after a walk and stops the GPS-speed machine silencing the accelerometer's stationary edge; no Dart or plugin change ([#412](https://github.com/Ikolvi/Tracelet/issues/412)).
+
 **FIX**: the pinned native SDK parks a stream opened behind the motion coordinator after the session has already parked once, keeps a fresh `start()`'s committed pace, and stops verbose chatter evicting the lifecycle trace; no Dart or plugin change ([#412](https://github.com/Ikolvi/Tracelet/issues/412), [#414](https://github.com/Ikolvi/Tracelet/issues/414)).
 
 **FIX**: the pinned native SDK keeps a fence wake-up from committing a moving pace; no Dart or plugin change ([#414](https://github.com/Ikolvi/Tracelet/issues/414)).

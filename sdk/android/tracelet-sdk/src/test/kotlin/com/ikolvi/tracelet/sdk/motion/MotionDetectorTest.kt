@@ -186,6 +186,94 @@ class MotionDetectorTest {
         assertFalse(state.isMoving, "a resting device must still go stationary")
     }
 
+    /**
+     * #412: the stop countdown was armed on the single sample where the still
+     * streak *crossed* the threshold, so any cancellation that did not also
+     * reset the streak was permanent — the streak only grows, so it could never
+     * equal the threshold a second time.
+     *
+     * [handleActivityTransition] is exactly that cancellation. Every ENTER of a
+     * moving activity calls `cancelStopTimeout()` unconditionally, but only
+     * resets the streak through `declareMoving()`, which it skips when the pace
+     * is already moving. Walking for a while therefore disarmed the countdown
+     * for the rest of the session, and the device never went stationary again.
+     */
+    @Test
+    fun `a countdown cancelled without resetting the still streak is armed again`() {
+        val listener = getAccelerometerListener()!!
+
+        repeat(25) { sendSensorEvent(listener, floatArrayOf(0f, 0f, 9.81f)) }
+        assertNotNull(getStopTimeoutRunnable(), "Countdown should be running")
+
+        // What a walking activity transition does to a moving session.
+        invokeCancelStopTimeout()
+        assertNull(getStopTimeoutRunnable(), "precondition: the countdown was cancelled")
+
+        // The device is still and the streak is already saturated. It must arm
+        // a new countdown rather than wait for an equality that cannot recur.
+        repeat(3) { sendSensorEvent(listener, floatArrayOf(0f, 0f, 9.81f)) }
+        assertNotNull(
+            getStopTimeoutRunnable(),
+            "a saturated still streak must re-arm the stop countdown (#412)",
+        )
+
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMinutes(2))
+        assertFalse(state.isMoving, "and the device must actually go stationary")
+    }
+
+    /**
+     * #412: in SMART mode `state.isMoving` is the *coordinator's* answer — the
+     * OR of this detector and the GPS-speed machine — and
+     * [SpeedMotionManager.transitionTo] writes it directly the moment its own
+     * countdown reaches STATIONARY.
+     *
+     * [declareStationary] refused to write that field in SMART mode because the
+     * coordinator owns it, but still *read* it to decide whether it had
+     * anything to report. So the speed machine going stationary first silenced
+     * the accelerometer's own edge — and that edge is unrecoverable: the
+     * coordinator's accel flag only moves on an edge from here, and the speed
+     * machine only calls the coordinator on *entering* STATIONARY. The OR stays
+     * true with nothing left to flip it, and continuous GPS runs for the rest
+     * of the session on a stationary device.
+     */
+    @Test
+    fun `in SMART mode a stationary speed machine does not swallow the accelerometer edge`() {
+        detector.stop()
+
+        val context = RuntimeEnvironment.getApplication()
+        config.setConfig(
+            mapOf(
+                "disableMotionActivityUpdates" to true,
+                "stopTimeout" to 1,
+                "motionDetectionMode" to
+                    com.ikolvi.tracelet.sdk.model.MotionDetectionMode.SMART.value,
+            ),
+        )
+        state.isMoving = true
+
+        val reported = mutableListOf<Boolean>()
+        val logger = com.ikolvi.tracelet.sdk.util.TraceletLogger(context, config)
+        detector = MotionDetector(context, config, state, events, logger)
+        detector.onMotionStateChanged = { reported.add(it) }
+        detector.start()
+
+        val listener = getAccelerometerListener()!!
+        repeat(25) { sendSensorEvent(listener, floatArrayOf(0f, 0f, 9.81f)) }
+        assertNotNull(getStopTimeoutRunnable(), "precondition: the countdown is armed")
+
+        // The GPS-speed machine reaches STATIONARY first and writes the shared
+        // field. Nothing about the accelerometer changed.
+        state.isMoving = false
+
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMinutes(2))
+
+        assertEquals(
+            listOf(false),
+            reported,
+            "the accelerometer must still report its own stationary edge (#412)",
+        )
+    }
+
     // =========================================================================
     // Reflection Helpers
     // =========================================================================
@@ -200,6 +288,12 @@ class MotionDetectorTest {
         val field = MotionDetector::class.java.getDeclaredField("stopTimeoutRunnable")
         field.isAccessible = true
         return field.get(detector) as? Runnable
+    }
+
+    private fun invokeCancelStopTimeout() {
+        val method = MotionDetector::class.java.getDeclaredMethod("cancelStopTimeout")
+        method.isAccessible = true
+        method.invoke(detector)
     }
 
     private fun sendSensorEvent(listener: SensorEventListener, values: FloatArray) {

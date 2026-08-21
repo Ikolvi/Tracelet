@@ -1728,7 +1728,27 @@ public protocol DatabaseManagerProtocol: AnyObject, Sendable {
     func pruneLocationsOlderThan(maxDays: Int32) throws  -> UInt32
     
     /**
-     * Prunes the logs to retain only the specified limit of latest entries.
+     * Prunes the logs to retain only the specified limit of latest entries —
+     * counted **per channel**, so level-based chatter cannot evict the
+     * always-on lifecycle trace.
+     *
+     * One cap over the whole table made the two channels compete, and the
+     * noisy one always won. `LIFECYCLE` entries bypass `logLevel` precisely
+     * because they are the record of what the background and killed-state
+     * paths did (#318) — but they were then pruned by row count alongside
+     * everything else, and at `logLevel: verbose` the cap is 2000 rows against
+     * a sensor trace that emits several lines a second.
+     *
+     * What that costs is a field report whose "Session lifecycle" section is a
+     * single line: the entries are not missing, they were evicted, and the
+     * window collapses from the configured `logMaxDays` to a couple of
+     * minutes. Turning logging *up* to investigate a background problem
+     * destroyed the only record of it.
+     *
+     * Each channel now keeps its own newest `limit` rows, so the table is
+     * bounded at 2x `limit` in the worst case and the lifecycle trace is
+     * bounded by [`prune_logs_older_than`] instead — which is what "always-on"
+     * was supposed to mean.
      */
     func pruneLogs(limit: Int32) throws 
     
@@ -2298,7 +2318,27 @@ open func pruneLocationsOlderThan(maxDays: Int32)throws  -> UInt32  {
 }
     
     /**
-     * Prunes the logs to retain only the specified limit of latest entries.
+     * Prunes the logs to retain only the specified limit of latest entries —
+     * counted **per channel**, so level-based chatter cannot evict the
+     * always-on lifecycle trace.
+     *
+     * One cap over the whole table made the two channels compete, and the
+     * noisy one always won. `LIFECYCLE` entries bypass `logLevel` precisely
+     * because they are the record of what the background and killed-state
+     * paths did (#318) — but they were then pruned by row count alongside
+     * everything else, and at `logLevel: verbose` the cap is 2000 rows against
+     * a sensor trace that emits several lines a second.
+     *
+     * What that costs is a field report whose "Session lifecycle" section is a
+     * single line: the entries are not missing, they were evicted, and the
+     * window collapses from the configured `logMaxDays` to a couple of
+     * minutes. Turning logging *up* to investigate a background problem
+     * destroyed the only record of it.
+     *
+     * Each channel now keeps its own newest `limit` rows, so the table is
+     * bounded at 2x `limit` in the worst case and the lifecycle trace is
+     * bounded by [`prune_logs_older_than`] instead — which is what "always-on"
+     * was supposed to mean.
      */
 open func pruneLogs(limit: Int32)throws   {try rustCallWithError(FfiConverterTypeTraceletError_lift) {
     uniffi_tracelet_core_fn_method_databasemanager_prune_logs(
@@ -11414,7 +11454,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_tracelet_core_checksum_method_databasemanager_prune_locations_older_than() != 38098) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_tracelet_core_checksum_method_databasemanager_prune_logs() != 51361) {
+    if (uniffi_tracelet_core_checksum_method_databasemanager_prune_logs() != 30299) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_databasemanager_prune_logs_older_than() != 10098) {

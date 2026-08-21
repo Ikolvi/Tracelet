@@ -100,7 +100,19 @@ class SmartMotionCoordinator(
                     overrideAction = onAccelStateChange(false)
                 }
                 else ->
-                    logger.info("SmartMotionCoordinator: GPS speed $lastSpeed m/s is above the $TREMOR_SPEED_THRESHOLD m/s tremor threshold — trusting accel, staying continuous.")
+                    // Always-on: this is the decision that decides whether a
+                    // session parks, and declining it leaves the OR true with
+                    // only an accelerometer edge able to clear it. A fix taken
+                    // seconds after a walk still reads well above the tremor
+                    // threshold, so this is the branch a "the indicator never
+                    // goes out after I walk" report lands in — and at the
+                    // shipped log levels it left no trace at all (#412).
+                    com.ikolvi.tracelet.sdk.util.TraceletLog.lifecycle(
+                        "smart-motion: speed machine went stationary but accel still " +
+                            "reports moving and GPS speed is ${lastSpeed}m/s (above the " +
+                            "${TREMOR_SPEED_THRESHOLD}m/s tremor threshold) — trusting accel, " +
+                            "staying continuous until the accelerometer stands down",
+                    )
             }
         }
         val action = coreCoordinator.onSpeedStateChange(isMoving)
