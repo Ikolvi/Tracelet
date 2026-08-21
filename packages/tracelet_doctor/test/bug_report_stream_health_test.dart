@@ -119,7 +119,7 @@ void main() {
       expect(section, isNot(contains('session: stop')));
     });
 
-    test('says so plainly when the stream has been healthy', () async {
+    test('reports an absence of entries as an absence, not as health', () async {
       TraceletPlatform.instance = _LogOnlyPlatform(<TlLogEntry>[
         _entry(1, 'INFO', 'ready() called'),
         _entry(2, 'LIFECYCLE', 'session: start — mode=continuous'),
@@ -131,9 +131,16 @@ void main() {
       final end = report.indexOf('## Session lifecycle');
       final section = report.substring(start, end);
 
-      // An empty section must read as "nothing went wrong", not as a section
-      // that failed to gather.
-      expect(section, contains('No stalls or battery-budget adjustments'));
+      // The section must still explain itself rather than render an empty block.
+      expect(section, contains('none were recorded'));
+
+      // But it must not claim health from that absence. This assertion used to
+      // run the other way — it required the report to say "the stream has been
+      // accepting fixes" — and the wording it pinned is the one that appeared
+      // over a 52-second window in which the stream accepted nothing at all.
+      // The stall watchdog only ran when a fix arrived, so total silence
+      // produced no marker, and no marker rendered as good news (#405, #407).
+      expect(section, isNot(contains('the stream has been accepting fixes')));
     });
   });
 }
