@@ -839,7 +839,6 @@ class LocationEngine(
     @Volatile
     private var reportedFixWhileStopped = false
 
-<<<<<<< HEAD
     /**
      * How many [LocationEngine] instances in this process currently hold a
      * registered continuous callback.
@@ -859,8 +858,6 @@ class LocationEngine(
         val count = java.util.concurrent.atomic.AtomicInteger(0)
     }
 
-=======
->>>>>>> b760f07e286a157e16a01ad2f22a68e61717a880
     fun stop() {
         gpsFallbackActive = false
         runtimeDesiredAccuracy = null
