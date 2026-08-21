@@ -260,9 +260,9 @@ class TraceletSyncSink: LocationDataSink, SyncProvider {
                 activity: r.activity,
                 event: r.eventType,
                 routeContext: r.routeContext,
+                address: r.address,  // #212: carry reverse-geocoded address into the default payload
                 // #402: carried from the row, not resolved at flush time.
-                tripId: r.tripId,
-                address: r.address  // #212: carry reverse-geocoded address into the default payload
+                tripId: r.tripId
             )
         }
         
