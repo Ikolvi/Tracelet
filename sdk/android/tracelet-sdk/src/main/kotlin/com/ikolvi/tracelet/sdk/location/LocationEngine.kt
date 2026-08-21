@@ -829,6 +829,13 @@ class LocationEngine(
     }
 
     /** Stops continuous location tracking. */
+    /**
+     * Guards the "fix while stopped" lifecycle line to one per stopped period,
+     * so a leaked registration is named once rather than every second.
+     */
+    @Volatile
+    private var reportedFixWhileStopped = false
+
     fun stop() {
         gpsFallbackActive = false
         runtimeDesiredAccuracy = null
@@ -1407,6 +1414,33 @@ class LocationEngine(
      * speed motion machine — see the sink below.
      */
     private fun onLocationReceived(location: Location, event: String, isStartupFix: Boolean = false) {
+        // Always-on: a fix arriving while the continuous stream is stopped.
+        //
+        // `stop()` removes `trackingCallback` and announces "continuous updates
+        // stopping", so after a park that callback cannot be the source. A
+        // field report shows a parked session still recording roughly a fix a
+        // second for the whole stationary window, with no `continuous updates
+        // starting` line between the park and the next wake-up — so something
+        // else is delivering, and the trace as it stands cannot say what.
+        //
+        // `event` names the caller (`watchPosition`, `getCurrentPosition`, the
+        // periodic tick, the heartbeat) and the identity distinguishes a second
+        // engine in the same process from a second registration on this one.
+        // Rate-limited to one line per stopped period so it cannot itself
+        // become the chatter that buries the trace (#412).
+        if (trackingCallback == null) {
+            if (!reportedFixWhileStopped) {
+                reportedFixWhileStopped = true
+                TraceletLog.lifecycle(
+                    "location stream: a fix arrived while continuous updates are stopped — " +
+                        "event=$event engine=${System.identityHashCode(this)} " +
+                        "periodic=$isPeriodicTracking watchers=${watchers.size} " +
+                        "startupFix=$isStartupFix",
+                )
+            }
+        } else {
+            reportedFixWhileStopped = false
+        }
         // Only reset DR timer when GPS hardware is enabled AND the fix
         // is GPS-quality.  When the user has toggled GPS off,
         // FusedLocationProvider can still deliver accurate Wi-Fi / cell
