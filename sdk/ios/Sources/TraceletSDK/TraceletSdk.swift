@@ -639,7 +639,12 @@ public final class TraceletSdk {
         // relaunched into a low-power posture, coming near a small fence must
         // bring the stream back or the evaluator has nothing to decide on (#355).
         geofenceManager.onEvaluatorWakeup = { [weak self] in
-            self?.locationEngine.start()
+            guard let self = self else { return }
+            // The fence needs the stream; the session's pace is not the wake-up's
+            // to change, and neither is the rest of the session. Borrowed for one
+            // bounded window (#414).
+            self.locationEngine.start()
+            self.armEvaluatorWindow()
         }
         // The line above answers "who owns these fences?" once. The fence set is
         // mutable for the rest of the session, so it has to be re-asked every
@@ -654,6 +659,49 @@ public final class TraceletSdk {
                 latitude: lat, longitude: lng, accuracy: accuracy
             )
         }
+    }
+
+    /// How long the in-app fence evaluator keeps the stream up after an OS
+    /// wake-up before the session's own posture decides again (#414).
+    ///
+    /// Long enough to decide a crossing at walking pace — a 10 m fence takes
+    /// ~10 s to cross — and short enough that a wake-up cannot cost a whole
+    /// session of full-rate GPS.
+    private static let evaluatorStreamWindow: TimeInterval = 60
+
+    /// Closes the window opened by ``armEvaluatorWindow()``.
+    private var evaluatorWindowTimer: Timer?
+
+    /// Hands the cadence back to the motion coordinator once the evaluator has
+    /// had its window (#414).
+    ///
+    /// Without a bound the loan is permanent: the stream was opened behind the
+    /// coordinator, and with both motion inputs already stationary there is no
+    /// transition left for `evaluate_state` to act on — a repeat of a flag it
+    /// already holds returns `.none`. So a wake-up near a fence would hold
+    /// full-rate GPS open for the rest of the session on a device that never
+    /// moved. Reconciling asks the coordinator to judge the state it is in.
+    private func armEvaluatorWindow() {
+        evaluatorWindowTimer?.invalidate()
+        TraceletLog.lifecycle(
+            "[geofence] the evaluator has the stream for "
+                + "\(Int(TraceletSdk.evaluatorStreamWindow))s — the pace is unchanged "
+                + "(isMoving=\(stateManager.isMoving)), and the coordinator decides "
+                + "again when the window closes (#414)")
+
+        let timer = Timer.scheduledTimer(
+            withTimeInterval: TraceletSdk.evaluatorStreamWindow, repeats: false
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            self.evaluatorWindowTimer = nil
+            TraceletLog.lifecycle(
+                "[geofence] evaluator window closed — handing the cadence back to "
+                    + "the motion coordinator (#414)")
+            if self.configManager.getMotionDetectionMode() == .smart {
+                self.smartMotionCoordinator.reconcilePosture()
+            }
+        }
+        evaluatorWindowTimer = timer
     }
 
     /// Re-aligns the location cadence with who owns the currently-stored fences.
@@ -757,6 +805,9 @@ public final class TraceletSdk {
 
             locationEngine.stop()
             locationEngine.speedSink = nil
+            // A pending evaluator window has nothing left to hand back to (#414).
+            evaluatorWindowTimer?.invalidate()
+            evaluatorWindowTimer = nil
             locationEngine.onRawGeofenceLocation = nil
             locationEngine.geofenceHighAccuracyMode = false
             geofenceManager.onEvaluatorOwnershipChanged = nil
@@ -4252,7 +4303,14 @@ public final class TraceletSdk {
             // the transition whose action used to be discarded. Seeding here
             // is the mirror of the accel seed in `start()` — the machine was
             // just forced to MOVING, so the coordinator has to be told (#409).
-            smartMotionCoordinator.onSpeedStateChange(isMoving: true)
+            //
+            // Read from the machine rather than from the intent: `start()`
+            // returns early when it is already running, so on a resume into a
+            // live process the machine keeps whatever state it had — which may
+            // be `.slowing` or `.stationary`. Asserting "moving" there would
+            // hold the stream open over a pace machine that had already stood
+            // the session down (#414).
+            smartMotionCoordinator.onSpeedStateChange(isMoving: smm.state != .stationary)
         }
 
         // If we're resuming in stationary state, switch immediately

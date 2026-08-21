@@ -183,11 +183,16 @@ class SmartMotionCoordinator(
         val useGeofences = configManager.getStationaryTrackingMode() ==
             com.ikolvi.tracelet.sdk.model.StationaryTrackingMode.GEOFENCES
         val action = coreCoordinator.evaluateConfigurationChange(useGeofences)
-        logger.debug(
-            "SmartMotionCoordinator: reconcilePosture -> action=$action, " +
-                "isAccelMoving=${coreCoordinator.isAccelMoving()}, " +
-                "isSpeedMoving=${coreCoordinator.isSpeedMoving()}, " +
-                "isTracking=${locationEngine.isTracking}",
+        // Always-on: once per start(), and it is the entry that answers "why is
+        // GPS still running" — it names both motion inputs and the engine at the
+        // one moment the session re-judges them. A release build runs at the
+        // default logLevel, where a `debug` line is discarded and the question
+        // is unanswerable from the report (#414).
+        com.ikolvi.tracelet.sdk.util.TraceletLog.lifecycle(
+            "smart-motion: reconciled the posture — action=$action " +
+                "accelMoving=${coreCoordinator.isAccelMoving()} " +
+                "speedMoving=${coreCoordinator.isSpeedMoving()} " +
+                "streaming=${locationEngine.isTracking}",
         )
         handleAction(action)
     }

@@ -289,7 +289,7 @@ class LocationService : Service(), DefaultLifecycleObserver {
 
         @Volatile
         var bootSmartMotionCoordinator: com.ikolvi.tracelet.sdk.motion.SmartMotionCoordinator? = null
-            private set
+            @androidx.annotation.VisibleForTesting internal set
 
         // Boot-mode heartbeat timer state.
         @Volatile
@@ -436,13 +436,95 @@ class LocationService : Service(), DefaultLifecycleObserver {
         /**
          * Switches back to continuous tracking.
          */
+        /**
+         * How long the in-app fence evaluator keeps the stream up after an OS
+         * wake-up before the session's own posture decides again (#414).
+         *
+         * Long enough to decide a crossing at walking pace — a 10 m fence takes
+         * ~10 s to cross — and short enough that a wake-up cannot cost a whole
+         * session of full-rate GPS.
+         */
+        private const val EVALUATOR_STREAM_WINDOW_MS = 60_000L
+
+        @Volatile
+        private var evaluatorWindowHandler: Handler? = null
+
+        @Volatile
+        private var evaluatorWindowRunnable: Runnable? = null
+
+        /**
+         * Resumes the location stream so the in-app evaluator can decide a fence
+         * at its true radius, and hands the session back afterwards (#414).
+         *
+         * [switchToContinuous] is the wrong tool for this and was what the wake-up
+         * used to call. It is a *motion* transition: it writes `isMoving = true`
+         * and `trackingMode = CONTINUOUS`, and it cancels the stationary
+         * schedule. Nothing about being near a fence says the device is moving,
+         * and the field report shows what that costs — a phone on a desk whose
+         * coordinator had just parked it:
+         *
+         *   smart-motion: switching to STATIONARY_PERIODIC — accelMoving=false speedMoving=false
+         *   [geofence] wake-up from the OS near an in-app fence — resuming the location stream
+         *   location stream: continuous updates starting — distanceFilter=0.0m interval=2000ms
+         *
+         * From there the session reported `isMoving=true` for the rest of its
+         * life: every later resume read that pace and forced the speed machine
+         * back to MOVING, so both coordinator inputs stayed moving and no
+         * stationary decision was ever available to stop the stream.
+         *
+         * The pace is left exactly as the motion subsystems set it. The stream
+         * is borrowed for one bounded window, and when it closes the coordinator
+         * re-judges the state it is in — parking again if both inputs still say
+         * stationary, and leaving the stream alone if the device really did move.
+         */
+        fun resumeStreamForEvaluator(
+            engine: com.ikolvi.tracelet.sdk.location.LocationEngine,
+            state: StateManager,
+        ) {
+            stopStationaryTimer()
+            engine.start()
+            TraceletLog.lifecycle(
+                "[geofence] the evaluator has the stream for " +
+                    "${EVALUATOR_STREAM_WINDOW_MS / 1000}s — the pace is unchanged " +
+                    "(isMoving=${state.isMoving}), and the coordinator decides again " +
+                    "when the window closes (#414)"
+            )
+
+            cancelEvaluatorWindow()
+            val handler = Handler(Looper.getMainLooper())
+            val runnable = Runnable {
+                evaluatorWindowRunnable = null
+                evaluatorWindowHandler = null
+                TraceletLog.lifecycle(
+                    "[geofence] evaluator window closed — handing the cadence back " +
+                        "to the motion coordinator (#414)"
+                )
+                bootSmartMotionCoordinator?.reconcilePosture()
+            }
+            evaluatorWindowHandler = handler
+            evaluatorWindowRunnable = runnable
+            handler.postDelayed(runnable, EVALUATOR_STREAM_WINDOW_MS)
+        }
+
+        /** Drops a pending evaluator window (teardown, or a fresh wake-up). */
+        fun cancelEvaluatorWindow() {
+            evaluatorWindowRunnable?.let { evaluatorWindowHandler?.removeCallbacks(it) }
+            evaluatorWindowRunnable = null
+            evaluatorWindowHandler = null
+        }
+
         fun switchToContinuous(engine: com.ikolvi.tracelet.sdk.location.LocationEngine, state: StateManager) {
             stopStationaryTimer()
             // Mark state as moving so motion change events fire correctly
             state.isMoving = true
             state.trackingMode = com.ikolvi.tracelet.sdk.model.TrackingMode.CONTINUOUS
             engine.start()
-            TraceletLog.debug("switchToContinuous() — continuous tracking resumed")
+            // Always-on: this writes the session's pace, and a report that shows
+            // `isMoving=true` on a parked device needs to name what wrote it
+            // (#414).
+            TraceletLog.lifecycle(
+                "boot-tracking: switching to CONTINUOUS — the pace is now moving"
+            )
         }
 
         /**
@@ -647,6 +729,7 @@ class LocationService : Service(), DefaultLifecycleObserver {
         fun stopBootTracking() {
             stopBootHeartbeat()
             stopStationaryTimer()
+            cancelEvaluatorWindow()
             bootSpeedMotionManager?.stop()
             bootSpeedMotionManager = null
             bootMotionDetector?.stop()
@@ -1558,7 +1641,11 @@ class LocationService : Service(), DefaultLifecycleObserver {
             geoManager.onEvaluatorWakeup = {
                 val engine = bootLocationEngine
                 if (engine != null && isStationaryTimerActive()) {
-                    switchToContinuous(engine, StateManager(applicationContext))
+                    // Borrowed, not claimed: being near a fence is not a motion
+                    // event, and treating it as one left the session reporting
+                    // `isMoving=true` on a parked device for the rest of its life
+                    // (#414).
+                    resumeStreamForEvaluator(engine, StateManager(applicationContext))
                 }
             }
             TraceletLog.debug("Geofence registrations restored after boot/task-removal (proximity stream wired)")

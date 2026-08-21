@@ -1090,7 +1090,16 @@ class TraceletSdk private constructor(private val context: Context) {
                 // alone. The mirror of the accel seed below: the machine was
                 // just forced to MOVING, so the coordinator has to be told
                 // (#409).
-                smartMotionCoordinator.onSpeedStateChange(true)
+                //
+                // Read from the machine rather than from the intent: `start()`
+                // early-returns when it is already running (`if (started)
+                // return`), so on a resume into a live process the machine keeps
+                // whatever state it had — which may be SLOWING or STATIONARY.
+                // Asserting "moving" there would hold the stream open over a
+                // pace machine that had already stood the session down (#414).
+                smartMotionCoordinator.onSpeedStateChange(
+                    speedMotionManager.getCurrentState() != "stationary",
+                )
             }
             locationEngine.speedMotionSpeedSink = { speed -> speedMotionManager.onLocation(speed) }
             
