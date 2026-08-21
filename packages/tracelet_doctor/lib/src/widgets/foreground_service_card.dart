@@ -28,6 +28,13 @@ class ForegroundServiceCard extends StatelessWidget {
   String? get _result => health['lastForegroundPromotionResult'] as String?;
   String get _platform => (health['platform'] as String?) ?? 'unknown';
 
+  /// The service is promoted, and Android will not let it use location (#405).
+  bool get _locationDenied => health['locationCapabilityLikelyDenied'] == true;
+
+  /// Forced App Standby — independent of the battery-optimization exemption
+  /// (#406).
+  bool get _backgroundRestricted => health['backgroundRestricted'] == true;
+
   ({String label, Color color}) get _status {
     if (!_desiredEnabled) {
       return (label: 'Inactive', color: DoctorTheme.muted);
@@ -39,6 +46,15 @@ class ForegroundServiceCard extends StatelessWidget {
     }
     if (!_fgEnabled) {
       return (label: 'No FGS', color: DoctorTheme.accent);
+    }
+    // #405/#406 before the healthy branch, deliberately. Both of these states
+    // present as a promoted service — the whole reason they went undiagnosed is
+    // that every field this card reads says `true` while nothing is tracked.
+    if (_locationDenied) {
+      return (label: 'No location', color: DoctorTheme.error);
+    }
+    if (_backgroundRestricted) {
+      return (label: 'Restricted', color: DoctorTheme.error);
     }
     if (_serviceForeground) {
       return (label: 'Healthy', color: DoctorTheme.success);
@@ -103,6 +119,38 @@ class ForegroundServiceCard extends StatelessWidget {
               label: 'Last transition',
               value: _formatTransition(health['lastForegroundTransitionAt']),
             ),
+            BoolRow(
+              label: 'Started in foreground',
+              value: health['serviceStartedInForeground'] == true,
+            ),
+            if (_locationDenied)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Promoted, but started while the app was in the background — '
+                  'Android denies a background-started foreground service the '
+                  'location capability for its entire life. The notification '
+                  'shows and no fix will arrive. Reopening the app re-creates '
+                  'the service from the foreground and recovers tracking '
+                  '(#405).',
+                  style: DoctorTheme.cardBodyStyle.copyWith(
+                    color: DoctorTheme.error,
+                  ),
+                ),
+              ),
+            if (_backgroundRestricted)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'The app is in the "Restricted" battery state, which blocks '
+                  'background service starts and foreground-service promotion. '
+                  'This is separate from the battery-optimization exemption. '
+                  'Fix in Settings → Apps → Battery → Unrestricted (#406).',
+                  style: DoctorTheme.cardBodyStyle.copyWith(
+                    color: DoctorTheme.error,
+                  ),
+                ),
+              ),
             if (failureClass != null)
               InfoRow(label: 'Failure', value: failureClass),
             if (failureMessage != null)

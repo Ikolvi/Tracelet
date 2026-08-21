@@ -45,6 +45,20 @@ public class TraceletSmartMotionCoordinator {
     /// stayed parked — no fixes recorded, nothing to sync — until the process
     /// was killed. Reading the posture off `isMoving` keeps the two in step, and
     /// the first real accel or speed event produces the wake-up.
+    ///
+    /// #409 is the same wedge from the other side: `isMoving` false with a *live*
+    /// stream parked the coordinator while the engine kept streaming, and
+    /// `evaluate_state` returns `.none` for that pair too. The posture is now the
+    /// OR of the committed pace and the engine's actual state — the only reading
+    /// that survives both directions.
+    ///
+    /// The engine's state is `isContinuousStreaming`, not `isTracking`: the
+    /// speed/smart pipeline parks by stopping continuous updates while leaving
+    /// `isTracking` true so delegate callbacks keep arriving, so `isTracking`
+    /// reads `true` on a parked engine. ORing *that* in writes Continuous into a
+    /// coordinator that is genuinely parked, and the core emits no wake-up for a
+    /// posture it already believes is Continuous — #344's swallowed shake,
+    /// re-entered through the #409 fix.
     public func syncCurrentMode() {
         guard let stateManager = sdk?.stateManager else { return }
 
@@ -53,21 +67,39 @@ public class TraceletSmartMotionCoordinator {
             mode: TraceletSmartMotionCoordinator.coordinatorMode(
                 sessionMode: stateManager.trackingMode,
                 isMoving: stateManager.isMoving,
+                isStreamLive: sdk?.locationEngine?.isContinuousStreaming ?? false,
                 useGeofencesWhenStationary: useGeofences))
         coreCoordinator?.setUseGeofencesWhenStationary(useGeofences: useGeofences)
     }
 
-    /// The posture the coordinator should be holding, given the session mode and
-    /// the committed pace. Pure so the mapping in #344 can be pinned directly.
+    /// The posture the coordinator should be holding, given the session mode, the
+    /// committed pace, and whether the engine is streaming right now. Pure so the
+    /// mappings in #344 and #409 can be pinned directly.
     static func coordinatorMode(
         sessionMode: TraceletTrackingMode,
         isMoving: Bool,
+        isStreamLive: Bool,
         useGeofencesWhenStationary: Bool
     ) -> TrackingMode {
         let stationary: TrackingMode = useGeofencesWhenStationary ? .stationaryGeofences : .stationaryPeriodic
         switch sessionMode {
         case .continuous:
-            return isMoving ? .continuous : stationary
+            // `isMoving` predicts what start() is *about* to do; `isStreamLive`
+            // reports what the engine is doing *now*. Either alone gets a case
+            // wrong, so the posture is the OR of them (#409).
+            //
+            // `isMoving` alone was the wedge. start() syncs before it touches the
+            // engine, so a session resuming stationary while a stream was still
+            // live wrote a stationary posture into a coordinator whose engine was
+            // streaming — and `evaluate_state` only emits the stop action when it
+            // believes the posture is `.continuous`. Every later stationary
+            // decision returned `.none` and GPS ran at the configured interval for
+            // the rest of the session, on a device correctly reported as parked.
+            //
+            // `isStreamLive` alone breaks #344's direction: this runs before
+            // start() starts the engine, so a moving start would sync stationary
+            // and then stream — the same wedge, mirrored.
+            return (isMoving || isStreamLive) ? .continuous : stationary
         case .geofences:
             return .stationaryGeofences
         case .periodic:
@@ -107,6 +139,7 @@ public class TraceletSmartMotionCoordinator {
     /// assert the speed wake-up on.
     @discardableResult
     public func onSpeedStateChange(isMoving: Bool) -> CoordinatorAction {
+        var overrideAction: CoordinatorAction = .none
         if !isMoving && isAccelMoving {
             // The speed machine says stationary and the accelerometer disagrees.
             // Two situations look like this:
@@ -130,16 +163,29 @@ public class TraceletSmartMotionCoordinator {
                 TraceletLog.debug("[Tracelet] SmartMotionCoordinator: no GPS speed resolved yet — trusting accel, staying continuous.")
             case .some(let speed) where speed <= TraceletSmartMotionCoordinator.tremorSpeedThreshold:
                 TraceletLog.debug(String(format: "[Tracelet] SmartMotionCoordinator: GPS speed near zero (%.2f m/s) — overriding accel to false (hand tremor).", speed))
-                _ = coreCoordinator?.onAccelStateChange(isMoving: false)
+                // Through the wrapper, so the action this produces is *handled*.
+                // It used to be `_ = coreCoordinator?.onAccelStateChange(false)`,
+                // and the accel flag is the second half of the OR: when the speed
+                // flag is already stationary, flipping it here is the transition
+                // that carries the whole stop decision. `evaluate_state` returned
+                // `.switchToStationaryPeriodic` and it went on the floor, then the
+                // `onSpeedStateChange` below deduped to `.none` because the flag
+                // it would have flipped was already false — so nothing was ever
+                // handled, the engine was never told, and continuous GPS ran on a
+                // parked device for the rest of the session (#409).
+                overrideAction = onAccelStateChange(isMoving: false)
             case .some(let speed):
                 TraceletLog.debug(String(format: "[Tracelet] SmartMotionCoordinator: GPS speed %.2f m/s is above the %.2f m/s tremor threshold — trusting accel, staying continuous.",
                                          speed, TraceletSmartMotionCoordinator.tremorSpeedThreshold))
             }
         }
-        guard let action = coreCoordinator?.onSpeedStateChange(isMoving: isMoving) else { return .none }
+        guard let action = coreCoordinator?.onSpeedStateChange(isMoving: isMoving) else { return overrideAction }
         TraceletLog.debug("[Tracelet] SmartMotionCoordinator: onSpeedStateChange -> isMoving=\(isMoving), action=\(action)")
         handleAction(action)
-        return action
+        // The override above already switched the engine when the speed flag was
+        // the one that was stale; reporting `.none` here would hide that from a
+        // caller that reads the result.
+        return action == .none ? overrideAction : action
     }
     
     /// Called when the user manually forces the pace via changePace().

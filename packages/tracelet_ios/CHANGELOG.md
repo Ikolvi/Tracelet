@@ -1,5 +1,7 @@
 ## Unreleased
 
+**FIX**: the pinned native SDK stops the stream it inherited when the motion pipeline parks; no Dart or plugin change ([#409](https://github.com/Ikolvi/Tracelet/issues/409)).
+
 **FEAT**: the pinned native SDK mints and stamps a trip id; no Dart or plugin change ([#402](https://github.com/Ikolvi/Tracelet/issues/402)).
 
 ## 3.8.7

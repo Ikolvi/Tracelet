@@ -4217,6 +4217,22 @@ public final class TraceletSdk {
                 smartMotionCoordinator.onSpeedStateChange(isMoving: true)
                 stateManager.isMoving = true
             }
+        } else {
+            // A forced-moving start left the coordinator's speed input on
+            // whatever the *previous* session ended with, because only the
+            // branch above ever wrote it. `is_speed_moving` is process-lived
+            // state behind the FFI that no start() resets, so a session that
+            // parked stationary handed the next one a `false` — and the core
+            // dedupes a repeat of that flag to `.none`, so the machine could
+            // never re-assert it either.
+            //
+            // The whole session then hung on the accelerometer alone: the OR
+            // said moving only while accel did, and the one path that flips
+            // accel back (the tremor override in `onSpeedStateChange`) was
+            // the transition whose action used to be discarded. Seeding here
+            // is the mirror of the accel seed in `start()` — the machine was
+            // just forced to MOVING, so the coordinator has to be told (#409).
+            smartMotionCoordinator.onSpeedStateChange(isMoving: true)
         }
 
         // If we're resuming in stationary state, switch immediately

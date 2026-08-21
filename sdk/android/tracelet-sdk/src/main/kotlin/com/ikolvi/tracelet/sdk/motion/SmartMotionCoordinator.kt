@@ -65,6 +65,7 @@ class SmartMotionCoordinator(
      * Called when the GPS speed state changes.
      */
     fun onSpeedStateChange(isMoving: Boolean) {
+        var overrideAction = uniffi.tracelet_core.CoordinatorAction.NONE
         if (!isMoving && coreCoordinator.isAccelMoving()) {
             // Speed SM declared stationary (30s of speed < 1.5 m/s) but accel
             // still reports moving. This could be:
@@ -86,14 +87,24 @@ class SmartMotionCoordinator(
                     logger.info("SmartMotionCoordinator: no GPS speed resolved yet — trusting accel, staying continuous.")
                 lastSpeed <= TREMOR_SPEED_THRESHOLD -> {
                     logger.info("SmartMotionCoordinator: GPS speed near zero ($lastSpeed m/s) but accel moving — overriding accel to false (hand tremor).")
-                    coreCoordinator.onAccelStateChange(false)
+                    // Through [onAccelStateChange], so the action this produces
+                    // is *handled*. The accel flag is the second half of the OR:
+                    // when the speed flag is already stationary, flipping it here
+                    // is the transition that carries the whole stop decision.
+                    // `evaluate_state` returned SWITCH_TO_STATIONARY_PERIODIC and
+                    // the return value went unread, then the
+                    // `onSpeedStateChange` below deduped to NONE because the flag
+                    // it would have flipped was already false — so nothing was
+                    // ever handled, the engine was never told, and continuous GPS
+                    // ran on a parked device for the rest of the session (#409).
+                    overrideAction = onAccelStateChange(false)
                 }
                 else ->
                     logger.info("SmartMotionCoordinator: GPS speed $lastSpeed m/s is above the $TREMOR_SPEED_THRESHOLD m/s tremor threshold — trusting accel, staying continuous.")
             }
         }
         val action = coreCoordinator.onSpeedStateChange(isMoving)
-        logger.debug("SmartMotionCoordinator: onSpeedStateChange -> isMoving=$isMoving, action=$action, isAccelMoving=${coreCoordinator.isAccelMoving()}, isSpeedMoving=${coreCoordinator.isSpeedMoving()}")
+        logger.debug("SmartMotionCoordinator: onSpeedStateChange -> isMoving=$isMoving, action=$action, isAccelMoving=${coreCoordinator.isAccelMoving()}, isSpeedMoving=${coreCoordinator.isSpeedMoving()}, overrideAction=$overrideAction")
         handleAction(action)
     }
 
@@ -129,6 +140,12 @@ class SmartMotionCoordinator(
      * the session stayed parked — no fixes recorded, nothing to sync — until the
      * process was killed. Reading the posture off `isMoving` keeps the two in
      * step, and the first real accel or speed event produces the wake-up.
+     *
+     * #409 is the same wedge from the other side: `isMoving` false with a *live*
+     * stream parked the coordinator while the engine kept streaming, and
+     * `evaluate_state` returns None for that pair too. The posture is now the OR
+     * of the committed pace and the engine's actual state — the only reading
+     * that survives both directions.
      */
     fun syncCurrentMode() {
         val useGeofences = configManager.getStationaryTrackingMode() ==
@@ -140,7 +157,28 @@ class SmartMotionCoordinator(
         }
         val mode = when (stateManager.trackingMode) {
             TrackingMode.CONTINUOUS ->
-                if (stateManager.isMoving) uniffi.tracelet_core.TrackingMode.CONTINUOUS else stationaryMode
+                // `isMoving` predicts what start() is *about* to do; `isTracking`
+                // reports what the engine is doing *now*. Either alone gets a case
+                // wrong, so the posture is the OR of them (#409).
+                //
+                // `isMoving` alone was the wedge. start() syncs before it touches
+                // the engine, so a session resuming stationary while a stream was
+                // still live — a ready() takeover after the boot engine handed
+                // over — wrote StationaryPeriodic into a coordinator whose engine
+                // was streaming. evaluate_state only emits the stop action when it
+                // believes the mode is Continuous, so every later stationary
+                // decision returned None and the stream ran at the configured
+                // interval for the rest of the session, on a device the SDK
+                // correctly reported as parked.
+                //
+                // `isTracking` alone breaks the other direction: this runs before
+                // start() starts the engine, so a moving start would sync
+                // stationary and then stream — the same wedge, mirrored.
+                if (stateManager.isMoving || locationEngine.isTracking) {
+                    uniffi.tracelet_core.TrackingMode.CONTINUOUS
+                } else {
+                    stationaryMode
+                }
             TrackingMode.GEOFENCES -> uniffi.tracelet_core.TrackingMode.STATIONARY_GEOFENCES
             TrackingMode.PERIODIC -> uniffi.tracelet_core.TrackingMode.STATIONARY_PERIODIC
             else -> uniffi.tracelet_core.TrackingMode.CONTINUOUS

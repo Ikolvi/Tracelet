@@ -253,6 +253,19 @@ class TraceletSdk private constructor(private val context: Context) {
     val isTracking: Boolean
         get() = ::locationEngine.isInitialized && (locationEngine.isTracking || LocationService.isServiceRunning())
 
+    /**
+     * Whether *this* process already has a live session engine (#410).
+     *
+     * Deliberately narrower than [isTracking], which is true whenever the
+     * service is running — including from inside the service itself, where it
+     * answers a different question and is always true. This one asks only
+     * whether the SDK's own engine is currently producing fixes, which is what
+     * decides whether a second, boot-mode engine would be a duplicate.
+     */
+    val hasLiveSessionEngine: Boolean
+        get() = ::locationEngine.isInitialized &&
+            (locationEngine.isTracking || locationEngine.isPeriodicTracking)
+
     interface SyncProvider {
         fun syncBatchBlocking(config: uniffi.tracelet_core.HttpConfig, records: List<uniffi.tracelet_core.DbLocationRecord>): Long
 
@@ -1063,7 +1076,22 @@ class TraceletSdk private constructor(private val context: Context) {
             // MOVING again until the process was killed.
             smartMotionCoordinator.syncCurrentMode()
             speedMotionManager.start(forceMoving = shouldForceMoving)
-            if (!shouldForceMoving) adoptSpeedMotionPace(isResume)
+            if (!shouldForceMoving) {
+                adoptSpeedMotionPace(isResume)
+            } else {
+                // A forced-moving start left the coordinator's speed input on
+                // whatever the *previous* session ended with: only
+                // adoptSpeedMotionPace() ever writes it, and it does not run
+                // here. `isSpeedMoving` is process-lived state behind the FFI
+                // that no start() resets, so a session that parked stationary
+                // handed the next one a `false` — and the core dedupes a repeat
+                // of that flag to NONE, so the machine could never re-assert it
+                // either. The whole session then hung on the accelerometer
+                // alone. The mirror of the accel seed below: the machine was
+                // just forced to MOVING, so the coordinator has to be told
+                // (#409).
+                smartMotionCoordinator.onSpeedStateChange(true)
+            }
             locationEngine.speedMotionSpeedSink = { speed -> speedMotionManager.onLocation(speed) }
             
             // Seed the machine with the last GPS speed this process actually
@@ -3085,6 +3113,17 @@ class TraceletSdk private constructor(private val context: Context) {
         health["desiredEnabled"] = stateManager.enabled
         health["foregroundServiceEnabled"] = configManager.isForegroundServiceEnabled()
         health["platform"] = "android"
+        // #406: Forced App Standby is independent of the Doze allowlist the
+        // health check already reports, and it is the stronger restriction —
+        // it blocks the foreground-service promotion outright. Reported here
+        // rather than in HealthCheck because this map is the snapshot that
+        // exists to say whether background tracking is operational.
+        val bucket = com.ikolvi.tracelet.sdk.util.BackgroundRestrictions.standbyBucket(context)
+        health["backgroundRestricted"] =
+            com.ikolvi.tracelet.sdk.util.BackgroundRestrictions.isBackgroundRestricted(context)
+        health["standbyBucket"] = bucket?.toLong()
+        health["standbyBucketName"] =
+            com.ikolvi.tracelet.sdk.util.BackgroundRestrictions.standbyBucketName(bucket)
         return health
     }
 

@@ -19,29 +19,81 @@ final class SmartMotionCoordinatorSyncModeTests: XCTestCase {
 
     // MARK: - The mapping
 
+    /// #409, the mirror image of #344 and the reason `isStreamLive` exists.
+    ///
+    /// A session resuming stationary while a stream is still live used to write a
+    /// stationary posture into a coordinator whose engine was streaming. The core
+    /// only emits the stop action when it believes the posture is `.continuous`,
+    /// so every later stationary decision returned `.none` and continuous GPS ran
+    /// for the rest of the session on a device correctly reported as parked.
+    func testStationaryPaceWithALiveStreamMapsToContinuous() {
+        XCTAssertEqual(
+            TraceletSmartMotionCoordinator.coordinatorMode(
+                sessionMode: .continuous, isMoving: false, isStreamLive: true,
+                useGeofencesWhenStationary: false),
+            .continuous,
+            "the posture has to match the engine, or the stop action is never emitted")
+        XCTAssertEqual(
+            TraceletSmartMotionCoordinator.coordinatorMode(
+                sessionMode: .continuous, isMoving: false, isStreamLive: true,
+                useGeofencesWhenStationary: true),
+            .continuous,
+            "a live stream is a live stream whichever stationary mode is configured")
+    }
+
+    /// A live stream cannot promote a non-continuous *session* to continuous —
+    /// only the posture within a continuous session is at stake.
+    func testALiveStreamDoesNotOverrideANonContinuousSessionMode() {
+        XCTAssertEqual(
+            TraceletSmartMotionCoordinator.coordinatorMode(
+                sessionMode: .geofences, isMoving: false, isStreamLive: true,
+                useGeofencesWhenStationary: false),
+            .stationaryGeofences)
+        XCTAssertEqual(
+            TraceletSmartMotionCoordinator.coordinatorMode(
+                sessionMode: .periodic, isMoving: false, isStreamLive: true,
+                useGeofencesWhenStationary: false),
+            .stationaryPeriodic)
+    }
+
+    /// The core state machine driven through #409's exact sequence, so the trap
+    /// is pinned rather than just the branch that avoids it.
+    func testALiveStreamStillReachesTheStationarySwitch() {
+        let core = SmartMotionCoordinator(useGeofencesWhenStationary: false)
+        core.setCurrentMode(
+            mode: TraceletSmartMotionCoordinator.coordinatorMode(
+                sessionMode: .continuous, isMoving: false, isStreamLive: true,
+                useGeofencesWhenStationary: false))
+
+        XCTAssertEqual(
+            core.onSpeedStateChange(isMoving: false), .switchToStationaryPeriodic,
+            "#409: both inputs stationary with a live stream must stop it — this " +
+            "returned .none before the posture accounted for the engine")
+    }
+
     func testContinuousSessionStartedStationaryMapsToStationaryPosture() {
         XCTAssertEqual(
             TraceletSmartMotionCoordinator.coordinatorMode(
-                sessionMode: .continuous, isMoving: false, useGeofencesWhenStationary: false),
+                sessionMode: .continuous, isMoving: false, isStreamLive: false, useGeofencesWhenStationary: false),
             .stationaryPeriodic)
     }
 
     func testContinuousSessionStartedStationaryHonoursGeofenceStationaryMode() {
         XCTAssertEqual(
             TraceletSmartMotionCoordinator.coordinatorMode(
-                sessionMode: .continuous, isMoving: false, useGeofencesWhenStationary: true),
+                sessionMode: .continuous, isMoving: false, isStreamLive: false, useGeofencesWhenStationary: true),
             .stationaryGeofences)
     }
 
     func testContinuousSessionStartedMovingMapsToContinuous() {
         XCTAssertEqual(
             TraceletSmartMotionCoordinator.coordinatorMode(
-                sessionMode: .continuous, isMoving: true, useGeofencesWhenStationary: false),
+                sessionMode: .continuous, isMoving: true, isStreamLive: false, useGeofencesWhenStationary: false),
             .continuous)
         // The stationary mode is irrelevant while moving.
         XCTAssertEqual(
             TraceletSmartMotionCoordinator.coordinatorMode(
-                sessionMode: .continuous, isMoving: true, useGeofencesWhenStationary: true),
+                sessionMode: .continuous, isMoving: true, isStreamLive: false, useGeofencesWhenStationary: true),
             .continuous)
     }
 
@@ -51,11 +103,13 @@ final class SmartMotionCoordinatorSyncModeTests: XCTestCase {
         for moving in [true, false] {
             XCTAssertEqual(
                 TraceletSmartMotionCoordinator.coordinatorMode(
-                    sessionMode: .geofences, isMoving: moving, useGeofencesWhenStationary: false),
+                    sessionMode: .geofences, isMoving: moving, isStreamLive: false,
+                    useGeofencesWhenStationary: false),
                 .stationaryGeofences)
             XCTAssertEqual(
                 TraceletSmartMotionCoordinator.coordinatorMode(
-                    sessionMode: .periodic, isMoving: moving, useGeofencesWhenStationary: true),
+                    sessionMode: .periodic, isMoving: moving, isStreamLive: false,
+                    useGeofencesWhenStationary: true),
                 .stationaryPeriodic)
         }
     }
@@ -82,7 +136,7 @@ final class SmartMotionCoordinatorSyncModeTests: XCTestCase {
 
         core.setCurrentMode(
             mode: TraceletSmartMotionCoordinator.coordinatorMode(
-                sessionMode: .continuous, isMoving: false, useGeofencesWhenStationary: false))
+                sessionMode: .continuous, isMoving: false, isStreamLive: false, useGeofencesWhenStationary: false))
 
         // A restored-stationary speed machine re-asserting itself must stay a no-op.
         XCTAssertEqual(core.onSpeedStateChange(isMoving: false), .none)
@@ -95,7 +149,7 @@ final class SmartMotionCoordinatorSyncModeTests: XCTestCase {
 
         core.setCurrentMode(
             mode: TraceletSmartMotionCoordinator.coordinatorMode(
-                sessionMode: .continuous, isMoving: false, useGeofencesWhenStationary: false))
+                sessionMode: .continuous, isMoving: false, isStreamLive: false, useGeofencesWhenStationary: false))
 
         XCTAssertEqual(core.onSpeedStateChange(isMoving: true), .switchToContinuous)
     }
@@ -118,7 +172,7 @@ final class SmartMotionCoordinatorSyncModeTests: XCTestCase {
         let core = SmartMotionCoordinator(useGeofencesWhenStationary: false)
         core.setCurrentMode(
             mode: TraceletSmartMotionCoordinator.coordinatorMode(
-                sessionMode: .continuous, isMoving: true, useGeofencesWhenStationary: false))
+                sessionMode: .continuous, isMoving: true, isStreamLive: false, useGeofencesWhenStationary: false))
         _ = core.onAccelStateChange(isMoving: true)
 
         XCTAssertEqual(core.onAccelStateChange(isMoving: false), .none, "speed still says moving")

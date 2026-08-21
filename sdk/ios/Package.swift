@@ -108,6 +108,13 @@ let package = Package(
                 // locationEngine.start() with the pace branch and left the
                 // stationary path with no acquisition at all.
                 "LocationEngineStartupFixTests.swift",
+                // #409: the park that stops continuous updates without tearing
+                // the session down. It logged nothing on the always-on channel —
+                // Android records the same transition through
+                // `LocationEngine.stop()` — so an iOS report could not say when
+                // GPS was parked, and `isTracking` (true on a parked engine) was
+                // the wrong signal for the coordinator's posture.
+                "LocationEngineStationaryParkLogTests.swift",
                 // #387: setOdometer() moves the odometer anchor, not just the
                 // total. Without it the next accepted fix re-added the whole
                 // span since the previous one, so a reset survived one fix.
