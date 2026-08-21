@@ -292,7 +292,8 @@ Your app already streams locations. Now the product team wants driving behaviour
          "latitude": 24.8607,
          "longitude": 67.0011,
          "timestamp": "2026-08-20T09:14:02.000Z",
-         "synced": false
+         "synced": false,
+         "trip_id": "9f2c0f1e-4c31-4b2a-9a77-1d0f3b5e7c88"
        }
      ]
    }
@@ -308,6 +309,7 @@ Your app already streams locations. Now the product team wants driving behaviour
    | `latitude` / `longitude` | `double` | Where it happened. |
    | `timestamp` | `String` | ISO-8601. |
    | `synced` | `bool` | The row's state when it was read — always `false` for an event on the wire. |
+   | `trip_id` | `String?` | The trip this event was recorded during, or `null` outside one. The same value appears on the locations recorded during that trip, which is what lets you group them. |
 
    <Callout type="info">
      `speed` and `value` joined the persisted row in **3.8.3**. Events recorded by an older install report `0` for both: the columns are non-nullable, so an upgraded database cannot tell an old row from a genuine zero.
@@ -320,7 +322,21 @@ Your app already streams locations. Now the product team wants driving behaviour
 
    Note that they are *marked*, not deleted: an uploaded event stays visible to `Tracelet.getTelematicsEvents()` so your app can still show the driver their own history. The synced tail is trimmed to the newest 1000 rows so the table cannot grow forever. Unsynced rows are never trimmed.
 
-4. **A separate endpoint (`telematicsUrl`)**
+4. **Grouping events by trip with `trip_id`**
+   Every location and driving event carries a `trip_id`: the UUIDv4 the SDK mints when a trip starts, `null` when no trip is running. It is the join key between the two arrays — `SELECT … WHERE trip_id = ?` gives you a journey's points and its harsh-braking events together.
+
+   The important part is *when* it is written. The id is stamped into the SQLite row at **insert** time, not when the row is uploaded. So a point recorded during this morning's trip still arrives labelled with that trip even if the phone was offline until the evening and a different trip is running by the time the queue drains. Resolving it at upload time would relabel the whole backlog with whatever happened to be active at the flush.
+
+   Two consequences worth designing your backend around:
+
+   - **A few points around the start of a trip will have `trip_id: null`.** Trip detection follows a motion transition, so some fixes are already recorded before the SDK declares the trip started. Those are not back-filled — the value records the state at the moment of the write. Do not assume every point near a trip's start timestamp carries its id.
+   - **Never sort by it.** A UUIDv4 is opaque and does not order chronologically. Order by `timestamp`, and order trips by their start.
+
+   <Callout type="info">
+     `trip_id` is **additive** — the key joins existing location and telematics records without renaming or moving anything, and is explicitly `null` rather than absent when no trip is active, so you can rely on the key existing. Rows written before trip identity shipped report `null`.
+   </Callout>
+
+5. **A separate endpoint (`telematicsUrl`)**
    If your backend routes driving events somewhere other than locations, set `telematicsUrl`. Events then travel on their own POST — body `{"telematics": [...]}`, with the same headers, timeouts, retries and SSL pinning as `url` — instead of riding the location payload.
 
    ```dart
@@ -335,7 +351,7 @@ Your app already streams locations. Now the product team wants driving behaviour
 
    To go back to the attached path later, pass an **empty string** rather than `null` — config is merged, not replaced, so `null` means "leave whatever is already there".
 
-5. **Custom body builders see them too**
+6. **Custom body builders see them too**
    If you shape the body yourself, the unsynced events arrive on the context alongside the locations, using the same field names as the table above:
 
    ```dart
@@ -350,5 +366,7 @@ Your app already streams locations. Now the product team wants driving behaviour
    `context.telematics` is empty unless `syncTelematics` is enabled.
 
 <Callout type="warning">
-  **Trips are not persisted or synced.** `Tracelet.onTrip()` delivering the completed trip to your Dart callback is the *only* way a trip leaves the SDK: trip state is held in memory, never written to SQLite, and never sent to an HTTP endpoint. If the isolate that called `start()` goes away before the trip ends, no trip event is produced at all — offline is not the only way to lose one. Until trip persistence ships, save the trip yourself inside `onTrip()` if you need it to survive. See [#356](https://github.com/Ikolvi/Tracelet/issues/356).
+  **Trip *summaries* are still not persisted or synced.** `Tracelet.onTrip()` delivering the completed trip to your Dart callback is the *only* way a trip summary leaves the SDK: it is held in memory, never written to SQLite, and never sent to an HTTP endpoint. If the isolate that called `start()` goes away before the trip ends, no trip event is produced at all — offline is not the only way to lose one. Save the summary yourself inside `onTrip()` if you need it to survive. See [#356](https://github.com/Ikolvi/Tracelet/issues/356).
+
+  This does **not** apply to `trip_id`. The id is persisted on every location and driving event and reaches your backend with them, so you can reconstruct a journey — its points, its driving events, its distance and duration — from the synced rows alone, even when the summary itself never arrives.
 </Callout>

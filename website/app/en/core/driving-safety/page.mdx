@@ -380,6 +380,69 @@ The portal also lists your issued keys and lets you **revoke** one instantly.
 
 ---
 
+## 4. Trip identity: tying it all together
+
+Locations, driving events, and trip summaries are three views of the same journey. `trip_id` is what joins them.
+
+When a trip starts, the SDK mints a **UUIDv4** and stamps it onto every location and driving event recorded until the trip ends. The same id arrives on the trip summary, so "which harsh-braking events happened on this drive?" is a lookup rather than a reconstruction.
+
+### Knowing when a trip starts
+
+A trip begins when the device transitions from stationary to moving. `onTripStart` fires at that moment with the id everything recorded from then on will carry:
+
+```dart
+Tracelet.onTripStart((trip) {
+  print('Trip ${trip.tripId} started at ${trip.startedAt}');
+  // Tag your own data with the same key.
+  analytics.beginDrive(tripId: trip.tripId);
+});
+
+Tracelet.onTrip((trip) {
+  print('Trip ${trip.tripId} covered ${trip.distance} m');
+  print('From ${trip.startedAt} to ${trip.endedAt}');
+});
+```
+
+You can also ask at any point which trip is running:
+
+```dart
+final id = Tracelet.currentTripId; // null between trips
+```
+
+<Callout type="info">
+  Before trip identity shipped, a trip only became observable once it had *ended* — `onTrip` fires at trip end, and there was no earlier signal. Apps that needed to group records by trip had to re-derive the boundary from `onMotionChange`, which drifts from the SDK's own detection because it does not see the debounce and thresholds behind it.
+</Callout>
+
+### Reading it back
+
+`trip_id` is stored on the row, so it survives into stored history and into whatever you sync:
+
+```dart
+final events = await Tracelet.getTelematicsEvents(50);
+final thisDrive = events.where((e) => e.tripId == someTripId);
+```
+
+| Where | Field |
+| --- | --- |
+| `TripStartEvent` | `tripId`, `startedAt`, `startLocation` |
+| `TripEvent` (from `onTrip`) | `tripId`, `startedAt`, `endedAt`, plus the existing distance/duration/waypoints |
+| `TelematicsRecord` | `tripId` |
+| Sync payload | `trip_id` on each location and telematics record — see [Tracelet Sync](/en/core/tracelet-sync#scenario-6-the-telematics-backend) |
+
+### Rules worth knowing
+
+- **It is opaque.** A UUIDv4 carries no information and does not sort chronologically. Never parse it, never order by it — order trips by `startedAt`.
+- **It is never reused.** Trip end discards the id; the next trip mints a new one. There is no "resume the previous trip" path that could hand the same id to a second journey.
+- **It is written when the row is written.** A location recorded during a trip keeps that trip's id even if it uploads hours later, when a different trip is running. This is what makes an offline backlog correct.
+- **A few points around a trip's start carry `null`.** Trip detection follows a motion transition, so some fixes land before the SDK declares the trip started. They are not back-filled — the value records the state at the moment of the write.
+- **`null` is normal.** Anything recorded outside a trip has no trip id, as do rows and trips written by a version from before trip identity shipped.
+
+<Callout type="warning">
+  The trip **summary** is still delivered only through `onTrip()` — it is not written to SQLite and not synced. `trip_id` is the exception: it is persisted on locations and driving events, so a journey can be reconstructed from the synced rows even when the summary never reaches your backend.
+</Callout>
+
+---
+
 ## Trying it without driving (simulation) & Database Access
 
 Tracelet includes dedicated database tables to store telematics events and a set of diagnostic APIs. These are heavily used by the **Tracelet Doctor** diagnostic overlay, but you can also use them directly in your app to build custom diagnostic screens or test your safety flows without needing to physically drive or crash a car.
