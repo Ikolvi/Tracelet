@@ -76,8 +76,14 @@ class LocationEngine(
          * Ten seconds: comfortably longer than any live fix interval, and far
          * shorter than the gap across which a cached fix survives a stationary
          * period. A reading older than this describes a moment that has passed.
+         *
+         * Internal rather than private because the same rule has to hold
+         * wherever a stored speed is read as a statement about *now* — the
+         * pace sink below, and [SmartMotionCoordinator]'s tremor override,
+         * which had no age gate at all and could veto a genuine wake with a
+         * speed frozen minutes earlier (#404).
          */
-        private const val MAX_PACE_FIX_AGE_MS = 10_000L
+        internal const val MAX_PACE_FIX_AGE_MS = 10_000L
 
         /**
          * How long a tracking session may accept nothing before the SDK says so
@@ -417,6 +423,21 @@ class LocationEngine(
      *  may be stale or 0. */
     var lastEffectiveSpeed: Double = 0.0
         private set
+
+    /**
+     * How old the fix behind [lastEffectiveSpeed] is, or `null` when no fix has
+     * been accepted in this process.
+     *
+     * `lastEffectiveSpeed` and `lastLocation` are written together on every
+     * accepted fix, so the fix's own age is the age of the speed. Measured off
+     * `elapsedRealtimeNanos` — a monotonic clock — so a wall-clock correction
+     * cannot make a stored reading look current, which is the same source the
+     * pace sink's own gate uses (#404).
+     */
+    val paceFixAgeMs: Long?
+        get() = getLastLocation()?.let {
+            (SystemClock.elapsedRealtimeNanos() - it.elapsedRealtimeNanos) / 1_000_000
+        }
 
     /**
      * Optional callback invoked on every accepted location (for geofenceModeHighAccuracy).

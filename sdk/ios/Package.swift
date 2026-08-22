@@ -97,6 +97,10 @@ let package = Package(
                 // last-known-speed seed, which can only ever wake the machine.
                 "PaceSeedInheritanceTests.swift",
                 "SmartMotionCoordinatorTests.swift",
+                // #404: the age gate the tremor override was missing. A file
+                // not listed here never runs, and xcodebuild still reports
+                // success — so the listing is the test, not the file.
+                "PaceFixAgeTests.swift",
                 // #361: the persistence retention caps, across the FFI boundary.
                 // Both keys were accepted and enforced by nothing after the
                 // 3.1.0 DB migration dropped the calls that implemented them.

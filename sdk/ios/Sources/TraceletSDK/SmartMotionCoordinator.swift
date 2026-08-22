@@ -161,14 +161,48 @@ public class TraceletSmartMotionCoordinator {
     /// tremor on a physically still device rather than as real motion.
     private static let tremorSpeedThreshold: Double = 0.15
 
-    /// The last speed this process actually resolved, or `nil` if it has not
-    /// resolved one yet.
+    /// Whether the last tremor decision declined a stale speed, so the
+    /// lifecycle entry below fires once per run rather than once per call — the
+    /// run is the event, mirroring `staleFixesSincePace` in ``LocationEngine``.
+    private var declinedStaleTremorSpeed = false
+
+    /// The last speed this process resolved, or `nil` when it has resolved none
+    /// — or when the one it has is too old to describe *now*.
     ///
     /// `lastEffectiveSpeed` and `lastLocation` are written together on every
     /// accepted fix, so a nil location is exactly "no fix has been accepted in
     /// this process" — which is *unknown*, not zero.
+    ///
+    /// The age gate is the same one the pace sink applies
+    /// (``LocationEngine/maximumPaceFixAge``) and it exists for the same
+    /// reason: a stored speed says nothing about the present. Without it a
+    /// parked device froze `lastEffectiveSpeed` at its last value, and
+    /// stationary-periodic mode produces no fresh fix to replace it *by
+    /// construction* — so when the accelerometer woke on a real walk minutes
+    /// later, the override read that frozen value and overruled the wake.
+    ///
+    /// An old reading is *unknown* in exactly the sense `nil` already means,
+    /// and routing it there is what makes the two agree: `nil` leaves the
+    /// accelerometer standing, where a stale near-zero actively sided against
+    /// it (#404).
     private var resolvedSpeed: Double? {
-        guard let engine = sdk?.locationEngine, engine.getLastLocation() != nil else { return nil }
+        guard let engine = sdk?.locationEngine,
+              engine.getLastLocation() != nil,
+              let age = engine.paceFixAge else { return nil }
+        guard age <= LocationEngine.maximumPaceFixAge else {
+            if !declinedStaleTremorSpeed {
+                declinedStaleTremorSpeed = true
+                // Always-on: this is a wake being discarded, and at the shipped
+                // log levels it left no trace at all (#318).
+                TraceletLog.lifecycle(String(
+                    format: "smart-motion: declining a %.1fs-old fix's speed (%.4f m/s) for the "
+                        + "tremor override — a reading older than %.0fs says nothing about now, "
+                        + "and letting it through vetoed a genuine accelerometer wake (#404)",
+                    age, engine.lastEffectiveSpeed, LocationEngine.maximumPaceFixAge))
+            }
+            return nil
+        }
+        declinedStaleTremorSpeed = false
         return engine.lastEffectiveSpeed
     }
 

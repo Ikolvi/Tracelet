@@ -1,5 +1,7 @@
 ## 3.8.8
 
+**FIX**: the pinned native SDK stops a stale near-zero speed vetoing an accelerometer wake, so a backgrounded device leaves stationary mode when it actually moves; no Dart or plugin change ([#404](https://github.com/Ikolvi/Tracelet/issues/404)).
+
 **FIX**: the pinned native SDK cancels the speed machine's stationary countdown on stop; no Dart or plugin change ([#412](https://github.com/Ikolvi/Tracelet/issues/412)).
 
 **FIX**: the pinned native SDK opens the evaluator's location stream for an in-app-evaluated fence on a stationary start; no Dart or plugin change ([#412](https://github.com/Ikolvi/Tracelet/issues/412), [#357](https://github.com/Ikolvi/Tracelet/issues/357)).

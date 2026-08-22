@@ -972,7 +972,23 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// Ten seconds: comfortably longer than any live fix interval, and far
     /// shorter than the gap across which a cached fix survives a stationary
     /// period. A reading older than this describes a moment that has passed.
-    private static let maximumPaceFixAge: TimeInterval = 10
+    ///
+    /// Not private, because the same rule has to hold wherever a stored speed
+    /// is read as a statement about *now* — the pace sink below, and
+    /// ``TraceletSmartMotionCoordinator``'s tremor override, which had no age
+    /// gate at all and could veto a genuine wake with a speed frozen minutes
+    /// earlier (#404).
+    static let maximumPaceFixAge: TimeInterval = 10
+
+    /// How old the fix behind ``lastEffectiveSpeed`` is, or `nil` when no fix
+    /// has been accepted in this process.
+    ///
+    /// `lastEffectiveSpeed` and `lastLocation` are written together on every
+    /// accepted fix, so the fix's own age is the age of the speed (#404).
+    public var paceFixAge: TimeInterval? {
+        guard let location = getLastLocation() else { return nil }
+        return -location.timestamp.timeIntervalSinceNow
+    }
 
     /// How long a tracking session may accept nothing before the SDK says so.
     ///

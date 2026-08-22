@@ -51,15 +51,59 @@ class SmartMotionCoordinator(
     }
 
     /**
-     * The last speed this process actually resolved, or `null` if it has not
-     * resolved one yet.
+     * Whether the last tremor decision declined a stale speed, so the lifecycle
+     * entry below fires once per run rather than once per call — the run is the
+     * event, mirroring `staleFixesSincePace` in [LocationEngine].
+     */
+    private var declinedStaleTremorSpeed = false
+
+    /**
+     * The last speed this process resolved, or `null` when it has resolved none
+     * — or when the one it has is too old to describe *now*.
      *
      * [LocationEngine.lastEffectiveSpeed] and `lastLocation` are written
      * together on every accepted fix, so a null location is exactly "no fix has
      * been accepted in this process" — which is *unknown*, not zero.
+     *
+     * The age gate is the same one the pace sink applies
+     * ([LocationEngine.MAX_PACE_FIX_AGE_MS]) and it exists for the same reason:
+     * a stored speed says nothing about the present. Without it a parked device
+     * froze `lastEffectiveSpeed` at its last value — 0.0057 m/s in the reported
+     * trace, well under [TREMOR_SPEED_THRESHOLD] — and stationary-periodic mode
+     * produces no fresh fix to replace it *by construction*. So when the
+     * accelerometer woke on a real walk minutes later, the override read that
+     * frozen value and overruled the wake, and the session never left
+     * stationary while the app was backgrounded. Reopening the app called
+     * `ready()`, which produced a fresh fix and unwedged it — which is why this
+     * was reported as "the location indicator only appears in the foreground".
+     *
+     * An old reading is *unknown* in exactly the sense `null` already means,
+     * and routing it there is what makes the two agree: `null` leaves the
+     * accelerometer standing, where a stale near-zero actively sided against it
+     * (#404).
      */
     private val resolvedSpeed: Double?
-        get() = locationEngine.getLastLocation()?.let { locationEngine.lastEffectiveSpeed }
+        get() {
+            locationEngine.getLastLocation() ?: return null
+            val ageMs = locationEngine.paceFixAgeMs ?: return null
+            if (ageMs > LocationEngine.MAX_PACE_FIX_AGE_MS) {
+                if (!declinedStaleTremorSpeed) {
+                    declinedStaleTremorSpeed = true
+                    // Always-on: this is a wake being discarded, and at the
+                    // shipped log levels it left no trace at all (#318).
+                    com.ikolvi.tracelet.sdk.util.TraceletLog.lifecycle(
+                        "smart-motion: declining a ${ageMs}ms-old fix's speed " +
+                            "(${"%.4f".format(locationEngine.lastEffectiveSpeed)}m/s) for the " +
+                            "tremor override — a reading older than " +
+                            "${LocationEngine.MAX_PACE_FIX_AGE_MS}ms says nothing about now, " +
+                            "and letting it through vetoed a genuine accelerometer wake (#404)",
+                    )
+                }
+                return null
+            }
+            declinedStaleTremorSpeed = false
+            return locationEngine.lastEffectiveSpeed
+        }
 
     /**
      * Called when the GPS speed state changes.
