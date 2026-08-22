@@ -104,8 +104,19 @@ class TraceletBugReport {
     );
     buffer.writeln();
 
-    await _writeHealth(buffer);
-    await _writeForegroundServiceHealth(buffer);
+    // One read, two sections. The health check's verdict has to account for
+    // the foreground-service restrictions, and the two sections contradicting
+    // each other is the failure this fixes — so they read the same snapshot.
+    Map<String, Object?>? fgsHealth;
+    Object? fgsHealthError;
+    try {
+      fgsHealth = await Tracelet.getForegroundServiceHealth();
+    } catch (e) {
+      fgsHealthError = e;
+    }
+
+    await _writeHealth(buffer, fgsHealth);
+    _writeForegroundServiceHealth(buffer, fgsHealth, fgsHealthError);
     await _writeLocationTuning(buffer);
     if (includeConfig) _writeConfig(buffer);
     await _writeTelematics(buffer, telematicsLimit);
@@ -139,9 +150,29 @@ class TraceletBugReport {
   // Sections
   // ---------------------------------------------------------------------------
 
-  static Future<void> _writeHealth(StringBuffer buffer) async {
+  static Future<void> _writeHealth(
+    StringBuffer buffer,
+    Map<String, Object?>? fgsHealth,
+  ) async {
     buffer.writeln('## Health check');
     buffer.writeln();
+
+    // Computed before the health call and reported after it either way. These
+    // are the conditions under which background tracking cannot work at all,
+    // and they come from the foreground-service snapshot — so a health call
+    // that fails must not take them down with it. A report that degrades is
+    // still a report; one that hides the blocker is worse than none (#406).
+    final blockers = <String>[
+      if (fgsHealth?['backgroundRestricted'] == true)
+        'App is in the "Restricted" battery state — the OS blocks background service starts and foreground-service promotion (#406)',
+      if (fgsHealth?['standbyBucketName'] == 'restricted')
+        'App is in the RESTRICTED standby bucket — background work is heavily curtailed (#406)',
+      if (fgsHealth?['locationCapabilityLikelyDenied'] == true)
+        'Foreground service is promoted but denied the location capability — it was started from the background (#405)',
+      if (fgsHealth?['lastForegroundPromotionResult'] == 'refused')
+        'The OS refused the last foreground-service promotion (#406)',
+    ];
+
     try {
       final health = await Tracelet.getHealth();
       buffer.writeln('| Field | Value |');
@@ -188,26 +219,59 @@ class TraceletBugReport {
       buffer.writeln('| Pending locations | ${health.locationCount} |');
       buffer.writeln();
 
-      if (health.warnings.isEmpty) {
-        buffer.writeln('**Warnings:** none — all systems healthy. ✅');
-      } else {
-        buffer.writeln('**Warnings (${health.warnings.length}):**');
-        buffer.writeln();
-        for (final w in health.warnings) {
-          buffer.writeln('- ⚠️ ${w.description}');
-        }
-      }
+      // `HealthCheck.warnings` is computed from the health map alone, and the
+      // background restrictions live in the foreground-service snapshot — a
+      // different native call. So this section reported "all systems healthy"
+      // on a device where the OS had switched background tracking off
+      // outright, with the contradiction sitting one section below. A blocker
+      // named anywhere in the report must not be missing from the verdict at
+      // the top of it (#406, #405).
+      _writeVerdict(buffer, health.warnings, blockers);
     } catch (e) {
       buffer.writeln('_Could not read health: ${e}_');
+      buffer.writeln();
+      _writeVerdict(buffer, const <HealthWarning>[], blockers);
     }
     buffer.writeln();
   }
 
-  static Future<void> _writeForegroundServiceHealth(StringBuffer buffer) async {
+  /// Writes the health verdict: blockers first, then degradations.
+  ///
+  /// Blockers stop background tracking outright; warnings degrade it. Ordering
+  /// them together under one count keeps the reader from concluding "healthy"
+  /// off the first line while the thing that broke tracking sits further down.
+  static void _writeVerdict(
+    StringBuffer buffer,
+    List<HealthWarning> warnings,
+    List<String> blockers,
+  ) {
+    if (warnings.isEmpty && blockers.isEmpty) {
+      buffer.writeln('**Warnings:** none — all systems healthy. ✅');
+      return;
+    }
+    buffer.writeln('**Warnings (${warnings.length + blockers.length}):**');
+    buffer.writeln();
+    for (final b in blockers) {
+      buffer.writeln('- 🔴 $b');
+    }
+    for (final w in warnings) {
+      buffer.writeln('- ⚠️ ${w.description}');
+    }
+  }
+
+  static void _writeForegroundServiceHealth(
+    StringBuffer buffer,
+    Map<String, Object?>? health,
+    Object? error,
+  ) {
     buffer.writeln('## Foreground service health');
     buffer.writeln();
-    try {
-      final health = await Tracelet.getForegroundServiceHealth();
+    if (health == null) {
+      buffer.writeln('_Could not read foreground-service health: ${error}_');
+      buffer.writeln();
+      return;
+    }
+    {
       buffer.writeln('| Field | Value |');
       buffer.writeln('|---|---|');
       buffer.writeln('| Platform | ${health['platform']} |');
@@ -251,8 +315,6 @@ class TraceletBugReport {
       );
       buffer.writeln();
       _writeForegroundServiceVerdict(buffer, health);
-    } catch (e) {
-      buffer.writeln('_Could not read foreground-service health: ${e}_');
     }
     buffer.writeln();
   }
