@@ -1,4 +1,4 @@
-## Unreleased
+## 3.8.8
 
 **FIX**: the pinned native SDK cancels the speed machine's stationary countdown on stop; no Dart or plugin change ([#412](https://github.com/Ikolvi/Tracelet/issues/412)).
 

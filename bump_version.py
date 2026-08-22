@@ -1,25 +1,29 @@
 import os
 import re
 
-version_from = "3.8.6"
-version_to = "3.8.7"
+version_from = "3.8.7"
+version_to = "3.8.8"
 
-# A tracking-correctness release. 3.8.6 shipped a location pipeline that could
-# stop recording and stay stopped, in several independent ways:
+# A background-tracking release, and the theme is that the SDK reported itself
+# healthy while it was not recording:
 #
-#   - the battery budget throttled on one battery-level quantization step, then
-#     wrote its throttle into the host's own configuration, destroying a
-#     configured `distanceFilter: 0` permanently (#393, #396)
-#   - adaptive sampling inflated the distance gate to 750 m with no time bound,
-#     and the anchor only advances on an accepted fix, so the stream froze (#394)
-#   - the implied-speed guard measured against an unbounded-age anchor, so a
-#     stalled stream accepted a 1.65 km cell-fix teleport as 8.4 m/s (#395)
-#   - the pace machine was stood down by fabricated and stale speeds, which is
-#     why tracking stopped when the app was backgrounded or killed
+#   - the SMART coordinator read its posture from the committed pace alone, so
+#     any stream opened behind it — a stationary start with an in-app fence, a
+#     resume over a live engine, a fence wake-up — was never parked, and
+#     full-rate GPS ran for whole sessions on a device sitting still
+#     (#409, #412, #414, #357)
+#   - stopping tracking left the speed machine's countdown armed, so a stopped
+#     session rearmed the stationary schedule minutes later (#412)
+#   - on Android a walk permanently disarmed the accelerometer's stop countdown,
+#     and the speed machine swallowed its stationary edge (#412)
+#   - a foreground service created from the background is denied the location
+#     capability for the life of the record, and the "Restricted" battery state
+#     makes the OS refuse the promotion outright without throwing — both were
+#     recorded as successful promotions (#405, #406)
+#   - the stall watchdog only ran when a fix arrived, so a provider delivering
+#     nothing tripped nothing (#407)
 #
-# The diagnostics that explain all of these now bypass `logLevel`, so a released
-# app can report them (#397), and the bug report names the version that produced
-# it (#398).
+# Trips also gain an identity that is stamped on rows at insert time (#402).
 #
 # Entries were written under `## Unreleased` as the work landed; the promotion
 # logic below renames that heading rather than prepending a second block.

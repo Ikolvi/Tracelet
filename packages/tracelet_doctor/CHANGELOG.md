@@ -1,4 +1,4 @@
-## Unreleased
+## 3.8.8
 
 **FIX**: the health-check verdict accounts for the conditions that stop background tracking outright, so a report can no longer open with "all systems healthy" while the section below it says the OS has switched tracking off. `HealthCheck.warnings` is computed from the health map alone and the background restrictions live in the foreground-service snapshot — a different platform call — so the two sections could contradict each other in the same report, and the summary is what gets read first. The Restricted battery state, the RESTRICTED standby bucket, a location-blind promotion and a promotion the OS refused now appear as 🔴 blockers ahead of the ordinary warnings, and they survive a failed health call rather than disappearing with it. Both sections now share one snapshot instead of making the same platform call twice ([#406](https://github.com/Ikolvi/Tracelet/issues/406), [#405](https://github.com/Ikolvi/Tracelet/issues/405)).
 

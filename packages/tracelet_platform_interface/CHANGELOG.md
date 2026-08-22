@@ -1,4 +1,4 @@
-## Unreleased
+## 3.8.8
 
 **FEAT**: `TripManager` surfaces the trip-start edge and `currentTripId` from the Rust core, and passes `tripId`, `startedAt`, and `endedAt` through to the trip maps ([#402](https://github.com/Ikolvi/Tracelet/issues/402)).
 

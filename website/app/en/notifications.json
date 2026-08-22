@@ -1,5 +1,5 @@
 {
-  "badgeTitle": "New in 3.8.7",
+  "badgeTitle": "New in 3.8.8",
   "items": [
     {
       "title": "iOS builds link again with Swift Package Manager disabled",
