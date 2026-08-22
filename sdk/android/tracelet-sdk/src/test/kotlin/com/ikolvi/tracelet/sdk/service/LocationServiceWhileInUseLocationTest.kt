@@ -139,6 +139,44 @@ class LocationServiceWhileInUseLocationTest {
     }
 
     /**
+     * #406: the OS refuses the promotion outright in the "Restricted" battery
+     * state, and says so only in its own log —
+     * `Service.startForeground() not allowed due to bg restriction` — without
+     * throwing. `startForeground()` returns, so the SDK recorded `success`.
+     *
+     * Confirmed on the same LAVA LXX503: `isForeground=false types=00000000`
+     * with `caps=------` and GPS turned off ~1s after every registration, while
+     * the report read `Promoted to foreground: true / Last promotion result:
+     * success`. A report that says the service is healthy while the OS has
+     * switched it off sends every investigation into the SDK.
+     */
+    @Test
+    fun `a promotion the OS refuses is not reported as a successful one`() {
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        shadowOf(am).setBackgroundRestricted(true)
+        setProcessImportance(ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND)
+        startService()
+
+        val health = LocationService.foregroundServiceHealth()
+        assertEquals(
+            false,
+            health["serviceForeground"],
+            "the OS refused the promotion, so there is no foreground service to report",
+        )
+        assertEquals(
+            "refused",
+            health["lastForegroundPromotionResult"],
+            "`refused` separates 'the OS said no' from `success`, `failed` and " +
+                "`suppressed` — the four are not interchangeable (#406)",
+        )
+        assertEquals(
+            null,
+            health["foregroundNotificationId"],
+            "and no notification id, which is what a consumer keys 'we are promoted' on",
+        )
+    }
+
+    /**
      * The other half: a session started from the foreground must not be flagged,
      * or the warning is noise and gets ignored on the day it matters.
      */

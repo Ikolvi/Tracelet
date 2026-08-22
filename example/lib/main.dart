@@ -909,9 +909,66 @@ class _DashboardPageState extends State<DashboardPage>
     }
   }
 
+  /// Warns when the OS has the app in the "Restricted" battery state.
+  ///
+  /// This is the switch that actually decides whether background tracking can
+  /// work, and it is *not* the battery-optimisation exemption prompted for in
+  /// `ready()`. They are independent: this app is on the Doze allowlist
+  /// (`isIgnoringBatteryOptimizations() == true`, so that prompt is correctly
+  /// skipped) and Restricted at the same time. In that state Android refuses
+  /// `startForeground()` outright — `dumpsys` shows `isForeground=false
+  /// types=00000000 caps=------` and GPS is turned off about a second after
+  /// every registration.
+  ///
+  /// There is no system dialog to request clearing it: no intent exists, so the
+  /// only route is the app's own battery settings page. Android only — the map
+  /// this reads is the native foreground-service snapshot, which iOS has no
+  /// equivalent of.
+  Future<void> _warnIfBackgroundRestricted() async {
+    if (!_isAndroid) return;
+    try {
+      final health = await tl.Tracelet.getForegroundServiceHealth();
+      if (health['backgroundRestricted'] != true) return;
+      _addLog(
+        'BATTERY',
+        'App is in the Restricted battery state — background '
+            'tracking cannot work until it is set to Unrestricted',
+      );
+      if (!mounted) return;
+      final open = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Background tracking is blocked'),
+          content: const Text(
+            'Android has this app in the "Restricted" battery state, so it '
+            'refuses to run the tracking service in the background — no '
+            'locations will be recorded while the app is not on screen.\n\n'
+            'This is separate from battery optimisation, which is already '
+            'granted. There is no prompt for it; it has to be changed by hand:'
+            '\n\nBattery → Unrestricted',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Later'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Open settings'),
+            ),
+          ],
+        ),
+      );
+      if (open ?? false) await tl.Tracelet.openAppSettings();
+    } catch (e) {
+      _addLog('ERROR', 'background-restriction check failed: $e');
+    }
+  }
+
   Future<void> _start() async {
     try {
       if (!await _ensureBackgroundPermission()) return;
+      await _warnIfBackgroundRestricted();
       final state = await tl.Tracelet.start();
       setState(() {
         _isTracking = state.enabled;

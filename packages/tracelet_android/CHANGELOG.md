@@ -1,5 +1,7 @@
 ## Unreleased
 
+**FIX**: the pinned native SDK reports a foreground-service promotion the OS refused as `refused` rather than `success`; no Dart or plugin change ([#406](https://github.com/Ikolvi/Tracelet/issues/406)).
+
 **FIX**: the pinned native SDK cancels the speed machine's stationary countdown on stop and drops fixes delivered after the session ended; no Dart or plugin change ([#412](https://github.com/Ikolvi/Tracelet/issues/412)).
 
 **FIX**: the pinned native SDK re-arms the accelerometer's stop countdown after a walk and stops the GPS-speed machine silencing the accelerometer's stationary edge; no Dart or plugin change ([#412](https://github.com/Ikolvi/Tracelet/issues/412)).

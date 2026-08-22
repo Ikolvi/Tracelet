@@ -180,6 +180,10 @@ class LocationService : Service(), DefaultLifecycleObserver {
         @Volatile
         private var locationBlindAnnounced = false
 
+        /** Whether [announceRefusedPromotion] has already fired for this record. */
+        @Volatile
+        private var refusedPromotionAnnounced = false
+
         /** Records the outcome of a foreground-promotion attempt (#255). */
         private fun recordPromotion(
             result: String,
@@ -261,6 +265,30 @@ class LocationService : Service(), DefaultLifecycleObserver {
          * Once per record — the condition cannot change without a new record,
          * so repeating it would only crowd the channel.
          */
+        /**
+         * Announces a promotion the OS refused outright (#406).
+         *
+         * The counterpart to [announceLocationBlindPromotion]: that one is a
+         * promotion that took effect but cannot use location, this one is a
+         * promotion that never took effect at all. Both look like success from
+         * inside `startForeground()`, and both leave a session that records
+         * nothing in the background — so both have to be on the always-on
+         * channel or the report says the service is healthy while the OS has
+         * switched it off.
+         */
+        private fun announceRefusedPromotion() {
+            if (refusedPromotionAnnounced) return
+            refusedPromotionAnnounced = true
+            TraceletLog.lifecycle(
+                "foreground-service: the OS REFUSED this promotion — the app is in the " +
+                    "\"Restricted\" battery state, so startForeground() returned without " +
+                    "throwing but the service is not a foreground service and holds no " +
+                    "location capability. Background tracking cannot work until it is set " +
+                    "to \"Unrestricted\" in Settings > Apps > Battery. Battery-optimisation " +
+                    "exemption does not clear this and may read true at the same time (#406).",
+            )
+        }
+
         private fun announceLocationBlindPromotion() {
             if (locationBlindAnnounced) return
             locationBlindAnnounced = true
@@ -1897,8 +1925,35 @@ class LocationService : Service(), DefaultLifecycleObserver {
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
-            // #255: record the successful promotion for the health snapshot.
-            recordPromotion(result = "success", promoted = true)
+            // A `startForeground()` that returns is not a `startForeground()`
+            // that worked.
+            //
+            // In the "Restricted" battery state (Forced App Standby) the OS
+            // refuses the promotion and says so only in its own log —
+            // `Service.startForeground() not allowed due to bg restriction` —
+            // without throwing. The call returns normally, so recording
+            // `success` here reported a healthy foreground service while
+            // `dumpsys` showed `isForeground=false types=00000000 caps=------`:
+            // demoted, with no location capability, GPS killed ~1s after every
+            // registration. The report read `Promoted to foreground: true /
+            // Last promotion result: success` for a session that could not
+            // track at all, which sends every investigation into the SDK
+            // instead of at the restriction (#405, #406).
+            val refused = BackgroundRestrictions.isBackgroundRestricted(applicationContext)
+            if (refused) {
+                recordPromotion(
+                    result = "refused",
+                    promoted = false,
+                    failureClass = "android.app.BackgroundRestriction",
+                    failureMessage = "startForeground() returned but the OS refuses " +
+                        "foreground-service promotion while the app is in the " +
+                        "Restricted battery state",
+                )
+                announceRefusedPromotion()
+            } else {
+                // #255: record the successful promotion for the health snapshot.
+                recordPromotion(result = "success", promoted = true)
+            }
             // #405: a promotion that succeeded is not a promotion that can
             // track. Say so here, where the success is recorded, so the two
             // never appear apart.
