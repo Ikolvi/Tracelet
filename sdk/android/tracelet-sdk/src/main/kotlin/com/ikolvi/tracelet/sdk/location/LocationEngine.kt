@@ -1865,8 +1865,9 @@ class LocationEngine(
      * Collects [count] fresh location updates and returns the one with the best
      * (lowest) horizontal accuracy.
      *
-     * A continuous update request is required here: `getCurrentLocation()` may
-     * repeatedly return null or a stale cached fix without waking the provider.
+     * A continuous update request is required here (#416):
+     * `getCurrentLocation()` may repeatedly return null or a stale cached fix
+     * without waking the provider.
      */
     private fun collectSamples(
         priority: Int,
