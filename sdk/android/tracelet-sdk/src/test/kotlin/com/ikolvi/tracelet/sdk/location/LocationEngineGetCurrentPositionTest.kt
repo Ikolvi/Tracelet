@@ -84,6 +84,7 @@ class LocationEngineGetCurrentPositionTest {
 
     @Test
     fun `getCurrentPosition completes from fresh location updates`() {
+        // Capture the registered callback so the test controls provider delivery.
         lateinit var updateCallback: TraceletLocationCallback
         doAnswer { invocation ->
             updateCallback = invocation.getArgument(1)

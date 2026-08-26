@@ -28,6 +28,7 @@ class _Issue416CardState extends State<Issue416Card>
     final stopwatch = Stopwatch()..start();
 
     try {
+      // Permission is a precondition so this card does not depend on #415.
       final authorization = await Tracelet.getLocationAuthorization();
       if (authorization != AuthorizationStatus.whenInUse &&
           authorization != AuthorizationStatus.always) {
@@ -57,6 +58,7 @@ class _Issue416CardState extends State<Issue416Card>
 
       final capturedAt = DateTime.parse(location.timestamp).toUtc();
       final age = DateTime.now().toUtc().difference(capturedAt);
+      // The bound allows delivery latency while rejecting a cached position.
       final fresh = !age.isNegative && age <= const Duration(seconds: 10);
       setStatus(
         fresh

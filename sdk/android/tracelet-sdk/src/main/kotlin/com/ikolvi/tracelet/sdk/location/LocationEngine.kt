@@ -1883,6 +1883,7 @@ class LocationEngine(
         var updatesCallback: TraceletLocationCallback? = null
         lateinit var timeoutRunnable: Runnable
 
+        // Every exit must unregister the provider and complete at most once.
         fun finish() {
             if (finished) return
             finished = true
@@ -1892,6 +1893,7 @@ class LocationEngine(
                 deliver(collected, persist, extras, callback)
                 return
             }
+            // Keep the existing timeout fallback contract for devices with no fix.
             val fallback = lastLocation?.takeUnless {
                 config.getRejectMockLocations() && isLocationMock(it)
             }
@@ -1919,11 +1921,13 @@ class LocationEngine(
                 }
             }
 
+            // Availability is advisory; the bounded timeout owns failure.
             override fun onLocationAvailability(isLocationAvailable: Boolean) = Unit
         }
         updatesCallback = callbackForUpdates
 
         handler.postDelayed(timeoutRunnable, timeoutSeconds * 1000L)
+        // Allow GPS to settle between samples without accepting cached one-shots.
         val request = TraceletLocationRequest(
             priority = priority,
             intervalMillis = 800L,
