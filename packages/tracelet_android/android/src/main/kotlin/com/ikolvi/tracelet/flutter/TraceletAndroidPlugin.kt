@@ -471,6 +471,9 @@ class TraceletAndroidPlugin :
         sdk.logger.debug("onDetachedFromActivity")
         activityBinding?.removeRequestPermissionsResultListener(this)
         activityBinding = null
+        // Complete the Pigeon reply before losing its only result listener
+        // (#415).
+        sdk.clearPendingPermissionCallback()
         sdk.activity = null
     }
 
