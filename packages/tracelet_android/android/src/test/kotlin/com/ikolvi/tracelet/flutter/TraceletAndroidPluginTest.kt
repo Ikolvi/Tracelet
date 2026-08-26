@@ -77,6 +77,8 @@ class TraceletAndroidPluginTest {
             .thenReturn(mock(Activity::class.java))
         plugin.onAttachedToActivity(activityBinding)
 
+        // Reflection seeds SDK state across the plugin-module boundary without
+        // widening the production API solely for this regression test.
         val sdk = TraceletSdk.getInstance(context)
         TraceletSdk::class.java
             .getDeclaredField("permissionManager")
@@ -89,6 +91,7 @@ class TraceletAndroidPluginTest {
         val pending: (AuthorizationStatus) -> Unit = { completions++ }
         pendingField.set(sdk, pending)
 
+        // A repeated lifecycle callback must not complete the same reply twice.
         plugin.onDetachedFromActivity()
         plugin.onDetachedFromActivity()
 

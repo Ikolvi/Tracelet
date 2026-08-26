@@ -28,6 +28,8 @@ class _Issue415CardState extends State<Issue415Card>
     final stopwatch = Stopwatch()..start();
 
     try {
+      // The shell's normal preparation is disabled so this card owns the
+      // first permission request on a clean install.
       await Tracelet.ready(
         const Config(
           app: AppConfig(stopOnTerminate: true, startOnBoot: false),
@@ -35,6 +37,7 @@ class _Issue415CardState extends State<Issue415Card>
           http: HttpConfig(autoSync: false),
         ),
       );
+      // Turn an orphaned Pigeon reply into an observable card failure.
       await Tracelet.requestLocationAuthorization().timeout(
         const Duration(seconds: 15),
       );
