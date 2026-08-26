@@ -1862,13 +1862,11 @@ class LocationEngine(
     }
 
     /**
-     * Collects [count] location samples using repeated [getCurrentLocation] calls
-     * and returns the one with the best (lowest) horizontal accuracy.
+     * Collects [count] fresh location updates and returns the one with the best
+     * (lowest) horizontal accuracy.
      *
-     * Uses the one-shot [getCurrentLocation] API which works reliably on all
-     * devices, even without a foreground service. This avoids the issue where
-     * [requestLocationUpdates] is throttled or blocked by aggressive battery
-     * optimization on budget Android devices.
+     * A continuous update request is required here: `getCurrentLocation()` may
+     * repeatedly return null or a stale cached fix without waking the provider.
      */
     private fun collectSamples(
         priority: Int,
@@ -1881,65 +1879,64 @@ class LocationEngine(
         val collected = mutableListOf<Location>()
         val handler = android.os.Handler(Looper.getMainLooper())
         var finished = false
+        var updatesCallback: TraceletLocationCallback? = null
+        lateinit var timeoutRunnable: Runnable
 
-        // Timeout guard — deliver whatever we have when time runs out.
-        handler.postDelayed({
-            if (!finished) {
-                finished = true
-                if (collected.isNotEmpty()) {
-                    deliver(collected, persist, extras, callback)
-                } else {
-                    // Fallback to last known location (e.g. emulator with no GPS).
-                    // lastLocation can come from getLastKnownLocation()'s system
-                    // caches, which are unvetted — apply mock rejection here too.
-                    val fallback = lastLocation?.takeUnless {
-                        config.getRejectMockLocations() && isLocationMock(it)
-                    }
-                    if (fallback != null) {
-                        deliver(listOf(fallback), persist, extras, callback)
-                    } else {
-                        callback(null)
-                    }
-                }
-            }
-        }, timeoutSeconds * 1000L)
-
-        // Fire sequential getCurrentLocation calls on the main thread.
-        fun fetchNext() {
+        fun finish() {
             if (finished) return
-            try {
-                fusedClient.getCurrentLocation(priority, null, onSuccess = { location ->
-                        if (finished) return@getCurrentLocation
-                        if (location != null) {
-                            // Mock rejection applies to one-shot fixes too — the
-                            // tracking path already drops mocks in
-                            // onLocationReceived(), but getCurrentPosition()
-                            // bypasses it. Skip the sample and keep collecting
-                            // until a genuine fix arrives or the timeout fires.
-                            if (config.getRejectMockLocations() && isLocationMock(location)) {
-                                TraceletLog.warning("getCurrentPosition: rejected mock location sample")
-                            } else {
-                                collected.add(location)
-                            }
-                        }
-                        if (collected.size >= count) {
-                            finished = true
-                            deliver(collected, persist, extras, callback)
-                        } else {
-                            // Small delay between samples to let GPS settle
-                            handler.postDelayed({ fetchNext() }, 800L)
-                        }
-                    }
-                )
-            } catch (_: SecurityException) {
-                if (!finished) {
-                    finished = true
-                    callback(null)
-                }
+            finished = true
+            handler.removeCallbacks(timeoutRunnable)
+            updatesCallback?.let(fusedClient::removeLocationUpdates)
+            if (collected.isNotEmpty()) {
+                deliver(collected, persist, extras, callback)
+                return
+            }
+            val fallback = lastLocation?.takeUnless {
+                config.getRejectMockLocations() && isLocationMock(it)
+            }
+            if (fallback != null) {
+                deliver(listOf(fallback), persist, extras, callback)
+            } else {
+                callback(null)
             }
         }
 
-        fetchNext()
+        timeoutRunnable = Runnable(::finish)
+        val callbackForUpdates = object : TraceletLocationCallback {
+            override fun onLocationResult(locations: List<Location>) {
+                if (finished) return
+                for (location in locations) {
+                    if (config.getRejectMockLocations() && isLocationMock(location)) {
+                        TraceletLog.warning("getCurrentPosition: rejected mock location sample")
+                    } else {
+                        collected.add(location)
+                    }
+                    if (collected.size >= count) {
+                        finish()
+                        return
+                    }
+                }
+            }
+
+            override fun onLocationAvailability(isLocationAvailable: Boolean) = Unit
+        }
+        updatesCallback = callbackForUpdates
+
+        handler.postDelayed(timeoutRunnable, timeoutSeconds * 1000L)
+        val request = TraceletLocationRequest(
+            priority = priority,
+            intervalMillis = 800L,
+            minUpdateDistanceMeters = 0f,
+        )
+        try {
+            fusedClient.requestLocationUpdates(
+                request,
+                callbackForUpdates,
+                Looper.getMainLooper(),
+            )
+        } catch (_: SecurityException) {
+            finish()
+        }
     }
 
     /**

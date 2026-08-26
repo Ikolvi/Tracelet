@@ -18,6 +18,7 @@ import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
 import org.robolectric.RobolectricTestRunner
+import org.mockito.kotlin.verify
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.util.concurrent.CountDownLatch
@@ -80,6 +81,37 @@ class LocationEngineGetCurrentPositionTest {
     // =====================================================================
     // Single-sample fallback
     // =====================================================================
+
+    @Test
+    fun `getCurrentPosition completes from fresh location updates`() {
+        lateinit var updateCallback: TraceletLocationCallback
+        doAnswer { invocation ->
+            updateCallback = invocation.getArgument(1)
+            null
+        }.`when`(mockLocationClient).requestLocationUpdates(any(), any(), any())
+
+        var result: Map<String, Any?>? = null
+        engine.getCurrentPosition(
+            mapOf("timeout" to 5L, "samples" to 1, "persist" to false),
+        ) { result = it }
+
+        updateCallback.onLocationResult(
+            listOf(
+                Location("gps").apply {
+                    latitude = 37.7749
+                    longitude = -122.4194
+                    accuracy = 4f
+                    time = System.currentTimeMillis()
+                },
+            ),
+        )
+        shadowOf(android.os.Looper.getMainLooper()).idle()
+
+        val coords = result?.get("coords") as? Map<*, *>
+        assertNotNull(coords)
+        assertEquals(37.7749, coords["latitude"])
+        verify(mockLocationClient).removeLocationUpdates(updateCallback)
+    }
 
     @Test
     fun `getCurrentPosition returns lastLocation when single sample returns null`() {
