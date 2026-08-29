@@ -1,4 +1,6 @@
-## Unreleased
+## 3.8.8
+
+**FEAT**: forwards quality-target one-shot options and cancellation to the Android SDK.
 
 **FIX**: the pinned native SDK stops the stream it inherited when the motion pipeline parks; no Dart or plugin change ([#409](https://github.com/Ikolvi/Tracelet/issues/409)).
 

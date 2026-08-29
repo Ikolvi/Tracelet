@@ -171,6 +171,8 @@ class TraceletHostApiImpl(
         put("maximumAge", o.maximumAge)
         put("persist", o.persist)
         put("samples", o.samples)
+        o.accuracyTarget?.let { put("accuracyTarget", it) }
+        o.requestId?.let { put("requestId", it) }
         // Previously dropped here, so getCurrentPosition(desiredAccuracy:/extras:)
         // were silently ignored (#175). Forward them to the SDK.
         o.desiredAccuracy?.let { put("desiredAccuracy", it.raw) }
@@ -520,6 +522,14 @@ class TraceletHostApiImpl(
                 else callback(Result.failure(FlutterError("LOCATION_FAILURE", "Failed to obtain location", null)))
             }
         } catch (e: Exception) { callback(Result.failure(e)) }
+    }
+
+    override fun cancelCurrentPosition(requestId: String, callback: (Result<Boolean>) -> Unit) {
+        try {
+            callback(Result.success(sdk.cancelCurrentPosition(requestId)))
+        } catch (e: Exception) {
+            callback(Result.failure(e))
+        }
     }
 
     @Suppress("UNCHECKED_CAST")

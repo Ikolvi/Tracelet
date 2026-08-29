@@ -38,6 +38,12 @@ class MockTraceletPlatform extends TraceletPlatform
   }
 
   @override
+  Future<bool> cancelCurrentPosition(String requestId) async {
+    calls.add((method: 'cancelCurrentPosition', args: requestId));
+    return true;
+  }
+
+  @override
   Future<Map<String, Object?>> getLastKnownLocation([
     TlCurrentPositionOptions? options,
   ]) async {
@@ -93,6 +99,8 @@ void main() {
       expect(o.maximumAge, 0);
       expect(o.persist, true);
       expect(o.samples, 1);
+      expect(o.accuracyTarget, isNull);
+      expect(o.requestId, isNull);
       expect(o.extras, isNull);
     });
 
@@ -138,6 +146,23 @@ void main() {
 
       final o = mock.calls.first.args! as TlCurrentPositionOptions;
       expect(o.samples, 3);
+    });
+
+    test('forwards accuracy target and request identifier', () async {
+      await Tracelet.getCurrentPosition(
+        accuracyTarget: 100,
+        requestId: 'display-7',
+      );
+
+      final o = mock.calls.first.args! as TlCurrentPositionOptions;
+      expect(o.accuracyTarget, 100);
+      expect(o.requestId, 'display-7');
+    });
+
+    test('forwards cancellation by request identifier', () async {
+      expect(await Tracelet.cancelCurrentPosition('display-7'), isTrue);
+      expect(mock.calls.single.method, 'cancelCurrentPosition');
+      expect(mock.calls.single.args, 'display-7');
     });
 
     test('forwards extras', () async {

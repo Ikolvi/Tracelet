@@ -2307,6 +2307,8 @@ struct TlCurrentPositionOptions: Hashable {
   var maximumAge: Int64
   var persist: Bool
   var samples: Int64
+  var accuracyTarget: Double? = nil
+  var requestId: String? = nil
   var extras: [String?: Any?]? = nil
 
 
@@ -2317,7 +2319,9 @@ struct TlCurrentPositionOptions: Hashable {
     let maximumAge = pigeonVar_list[2] as! Int64
     let persist = pigeonVar_list[3] as! Bool
     let samples = pigeonVar_list[4] as! Int64
-    let extras: [String?: Any?]? = nilOrValue(pigeonVar_list[5])
+    let accuracyTarget: Double? = nilOrValue(pigeonVar_list[5])
+    let requestId: String? = nilOrValue(pigeonVar_list[6])
+    let extras: [String?: Any?]? = nilOrValue(pigeonVar_list[7])
 
     return TlCurrentPositionOptions(
       desiredAccuracy: desiredAccuracy,
@@ -2325,6 +2329,8 @@ struct TlCurrentPositionOptions: Hashable {
       maximumAge: maximumAge,
       persist: persist,
       samples: samples,
+      accuracyTarget: accuracyTarget,
+      requestId: requestId,
       extras: extras
     )
   }
@@ -2335,6 +2341,8 @@ struct TlCurrentPositionOptions: Hashable {
       maximumAge,
       persist,
       samples,
+      accuracyTarget,
+      requestId,
       extras,
     ]
   }
@@ -2342,7 +2350,7 @@ struct TlCurrentPositionOptions: Hashable {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsTraceletApi(lhs.desiredAccuracy, rhs.desiredAccuracy) && deepEqualsTraceletApi(lhs.timeout, rhs.timeout) && deepEqualsTraceletApi(lhs.maximumAge, rhs.maximumAge) && deepEqualsTraceletApi(lhs.persist, rhs.persist) && deepEqualsTraceletApi(lhs.samples, rhs.samples) && deepEqualsTraceletApi(lhs.extras, rhs.extras)
+    return deepEqualsTraceletApi(lhs.desiredAccuracy, rhs.desiredAccuracy) && deepEqualsTraceletApi(lhs.timeout, rhs.timeout) && deepEqualsTraceletApi(lhs.maximumAge, rhs.maximumAge) && deepEqualsTraceletApi(lhs.persist, rhs.persist) && deepEqualsTraceletApi(lhs.samples, rhs.samples) && deepEqualsTraceletApi(lhs.accuracyTarget, rhs.accuracyTarget) && deepEqualsTraceletApi(lhs.requestId, rhs.requestId) && deepEqualsTraceletApi(lhs.extras, rhs.extras)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -2352,6 +2360,8 @@ struct TlCurrentPositionOptions: Hashable {
     deepHashTraceletApi(value: maximumAge, hasher: &hasher)
     deepHashTraceletApi(value: persist, hasher: &hasher)
     deepHashTraceletApi(value: samples, hasher: &hasher)
+    deepHashTraceletApi(value: accuracyTarget, hasher: &hasher)
+    deepHashTraceletApi(value: requestId, hasher: &hasher)
     deepHashTraceletApi(value: extras, hasher: &hasher)
   }
 }
@@ -3445,6 +3455,7 @@ protocol TraceletHostApi {
   /// - Web: no-op.
   func updateNotification(completion: @escaping (Result<Void, Error>) -> Void)
   func getCurrentPosition(options: TlCurrentPositionOptions, completion: @escaping (Result<TlLocation, Error>) -> Void)
+  func cancelCurrentPosition(requestId: String, completion: @escaping (Result<Bool, Error>) -> Void)
   func getLastKnownLocation(options: TlCurrentPositionOptions?, completion: @escaping (Result<TlLocation?, Error>) -> Void)
   func watchPosition(options: TlCurrentPositionOptions, completion: @escaping (Result<Int64, Error>) -> Void)
   func stopWatchPosition(watchId: Int64, completion: @escaping (Result<Bool, Error>) -> Void)
@@ -3730,6 +3741,23 @@ class TraceletHostApiSetup {
       }
     } else {
       getCurrentPositionChannel.setMessageHandler(nil)
+    }
+    let cancelCurrentPositionChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.cancelCurrentPosition\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      cancelCurrentPositionChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestIdArg = args[0] as! String
+        api.cancelCurrentPosition(requestId: requestIdArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      cancelCurrentPositionChannel.setMessageHandler(nil)
     }
     let getLastKnownLocationChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.getLastKnownLocation\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {

@@ -1301,6 +1301,12 @@ public final class TraceletSdk {
         locationEngine.getCurrentPosition(options: options, callback: completion)
     }
 
+    @discardableResult
+    public func cancelCurrentPosition(_ requestId: String) -> Bool {
+        guard isReady else { return false }
+        return locationEngine.cancelCurrentPosition(requestId)
+    }
+
     /// Get the last known location without requesting a new fix.
     ///
     /// - Parameter options: Options dictionary (persist, extras).

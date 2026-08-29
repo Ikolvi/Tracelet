@@ -93,6 +93,15 @@ class MethodChannelTracelet extends TraceletPlatform {
   }
 
   @override
+  Future<bool> cancelCurrentPosition(String requestId) async {
+    final result = await _methodChannel.invokeMethod<bool>(
+      'cancelCurrentPosition',
+      requestId,
+    );
+    return result ?? false;
+  }
+
+  @override
   Future<Map<String, Object?>> getLastKnownLocation([
     TlCurrentPositionOptions? options,
   ]) async {
@@ -173,6 +182,8 @@ class MethodChannelTracelet extends TraceletPlatform {
     'maximumAge': o.maximumAge,
     'persist': o.persist,
     'samples': o.samples,
+    if (o.accuracyTarget != null) 'accuracyTarget': o.accuracyTarget,
+    if (o.requestId != null) 'requestId': o.requestId,
     if (o.extras != null) 'extras': o.extras,
   };
 

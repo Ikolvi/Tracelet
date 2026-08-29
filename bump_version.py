@@ -1,28 +1,13 @@
 import os
 import re
 
-version_from = "3.8.6"
-version_to = "3.8.7"
+version_from = "3.8.7"
+version_to = "3.8.8"
 
-# A tracking-correctness release. 3.8.6 shipped a location pipeline that could
-# stop recording and stay stopped, in several independent ways:
-#
-#   - the battery budget throttled on one battery-level quantization step, then
-#     wrote its throttle into the host's own configuration, destroying a
-#     configured `distanceFilter: 0` permanently (#393, #396)
-#   - adaptive sampling inflated the distance gate to 750 m with no time bound,
-#     and the anchor only advances on an accepted fix, so the stream froze (#394)
-#   - the implied-speed guard measured against an unbounded-age anchor, so a
-#     stalled stream accepted a 1.65 km cell-fix teleport as 8.4 m/s (#395)
-#   - the pace machine was stood down by fabricated and stale speeds, which is
-#     why tracking stopped when the app was backgrounded or killed
-#
-# The diagnostics that explain all of these now bypass `logLevel`, so a released
-# app can report them (#397), and the bug report names the version that produced
-# it (#398).
-#
-# Entries were written under `## Unreleased` as the work landed; the promotion
-# logic below renames that heading rather than prepending a second block.
+# A quality-converging one-shot release. Targeted requests keep the provider
+# warm until horizontal accuracy reaches the caller's threshold or deadline,
+# return the best observed fallback at timeout, and expose caller-owned
+# cancellation so obsolete acquisition generations cannot deliver late.
 
 # 1. Bump version strings
 exact_replacements = [

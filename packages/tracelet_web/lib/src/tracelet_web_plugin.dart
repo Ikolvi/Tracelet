@@ -349,6 +349,9 @@ class TraceletWebPlugin extends TraceletPlatform {
   }
 
   @override
+  Future<bool> cancelCurrentPosition(String requestId) async => false;
+
+  @override
   Future<Map<String, Object?>> getLastKnownLocation([
     TlCurrentPositionOptions? options,
   ]) async {
@@ -413,6 +416,8 @@ class TraceletWebPlugin extends TraceletPlatform {
     'maximumAge': o.maximumAge,
     'persist': o.persist,
     'samples': o.samples,
+    if (o.accuracyTarget != null) 'accuracyTarget': o.accuracyTarget,
+    if (o.requestId != null) 'requestId': o.requestId,
     if (o.extras != null) 'extras': o.extras,
   };
 

@@ -2680,6 +2680,8 @@ class TlCurrentPositionOptions {
     this.maximumAge = 0,
     this.persist = true,
     this.samples = 1,
+    this.accuracyTarget,
+    this.requestId,
     this.extras,
   });
 
@@ -2693,6 +2695,10 @@ class TlCurrentPositionOptions {
 
   int samples;
 
+  double? accuracyTarget;
+
+  String? requestId;
+
   Map<String?, Object?>? extras;
 
   List<Object?> _toList() {
@@ -2702,6 +2708,8 @@ class TlCurrentPositionOptions {
       maximumAge,
       persist,
       samples,
+      accuracyTarget,
+      requestId,
       extras,
     ];
   }
@@ -2718,7 +2726,9 @@ class TlCurrentPositionOptions {
       maximumAge: result[2]! as int,
       persist: result[3]! as bool,
       samples: result[4]! as int,
-      extras: (result[5] as Map<Object?, Object?>?)?.cast<String?, Object?>(),
+      accuracyTarget: result[5] as double?,
+      requestId: result[6] as String?,
+      extras: (result[7] as Map<Object?, Object?>?)?.cast<String?, Object?>(),
     );
   }
 
@@ -2737,6 +2747,8 @@ class TlCurrentPositionOptions {
         _deepEquals(maximumAge, other.maximumAge) &&
         _deepEquals(persist, other.persist) &&
         _deepEquals(samples, other.samples) &&
+        _deepEquals(accuracyTarget, other.accuracyTarget) &&
+        _deepEquals(requestId, other.requestId) &&
         _deepEquals(extras, other.extras);
   }
 
@@ -4109,6 +4121,27 @@ class TraceletHostApi {
       isNullValid: false,
     );
     return pigeonVar_replyValue! as TlLocation;
+  }
+
+  Future<bool> cancelCurrentPosition(String requestId) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.cancelCurrentPosition$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[requestId],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as bool;
   }
 
   Future<TlLocation?> getLastKnownLocation(

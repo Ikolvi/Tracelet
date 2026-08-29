@@ -366,6 +366,8 @@ class TraceletHostApiImpl: TraceletHostApi {
             "samples": o.samples,
         ]
         if let accuracy = o.desiredAccuracy { d["desiredAccuracy"] = accuracy.rawValue }
+        if let target = o.accuracyTarget { d["accuracyTarget"] = target }
+        if let requestId = o.requestId { d["requestId"] = requestId }
         if let extras = o.extras { d["extras"] = extras.compactMapValues { $0 } }
         return d
     }
@@ -489,6 +491,10 @@ class TraceletHostApiImpl: TraceletHostApi {
                 completion(.failure(PigeonError(code: "LOCATION_UNAVAILABLE", message: "Could not get current position", details: nil)))
             }
         }
+    }
+
+    func cancelCurrentPosition(requestId: String, completion: @escaping (Result<Bool, Error>) -> Void) {
+        completion(.success(sdk.cancelCurrentPosition(requestId)))
     }
 
     func getLastKnownLocation(options: TlCurrentPositionOptions?, completion: @escaping (Result<TlLocation?, Error>) -> Void) {

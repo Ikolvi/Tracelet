@@ -596,6 +596,11 @@ class Tracelet {
   ///   best accuracy (lowest `horizontalAccuracy` value) is returned. Useful
   ///   for obtaining a high-quality fix at the cost of slightly more time
   ///   and battery. Defaults to `1`.
+  /// - [accuracyTarget]: Optional horizontal-accuracy target in metres. When
+  ///   present, native acquisition remains active until a fix reaches the
+  ///   target or [timeout] expires; [samples] no longer ends acquisition early.
+  /// - [requestId]: Optional caller-owned identifier used to cancel this
+  ///   request with [cancelCurrentPosition].
   /// - [extras]: Extra key-value pairs to attach to the returned location.
   ///
   /// **Example — simple one-shot:**
@@ -619,6 +624,8 @@ class Tracelet {
     int? maximumAge,
     bool? persist,
     int? samples,
+    double? accuracyTarget,
+    String? requestId,
     Map<String, Object?>? extras,
   }) async {
     final options = TlCurrentPositionOptions(
@@ -628,11 +635,17 @@ class Tracelet {
       maximumAge: maximumAge ?? 0,
       persist: persist ?? true,
       samples: samples ?? 1,
+      accuracyTarget: accuracyTarget,
+      requestId: requestId,
       extras: extras,
     );
     final result = await _platform.getCurrentPosition(options);
     return Location.fromMap(result);
   }
+
+  /// Cancels an active one-shot request identified by [requestId].
+  static Future<bool> cancelCurrentPosition(String requestId) =>
+      _platform.cancelCurrentPosition(requestId);
 
   /// Get the last known location without requesting a new fix.
   ///

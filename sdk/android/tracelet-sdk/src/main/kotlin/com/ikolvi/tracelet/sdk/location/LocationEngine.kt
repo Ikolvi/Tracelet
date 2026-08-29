@@ -992,6 +992,8 @@ class LocationEngine(
      * - `maximumAge` (Long): Max age in ms of acceptable cached location.
      * - `persist` (Boolean): Whether to persist to DB (default true).
      * - `samples` (Int): Number of samples to collect; returns best accuracy (default 1).
+     * - `accuracyTarget` (Double): Optional horizontal target in metres.
+     * - `requestId` (String): Optional caller-owned cancellation identifier.
      * - `extras` (Map): Extra data to attach to the location.
      *
      * [callback] receives the enriched location map or null.
@@ -1008,6 +1010,9 @@ class LocationEngine(
         val maximumAge = (options["maximumAge"] as? Number)?.toLong() ?: 0L
         val persist = options["persist"] as? Boolean ?: true
         val samples = (options["samples"] as? Number)?.toInt()?.coerceAtLeast(1) ?: 1
+        val accuracyTarget = (options["accuracyTarget"] as? Number)?.toFloat()
+            ?.takeIf { it.isFinite() && it >= 0f }
+        val requestId = options["requestId"] as? String
         @Suppress("UNCHECKED_CAST")
         val extras = options["extras"] as? Map<String, Any?> ?: emptyMap()
         // An explicit one-shot getCurrentPosition() must actively obtain a fix.
@@ -1023,21 +1028,24 @@ class LocationEngine(
                 else it
             }
 
-        // Check if a cached location satisfies maximumAge
+        var cachedCandidate: Location? = null
         if (maximumAge > 0) {
             val cached = lastLocation
             if (cached != null) {
                 val age = System.currentTimeMillis() - cached.time
                 if (age <= maximumAge) {
-                    val enriched = enrichLocation(cached, "getCurrentPosition").toMutableMap()
-                    mergeExtras(enriched, extras)
-                    resolveAddressAndDispatch(cached, enriched) { finalEnriched ->
-                        if (persist) {
-                            onLocationPersisted?.invoke()
+                    if ((accuracyTarget == null || cached.accuracy <= accuracyTarget) &&
+                        requestId == null
+                    ) {
+                        val enriched = enrichLocation(cached, "getCurrentPosition").toMutableMap()
+                        mergeExtras(enriched, extras)
+                        resolveAddressAndDispatch(cached, enriched) { finalEnriched ->
+                            if (persist) onLocationPersisted?.invoke()
+                            callback(finalEnriched)
                         }
-                        callback(finalEnriched)
+                        return
                     }
-                    return
+                    cachedCandidate = cached
                 }
             }
         }
@@ -1048,7 +1056,17 @@ class LocationEngine(
         // getCurrentPosition() to return old positions. collectSamples uses
         // requestLocationUpdates() which forces a fresh GPS fix with proper
         // timeout handling.
-        collectSamples(priority, samples, timeout, persist, extras, callback)
+        collectSamples(
+            priority,
+            samples,
+            accuracyTarget,
+            requestId,
+            listOfNotNull(cachedCandidate),
+            timeout,
+            persist,
+            extras,
+            callback,
+        )
     }
 
     /**
@@ -1861,85 +1879,140 @@ class LocationEngine(
         return result
     }
 
+    private val currentPositionCancellations = mutableMapOf<String, () -> Unit>()
+
+    fun cancelCurrentPosition(requestId: String): Boolean {
+        val cancel = currentPositionCancellations.remove(requestId) ?: return false
+        cancel()
+        return true
+    }
+
     /**
-     * Collects [count] location samples using repeated [getCurrentLocation] calls
-     * and returns the one with the best (lowest) horizontal accuracy.
-     *
-     * Uses the one-shot [getCurrentLocation] API which works reliably on all
-     * devices, even without a foreground service. This avoids the issue where
-     * [requestLocationUpdates] is throttled or blocked by aggressive battery
-     * optimization on budget Android devices.
+     * Collects fresh updates until [accuracyTarget] is reached or the deadline
+     * expires. Without a target, [count] retains the legacy best-of-N contract.
      */
     private fun collectSamples(
         priority: Int,
         count: Int,
+        accuracyTarget: Float?,
+        requestId: String?,
+        initialCandidates: List<Location>,
         timeoutSeconds: Long,
         persist: Boolean,
         extras: Map<String, Any?>,
         callback: (Map<String, Any?>?) -> Unit,
     ) {
-        val collected = mutableListOf<Location>()
+        val collected = initialCandidates.toMutableList()
         val handler = android.os.Handler(Looper.getMainLooper())
-        var finished = false
+        var acquisitionFinished = false
+        var terminal = false
+        var cancelled = false
+        var updatesCallback: TraceletLocationCallback? = null
+        var providerStarted = false
+        lateinit var timeoutRunnable: Runnable
+        lateinit var cancelRequest: () -> Unit
 
-        // Timeout guard — deliver whatever we have when time runs out.
-        handler.postDelayed({
-            if (!finished) {
-                finished = true
-                if (collected.isNotEmpty()) {
-                    deliver(collected, persist, extras, callback)
-                } else {
-                    // Fallback to last known location (e.g. emulator with no GPS).
-                    // lastLocation can come from getLastKnownLocation()'s system
-                    // caches, which are unvetted — apply mock rejection here too.
-                    val fallback = lastLocation?.takeUnless {
-                        config.getRejectMockLocations() && isLocationMock(it)
-                    }
-                    if (fallback != null) {
-                        deliver(listOf(fallback), persist, extras, callback)
-                    } else {
-                        callback(null)
-                    }
+        fun complete(result: Map<String, Any?>?) {
+            if (terminal) return
+            terminal = true
+            requestId?.let { id ->
+                if (currentPositionCancellations[id] === cancelRequest) {
+                    currentPositionCancellations.remove(id)
                 }
             }
-        }, timeoutSeconds * 1000L)
+            callback(if (cancelled) null else result)
+        }
 
-        // Fire sequential getCurrentLocation calls on the main thread.
-        fun fetchNext() {
-            if (finished) return
-            try {
-                fusedClient.getCurrentLocation(priority, null, onSuccess = { location ->
-                        if (finished) return@getCurrentLocation
-                        if (location != null) {
-                            // Mock rejection applies to one-shot fixes too — the
-                            // tracking path already drops mocks in
-                            // onLocationReceived(), but getCurrentPosition()
-                            // bypasses it. Skip the sample and keep collecting
-                            // until a genuine fix arrives or the timeout fires.
-                            if (config.getRejectMockLocations() && isLocationMock(location)) {
-                                TraceletLog.warning("getCurrentPosition: rejected mock location sample")
-                            } else {
-                                collected.add(location)
-                            }
-                        }
-                        if (collected.size >= count) {
-                            finished = true
-                            deliver(collected, persist, extras, callback)
-                        } else {
-                            // Small delay between samples to let GPS settle
-                            handler.postDelayed({ fetchNext() }, 800L)
-                        }
-                    }
-                )
-            } catch (_: SecurityException) {
-                if (!finished) {
-                    finished = true
-                    callback(null)
-                }
+        fun stopUpdates() {
+            if (providerStarted) {
+                updatesCallback?.let(fusedClient::removeLocationUpdates)
             }
         }
 
-        fetchNext()
+        fun finish(deliverResult: Boolean = true) {
+            if (acquisitionFinished) return
+            acquisitionFinished = true
+            stopUpdates()
+            if (!deliverResult) {
+                complete(null)
+                return
+            }
+            if (collected.isNotEmpty()) {
+                deliver(collected, persist, extras, ::complete)
+                return
+            }
+            val fallback = lastLocation?.takeUnless {
+                config.getRejectMockLocations() && isLocationMock(it)
+            }
+            if (fallback != null) {
+                deliver(listOf(fallback), persist, extras, ::complete)
+            } else {
+                complete(null)
+            }
+        }
+
+        fun cancel() {
+            if (terminal) return
+            cancelled = true
+            if (!acquisitionFinished) {
+                acquisitionFinished = true
+                stopUpdates()
+            }
+            complete(null)
+        }
+
+        timeoutRunnable = Runnable(::finish)
+        cancelRequest = ::cancel
+        val callbackForUpdates = object : TraceletLocationCallback {
+            override fun onLocationResult(locations: List<Location>) {
+                if (acquisitionFinished) return
+                for (location in locations) {
+                    if (config.getRejectMockLocations() && isLocationMock(location)) {
+                        TraceletLog.warning("getCurrentPosition: rejected mock location sample")
+                        continue
+                    }
+                    collected.add(location)
+                    if (accuracyTarget != null && location.accuracy <= accuracyTarget) {
+                        finish()
+                        return
+                    }
+                    if (accuracyTarget == null && collected.size >= count) {
+                        finish()
+                        return
+                    }
+                }
+            }
+
+            override fun onLocationAvailability(isLocationAvailable: Boolean) = Unit
+        }
+        updatesCallback = callbackForUpdates
+        requestId?.let { id ->
+            currentPositionCancellations.remove(id)?.invoke()
+            currentPositionCancellations[id] = cancelRequest
+        }
+        if (accuracyTarget != null &&
+            collected.any { it.accuracy <= accuracyTarget }
+        ) {
+            finish()
+            return
+        }
+
+        handler.postDelayed(timeoutRunnable, timeoutSeconds * 1000L)
+        val request = TraceletLocationRequest(
+            priority = priority,
+            intervalMillis = 800L,
+            minUpdateDistanceMeters = 0f,
+        )
+        providerStarted = true
+        try {
+            fusedClient.requestLocationUpdates(
+                request,
+                callbackForUpdates,
+                Looper.getMainLooper(),
+            )
+        } catch (_: SecurityException) {
+            finish()
+        }
     }
 
     /**

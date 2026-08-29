@@ -112,11 +112,21 @@ abstract class TraceletPlatform extends PlatformInterface {
   ///   Defaults to `true`.
   /// - `samples` (`int`): Number of location samples to collect and return
   ///   the best one (highest accuracy). Defaults to `1`.
+  /// - `accuracyTarget` (`double`): Optional horizontal-accuracy target in
+  ///   metres. When set, collection ends on target or timeout, not sample count.
+  /// - `requestId` (`String`): Optional caller-owned cancellation identifier.
   /// - `extras` (`Map<String, Object?>`): Extra data to attach to the location.
   Future<Map<String, Object?>> getCurrentPosition(
     TlCurrentPositionOptions options,
   ) {
     throw UnimplementedError('getCurrentPosition() has not been implemented.');
+  }
+
+  /// Cancel an active one-shot request.
+  Future<bool> cancelCurrentPosition(String requestId) {
+    throw UnimplementedError(
+      'cancelCurrentPosition() has not been implemented.',
+    );
   }
 
   /// Get the last known location without requesting a new fix.

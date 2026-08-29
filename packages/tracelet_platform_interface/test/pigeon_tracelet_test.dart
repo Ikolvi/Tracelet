@@ -123,6 +123,12 @@ class FakeHostApi extends TraceletHostApi {
   }
 
   @override
+  Future<bool> cancelCurrentPosition(String requestId) async {
+    _record('cancelCurrentPosition', [requestId]);
+    return true;
+  }
+
+  @override
   Future<TlLocation?> getLastKnownLocation(
     TlCurrentPositionOptions? options,
   ) async {
@@ -832,6 +838,8 @@ void main() {
       await pigeon.getCurrentPosition(
         TlCurrentPositionOptions(
           desiredAccuracy: TlDesiredAccuracy.high,
+          accuracyTarget: 100,
+          requestId: 'display-7',
           extras: {'event_type': 'sos'},
         ),
       );
@@ -840,6 +848,8 @@ void main() {
               as TlCurrentPositionOptions;
       expect(opts.desiredAccuracy, TlDesiredAccuracy.high);
       expect(opts.extras?['event_type'], 'sos');
+      expect(opts.accuracyTarget, 100);
+      expect(opts.requestId, 'display-7');
     });
 
     test('getLastKnownLocation() returns location map', () async {
@@ -852,6 +862,11 @@ void main() {
         TlCurrentPositionOptions(persist: false),
       );
       expect(id, 42);
+    });
+
+    test('cancelCurrentPosition() delegates request id', () async {
+      expect(await pigeon.cancelCurrentPosition('display-7'), true);
+      expect(fakeApi.lastCallArgs('cancelCurrentPosition'), ['display-7']);
     });
 
     test('stopWatchPosition() returns true', () async {

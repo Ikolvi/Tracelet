@@ -45,7 +45,7 @@ jobs:
         run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
 
       - name: Install flutter_rust_bridge_codegen
-        run: cargo binstall -y --force cargo-expand flutter_rust_bridge_codegen
+        run: cargo binstall -y --force cargo-expand flutter_rust_bridge_codegen@2.12.0
 
       - name: Generate Rust Bindings
         working-directory: packages/tracelet_platform_interface

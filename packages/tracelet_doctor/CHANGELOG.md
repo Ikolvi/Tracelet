@@ -1,4 +1,4 @@
-## Unreleased
+## 3.8.8
 
 **FIX**: the report states a **verdict** on the foreground service instead of leaving it to be inferred from six rows that all say `true`. A service that is running, promoted, carrying `FOREGROUND_SERVICE_TYPE_LOCATION` and denied location by the OS rendered as an entirely green table, which is how a report covering 52 seconds of recording nothing read as healthy. The foreground-service section gains `Started in foreground`, `Background restricted` and `Standby bucket`, and the in-app card no longer shows "Healthy" for either state ([#405](https://github.com/Ikolvi/Tracelet/issues/405), [#406](https://github.com/Ikolvi/Tracelet/issues/406)). The **Location stream health** section picks up the new silence and resume entries, and its empty case no longer claims "the stream has been accepting fixes" — it had asserted exactly that over a window in which it accepted none. An absence of markers is now reported as an absence of markers ([#407](https://github.com/Ikolvi/Tracelet/issues/407)).
 

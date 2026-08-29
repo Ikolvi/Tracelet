@@ -178,6 +178,10 @@ class PigeonTracelet extends TraceletPlatform {
   }
 
   @override
+  Future<bool> cancelCurrentPosition(String requestId) =>
+      _api.cancelCurrentPosition(requestId);
+
+  @override
   Future<Map<String, Object?>> getLastKnownLocation([
     TlCurrentPositionOptions? options,
   ]) async {

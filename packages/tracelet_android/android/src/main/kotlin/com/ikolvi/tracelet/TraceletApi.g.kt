@@ -2330,6 +2330,8 @@ data class TlCurrentPositionOptions (
   val maximumAge: Long,
   val persist: Boolean,
   val samples: Long,
+  val accuracyTarget: Double? = null,
+  val requestId: String? = null,
   val extras: Map<String?, Any?>? = null
 )
  {
@@ -2340,8 +2342,10 @@ data class TlCurrentPositionOptions (
       val maximumAge = pigeonVar_list[2] as Long
       val persist = pigeonVar_list[3] as Boolean
       val samples = pigeonVar_list[4] as Long
-      val extras = pigeonVar_list[5] as Map<String?, Any?>?
-      return TlCurrentPositionOptions(desiredAccuracy, timeout, maximumAge, persist, samples, extras)
+      val accuracyTarget = pigeonVar_list[5] as Double?
+      val requestId = pigeonVar_list[6] as String?
+      val extras = pigeonVar_list[7] as Map<String?, Any?>?
+      return TlCurrentPositionOptions(desiredAccuracy, timeout, maximumAge, persist, samples, accuracyTarget, requestId, extras)
     }
   }
   fun toList(): List<Any?> {
@@ -2351,6 +2355,8 @@ data class TlCurrentPositionOptions (
       maximumAge,
       persist,
       samples,
+      accuracyTarget,
+      requestId,
       extras,
     )
   }
@@ -2362,7 +2368,7 @@ data class TlCurrentPositionOptions (
       return true
     }
     val other = other as TlCurrentPositionOptions
-    return TraceletApiPigeonUtils.deepEquals(this.desiredAccuracy, other.desiredAccuracy) && TraceletApiPigeonUtils.deepEquals(this.timeout, other.timeout) && TraceletApiPigeonUtils.deepEquals(this.maximumAge, other.maximumAge) && TraceletApiPigeonUtils.deepEquals(this.persist, other.persist) && TraceletApiPigeonUtils.deepEquals(this.samples, other.samples) && TraceletApiPigeonUtils.deepEquals(this.extras, other.extras)
+    return TraceletApiPigeonUtils.deepEquals(this.desiredAccuracy, other.desiredAccuracy) && TraceletApiPigeonUtils.deepEquals(this.timeout, other.timeout) && TraceletApiPigeonUtils.deepEquals(this.maximumAge, other.maximumAge) && TraceletApiPigeonUtils.deepEquals(this.persist, other.persist) && TraceletApiPigeonUtils.deepEquals(this.samples, other.samples) && TraceletApiPigeonUtils.deepEquals(this.accuracyTarget, other.accuracyTarget) && TraceletApiPigeonUtils.deepEquals(this.requestId, other.requestId) && TraceletApiPigeonUtils.deepEquals(this.extras, other.extras)
   }
 
   override fun hashCode(): Int {
@@ -2372,6 +2378,8 @@ data class TlCurrentPositionOptions (
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.maximumAge)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.persist)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.samples)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.accuracyTarget)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.requestId)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.extras)
     return result
   }
@@ -3644,6 +3652,7 @@ interface TraceletHostApi {
    */
   fun updateNotification(callback: (Result<Unit>) -> Unit)
   fun getCurrentPosition(options: TlCurrentPositionOptions, callback: (Result<TlLocation>) -> Unit)
+  fun cancelCurrentPosition(requestId: String, callback: (Result<Boolean>) -> Unit)
   fun getLastKnownLocation(options: TlCurrentPositionOptions?, callback: (Result<TlLocation?>) -> Unit)
   fun watchPosition(options: TlCurrentPositionOptions, callback: (Result<Long>) -> Unit)
   fun stopWatchPosition(watchId: Long, callback: (Result<Boolean>) -> Unit)
@@ -3948,6 +3957,26 @@ interface TraceletHostApi {
             val args = message as List<Any?>
             val optionsArg = args[0] as TlCurrentPositionOptions
             api.getCurrentPosition(optionsArg) { result: Result<TlLocation> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(TraceletApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(TraceletApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.tracelet_platform_interface.TraceletHostApi.cancelCurrentPosition$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val requestIdArg = args[0] as String
+            api.cancelCurrentPosition(requestIdArg) { result: Result<Boolean> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(TraceletApiPigeonUtils.wrapError(error))

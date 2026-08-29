@@ -1956,6 +1956,11 @@ class TraceletSdk private constructor(private val context: Context) {
         locationEngine.getCurrentPosition(options, callback)
     }
 
+    fun cancelCurrentPosition(requestId: String): Boolean {
+        if (!isReady) return false
+        return locationEngine.cancelCurrentPosition(requestId)
+    }
+
     fun getLastKnownLocation(
         options: Map<String, Any?>,
         callback: (Map<String, Any?>?) -> Unit,

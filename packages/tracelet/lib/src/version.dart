@@ -12,4 +12,4 @@
 library;
 
 /// The `tracelet` package version, e.g. `3.8.7`.
-const String traceletVersion = '3.8.7';
+const String traceletVersion = '3.8.8';

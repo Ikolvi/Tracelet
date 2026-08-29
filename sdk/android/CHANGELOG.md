@@ -1,4 +1,6 @@
-## Unreleased
+## 3.8.8
+
+**FEAT**: one-shot acquisition accepts `accuracyTarget` and `requestId`, keeps continuous high-accuracy updates active until the target or deadline, returns the best coarse candidate at timeout, and supports generation-safe cancellation without persistence.
 
 **FIX**: `SmartMotionCoordinator.onSpeedStateChange` handles the action its tremor override produces instead of leaving the return of `coreCoordinator.onAccelStateChange(false)` unread. With `isSpeedMoving` already false that override *is* the transition `evaluate_state` answers with SWITCH_TO_STATIONARY_PERIODIC, and the `onSpeedStateChange` behind it dedupes to NONE, so the engine was never switched. `TraceletSdk.start()`'s SMART branch now seeds `smartMotionCoordinator.onSpeedStateChange(true)` on a forced-moving start: `adoptSpeedMotionPace()` runs only on the non-forced path, so the FFI-side `is_speed_moving` kept a previous session's stationary value for the life of the process ([#409](https://github.com/Ikolvi/Tracelet/issues/409)).
 

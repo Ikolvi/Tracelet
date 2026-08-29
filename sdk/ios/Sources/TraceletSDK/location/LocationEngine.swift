@@ -861,6 +861,10 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             periodicFixBgTaskId = BackgroundTaskHelper.shared.begin("periodicFix")
             collectSamples(
                 count: Self.periodicHighAccuracySampleCount,
+                accuracyTarget: nil,
+                requestId: nil,
+                initialCandidates: [],
+                timeoutSeconds: configManager.getLocationTimeout(),
                 persist: true,
                 extras: [:]
             ) { [weak self] _ in
@@ -1168,6 +1172,8 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// - `maximumAge` (Int): Max age in ms of a cached location.
     /// - `persist` (Bool): Whether to persist to DB (default true).
     /// - `samples` (Int): Number of samples; best accuracy is returned (default 1).
+    /// - `accuracyTarget` (Double): Optional horizontal target in metres.
+    /// - `requestId` (String): Optional caller-owned cancellation identifier.
     /// - `extras` ([String: Any]): Extra data to attach.
     public func getCurrentPosition(options: [String: Any], callback: @escaping ([String: Any]?) -> Void) {
         // Guard: require at least WhenInUse authorization before attempting.
@@ -1186,20 +1192,33 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         let persist = options["persist"] as? Bool ?? true
         let maximumAge = (options["maximumAge"] as? NSNumber)?.int64Value ?? 0
         let samples = max((options["samples"] as? NSNumber)?.intValue ?? 1, 1)
+        let timeout = max((options["timeout"] as? NSNumber)?.intValue ?? 30, 0)
+        let rawAccuracyTarget = (options["accuracyTarget"] as? NSNumber)?.doubleValue
+        let accuracyTarget: Double?
+        if let target = rawAccuracyTarget, target.isFinite, target >= 0 {
+            accuracyTarget = target
+        } else {
+            accuracyTarget = nil
+        }
+        let requestId = options["requestId"] as? String
         let extras = options["extras"] as? [String: Any] ?? [:]
 
-        // Check if a cached location satisfies maximumAge
+        var cachedCandidate: CLLocation?
         if maximumAge > 0, let cached = lastLocation {
             let ageMs = Int64(Date().timeIntervalSince(cached.timestamp) * 1000)
-            if ageMs <= maximumAge {
-                var locationMap = buildLocationMap(cached)
-                locationMap["extras"] = mergedExtras(base: locationMap["extras"], local: extras)
-                if persist {
-                    self.sinks.forEach { $0.insertLocation(locationMap) }
-                    self.onLocationPersisted?()
+            if ageMs <= maximumAge, cached.horizontalAccuracy >= 0 {
+                if (accuracyTarget.map({ cached.horizontalAccuracy <= $0 }) ?? true) &&
+                    requestId == nil {
+                    var locationMap = buildLocationMap(cached)
+                    locationMap["extras"] = mergedExtras(base: locationMap["extras"], local: extras)
+                    if persist {
+                        self.sinks.forEach { $0.insertLocation(locationMap) }
+                        self.onLocationPersisted?()
+                    }
+                    callback(locationMap)
+                    return
                 }
-                callback(locationMap)
-                return
+                cachedCandidate = cached
             }
         }
 
@@ -1208,7 +1227,16 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         // location without waking the GPS hardware. collectSamples uses
         // startUpdatingLocation() which forces a fresh GPS fix with proper
         // timeout handling.
-        collectSamples(count: samples, persist: persist, extras: extras, callback: callback)
+        collectSamples(
+            count: samples,
+            accuracyTarget: accuracyTarget,
+            requestId: requestId,
+            initialCandidates: cachedCandidate.map { [$0] } ?? [],
+            timeoutSeconds: timeout,
+            persist: persist,
+            extras: extras,
+            callback: callback
+        )
     }
 
     /// Returns the last known location without activating any provider.
@@ -1932,75 +1960,143 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// Internal state for multi-sample collection.
     private class SampleState {
         let targetCount: Int
+        let accuracyTarget: CLLocationAccuracy?
+        let requestId: String?
         let persist: Bool
         let extras: [String: Any]
         let callback: ([String: Any]?) -> Void
-        var collected: [CLLocation] = []
+        var collected: [CLLocation]
         var finished = false
+        var cancelled = false
+        var terminal = false
 
-        init(count: Int, persist: Bool, extras: [String: Any], callback: @escaping ([String: Any]?) -> Void) {
+        init(
+            count: Int,
+            accuracyTarget: CLLocationAccuracy?,
+            requestId: String?,
+            initialCandidates: [CLLocation],
+            persist: Bool,
+            extras: [String: Any],
+            callback: @escaping ([String: Any]?) -> Void
+        ) {
             self.targetCount = count
+            self.accuracyTarget = accuracyTarget
+            self.requestId = requestId
+            self.collected = initialCandidates
             self.persist = persist
             self.extras = extras
             self.callback = callback
         }
     }
 
-    /// Collects `count` location samples using continuous updates and returns the
-    /// most accurate one. Automatically stops after collecting enough samples
-    /// or after the configured timeout, whichever comes first.
-    private func collectSamples(count: Int, persist: Bool, extras: [String: Any], callback: @escaping ([String: Any]?) -> Void) {
-        let state = SampleState(count: count, persist: persist, extras: extras, callback: callback)
+    private func collectSamples(
+        count: Int,
+        accuracyTarget: CLLocationAccuracy?,
+        requestId: String?,
+        initialCandidates: [CLLocation],
+        timeoutSeconds: Int,
+        persist: Bool,
+        extras: [String: Any],
+        callback: @escaping ([String: Any]?) -> Void
+    ) {
+        cancelActiveSample()
+        let state = SampleState(
+            count: count,
+            accuracyTarget: accuracyTarget,
+            requestId: requestId,
+            initialCandidates: initialCandidates,
+            persist: persist,
+            extras: extras,
+            callback: callback
+        )
         sampleState = state
+        if let target = accuracyTarget,
+           initialCandidates.contains(where: { $0.horizontalAccuracy <= target }) {
+            finishSample(state)
+            return
+        }
 
-        // Ensure CLLocationManager is fully configured before requesting updates.
-        // Without this, updates may silently not fire if start() was never called.
+
         locationManager.allowsBackgroundLocationUpdates = true
         locationManager.showsBackgroundLocationIndicator = configManager.getShowsBackgroundLocationIndicator()
         locationManager.pausesLocationUpdatesAutomatically = false
         locationManager.activityType = configManager.getActivityType()
-
-        // Temporarily disable distance filter so we receive updates even when
-        // the device is stationary — essential for multi-sample collection.
         locationManager.distanceFilter = kCLDistanceFilterNone
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
         locationManager.startUpdatingLocation()
 
-        // Timeout guard — deliver whatever we have (or nil) if time runs out.
-        let timeoutSec = configManager.getLocationTimeout()
-        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(timeoutSec)) { [weak self] in
-            guard let self = self, let state = self.sampleState, !state.finished else { return }
-            state.finished = true
-            self.sampleState = nil
-
-            self.restoreAfterSampling()
-
-            if !state.collected.isEmpty {
-                self.deliverBest(samples: state.collected, persist: state.persist, extras: state.extras, callback: state.callback)
-            } else if let fallback = self.lastLocation {
-                // Fallback to last known location (e.g. simulator with no GPS)
-                self.deliverBest(samples: [fallback], persist: state.persist, extras: state.extras, callback: state.callback)
-            } else {
-                state.callback(nil)
-            }
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + .seconds(timeoutSeconds)
+        ) { [weak self, weak state] in
+            guard let self, let state, self.sampleState === state, !state.finished else { return }
+            self.finishSample(state)
         }
     }
 
-    /// Called from `didUpdateLocations` to feed samples into an active collection.
-    /// Returns `true` if the location was consumed by sample collection.
     private func feedSample(_ location: CLLocation) -> Bool {
         guard let state = sampleState, !state.finished else { return false }
+        guard location.horizontalAccuracy >= 0 else { return true }
 
         state.collected.append(location)
-        if state.collected.count >= state.targetCount {
-            state.finished = true
-            sampleState = nil
-
-            restoreAfterSampling()
-
-            deliverBest(samples: state.collected, persist: state.persist, extras: state.extras, callback: state.callback)
+        let reachedTarget = state.accuracyTarget.map {
+            location.horizontalAccuracy <= $0
+        } ?? false
+        if reachedTarget ||
+            (state.accuracyTarget == nil && state.collected.count >= state.targetCount) {
+            finishSample(state)
         }
         return true
+    }
+
+    private func finishSample(_ state: SampleState) {
+        guard sampleState === state, !state.finished else { return }
+        state.finished = true
+        restoreAfterSampling()
+        let candidates = state.collected
+        if !candidates.isEmpty {
+            deliverBest(samples: candidates, persist: state.persist, extras: state.extras) { [weak self, weak state] result in
+                guard let self, let state else { return }
+                self.completeSample(state, result: result)
+            }
+        } else if let fallback = lastLocation, fallback.horizontalAccuracy >= 0 {
+            deliverBest(samples: [fallback], persist: state.persist, extras: state.extras) { [weak self, weak state] result in
+                guard let self, let state else { return }
+                self.completeSample(state, result: result)
+            }
+        } else {
+            completeSample(state, result: nil)
+        }
+    }
+
+    private func completeSample(_ state: SampleState, result: [String: Any]?) {
+        guard !state.terminal else { return }
+        state.terminal = true
+        if sampleState === state {
+            sampleState = nil
+        }
+        state.callback(state.cancelled ? nil : result)
+    }
+
+    public func cancelCurrentPosition(_ requestId: String) -> Bool {
+        guard let state = sampleState,
+              state.requestId == requestId,
+              !state.terminal else { return false }
+        cancelSample(state)
+        return true
+    }
+
+    private func cancelActiveSample() {
+        guard let state = sampleState, !state.terminal else { return }
+        cancelSample(state)
+    }
+
+    private func cancelSample(_ state: SampleState) {
+        state.cancelled = true
+        if !state.finished {
+            state.finished = true
+            restoreAfterSampling()
+        }
+        completeSample(state, result: nil)
     }
 
     /// Restores CLLocationManager to the correct state after sample collection.

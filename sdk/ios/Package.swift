@@ -108,6 +108,10 @@ let package = Package(
                 // locationEngine.start() with the pace branch and left the
                 // stationary path with no acquisition at all.
                 "LocationEngineStartupFixTests.swift",
+                // #1182: quality-target one-shots keep Core Location warm,
+                // return the best timeout candidate, and cancel without a late
+                // generation callback.
+                "LocationEngineQualityTargetTests.swift",
                 // #409: the park that stops continuous updates without tearing
                 // the session down. It logged nothing on the always-on channel —
                 // Android records the same transition through

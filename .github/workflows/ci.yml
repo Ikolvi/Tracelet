@@ -50,7 +50,7 @@ jobs:
       - name: Install cargo-binstall
         run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
       - name: Install flutter_rust_bridge_codegen
-        run: cargo binstall -y --force flutter_rust_bridge_codegen
+        run: cargo binstall -y --force flutter_rust_bridge_codegen@2.12.0
       - name: Bootstrap
         run: melos bootstrap
       - name: Generate Rust Bindings
@@ -133,7 +133,7 @@ jobs:
       - name: Install cargo-binstall
         run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
       - name: Install flutter_rust_bridge_codegen
-        run: cargo binstall -y --force flutter_rust_bridge_codegen
+        run: cargo binstall -y --force flutter_rust_bridge_codegen@2.12.0
       - name: Bootstrap
         run: melos bootstrap
       - name: Generate Rust Bindings
@@ -196,7 +196,7 @@ jobs:
         run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
       - name: Install flutter_rust_bridge_codegen & cargo-ndk
         run: |
-          cargo binstall -y --force flutter_rust_bridge_codegen
+          cargo binstall -y --force flutter_rust_bridge_codegen@2.12.0
           cargo binstall -y --force cargo-ndk
       - name: Bootstrap
         run: melos bootstrap
@@ -284,7 +284,7 @@ jobs:
       - name: Install cargo-binstall
         run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
       - name: Install flutter_rust_bridge_codegen
-        run: cargo binstall -y --force flutter_rust_bridge_codegen
+        run: cargo binstall -y --force flutter_rust_bridge_codegen@2.12.0
       - name: Bootstrap
         run: melos bootstrap
       - name: Generate Rust Bindings
@@ -418,7 +418,7 @@ jobs:
       - name: Install cargo-binstall
         run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
       - name: Install flutter_rust_bridge_codegen
-        run: cargo binstall -y --force flutter_rust_bridge_codegen
+        run: cargo binstall -y --force flutter_rust_bridge_codegen@2.12.0
       - name: Bootstrap
         run: melos bootstrap
       - name: Generate Rust Bindings

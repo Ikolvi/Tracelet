@@ -3,6 +3,7 @@ package com.ikolvi.tracelet.sdk.location
 import android.Manifest
 import android.app.Application
 import android.location.Location
+import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import com.ikolvi.tracelet.sdk.ConfigManager
 import com.ikolvi.tracelet.sdk.ListenerEventSender
@@ -17,6 +18,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
@@ -25,7 +27,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-
+import kotlin.test.assertTrue
 /**
  * Tests [LocationEngine.getCurrentPosition] fallback behavior when
  * FusedLocationProviderClient.getCurrentLocation() returns null (e.g. emulator).
@@ -238,5 +240,127 @@ class LocationEngineGetCurrentPositionTest {
         assertNotNull(result)
         val coords = result!!["coords"] as Map<*, *>
         assertEquals(1.0, coords["latitude"])
+    }
+
+    @Test
+    fun `accuracy target keeps provider warm until quality arrives`() {
+        lateinit var updateCallback: TraceletLocationCallback
+        doAnswer { invocation ->
+            updateCallback = invocation.getArgument(1)
+            null
+        }.`when`(mockLocationClient).requestLocationUpdates(any(), any(), any())
+
+        var result: Map<String, Any?>? = null
+        engine.getCurrentPosition(
+            mapOf(
+                "timeout" to 30L,
+                "samples" to 1,
+                "accuracyTarget" to 100.0,
+                "requestId" to "quality",
+                "persist" to false,
+            ),
+        ) { result = it }
+
+        updateCallback.onLocationResult(listOf(location(accuracy = 1500f)))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertNull(result)
+
+        updateCallback.onLocationResult(listOf(location(accuracy = 20f)))
+        shadowOf(Looper.getMainLooper()).idle()
+
+        val coords = result?.get("coords") as? Map<*, *>
+        assertNotNull(coords)
+        assertEquals(20.0, coords["accuracy"])
+        verify(mockLocationClient).removeLocationUpdates(updateCallback)
+    }
+
+    @Test
+    fun `coarse cached fix remains candidate until accuracy target`() {
+        lateinit var updateCallback: TraceletLocationCallback
+        doAnswer { invocation ->
+            updateCallback = invocation.getArgument(1)
+            null
+        }.`when`(mockLocationClient).requestLocationUpdates(any(), any(), any())
+        val cached = location(accuracy = 800f)
+        val lastLocationField = LocationEngine::class.java.getDeclaredField("lastLocation")
+        lastLocationField.isAccessible = true
+        lastLocationField.set(engine, cached)
+
+        var result: Map<String, Any?>? = null
+        engine.getCurrentPosition(
+            mapOf(
+                "maximumAge" to 60_000L,
+                "accuracyTarget" to 100.0,
+                "requestId" to "quality",
+                "persist" to false,
+            ),
+        ) { result = it }
+
+        assertNull(result)
+        updateCallback.onLocationResult(listOf(location(accuracy = 25f)))
+        shadowOf(Looper.getMainLooper()).idle()
+
+        val coords = result?.get("coords") as? Map<*, *>
+        assertNotNull(coords)
+        assertEquals(25.0, coords["accuracy"])
+    }
+
+    @Test
+    fun `accuracy target timeout returns best coarse candidate`() {
+        lateinit var updateCallback: TraceletLocationCallback
+        doAnswer { invocation ->
+            updateCallback = invocation.getArgument(1)
+            null
+        }.`when`(mockLocationClient).requestLocationUpdates(any(), any(), any())
+
+        var result: Map<String, Any?>? = null
+        engine.getCurrentPosition(
+            mapOf(
+                "timeout" to 3L,
+                "accuracyTarget" to 100.0,
+                "requestId" to "quality",
+                "persist" to false,
+            ),
+        ) { result = it }
+
+        updateCallback.onLocationResult(listOf(location(accuracy = 1500f)))
+        shadowOf(Looper.getMainLooper()).idleFor(4, TimeUnit.SECONDS)
+
+        val coords = result?.get("coords") as? Map<*, *>
+        assertNotNull(coords)
+        assertEquals(1500.0, coords["accuracy"])
+    }
+
+    @Test
+    fun `cancelling quality request stops updates and suppresses late result`() {
+        lateinit var updateCallback: TraceletLocationCallback
+        doAnswer { invocation ->
+            updateCallback = invocation.getArgument(1)
+            null
+        }.`when`(mockLocationClient).requestLocationUpdates(any(), any(), any())
+
+        var callbackInvoked = false
+        engine.getCurrentPosition(
+            mapOf(
+                "timeout" to 30L,
+                "accuracyTarget" to 100.0,
+                "requestId" to "quality",
+                "persist" to false,
+            ),
+        ) { callbackInvoked = true }
+
+        assertTrue(engine.cancelCurrentPosition("quality"))
+        updateCallback.onLocationResult(listOf(location(accuracy = 5f)))
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertTrue(callbackInvoked)
+        verify(mockLocationClient).removeLocationUpdates(updateCallback)
+    }
+
+    private fun location(accuracy: Float) = Location("test").apply {
+        latitude = 45.0
+        longitude = -122.0
+        this.accuracy = accuracy
+        time = System.currentTimeMillis()
     }
 }

@@ -2,7 +2,7 @@ name: tracelet_platform_interface
 description: >-
   A common platform interface for the Tracelet background geolocation plugin.
   Used by tracelet_android and tracelet_ios implementations.
-version: 3.8.7
+version: 3.8.8
 topics:
   - location
   - background
@@ -30,7 +30,7 @@ dependencies:
   plugin_platform_interface: ^2.1.0
   collection: ^1.19.1
   meta: ^1.18.0
-  flutter_rust_bridge: ^2.12.0
+  flutter_rust_bridge: 2.12.0
 
 dev_dependencies:
   flutter_test:

@@ -368,11 +368,7 @@ class TlConfig {
 }
 
 class TlLoggerConfig {
-  TlLoggerConfig({
-    this.logLevel,
-    this.logMaxDays,
-    this.debug,
-  });
+  TlLoggerConfig({this.logLevel, this.logMaxDays, this.debug});
   final TlLogLevel? logLevel;
   final int? logMaxDays;
   final bool? debug;
@@ -749,6 +745,8 @@ class TlCurrentPositionOptions {
     this.maximumAge = 0,
     this.persist = true,
     this.samples = 1,
+    this.accuracyTarget,
+    this.requestId,
     this.extras,
   });
 
@@ -757,6 +755,8 @@ class TlCurrentPositionOptions {
   final int maximumAge;
   final bool persist;
   final int samples;
+  final double? accuracyTarget;
+  final String? requestId;
   final Map<String?, Object?>? extras;
 }
 
@@ -931,6 +931,9 @@ abstract class TraceletHostApi {
 
   @async
   TlLocation getCurrentPosition(TlCurrentPositionOptions options);
+
+  @async
+  bool cancelCurrentPosition(String requestId);
 
   @async
   TlLocation? getLastKnownLocation(TlCurrentPositionOptions? options);
