@@ -987,11 +987,36 @@ impl DatabaseManager {
         Ok(records)
     }
 
-    /// Prunes the logs to retain only the specified limit of latest entries.
+    /// Prunes the logs to retain only the specified limit of latest entries —
+    /// counted **per channel**, so level-based chatter cannot evict the
+    /// always-on lifecycle trace.
+    ///
+    /// One cap over the whole table made the two channels compete, and the
+    /// noisy one always won. `LIFECYCLE` entries bypass `logLevel` precisely
+    /// because they are the record of what the background and killed-state
+    /// paths did (#318) — but they were then pruned by row count alongside
+    /// everything else, and at `logLevel: verbose` the cap is 2000 rows against
+    /// a sensor trace that emits several lines a second.
+    ///
+    /// What that costs is a field report whose "Session lifecycle" section is a
+    /// single line: the entries are not missing, they were evicted, and the
+    /// window collapses from the configured `logMaxDays` to a couple of
+    /// minutes. Turning logging *up* to investigate a background problem
+    /// destroyed the only record of it.
+    ///
+    /// Each channel now keeps its own newest `limit` rows, so the table is
+    /// bounded at 2x `limit` in the worst case and the lifecycle trace is
+    /// bounded by [`prune_logs_older_than`] instead — which is what "always-on"
+    /// was supposed to mean.
     pub fn prune_logs(&self, limit: i32) -> Result<(), TraceletError> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "DELETE FROM logs WHERE id NOT IN (SELECT id FROM logs ORDER BY id DESC LIMIT ?1)",
+            "DELETE FROM logs \
+             WHERE id NOT IN ( \
+                 SELECT id FROM logs WHERE level <> 'LIFECYCLE' ORDER BY id DESC LIMIT ?1 \
+             ) AND id NOT IN ( \
+                 SELECT id FROM logs WHERE level = 'LIFECYCLE' ORDER BY id DESC LIMIT ?1 \
+             )",
             params![limit]
         ).map_err(|e| TraceletError::Database(e.to_string()))?;
         Ok(())
@@ -1457,6 +1482,60 @@ mod tests {
         let logs = db.get_logs(10).unwrap();
         assert_eq!(logs.len(), 1, "only the aged row should be pruned");
         assert_eq!(logs[0].message, "fresh");
+    }
+
+    /// #318 — the always-on lifecycle trace must not be evicted by level-based
+    /// chatter.
+    ///
+    /// The reported symptom is a bug report whose "Session lifecycle" section
+    /// holds a single line while the device had been tracking for an hour: at
+    /// `logLevel: verbose` the row cap is 2000 and the sensor trace alone
+    /// emits several lines a second, so the whole table turned over in minutes
+    /// and took the lifecycle entries with it.
+    #[test]
+    fn test_prune_logs_keeps_lifecycle_entries_under_verbose_chatter() {
+        let db = DatabaseManager::new(":memory:").expect("Failed to create in-memory db");
+
+        db.insert_log("LIFECYCLE", "session: start", "plugin").unwrap();
+        db.insert_log("LIFECYCLE", "smart-motion: switching to STATIONARY_PERIODIC", "plugin")
+            .unwrap();
+        // The flood that arrives afterwards and used to bury them.
+        for i in 0..50 {
+            db.insert_log("VERBOSE", &format!("[SHAKE] sample #{i}"), "plugin").unwrap();
+        }
+
+        db.prune_logs(10).unwrap();
+
+        let logs = db.get_logs(1000).unwrap();
+        let lifecycle: Vec<_> = logs.iter().filter(|l| l.level == "LIFECYCLE").collect();
+        assert_eq!(
+            lifecycle.len(),
+            2,
+            "both lifecycle entries must survive — they are older than every one \
+             of the 50 verbose rows, and a single whole-table cap deletes exactly \
+             the entries the report is written to carry",
+        );
+        assert_eq!(
+            logs.iter().filter(|l| l.level == "VERBOSE").count(),
+            10,
+            "the chatty channel still keeps its own cap",
+        );
+    }
+
+    /// The lifecycle channel is capped too — bounded at `limit` of its own, so
+    /// the table cannot grow without limit on a long-lived session.
+    #[test]
+    fn test_prune_logs_caps_the_lifecycle_channel_as_well() {
+        let db = DatabaseManager::new(":memory:").expect("Failed to create in-memory db");
+        for i in 0..20 {
+            db.insert_log("LIFECYCLE", &format!("event {i}"), "plugin").unwrap();
+        }
+
+        db.prune_logs(5).unwrap();
+
+        let logs = db.get_logs(1000).unwrap();
+        assert_eq!(logs.len(), 5, "the newest five survive");
+        assert_eq!(logs[0].message, "event 19", "newest first");
     }
 
     /// A non-positive window means "no age-based retention", not "delete all" —

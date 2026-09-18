@@ -471,6 +471,14 @@ class TraceletAndroidPlugin :
         sdk.logger.debug("onDetachedFromActivity")
         activityBinding?.removeRequestPermissionsResultListener(this)
         activityBinding = null
+        // A permission dialog may still be up. The listener just removed was
+        // the only path that completed the Pigeon reply, so complete it now
+        // with the current status -- before the activity goes, because the
+        // rationale check that distinguishes DENIED from NOT_DETERMINED
+        // needs it. Not done in the config-change variant above: there the
+        // listener is re-added on reattach and the result still arrives.
+        // Existed until the 2.0.0 lifecycle rewrite dropped it (#415).
+        sdk.clearPendingPermissionCallback()
         sdk.activity = null
     }
 

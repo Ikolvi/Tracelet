@@ -1,4 +1,18 @@
-## Unreleased
+## 3.8.8
+
+**FIX**: the pinned native SDK opens `CLBackgroundActivitySession` on the continuous path only with `useBackgroundActivitySession: true` (or under When-In-Use authorization, where it is what keeps the stream alive), so an Always-authorized app that opted out no longer shows the blue location bar for every trip ([#423](https://github.com/Ikolvi/Tracelet/issues/423)).
+
+**FIX**: the pinned native SDK announces a location stream that is delivering nothing, so a dead stream is no longer reported as a healthy one; no Dart or plugin change ([#407](https://github.com/Ikolvi/Tracelet/issues/407)).
+
+**FIX**: the pinned native SDK stops a stale near-zero speed vetoing an accelerometer wake, so a backgrounded device leaves stationary mode when it actually moves; no Dart or plugin change ([#404](https://github.com/Ikolvi/Tracelet/issues/404)).
+
+**FIX**: the pinned native SDK cancels the speed machine's stationary countdown on stop; no Dart or plugin change ([#412](https://github.com/Ikolvi/Tracelet/issues/412)).
+
+**FIX**: the pinned native SDK opens the evaluator's location stream for an in-app-evaluated fence on a stationary start; no Dart or plugin change ([#412](https://github.com/Ikolvi/Tracelet/issues/412), [#357](https://github.com/Ikolvi/Tracelet/issues/357)).
+
+**FIX**: the pinned native SDK keeps a fresh `start()`'s committed pace against the last-known-speed seed, and stops verbose chatter evicting the lifecycle trace; no Dart or plugin change ([#344](https://github.com/Ikolvi/Tracelet/issues/344), [#318](https://github.com/Ikolvi/Tracelet/issues/318)).
+
+**FIX**: the pinned native SDK keeps a fence wake-up from committing a moving pace; no Dart or plugin change ([#414](https://github.com/Ikolvi/Tracelet/issues/414)).
 
 **FIX**: the pinned native SDK stops the stream it inherited when the motion pipeline parks; no Dart or plugin change ([#409](https://github.com/Ikolvi/Tracelet/issues/409)).
 

@@ -1678,7 +1678,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_prune_locations_older_than() != 38098.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tracelet_core_checksum_method_databasemanager_prune_logs() != 51361.toShort()) {
+    if (lib.uniffi_tracelet_core_checksum_method_databasemanager_prune_logs() != 30299.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_prune_logs_older_than() != 10098.toShort()) {
@@ -4059,7 +4059,27 @@ public interface DatabaseManagerInterface {
     fun `pruneLocationsOlderThan`(`maxDays`: kotlin.Int): kotlin.UInt
     
     /**
-     * Prunes the logs to retain only the specified limit of latest entries.
+     * Prunes the logs to retain only the specified limit of latest entries —
+     * counted **per channel**, so level-based chatter cannot evict the
+     * always-on lifecycle trace.
+     *
+     * One cap over the whole table made the two channels compete, and the
+     * noisy one always won. `LIFECYCLE` entries bypass `logLevel` precisely
+     * because they are the record of what the background and killed-state
+     * paths did (#318) — but they were then pruned by row count alongside
+     * everything else, and at `logLevel: verbose` the cap is 2000 rows against
+     * a sensor trace that emits several lines a second.
+     *
+     * What that costs is a field report whose "Session lifecycle" section is a
+     * single line: the entries are not missing, they were evicted, and the
+     * window collapses from the configured `logMaxDays` to a couple of
+     * minutes. Turning logging *up* to investigate a background problem
+     * destroyed the only record of it.
+     *
+     * Each channel now keeps its own newest `limit` rows, so the table is
+     * bounded at 2x `limit` in the worst case and the lifecycle trace is
+     * bounded by [`prune_logs_older_than`] instead — which is what "always-on"
+     * was supposed to mean.
      */
     fun `pruneLogs`(`limit`: kotlin.Int)
     
@@ -4805,7 +4825,27 @@ open class DatabaseManager: Disposable, AutoCloseable, DatabaseManagerInterface
 
     
     /**
-     * Prunes the logs to retain only the specified limit of latest entries.
+     * Prunes the logs to retain only the specified limit of latest entries —
+     * counted **per channel**, so level-based chatter cannot evict the
+     * always-on lifecycle trace.
+     *
+     * One cap over the whole table made the two channels compete, and the
+     * noisy one always won. `LIFECYCLE` entries bypass `logLevel` precisely
+     * because they are the record of what the background and killed-state
+     * paths did (#318) — but they were then pruned by row count alongside
+     * everything else, and at `logLevel: verbose` the cap is 2000 rows against
+     * a sensor trace that emits several lines a second.
+     *
+     * What that costs is a field report whose "Session lifecycle" section is a
+     * single line: the entries are not missing, they were evicted, and the
+     * window collapses from the configured `logMaxDays` to a couple of
+     * minutes. Turning logging *up* to investigate a background problem
+     * destroyed the only record of it.
+     *
+     * Each channel now keeps its own newest `limit` rows, so the table is
+     * bounded at 2x `limit` in the worst case and the lifecycle trace is
+     * bounded by [`prune_logs_older_than`] instead — which is what "always-on"
+     * was supposed to mean.
      */
     @Throws(TraceletException::class)override fun `pruneLogs`(`limit`: kotlin.Int)
         = 

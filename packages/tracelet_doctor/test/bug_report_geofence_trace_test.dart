@@ -116,11 +116,43 @@ void main() {
         lifecycleTraceLimit: 200,
       );
 
-      expect(platform.requestedLimits, contains(400));
-      expect(platform.requestedLimits, contains(100));
-      expect(platform.requestedLimits, contains(200));
+      // One read serves all four log sections, taken at the deepest window any
+      // of them asked for — the same rows used to cross the platform channel
+      // once per section, which is what kept the scan depth timid.
+      expect(platform.requestedLimits, <int>[400]);
       // Deeper than the ## Logs window, which is the whole point.
-      expect(platform.requestedLimits.reduce((a, b) => a > b ? a : b), 400);
+      expect(platform.requestedLimits.single, greaterThan(100));
+    });
+
+    /// The shared read must not quietly widen a section: each one still renders
+    /// only what falls inside its own window.
+    test('each section stays bounded by its own limit', () async {
+      // Newest first, exactly as `getLogs` returns them: the crossing sits at
+      // position 3 and the lifecycle entry at position 6.
+      final platform = _LogOnlyPlatform(<TlLogEntry>[
+        _entry(1, 'INFO', 'ready() called'),
+        _entry(2, 'INFO', 'a routine line'),
+        _entry(3, 'INFO', '[geofence] ENTER ZONE_A dist=12.4 radius=50.0'),
+        _entry(4, 'INFO', 'another routine line'),
+        _entry(5, 'INFO', 'and another'),
+        _entry(6, 'LIFECYCLE', 'session: start — mode=continuous'),
+      ]);
+      TraceletPlatform.instance = platform;
+
+      final report = await TraceletBugReport.build(
+        includeConfig: false,
+        logLimit: 1,
+        geofenceTraceLimit: 3,
+        // Deep enough to reach the lifecycle entry; the geofence window is not.
+        lifecycleTraceLimit: 6,
+      );
+
+      expect(platform.requestedLimits, <int>[6]);
+      expect(report, contains('[geofence] ENTER ZONE_A'));
+      expect(report, contains('session: start — mode=continuous'));
+      // The ## Logs window is one entry deep, so the fifth line is outside it
+      // even though the shared read fetched it.
+      expect(report, isNot(contains('and another')));
     });
 
     test(
