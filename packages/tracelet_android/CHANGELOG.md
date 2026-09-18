@@ -1,5 +1,7 @@
 ## 3.8.8
 
+**FIX**: `onDetachedFromActivity()` completes a pending permission reply via `clearPendingPermissionCallback()` before dropping the activity, so `requestLocationAuthorization()` no longer hangs when the Activity detaches under the dialog; the config-change detach is unchanged, since its result still arrives after reattach ([#415](https://github.com/Ikolvi/Tracelet/issues/415)).
+
 **FIX**: the pinned native SDK stops a stale near-zero speed vetoing an accelerometer wake, so a backgrounded device leaves stationary mode when it actually moves; no Dart or plugin change ([#404](https://github.com/Ikolvi/Tracelet/issues/404)).
 
 **FIX**: the pinned native SDK reports a foreground-service promotion the OS refused as `refused` rather than `success`; no Dart or plugin change ([#406](https://github.com/Ikolvi/Tracelet/issues/406)).

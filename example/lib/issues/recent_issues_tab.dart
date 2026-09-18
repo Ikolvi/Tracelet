@@ -95,6 +95,7 @@ import 'package:tracelet_example/issues/issue_409_card.dart';
 import 'package:tracelet_example/issues/issue_412_card.dart';
 import 'package:tracelet_example/issues/issue_404_card.dart';
 import 'package:tracelet_example/issues/issue_414_card.dart';
+import 'package:tracelet_example/issues/issue_415_card.dart';
 import 'package:tracelet_example/issues/issue_423_card.dart';
 import 'package:tracelet_example/issues/issue_402_card.dart';
 import 'package:tracelet_example/issues/issue_399_pace_card.dart';
@@ -1764,6 +1765,7 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
                     // are rendered directly. Cards with a bespoke layout (no shell)
                     // stay wrapped in _searchableCard with explicit keywords.
                     const Issue423Card(),
+                    const Issue415Card(),
                     const Issue414Card(),
                     const Issue412Card(),
                     const Issue407Card(),
