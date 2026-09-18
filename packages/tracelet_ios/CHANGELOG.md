@@ -1,5 +1,7 @@
 ## 3.8.8
 
+**FIX**: the pinned native SDK opens `CLBackgroundActivitySession` on the continuous path only with `useBackgroundActivitySession: true` (or under When-In-Use authorization, where it is what keeps the stream alive), so an Always-authorized app that opted out no longer shows the blue location bar for every trip ([#423](https://github.com/Ikolvi/Tracelet/issues/423)).
+
 **FIX**: the pinned native SDK announces a location stream that is delivering nothing, so a dead stream is no longer reported as a healthy one; no Dart or plugin change ([#407](https://github.com/Ikolvi/Tracelet/issues/407)).
 
 **FIX**: the pinned native SDK stops a stale near-zero speed vetoing an accelerometer wake, so a backgrounded device leaves stationary mode when it actually moves; no Dart or plugin change ([#404](https://github.com/Ikolvi/Tracelet/issues/404)).

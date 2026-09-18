@@ -51,6 +51,9 @@ let package = Package(
                 // fix-driven watchdog could not see it at all — the one failure
                 // mode where the SDK is most blind.
                 "LocationEngineSilenceWatchdogTests.swift",
+                // #423: useBackgroundActivitySession is an opt-in, and the
+                // continuous path never read it.
+                "BackgroundActivitySessionOptInTests.swift",
                 "LocationEngineRuntimeProviderOptionsTests.swift",
                 "MotionDetectorTests.swift",
                 "BatteryBudgetRemoteConfigTests.swift",

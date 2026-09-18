@@ -788,7 +788,9 @@ public final class TraceletSdk {
         if needsInAppEvaluation {
             locationEngine.start()
             preventSuspendManager.start()
-            backgroundActivitySessionManager.start()
+            // Same opt-in as the continuous path: an in-app-evaluated fence
+            // needs the stream, not the session, under Always (#423).
+            startBackgroundActivitySessionIfNeeded()
             serviceSessionManager.start()
         } else {
             locationEngine.stop()
@@ -2858,17 +2860,34 @@ public final class TraceletSdk {
 
     // MARK: - Private: Background activity session
 
-    /// Opens the iOS 17+ `CLBackgroundActivitySession` for continuous tracking —
-    /// unless `useSignificantChangesOnly` is enabled.
+    /// Opens the iOS 17+ `CLBackgroundActivitySession` for a continuous stream —
+    /// when the app opted in, or when it is the only thing keeping the stream
+    /// alive.
     ///
     /// `CLBackgroundActivitySession` keeps a background location activity alive
     /// and auto-shows the system location indicator (Dynamic Island / status-bar
-    /// pill), even when continuous GPS is not running. That defeats
-    /// significant-change monitoring, whose entire purpose is low-power
-    /// background location WITHOUT a persistent "ongoing location" indicator
-    /// (Issue #261). Periodic mode and low-accuracy geofence-only mode already
-    /// avoid the session for the same reason; this brings significant-changes-
-    /// only into line with them.
+    /// pill) for as long as it exists, even with `showsBackgroundLocationIndicator`
+    /// off. That defeats significant-change monitoring, whose entire purpose is
+    /// low-power background location WITHOUT a persistent "ongoing location"
+    /// indicator (#261). Periodic mode and low-accuracy geofence-only mode
+    /// already avoid the session for the same reason.
+    ///
+    /// It also defeats `IosConfig.useBackgroundActivitySession`, which is
+    /// documented as opt-in and defaults to `false`. Only `LocationEngine.start()`
+    /// ever honoured it; every moving transition came through here and opened
+    /// the session regardless, so the exact configuration #210 told users to
+    /// adopt to hide the indicator — Always + `showsBackgroundLocationIndicator:
+    /// false` + `useBackgroundActivitySession: false` — showed it for the length
+    /// of every trip (#423). With Always authorization the session buys nothing:
+    /// `allowsBackgroundLocationUpdates` and the `location` background mode
+    /// already keep `startUpdatingLocation` delivering in the background.
+    ///
+    /// The one case it is opened without the opt-in is When-In-Use
+    /// authorization. There the app is suspended in the background and the
+    /// session is what lets the stream survive that, and the indicator is
+    /// shown by the OS regardless — so nothing the flag protects is lost, and
+    /// declining would silently end tracking for every app that has relied on
+    /// it since 3.1.8.
     ///
     /// The indicator may still blink briefly when a significant-change event is
     /// delivered — that is normal iOS behavior and not a persistent session.
@@ -2879,7 +2898,22 @@ public final class TraceletSdk {
             )
             return
         }
+        guard backgroundActivitySessionIsWanted() else {
+            logger.debug(
+                "Not starting CLBackgroundActivitySession — useBackgroundActivitySession is false "
+                    + "and authorization is not When-In-Use (#423)"
+            )
+            return
+        }
         backgroundActivitySessionManager.start()
+    }
+
+    /// The opt-in, or the When-In-Use case where the session is the only thing
+    /// keeping a background stream alive (#423). Split out so the decision is
+    /// one expression with one reader.
+    private func backgroundActivitySessionIsWanted() -> Bool {
+        configManager.getUseBackgroundActivitySession()
+            || locationEngine.getAuthorizationStatus() == 2 // authorizedWhenInUse
     }
 
     // MARK: - Private: Motion State
