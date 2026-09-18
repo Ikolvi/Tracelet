@@ -82,6 +82,13 @@ class LocationEngineGeofenceStarvationTest {
         )
 
         state = StateManager(context)
+        // These drive fixes through the engine as a *running* session does.
+        // `onLocationReceived` drops a fix when the session is not enabled,
+        // because after `stop()` a straggling delivery is not ours to record
+        // (#412) — and an engine streaming into a disabled session is a state
+        // production never reaches: `start()` sets this before it starts the
+        // engine or asks for the startup fix.
+        state.enabled = true
         events = mock()
         engine = LocationEngine(context, config, state, events)
     }
@@ -313,6 +320,47 @@ class LocationEngineGeofenceStarvationTest {
                 "rejected for persistence, so only the first fix is dispatched",
             1,
             persistedUpdates,
+        )
+    }
+    /**
+     * #412: `removeLocationUpdates` is asynchronous, so a fix already in the
+     * fused client's delivery pipeline still arrives after `stop()` returns —
+     * and the whole pipeline ran for it: enrich, geocode, odometer, persist,
+     * appending a row to a database the user had just stopped filling.
+     *
+     * A field trace shows one landing a second after `session: stop`, on a
+     * device whose health check then read `Tracking enabled: false` with the
+     * pending-location count still climbing.
+     */
+    @Test
+    fun `a fix delivered after the session stopped is dropped`() {
+        var rawEvaluations = 0
+        engine.geofenceHighAccuracyMode = true
+        engine.onRawGeofenceLocation = { _, _, _ -> rawEvaluations++ }
+        engine.start()
+
+        val callback = client.lastCallback!!
+        callback.onLocationResult(listOf(fixAt(10.787929, 76.684183, 1_000L)))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(
+            "precondition: a fix during an enabled session is processed",
+            1,
+            rawEvaluations,
+        )
+
+        // What TraceletSdk.stop() does, in its order: clear the session flag,
+        // then tear the engine down.
+        state.enabled = false
+        engine.stop()
+
+        // Already in flight when removeLocationUpdates() was called.
+        callback.onLocationResult(listOf(fixAt(10.787939, 76.684193, 2_000L)))
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(
+            "a fix that arrives after the session stopped must not be processed",
+            1,
+            rawEvaluations,
         )
     }
 }

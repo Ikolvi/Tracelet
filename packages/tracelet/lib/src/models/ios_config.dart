@@ -232,8 +232,19 @@ class IosConfig {
   bool get preventSuspend => _preventSuspend ?? false;
 
   /// Keeps the app alive in the background using CLBackgroundActivitySession (iOS 17+).
-  /// This requires the app to have an active Live Activity or similar session.
   /// Defaults to `false`.
+  ///
+  /// The session shows the system location indicator (blue bar / Dynamic
+  /// Island pill) for as long as it is open, regardless of
+  /// [showsBackgroundLocationIndicator]. With **Always** authorization it is
+  /// not needed — background delivery already continues without it — so
+  /// leaving this `false` is what hides the indicator. Under **When In Use**
+  /// the SDK opens the session regardless of this flag, because it is what
+  /// lets tracking survive suspension there, and the OS shows the indicator
+  /// in that state anyway.
+  ///
+  /// Enabling it requires an App Review justification; see
+  /// `help/INSTALL-IOS.md`.
   bool get useBackgroundActivitySession =>
       _useBackgroundActivitySession ?? false;
 

@@ -59,6 +59,45 @@ public class TraceletSmartMotionCoordinator {
     /// coordinator that is genuinely parked, and the core emits no wake-up for a
     /// posture it already believes is Continuous — #344's swallowed shake,
     /// re-entered through the #409 fix.
+    /// Re-reads the posture once ``TraceletSdk/start(isResume:)`` has settled the
+    /// engine, and lets the core act on what it finds.
+    ///
+    /// ``syncCurrentMode()`` runs *before* start() touches the engine, so it can
+    /// only ever read the pace committed a few lines earlier. Anything that opens
+    /// a stream afterwards leaves the coordinator holding a posture that is
+    /// merely a prediction — and when the prediction is wrong the core stays
+    /// silent, because `evaluate_state` speaks only on a *transition* and both
+    /// motion inputs are already where they were.
+    ///
+    /// The field report is a session that resumed while a fence too small for the
+    /// OS to resolve needed in-app evaluation: the #357 branch starts a stream so
+    /// the fence has something to be decided from, and a parked coordinator then
+    /// has nothing it can say that would ever stop it. What the device shows is
+    /// continuous GPS — every fix `isMoving: false`, at the configured interval,
+    /// with the location indicator lit — for the rest of the session.
+    ///
+    /// Reconciling asks the core to judge the state it is actually in rather than
+    /// waiting for a transition that will never come. A stationary session that
+    /// inherited a stream is parked into the stationary schedule, which still
+    /// feeds the in-app fence evaluator at the stationary cadence; a moving one
+    /// is left streaming (#409).
+    public func reconcilePosture() {
+        syncCurrentMode()
+        guard let core = coreCoordinator else { return }
+        let useGeofences = sdk?.configManager?.getStationaryTrackingMode() == .geofences
+        let action = core.evaluateConfigurationChange(useGeofences: useGeofences)
+        // Always-on: once per start(), and it is the entry that answers "why is
+        // GPS still running" — it names both motion inputs and the engine at the
+        // one moment the session re-judges them. A release build runs at the
+        // default logLevel, where a `debug` line is discarded and the question is
+        // unanswerable from the report (#414).
+        TraceletLog.lifecycle(
+            "smart-motion: reconciled the posture — action=\(action) "
+                + "accelMoving=\(isAccelMoving) speedMoving=\(isSpeedMoving) "
+                + "streaming=\(sdk?.locationEngine?.isContinuousStreaming ?? false)")
+        handleAction(action)
+    }
+
     public func syncCurrentMode() {
         guard let stateManager = sdk?.stateManager else { return }
 
@@ -122,14 +161,48 @@ public class TraceletSmartMotionCoordinator {
     /// tremor on a physically still device rather than as real motion.
     private static let tremorSpeedThreshold: Double = 0.15
 
-    /// The last speed this process actually resolved, or `nil` if it has not
-    /// resolved one yet.
+    /// Whether the last tremor decision declined a stale speed, so the
+    /// lifecycle entry below fires once per run rather than once per call — the
+    /// run is the event, mirroring `staleFixesSincePace` in ``LocationEngine``.
+    private var declinedStaleTremorSpeed = false
+
+    /// The last speed this process resolved, or `nil` when it has resolved none
+    /// — or when the one it has is too old to describe *now*.
     ///
     /// `lastEffectiveSpeed` and `lastLocation` are written together on every
     /// accepted fix, so a nil location is exactly "no fix has been accepted in
     /// this process" — which is *unknown*, not zero.
+    ///
+    /// The age gate is the same one the pace sink applies
+    /// (``LocationEngine/maximumPaceFixAge``) and it exists for the same
+    /// reason: a stored speed says nothing about the present. Without it a
+    /// parked device froze `lastEffectiveSpeed` at its last value, and
+    /// stationary-periodic mode produces no fresh fix to replace it *by
+    /// construction* — so when the accelerometer woke on a real walk minutes
+    /// later, the override read that frozen value and overruled the wake.
+    ///
+    /// An old reading is *unknown* in exactly the sense `nil` already means,
+    /// and routing it there is what makes the two agree: `nil` leaves the
+    /// accelerometer standing, where a stale near-zero actively sided against
+    /// it (#404).
     private var resolvedSpeed: Double? {
-        guard let engine = sdk?.locationEngine, engine.getLastLocation() != nil else { return nil }
+        guard let engine = sdk?.locationEngine,
+              engine.getLastLocation() != nil,
+              let age = engine.paceFixAge else { return nil }
+        guard age <= LocationEngine.maximumPaceFixAge else {
+            if !declinedStaleTremorSpeed {
+                declinedStaleTremorSpeed = true
+                // Always-on: this is a wake being discarded, and at the shipped
+                // log levels it left no trace at all (#318).
+                TraceletLog.lifecycle(String(
+                    format: "smart-motion: declining a %.1fs-old fix's speed (%.4f m/s) for the "
+                        + "tremor override — a reading older than %.0fs says nothing about now, "
+                        + "and letting it through vetoed a genuine accelerometer wake (#404)",
+                    age, engine.lastEffectiveSpeed, LocationEngine.maximumPaceFixAge))
+            }
+            return nil
+        }
+        declinedStaleTremorSpeed = false
         return engine.lastEffectiveSpeed
     }
 

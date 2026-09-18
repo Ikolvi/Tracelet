@@ -12,7 +12,7 @@ export default function NotificationBell() {
 
   useEffect(() => {
     try {
-      const seen = localStorage.getItem('tracelet_notif_3.8.7_seen');
+      const seen = localStorage.getItem('tracelet_notif_3.8.8_seen');
       if (!seen) setShowBadge(true);
     } catch (e) {
       // Ignore localStorage errors (e.g., incognito)
@@ -48,7 +48,7 @@ export default function NotificationBell() {
     if (!isOpen && showBadge) {
       setShowBadge(false);
       try {
-        localStorage.setItem('tracelet_notif_3.8.7_seen', 'true');
+        localStorage.setItem('tracelet_notif_3.8.8_seen', 'true');
       } catch (e) {}
     }
     setIsOpen(!isOpen);

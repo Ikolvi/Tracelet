@@ -8,7 +8,7 @@ require File.expand_path('ensure_xcframework', File.dirname(__FILE__))
 
 Pod::Spec.new do |s|
   s.name             = 'tracelet_ios'
-  s.version = '3.8.7'
+  s.version = '3.8.8'
   s.summary          = 'iOS implementation of the Tracelet background geolocation plugin.'
   s.description      = <<-DESC
 Production-grade background geolocation for Flutter. Battery-conscious
@@ -22,7 +22,7 @@ execution for iOS.
   s.source_files = 'tracelet_ios/Sources/tracelet_ios/**/*.{swift,h}'
   s.public_header_files = 'tracelet_ios/Sources/tracelet_ios/**/*.h'
   s.dependency 'Flutter'
-  s.dependency 'TraceletSDK', '3.8.7'
+  s.dependency 'TraceletSDK', '3.8.8'
   s.platform = :ios, '14.0'
   s.frameworks = 'CoreLocation', 'CoreMotion', 'UIKit', 'BackgroundTasks', 'AVFoundation', 'AudioToolbox', 'Network', 'DeviceCheck'
   s.libraries = 'sqlite3'

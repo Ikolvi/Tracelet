@@ -536,6 +536,26 @@ public final class TraceletSdk {
             startBackgroundActivitySessionIfNeeded()
         } else {
             _ = changePace(false)
+            // A session that starts stationary runs no stream — that is the
+            // point of the branch. A fence the OS cannot resolve is decided
+            // *from* that stream (#355), so one already stored at start() would
+            // otherwise stay dead until the device happened to move.
+            //
+            // `applyGeofenceEvaluationCadence()` cannot cover this: it exists
+            // for a fence added *after* start() and returns early unless
+            // ownership changed, and `wireGeofenceLocationCallbacks()` has
+            // already set `geofenceHighAccuracyMode` from the stored fences a
+            // few lines above. So for fences that were there before the session
+            // was, the flag is set, the guard sees no change, and nothing ever
+            // opens the stream the evaluator needs. Android has carried this
+            // branch since #357; iOS never did (#412).
+            if locationEngine.geofenceHighAccuracyMode {
+                TraceletLog.lifecycle(
+                    "[geofence] starting the location stream for an "
+                        + "in-app-evaluated fence — the session starts stationary, "
+                        + "which otherwise runs no stream (#357)")
+                locationEngine.start()
+            }
             // A stationary start is dark otherwise: no continuous stream (by
             // design), and `changePace(false)` changes nothing in subsystems
             // that are already stationary. The app was left with no position at
@@ -556,6 +576,17 @@ public final class TraceletSdk {
                     "session: acquiring the initial fix for a stationary start (#385)")
                 locationEngine.requestStartupFix()
             }
+        }
+
+        // The engine has settled: whatever this start() was going to open or
+        // leave closed, it has done. `syncCurrentMode()` above could only read
+        // the committed pace, because none of it had happened yet — so a session
+        // that ends up streaming while both motion inputs say stationary holds a
+        // parked posture over a live stream, and no transition will ever arrive
+        // to correct it. Ask the core to judge the state it is in rather than the
+        // one that was predicted (#409).
+        if motionMode == .smart {
+            smartMotionCoordinator.reconcilePosture()
         }
 
         startHeartbeat()
@@ -628,7 +659,12 @@ public final class TraceletSdk {
         // relaunched into a low-power posture, coming near a small fence must
         // bring the stream back or the evaluator has nothing to decide on (#355).
         geofenceManager.onEvaluatorWakeup = { [weak self] in
-            self?.locationEngine.start()
+            guard let self = self else { return }
+            // The fence needs the stream; the session's pace is not the wake-up's
+            // to change, and neither is the rest of the session. Borrowed for one
+            // bounded window (#414).
+            self.locationEngine.start()
+            self.armEvaluatorWindow()
         }
         // The line above answers "who owns these fences?" once. The fence set is
         // mutable for the rest of the session, so it has to be re-asked every
@@ -643,6 +679,49 @@ public final class TraceletSdk {
                 latitude: lat, longitude: lng, accuracy: accuracy
             )
         }
+    }
+
+    /// How long the in-app fence evaluator keeps the stream up after an OS
+    /// wake-up before the session's own posture decides again (#414).
+    ///
+    /// Long enough to decide a crossing at walking pace — a 10 m fence takes
+    /// ~10 s to cross — and short enough that a wake-up cannot cost a whole
+    /// session of full-rate GPS.
+    private static let evaluatorStreamWindow: TimeInterval = 60
+
+    /// Closes the window opened by ``armEvaluatorWindow()``.
+    private var evaluatorWindowTimer: Timer?
+
+    /// Hands the cadence back to the motion coordinator once the evaluator has
+    /// had its window (#414).
+    ///
+    /// Without a bound the loan is permanent: the stream was opened behind the
+    /// coordinator, and with both motion inputs already stationary there is no
+    /// transition left for `evaluate_state` to act on — a repeat of a flag it
+    /// already holds returns `.none`. So a wake-up near a fence would hold
+    /// full-rate GPS open for the rest of the session on a device that never
+    /// moved. Reconciling asks the coordinator to judge the state it is in.
+    private func armEvaluatorWindow() {
+        evaluatorWindowTimer?.invalidate()
+        TraceletLog.lifecycle(
+            "[geofence] the evaluator has the stream for "
+                + "\(Int(TraceletSdk.evaluatorStreamWindow))s — the pace is unchanged "
+                + "(isMoving=\(stateManager.isMoving)), and the coordinator decides "
+                + "again when the window closes (#414)")
+
+        let timer = Timer.scheduledTimer(
+            withTimeInterval: TraceletSdk.evaluatorStreamWindow, repeats: false
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            self.evaluatorWindowTimer = nil
+            TraceletLog.lifecycle(
+                "[geofence] evaluator window closed — handing the cadence back to "
+                    + "the motion coordinator (#414)")
+            if self.configManager.getMotionDetectionMode() == .smart {
+                self.smartMotionCoordinator.reconcilePosture()
+            }
+        }
+        evaluatorWindowTimer = timer
     }
 
     /// Re-aligns the location cadence with who owns the currently-stored fences.
@@ -679,6 +758,15 @@ public final class TraceletSdk {
                 "[geofence] starting the location stream for an in-app-evaluated "
                     + "fence — nothing was running to decide it from (#357)")
             locationEngine.start()
+            // The stream just opened behind the coordinator's back, exactly as it
+            // does on a stationary start. Reconciling parks it again when both
+            // motion inputs say stationary — the fence keeps its acquisition,
+            // because the stationary schedule fires its first one-shot
+            // immediately, and then runs at the stationary cadence instead of at
+            // full rate for the rest of the session (#412).
+            if configManager.getMotionDetectionMode() == .smart {
+                smartMotionCoordinator.reconcilePosture()
+            }
         }
     }
 
@@ -700,7 +788,9 @@ public final class TraceletSdk {
         if needsInAppEvaluation {
             locationEngine.start()
             preventSuspendManager.start()
-            backgroundActivitySessionManager.start()
+            // Same opt-in as the continuous path: an in-app-evaluated fence
+            // needs the stream, not the session, under Always (#423).
+            startBackgroundActivitySessionIfNeeded()
             serviceSessionManager.start()
         } else {
             locationEngine.stop()
@@ -737,6 +827,9 @@ public final class TraceletSdk {
 
             locationEngine.stop()
             locationEngine.speedSink = nil
+            // A pending evaluator window has nothing left to hand back to (#414).
+            evaluatorWindowTimer?.invalidate()
+            evaluatorWindowTimer = nil
             locationEngine.onRawGeofenceLocation = nil
             locationEngine.geofenceHighAccuracyMode = false
             geofenceManager.onEvaluatorOwnershipChanged = nil
@@ -2767,17 +2860,34 @@ public final class TraceletSdk {
 
     // MARK: - Private: Background activity session
 
-    /// Opens the iOS 17+ `CLBackgroundActivitySession` for continuous tracking —
-    /// unless `useSignificantChangesOnly` is enabled.
+    /// Opens the iOS 17+ `CLBackgroundActivitySession` for a continuous stream —
+    /// when the app opted in, or when it is the only thing keeping the stream
+    /// alive.
     ///
     /// `CLBackgroundActivitySession` keeps a background location activity alive
     /// and auto-shows the system location indicator (Dynamic Island / status-bar
-    /// pill), even when continuous GPS is not running. That defeats
-    /// significant-change monitoring, whose entire purpose is low-power
-    /// background location WITHOUT a persistent "ongoing location" indicator
-    /// (Issue #261). Periodic mode and low-accuracy geofence-only mode already
-    /// avoid the session for the same reason; this brings significant-changes-
-    /// only into line with them.
+    /// pill) for as long as it exists, even with `showsBackgroundLocationIndicator`
+    /// off. That defeats significant-change monitoring, whose entire purpose is
+    /// low-power background location WITHOUT a persistent "ongoing location"
+    /// indicator (#261). Periodic mode and low-accuracy geofence-only mode
+    /// already avoid the session for the same reason.
+    ///
+    /// It also defeats `IosConfig.useBackgroundActivitySession`, which is
+    /// documented as opt-in and defaults to `false`. Only `LocationEngine.start()`
+    /// ever honoured it; every moving transition came through here and opened
+    /// the session regardless, so the exact configuration #210 told users to
+    /// adopt to hide the indicator — Always + `showsBackgroundLocationIndicator:
+    /// false` + `useBackgroundActivitySession: false` — showed it for the length
+    /// of every trip (#423). With Always authorization the session buys nothing:
+    /// `allowsBackgroundLocationUpdates` and the `location` background mode
+    /// already keep `startUpdatingLocation` delivering in the background.
+    ///
+    /// The one case it is opened without the opt-in is When-In-Use
+    /// authorization. There the app is suspended in the background and the
+    /// session is what lets the stream survive that, and the indicator is
+    /// shown by the OS regardless — so nothing the flag protects is lost, and
+    /// declining would silently end tracking for every app that has relied on
+    /// it since 3.1.8.
     ///
     /// The indicator may still blink briefly when a significant-change event is
     /// delivered — that is normal iOS behavior and not a persistent session.
@@ -2788,7 +2898,22 @@ public final class TraceletSdk {
             )
             return
         }
+        guard backgroundActivitySessionIsWanted() else {
+            logger.debug(
+                "Not starting CLBackgroundActivitySession — useBackgroundActivitySession is false "
+                    + "and authorization is not When-In-Use (#423)"
+            )
+            return
+        }
         backgroundActivitySessionManager.start()
+    }
+
+    /// The opt-in, or the When-In-Use case where the session is the only thing
+    /// keeping a background stream alive (#423). Split out so the decision is
+    /// one expression with one reader.
+    private func backgroundActivitySessionIsWanted() -> Bool {
+        configManager.getUseBackgroundActivitySession()
+            || locationEngine.getAuthorizationStatus() == 2 // authorizedWhenInUse
     }
 
     // MARK: - Private: Motion State
@@ -4145,6 +4270,24 @@ public final class TraceletSdk {
     ///   (relaunch / auto-resume) rather than the app asking for a fresh one.
     ///   Only a resume inherits the previous session's pace — see the reconcile
     ///   step below.
+    /// Whether this session's pace came from the *previous* session rather than
+    /// from the caller — the only case the last-known-speed seed applies to.
+    ///
+    /// Pure so the rule can be pinned directly, the same way ``coordinatorMode``
+    /// is for #344/#409.
+    ///
+    /// * `isResume` — a relaunch or auto-resume restores a pace it has no other
+    ///   record of, and seeding a fabricated 0.0 into it is what stood a walking
+    ///   session down.
+    /// * `forceMoving` — the start took its pace from where the last session
+    ///   ended, so the same reasoning applies.
+    ///
+    /// Everything else is a fresh `start()` that committed `motion.isMoving` a
+    /// few lines earlier and owns its pace — the rule #344 established.
+    static func paceWasInherited(isResume: Bool, forceMoving: Bool) -> Bool {
+        isResume || forceMoving
+    }
+
     private func startSpeedMotionManager(forceMoving: Bool = false, isResume: Bool = false) {
         let smm = SpeedMotionManager(stateManager: stateManager)
         smm.speedMovingThreshold = configManager.getSpeedMovingThreshold()
@@ -4197,7 +4340,30 @@ public final class TraceletSdk {
         // the processor draws for a fix that carries no speed. A null
         // `lastLocation` is precisely "no fix handled in this process", which is
         // unknown rather than zero, so there is nothing to seed with.
-        if locationEngine.getLastLocation() != nil {
+        //
+        // And only when the pace was *inherited*. That is the whole case this
+        // exists for — a resume, or a forced-moving start, both of which take
+        // their pace from the previous session rather than from the caller. A
+        // fresh `start()` committed its pace from `motion.isMoving` a few lines
+        // earlier, and the seed can only ever push the machine *up*: one fix at
+        // or above `speedMovingThreshold` wakes it, the `!forceMoving` sync
+        // below then reads `.moving` off the machine and writes
+        // `stateManager.isMoving = true` — an explicit `motion.isMoving: false`
+        // overruled by a stale reading, which is exactly what the restored-state
+        // override above refuses to allow through the other door.
+        //
+        // It is also why the first `start()` of a process and the second behave
+        // differently: the first has no fix to seed with and stays stationary as
+        // asked, the second seeds from the fix the first one acquired and comes
+        // up moving. Same call, same config, two answers — #344's rule, evaded
+        // through a different door.
+        let paceWasInherited = TraceletSdk.paceWasInherited(
+            isResume: isResume, forceMoving: forceMoving)
+        if !paceWasInherited {
+            TraceletLog.lifecycle(
+                "pace: start() committed a stationary pace — not seeding the machine from "
+                    + "the last resolved speed, which could only overrule it")
+        } else if locationEngine.getLastLocation() != nil {
             smm.onLocation(speed: locationEngine.lastEffectiveSpeed)
         } else {
             TraceletLog.lifecycle(
@@ -4232,7 +4398,14 @@ public final class TraceletSdk {
             // the transition whose action used to be discarded. Seeding here
             // is the mirror of the accel seed in `start()` — the machine was
             // just forced to MOVING, so the coordinator has to be told (#409).
-            smartMotionCoordinator.onSpeedStateChange(isMoving: true)
+            //
+            // Read from the machine rather than from the intent: `start()`
+            // returns early when it is already running, so on a resume into a
+            // live process the machine keeps whatever state it had — which may
+            // be `.slowing` or `.stationary`. Asserting "moving" there would
+            // hold the stream open over a pace machine that had already stood
+            // the session down (#414).
+            smartMotionCoordinator.onSpeedStateChange(isMoving: smm.state != .stationary)
         }
 
         // If we're resuming in stationary state, switch immediately

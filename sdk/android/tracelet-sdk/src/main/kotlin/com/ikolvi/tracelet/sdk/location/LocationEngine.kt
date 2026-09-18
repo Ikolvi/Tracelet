@@ -76,8 +76,14 @@ class LocationEngine(
          * Ten seconds: comfortably longer than any live fix interval, and far
          * shorter than the gap across which a cached fix survives a stationary
          * period. A reading older than this describes a moment that has passed.
+         *
+         * Internal rather than private because the same rule has to hold
+         * wherever a stored speed is read as a statement about *now* — the
+         * pace sink below, and [SmartMotionCoordinator]'s tremor override,
+         * which had no age gate at all and could veto a genuine wake with a
+         * speed frozen minutes earlier (#404).
          */
-        private const val MAX_PACE_FIX_AGE_MS = 10_000L
+        internal const val MAX_PACE_FIX_AGE_MS = 10_000L
 
         /**
          * How long a tracking session may accept nothing before the SDK says so
@@ -102,6 +108,13 @@ class LocationEngine(
 
         /** How often the silence watchdog checks. Cheap; it only reads a clock. */
         private const val SILENCE_POLL_MS = 15_000L
+
+        /**
+         * Spacing between `getCurrentPosition()` samples, on both of its
+         * sources: the continuous request's interval and the delay between
+         * one-shot retries. Long enough for GPS to settle between fixes (#416).
+         */
+        private const val SAMPLE_SPACING_MS = 800L
 
         /**
          * Determines if a location fix is GPS-sourced (not network/cell).
@@ -417,6 +430,21 @@ class LocationEngine(
      *  may be stale or 0. */
     var lastEffectiveSpeed: Double = 0.0
         private set
+
+    /**
+     * How old the fix behind [lastEffectiveSpeed] is, or `null` when no fix has
+     * been accepted in this process.
+     *
+     * `lastEffectiveSpeed` and `lastLocation` are written together on every
+     * accepted fix, so the fix's own age is the age of the speed. Measured off
+     * `elapsedRealtimeNanos` — a monotonic clock — so a wall-clock correction
+     * cannot make a stored reading look current, which is the same source the
+     * pace sink's own gate uses (#404).
+     */
+    val paceFixAgeMs: Long?
+        get() = getLastLocation()?.let {
+            (SystemClock.elapsedRealtimeNanos() - it.elapsedRealtimeNanos) / 1_000_000
+        }
 
     /**
      * Optional callback invoked on every accepted location (for geofenceModeHighAccuracy).
@@ -777,6 +805,7 @@ class LocationEngine(
         // that never accepts one at all is exactly the case worth announcing
         // (#397).
         resetStallWatchdog(seed = true)
+        reportedFixWhileDisabled = false
 
         // Always-on: this is the transition the OS location indicator follows,
         // so "the icon disappeared" is answerable from a released app's report.
@@ -784,7 +813,9 @@ class LocationEngine(
             "location stream: continuous updates starting — " +
                 "accuracy=${effectiveDesiredAccuracy()} " +
                 "distanceFilter=${effectiveDistanceFilter()}m " +
-                "interval=${effectiveUpdateInterval()}ms",
+                "interval=${effectiveUpdateInterval()}ms " +
+                "engine=${System.identityHashCode(this)} " +
+                "liveStreams=${LiveStreams.count.get() + 1}",
         )
 
         val request = buildLocationRequestWithGpsFallback()
@@ -822,6 +853,7 @@ class LocationEngine(
 
         try {
             fusedClient.requestLocationUpdates(request, trackingCallback!!, Looper.getMainLooper())
+            LiveStreams.count.incrementAndGet()
             startGpsLossTimer()
         } catch (e: SecurityException) {
             trackingCallback = null
@@ -829,6 +861,40 @@ class LocationEngine(
     }
 
     /** Stops continuous location tracking. */
+    /**
+     * Guards the "fix while stopped" lifecycle line to one per stopped period,
+     * so a leaked registration is named once rather than every second.
+     */
+    @Volatile
+    private var reportedFixWhileStopped = false
+
+    /**
+     * Guards the "fix after the session stopped" lifecycle line to one per
+     * stopped session, so a straggling delivery is named once rather than every
+     * fix still in the provider's pipeline.
+     */
+    @Volatile
+    private var reportedFixWhileDisabled = false
+
+    /**
+     * How many [LocationEngine] instances in this process currently hold a
+     * registered continuous callback.
+     *
+     * Every registration inside one engine re-uses the single
+     * `trackingCallback` — `updateLocationProviderOptions`,
+     * `reapplyProviderOptionsIfTracking`, `activateGpsFallback` and
+     * `restoreOriginalPriority` all replace the request in place, and `stop()`
+     * removes it — so one engine cannot leak a second stream. A parked session
+     * that keeps recording fixes therefore means a *second engine*, and an
+     * engine cannot see its sibling. Counting them here makes
+     * `liveStreams>1` visible on the always-on channel, which is the one
+     * reading that separates "the park did not work" from "the park worked and
+     * something else is streaming" (#412).
+     */
+    private object LiveStreams {
+        val count = java.util.concurrent.atomic.AtomicInteger(0)
+    }
+
     fun stop() {
         gpsFallbackActive = false
         runtimeDesiredAccuracy = null
@@ -837,12 +903,14 @@ class LocationEngine(
         // starts again has not changed how fast the device is draining (#396).
         resetStallWatchdog(seed = false)
         staleFixesSincePace = 0
-        if (trackingCallback != null) {
-            TraceletLog.lifecycle("location stream: continuous updates stopping")
-        }
         trackingCallback?.let {
             fusedClient.removeLocationUpdates(it)
             trackingCallback = null
+            val remaining = LiveStreams.count.decrementAndGet()
+            TraceletLog.lifecycle(
+                "location stream: continuous updates stopping — " +
+                    "engine=${System.identityHashCode(this)} liveStreams=$remaining",
+            )
         }
         // Cancel any in-flight stationary→moving one-shot so its success
         // callback won’t fire after stop().
@@ -1044,10 +1112,9 @@ class LocationEngine(
 
         // Use collectSamples for all cases — including samples == 1.
         // TraceletLocationClient.getCurrentLocation() may return a stale
-        // cached location without waking the GPS hardware, causing
-        // getCurrentPosition() to return old positions. collectSamples uses
-        // requestLocationUpdates() which forces a fresh GPS fix with proper
-        // timeout handling.
+        // cached location, or null, without waking the GPS hardware. Since
+        // #46 this comment said collectSamples used requestLocationUpdates()
+        // to force a fresh fix; it did not until #416, and now runs both.
         collectSamples(priority, samples, timeout, persist, extras, callback)
     }
 
@@ -1407,6 +1474,59 @@ class LocationEngine(
      * speed motion machine — see the sink below.
      */
     private fun onLocationReceived(location: Location, event: String, isStartupFix: Boolean = false) {
+        // Always-on: a fix arriving while the continuous stream is stopped.
+        //
+        // `stop()` removes `trackingCallback` and announces "continuous updates
+        // stopping", so after a park that callback cannot be the source. A
+        // field report shows a parked session still recording roughly a fix a
+        // second for the whole stationary window, with no `continuous updates
+        // starting` line between the park and the next wake-up — so something
+        // else is delivering, and the trace as it stands cannot say what.
+        //
+        // `event` names the caller (`watchPosition`, `getCurrentPosition`, the
+        // periodic tick, the heartbeat) and the identity distinguishes a second
+        // engine in the same process from a second registration on this one.
+        // Rate-limited to one line per stopped period so it cannot itself
+        // become the chatter that buries the trace (#412).
+        // A fix that arrives after the session was stopped is not ours to record.
+        //
+        // `removeLocationUpdates` is asynchronous: fixes already in the fused
+        // client's delivery pipeline still arrive after it returns, and the
+        // callback object they carry still references this engine. The field
+        // trace shows one landing a second after `session: stop`, and the whole
+        // pipeline ran for it — enrich, geocode, odometer, persist — appending a
+        // row to a database the user had just stopped filling.
+        //
+        // `state.enabled` is the master switch the rest of the SDK already
+        // gates on (`LocationService`'s stationary tick reads the same field),
+        // and it is false only once `stop()` has run. The one-shots that
+        // legitimately deliver without a continuous stream — the #385 startup
+        // fix, the stationary->moving immediate fix — all run inside an enabled
+        // session, and `getCurrentPosition()` never routes here at all (#412).
+        if (!state.enabled) {
+            if (!reportedFixWhileDisabled) {
+                reportedFixWhileDisabled = true
+                TraceletLog.lifecycle(
+                    "location stream: dropping a fix that arrived after the session " +
+                        "stopped — event=$event engine=${System.identityHashCode(this)} " +
+                        "startupFix=$isStartupFix",
+                )
+            }
+            return
+        }
+        if (trackingCallback == null) {
+            if (!reportedFixWhileStopped) {
+                reportedFixWhileStopped = true
+                TraceletLog.lifecycle(
+                    "location stream: a fix arrived while continuous updates are stopped — " +
+                        "event=$event engine=${System.identityHashCode(this)} " +
+                        "periodic=$isPeriodicTracking watchers=${watchers.size} " +
+                        "startupFix=$isStartupFix",
+                )
+            }
+        } else {
+            reportedFixWhileStopped = false
+        }
         // Only reset DR timer when GPS hardware is enabled AND the fix
         // is GPS-quality.  When the user has toggled GPS off,
         // FusedLocationProvider can still deliver accurate Wi-Fi / cell
@@ -1862,13 +1982,27 @@ class LocationEngine(
     }
 
     /**
-     * Collects [count] location samples using repeated [getCurrentLocation] calls
-     * and returns the one with the best (lowest) horizontal accuracy.
+     * Collects [count] location samples within [timeoutSeconds] and returns the
+     * one with the best (lowest) horizontal accuracy.
      *
-     * Uses the one-shot [getCurrentLocation] API which works reliably on all
-     * devices, even without a foreground service. This avoids the issue where
-     * [requestLocationUpdates] is throttled or blocked by aggressive battery
-     * optimization on budget Android devices.
+     * Two sources run side by side for the bounded window, and the first
+     * genuine fix from either counts (#416):
+     *
+     *  - **A continuous request.** [TraceletLocationClient.requestLocationUpdates]
+     *    is the only API that wakes the provider for a *fresh* fix — the
+     *    promise #46 made for `getCurrentPosition()` and the one this method
+     *    never kept: [getCurrentLocation] can return null or a cached fix
+     *    without ever engaging the hardware, and on the reporting device did
+     *    so on every retry until the timeout.
+     *  - **The one-shot loop.** Kept alongside it because it is the path that
+     *    answers on budget devices whose battery optimisation throttles or
+     *    blocks [requestLocationUpdates] for an app without a foreground
+     *    service — the reason it was the only source until now.
+     *
+     * A fix the two paths both deliver is counted once, so [count] still means
+     * distinct fixes. Every exit — enough samples, timeout, permission failure
+     * — unregisters the continuous request; a one-shot operation must not leave
+     * the provider running.
      */
     private fun collectSamples(
         priority: Int,
@@ -1881,61 +2015,112 @@ class LocationEngine(
         val collected = mutableListOf<Location>()
         val handler = android.os.Handler(Looper.getMainLooper())
         var finished = false
+        var updatesCallback: TraceletLocationCallback? = null
+        lateinit var timeoutRunnable: Runnable
 
-        // Timeout guard — deliver whatever we have when time runs out.
-        handler.postDelayed({
-            if (!finished) {
-                finished = true
-                if (collected.isNotEmpty()) {
-                    deliver(collected, persist, extras, callback)
-                } else {
-                    // Fallback to last known location (e.g. emulator with no GPS).
-                    // lastLocation can come from getLastKnownLocation()'s system
-                    // caches, which are unvetted — apply mock rejection here too.
-                    val fallback = lastLocation?.takeUnless {
-                        config.getRejectMockLocations() && isLocationMock(it)
-                    }
-                    if (fallback != null) {
-                        deliver(listOf(fallback), persist, extras, callback)
-                    } else {
-                        callback(null)
-                    }
+        fun unregister() {
+            handler.removeCallbacks(timeoutRunnable)
+            updatesCallback?.let { cb ->
+                updatesCallback = null
+                try {
+                    fusedClient.removeLocationUpdates(cb)
+                } catch (_: Exception) {
+                    // Nothing to do with a client that will not unregister;
+                    // the request is bounded by the OS's own lifecycle then.
                 }
             }
-        }, timeoutSeconds * 1000L)
+        }
 
-        // Fire sequential getCurrentLocation calls on the main thread.
+        // Every completion goes through here, so the provider is released and
+        // the callback fires at most once whichever source got there first.
+        fun finish() {
+            if (finished) return
+            finished = true
+            unregister()
+            if (collected.isNotEmpty()) {
+                deliver(collected, persist, extras, callback)
+                return
+            }
+            // Fallback to last known location (e.g. emulator with no GPS).
+            // lastLocation can come from getLastKnownLocation()'s system
+            // caches, which are unvetted — apply mock rejection here too.
+            val fallback = lastLocation?.takeUnless {
+                config.getRejectMockLocations() && isLocationMock(it)
+            }
+            if (fallback != null) {
+                deliver(listOf(fallback), persist, extras, callback)
+            } else {
+                callback(null)
+            }
+        }
+
+        // A permission failure is not a "no fix" — it must not fall back to a
+        // cached location as if the provider had been asked and said nothing.
+        fun fail() {
+            if (finished) return
+            finished = true
+            unregister()
+            callback(null)
+        }
+
+        fun accept(location: Location) {
+            if (finished) return
+            // Mock rejection applies to one-shot fixes too — the tracking path
+            // already drops mocks in onLocationReceived(), but
+            // getCurrentPosition() bypasses it. Skip the sample and keep
+            // collecting until a genuine fix arrives or the timeout fires.
+            if (config.getRejectMockLocations() && isLocationMock(location)) {
+                TraceletLog.warning("getCurrentPosition: rejected mock location sample")
+                return
+            }
+            // The same fix can arrive from both sources; count it once.
+            val duplicate = collected.any {
+                it.elapsedRealtimeNanos == location.elapsedRealtimeNanos && it.provider == location.provider
+            }
+            if (duplicate) return
+            collected.add(location)
+            if (collected.size >= count) finish()
+        }
+
+        timeoutRunnable = Runnable { finish() }
+        handler.postDelayed(timeoutRunnable, timeoutSeconds * 1000L)
+
+        // Source 1: the continuous request that actually wakes the provider.
+        val streamCallback = object : TraceletLocationCallback {
+            override fun onLocationResult(locations: List<Location>) {
+                locations.forEach(::accept)
+            }
+
+            // Availability is advisory; the bounded timeout owns failure.
+            override fun onLocationAvailability(isLocationAvailable: Boolean) = Unit
+        }
+        // Recorded before registering, not after: a client that delivers
+        // synchronously from inside requestLocationUpdates() would otherwise
+        // finish before there was anything to unregister.
+        updatesCallback = streamCallback
+        try {
+            fusedClient.requestLocationUpdates(
+                TraceletLocationRequest(priority = priority, intervalMillis = SAMPLE_SPACING_MS),
+                streamCallback,
+                Looper.getMainLooper(),
+            )
+        } catch (_: SecurityException) {
+            fail()
+            return
+        }
+
+        // Source 2: the one-shot loop, on the same spacing so GPS can settle
+        // between samples.
         fun fetchNext() {
             if (finished) return
             try {
                 fusedClient.getCurrentLocation(priority, null, onSuccess = { location ->
-                        if (finished) return@getCurrentLocation
-                        if (location != null) {
-                            // Mock rejection applies to one-shot fixes too — the
-                            // tracking path already drops mocks in
-                            // onLocationReceived(), but getCurrentPosition()
-                            // bypasses it. Skip the sample and keep collecting
-                            // until a genuine fix arrives or the timeout fires.
-                            if (config.getRejectMockLocations() && isLocationMock(location)) {
-                                TraceletLog.warning("getCurrentPosition: rejected mock location sample")
-                            } else {
-                                collected.add(location)
-                            }
-                        }
-                        if (collected.size >= count) {
-                            finished = true
-                            deliver(collected, persist, extras, callback)
-                        } else {
-                            // Small delay between samples to let GPS settle
-                            handler.postDelayed({ fetchNext() }, 800L)
-                        }
-                    }
-                )
+                    if (finished) return@getCurrentLocation
+                    if (location != null) accept(location)
+                    if (!finished) handler.postDelayed({ fetchNext() }, SAMPLE_SPACING_MS)
+                })
             } catch (_: SecurityException) {
-                if (!finished) {
-                    finished = true
-                    callback(null)
-                }
+                fail()
             }
         }
 

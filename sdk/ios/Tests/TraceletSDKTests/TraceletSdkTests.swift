@@ -734,10 +734,16 @@ final class TraceletSdkTests: XCTestCase {
         sdk.stop()
     }
 
-    func testStartGeofencesHighAccuracyStartsBackgroundSession() {
+    /// High-accuracy fences need the *stream*, not the session; under Always the
+    /// session only adds the indicator. It opens with the opt-in, as on the
+    /// continuous path (#423).
+    func testStartGeofencesHighAccuracyWithOptInStartsBackgroundSession() {
         let sdk = TraceletSdk.shared
         sdk.reset(nil)
-        sdk.ready(config: ["geofence": ["geofenceModeHighAccuracy": true]])
+        sdk.ready(config: [
+            "useBackgroundActivitySession": true,
+            "geofence": ["geofenceModeHighAccuracy": true],
+        ])
 
         sdk.startGeofences()
 

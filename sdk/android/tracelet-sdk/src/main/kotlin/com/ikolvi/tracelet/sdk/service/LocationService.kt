@@ -180,6 +180,10 @@ class LocationService : Service(), DefaultLifecycleObserver {
         @Volatile
         private var locationBlindAnnounced = false
 
+        /** Whether [announceRefusedPromotion] has already fired for this record. */
+        @Volatile
+        private var refusedPromotionAnnounced = false
+
         /** Records the outcome of a foreground-promotion attempt (#255). */
         private fun recordPromotion(
             result: String,
@@ -261,6 +265,30 @@ class LocationService : Service(), DefaultLifecycleObserver {
          * Once per record — the condition cannot change without a new record,
          * so repeating it would only crowd the channel.
          */
+        /**
+         * Announces a promotion the OS refused outright (#406).
+         *
+         * The counterpart to [announceLocationBlindPromotion]: that one is a
+         * promotion that took effect but cannot use location, this one is a
+         * promotion that never took effect at all. Both look like success from
+         * inside `startForeground()`, and both leave a session that records
+         * nothing in the background — so both have to be on the always-on
+         * channel or the report says the service is healthy while the OS has
+         * switched it off.
+         */
+        private fun announceRefusedPromotion() {
+            if (refusedPromotionAnnounced) return
+            refusedPromotionAnnounced = true
+            TraceletLog.lifecycle(
+                "foreground-service: the OS REFUSED this promotion — the app is in the " +
+                    "\"Restricted\" battery state, so startForeground() returned without " +
+                    "throwing but the service is not a foreground service and holds no " +
+                    "location capability. Background tracking cannot work until it is set " +
+                    "to \"Unrestricted\" in Settings > Apps > Battery. Battery-optimisation " +
+                    "exemption does not clear this and may read true at the same time (#406).",
+            )
+        }
+
         private fun announceLocationBlindPromotion() {
             if (locationBlindAnnounced) return
             locationBlindAnnounced = true
@@ -289,7 +317,7 @@ class LocationService : Service(), DefaultLifecycleObserver {
 
         @Volatile
         var bootSmartMotionCoordinator: com.ikolvi.tracelet.sdk.motion.SmartMotionCoordinator? = null
-            private set
+            @androidx.annotation.VisibleForTesting internal set
 
         // Boot-mode heartbeat timer state.
         @Volatile
@@ -436,13 +464,95 @@ class LocationService : Service(), DefaultLifecycleObserver {
         /**
          * Switches back to continuous tracking.
          */
+        /**
+         * How long the in-app fence evaluator keeps the stream up after an OS
+         * wake-up before the session's own posture decides again (#414).
+         *
+         * Long enough to decide a crossing at walking pace — a 10 m fence takes
+         * ~10 s to cross — and short enough that a wake-up cannot cost a whole
+         * session of full-rate GPS.
+         */
+        private const val EVALUATOR_STREAM_WINDOW_MS = 60_000L
+
+        @Volatile
+        private var evaluatorWindowHandler: Handler? = null
+
+        @Volatile
+        private var evaluatorWindowRunnable: Runnable? = null
+
+        /**
+         * Resumes the location stream so the in-app evaluator can decide a fence
+         * at its true radius, and hands the session back afterwards (#414).
+         *
+         * [switchToContinuous] is the wrong tool for this and was what the wake-up
+         * used to call. It is a *motion* transition: it writes `isMoving = true`
+         * and `trackingMode = CONTINUOUS`, and it cancels the stationary
+         * schedule. Nothing about being near a fence says the device is moving,
+         * and the field report shows what that costs — a phone on a desk whose
+         * coordinator had just parked it:
+         *
+         *   smart-motion: switching to STATIONARY_PERIODIC — accelMoving=false speedMoving=false
+         *   [geofence] wake-up from the OS near an in-app fence — resuming the location stream
+         *   location stream: continuous updates starting — distanceFilter=0.0m interval=2000ms
+         *
+         * From there the session reported `isMoving=true` for the rest of its
+         * life: every later resume read that pace and forced the speed machine
+         * back to MOVING, so both coordinator inputs stayed moving and no
+         * stationary decision was ever available to stop the stream.
+         *
+         * The pace is left exactly as the motion subsystems set it. The stream
+         * is borrowed for one bounded window, and when it closes the coordinator
+         * re-judges the state it is in — parking again if both inputs still say
+         * stationary, and leaving the stream alone if the device really did move.
+         */
+        fun resumeStreamForEvaluator(
+            engine: com.ikolvi.tracelet.sdk.location.LocationEngine,
+            state: StateManager,
+        ) {
+            stopStationaryTimer()
+            engine.start()
+            TraceletLog.lifecycle(
+                "[geofence] the evaluator has the stream for " +
+                    "${EVALUATOR_STREAM_WINDOW_MS / 1000}s — the pace is unchanged " +
+                    "(isMoving=${state.isMoving}), and the coordinator decides again " +
+                    "when the window closes (#414)"
+            )
+
+            cancelEvaluatorWindow()
+            val handler = Handler(Looper.getMainLooper())
+            val runnable = Runnable {
+                evaluatorWindowRunnable = null
+                evaluatorWindowHandler = null
+                TraceletLog.lifecycle(
+                    "[geofence] evaluator window closed — handing the cadence back " +
+                        "to the motion coordinator (#414)"
+                )
+                bootSmartMotionCoordinator?.reconcilePosture()
+            }
+            evaluatorWindowHandler = handler
+            evaluatorWindowRunnable = runnable
+            handler.postDelayed(runnable, EVALUATOR_STREAM_WINDOW_MS)
+        }
+
+        /** Drops a pending evaluator window (teardown, or a fresh wake-up). */
+        fun cancelEvaluatorWindow() {
+            evaluatorWindowRunnable?.let { evaluatorWindowHandler?.removeCallbacks(it) }
+            evaluatorWindowRunnable = null
+            evaluatorWindowHandler = null
+        }
+
         fun switchToContinuous(engine: com.ikolvi.tracelet.sdk.location.LocationEngine, state: StateManager) {
             stopStationaryTimer()
             // Mark state as moving so motion change events fire correctly
             state.isMoving = true
             state.trackingMode = com.ikolvi.tracelet.sdk.model.TrackingMode.CONTINUOUS
             engine.start()
-            TraceletLog.debug("switchToContinuous() — continuous tracking resumed")
+            // Always-on: this writes the session's pace, and a report that shows
+            // `isMoving=true` on a parked device needs to name what wrote it
+            // (#414).
+            TraceletLog.lifecycle(
+                "boot-tracking: switching to CONTINUOUS — the pace is now moving"
+            )
         }
 
         /**
@@ -647,6 +757,7 @@ class LocationService : Service(), DefaultLifecycleObserver {
         fun stopBootTracking() {
             stopBootHeartbeat()
             stopStationaryTimer()
+            cancelEvaluatorWindow()
             bootSpeedMotionManager?.stop()
             bootSpeedMotionManager = null
             bootMotionDetector?.stop()
@@ -1558,7 +1669,11 @@ class LocationService : Service(), DefaultLifecycleObserver {
             geoManager.onEvaluatorWakeup = {
                 val engine = bootLocationEngine
                 if (engine != null && isStationaryTimerActive()) {
-                    switchToContinuous(engine, StateManager(applicationContext))
+                    // Borrowed, not claimed: being near a fence is not a motion
+                    // event, and treating it as one left the session reporting
+                    // `isMoving=true` on a parked device for the rest of its life
+                    // (#414).
+                    resumeStreamForEvaluator(engine, StateManager(applicationContext))
                 }
             }
             TraceletLog.debug("Geofence registrations restored after boot/task-removal (proximity stream wired)")
@@ -1810,8 +1925,35 @@ class LocationService : Service(), DefaultLifecycleObserver {
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
-            // #255: record the successful promotion for the health snapshot.
-            recordPromotion(result = "success", promoted = true)
+            // A `startForeground()` that returns is not a `startForeground()`
+            // that worked.
+            //
+            // In the "Restricted" battery state (Forced App Standby) the OS
+            // refuses the promotion and says so only in its own log —
+            // `Service.startForeground() not allowed due to bg restriction` —
+            // without throwing. The call returns normally, so recording
+            // `success` here reported a healthy foreground service while
+            // `dumpsys` showed `isForeground=false types=00000000 caps=------`:
+            // demoted, with no location capability, GPS killed ~1s after every
+            // registration. The report read `Promoted to foreground: true /
+            // Last promotion result: success` for a session that could not
+            // track at all, which sends every investigation into the SDK
+            // instead of at the restriction (#405, #406).
+            val refused = BackgroundRestrictions.isBackgroundRestricted(applicationContext)
+            if (refused) {
+                recordPromotion(
+                    result = "refused",
+                    promoted = false,
+                    failureClass = "android.app.BackgroundRestriction",
+                    failureMessage = "startForeground() returned but the OS refuses " +
+                        "foreground-service promotion while the app is in the " +
+                        "Restricted battery state",
+                )
+                announceRefusedPromotion()
+            } else {
+                // #255: record the successful promotion for the health snapshot.
+                recordPromotion(result = "success", promoted = true)
+            }
             // #405: a promotion that succeeded is not a promotion that can
             // track. Say so here, where the success is recorded, so the two
             // never appear apart.

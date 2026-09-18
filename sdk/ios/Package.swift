@@ -47,6 +47,13 @@ let package = Package(
                 // Deliberately a new file — AlgorithmTests.swift is not in this
                 // list, so its trip tests have never run.
                 "TripIdentityTests.swift",
+                // #407: silence is a different fault from rejection, and the
+                // fix-driven watchdog could not see it at all — the one failure
+                // mode where the SDK is most blind.
+                "LocationEngineSilenceWatchdogTests.swift",
+                // #423: useBackgroundActivitySession is an opt-in, and the
+                // continuous path never read it.
+                "BackgroundActivitySessionOptInTests.swift",
                 "LocationEngineRuntimeProviderOptionsTests.swift",
                 "MotionDetectorTests.swift",
                 "BatteryBudgetRemoteConfigTests.swift",
@@ -93,7 +100,14 @@ let package = Package(
                 // after that returned `none` — the device could not leave the
                 // stationary state for the rest of the process.
                 "SmartMotionCoordinatorSyncModeTests.swift",
+                // A fresh start()'s committed pace must survive the
+                // last-known-speed seed, which can only ever wake the machine.
+                "PaceSeedInheritanceTests.swift",
                 "SmartMotionCoordinatorTests.swift",
+                // #404: the age gate the tremor override was missing. A file
+                // not listed here never runs, and xcodebuild still reports
+                // success — so the listing is the test, not the file.
+                "PaceFixAgeTests.swift",
                 // #361: the persistence retention caps, across the FFI boundary.
                 // Both keys were accepted and enforced by nothing after the
                 // 3.1.0 DB migration dropped the calls that implemented them.

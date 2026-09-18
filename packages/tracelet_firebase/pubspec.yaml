@@ -1,7 +1,7 @@
 name: tracelet_firebase
 description: >-
   Firebase adapter for Tracelet. Automatically configures native HTTP sync to push locations directly to the Firebase RTDB and manages background auth token refresh.
-version: 3.8.7
+version: 3.8.8
 topics:
   - firebase
   - location
@@ -31,8 +31,8 @@ platforms:
 dependencies:
   flutter:
     sdk: flutter
-  tracelet: ^3.8.7
-  tracelet_sync: ^3.8.7
+  tracelet: ^3.8.8
+  tracelet_sync: ^3.8.8
   firebase_auth: ^6.5.2
   firebase_core: ^4.10.0
 
@@ -43,4 +43,4 @@ dev_dependencies:
   flutter_lints: '6.0.0'
   mocktail: ^1.0.5
   plugin_platform_interface: any
-  tracelet_platform_interface: ^3.8.7
+  tracelet_platform_interface: ^3.8.8

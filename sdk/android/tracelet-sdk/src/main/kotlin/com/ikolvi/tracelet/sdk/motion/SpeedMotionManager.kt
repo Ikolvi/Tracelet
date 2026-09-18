@@ -169,7 +169,16 @@ class SpeedMotionManager(
             state.speedLowCount = 0
             state.speedWakeCount = 0
             state.isMoving = true
-            TraceletLog.debug("start() — forced to MOVING state")
+            // Always-on, and the mirror of the `speed-motion: restored` line in
+            // the `else` branch below: between them they say what pace this
+            // session began at and where it came from. A report that shows a
+            // session moving on a parked device — or stationary on a moving one
+            // — has to name that, and a release build runs at the default
+            // logLevel where a `debug` line is discarded (#318).
+            TraceletLog.lifecycle(
+                "speed-motion: forced to MOVING by start() — the session begins at " +
+                    "the pace it was asked for, not the one it restored",
+            )
         } else {
             // #334: a relaunched process inherits this state, and inheriting
             // STATIONARY is indistinguishable from "tracking silently stopped"
@@ -192,6 +201,18 @@ class SpeedMotionManager(
     fun stop() {
         if (!started) return
         started = false
+        // The SLOWING countdown is a posted Handler callback, and a stopped
+        // manager must not still be holding one. Leaving it armed let a session
+        // that was stopped mid-SLOWING transition to STATIONARY minutes later,
+        // and that transition is not inert: it runs `switchToStationary()`,
+        // which drives the coordinator into SWITCH_TO_STATIONARY_PERIODIC ->
+        // `LocationService.switchToStationaryPeriodic()`. That writes
+        // `trackingMode = PERIODIC`, writes `isMoving`, and arms a repeating
+        // location timer — on a session the user had already stopped. The field
+        // report shows `session: stop` at 18:43:09 and the countdown expiring at
+        // 18:45:59, leaving a stopped app reporting `Tracking mode: periodic`
+        // and still taking fixes (#412).
+        stopSlowingTimer()
         TraceletLog.debug("stop()")
     }
 
@@ -288,7 +309,10 @@ class SpeedMotionManager(
         stopSlowingTimer()
         val delayMs = speedStationaryDelay * 1000L
         slowingTimerRunnable = java.lang.Runnable {
-            if (currentState == SpeedMotionState.SLOWING) {
+            // `started` as well as the state: a callback already posted cannot be
+            // recalled, only ignored, and the state alone does not know the
+            // session ended (#412).
+            if (started && currentState == SpeedMotionState.SLOWING) {
                 TraceletLog.debug("SLOWING timer expired -> STATIONARY")
                 lowSpeedCount = 0
                 wakeCount = 0
