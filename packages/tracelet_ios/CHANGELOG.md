@@ -1,5 +1,7 @@
 ## 3.8.8
 
+**FIX**: the pinned native SDK announces a location stream that is delivering nothing, so a dead stream is no longer reported as a healthy one; no Dart or plugin change ([#407](https://github.com/Ikolvi/Tracelet/issues/407)).
+
 **FIX**: the pinned native SDK stops a stale near-zero speed vetoing an accelerometer wake, so a backgrounded device leaves stationary mode when it actually moves; no Dart or plugin change ([#404](https://github.com/Ikolvi/Tracelet/issues/404)).
 
 **FIX**: the pinned native SDK cancels the speed machine's stationary countdown on stop; no Dart or plugin change ([#412](https://github.com/Ikolvi/Tracelet/issues/412)).

@@ -90,6 +90,7 @@ import 'package:tracelet_example/issues/issue_393_card.dart';
 import 'package:tracelet_example/issues/issue_394_card.dart';
 import 'package:tracelet_example/issues/issue_397_card.dart';
 import 'package:tracelet_example/issues/issue_405_card.dart';
+import 'package:tracelet_example/issues/issue_407_card.dart';
 import 'package:tracelet_example/issues/issue_409_card.dart';
 import 'package:tracelet_example/issues/issue_412_card.dart';
 import 'package:tracelet_example/issues/issue_404_card.dart';
@@ -1763,6 +1764,7 @@ class _RecentIssuesTabState extends State<RecentIssuesTab> {
                     // stay wrapped in _searchableCard with explicit keywords.
                     const Issue414Card(),
                     const Issue412Card(),
+                    const Issue407Card(),
                     const Issue404Card(),
                     const Issue409Card(),
                     const Issue405Card(),

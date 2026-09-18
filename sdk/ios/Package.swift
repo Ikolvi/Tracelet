@@ -47,6 +47,10 @@ let package = Package(
                 // Deliberately a new file — AlgorithmTests.swift is not in this
                 // list, so its trip tests have never run.
                 "TripIdentityTests.swift",
+                // #407: silence is a different fault from rejection, and the
+                // fix-driven watchdog could not see it at all — the one failure
+                // mode where the SDK is most blind.
+                "LocationEngineSilenceWatchdogTests.swift",
                 "LocationEngineRuntimeProviderOptionsTests.swift",
                 "MotionDetectorTests.swift",
                 "BatteryBudgetRemoteConfigTests.swift",

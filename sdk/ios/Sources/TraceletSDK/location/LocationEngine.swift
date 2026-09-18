@@ -589,6 +589,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             TraceletLog.lifecycle("location stream: continuous updates stopping")
         }
         isContinuousStreaming = false
+        cancelSilenceWatchdog()
 
         if #available(iOS 17.0, *) {
             #if canImport(ActivityKit)
@@ -626,6 +627,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         isPeriodicTracking = true
         isTracking = true // so delegate callbacks are processed
         isContinuousStreaming = false
+        cancelSilenceWatchdog()
 
         let interval = configManager.getPeriodicLocationInterval()
         TraceletLog.debug(String(format: "[Tracelet] startPeriodic: interval=%ds, accuracy=%d", interval, configManager.getPeriodicDesiredAccuracy()))
@@ -735,6 +737,10 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     private func announceContinuousStop(becoming mode: String) {
         guard isContinuousStreaming else { return }
         isContinuousStreaming = false
+        // Stationary-periodic and geofence parks are silent by design; leaving
+        // the watchdog armed would put a red line in every parked device's
+        // report, which is the fastest way to get the real one ignored (#407).
+        cancelSilenceWatchdog()
         TraceletLog.lifecycle("location stream: continuous updates stopping — parking in \(mode)")
     }
 
@@ -743,6 +749,9 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     private func announceContinuousStart(resuming: Bool) {
         guard !isContinuousStreaming else { return }
         isContinuousStreaming = true
+        // The watchdog's window opens with the stream, not with the first fix:
+        // a stream whose first fix never arrives is the case worth announcing (#407).
+        armSilenceWatchdog()
         TraceletLog.lifecycle(String(
             format: "location stream: continuous updates starting — accuracy=%d distanceFilter=%.1fm%@",
             runtimeDesiredAccuracy ?? budgetDesiredAccuracy ?? configManager.getDesiredAccuracy(),
@@ -1064,6 +1073,104 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             configManager.getDistanceFilter(),
             result.accuracy,
             currentTuningDescription()))
+    }
+
+    // =========================================================================
+    // Silence watchdog (#407)
+    // =========================================================================
+
+    /// How long a *continuous* stream may deliver nothing at all before the SDK
+    /// says so on the lifecycle channel (#407).
+    ///
+    /// Shorter than ``stallAnnounceSeconds``, because silence is a harder
+    /// failure than rejection: rejection means the pipeline is alive and
+    /// mis-tuned, silence means CoreLocation has stopped talking to the app,
+    /// which no threshold change can recover.
+    static let silenceAnnounceSeconds: TimeInterval = 45
+
+    /// How often the silence watchdog checks. Cheap; it only reads a clock.
+    private static let silencePollSeconds: TimeInterval = 15
+
+    /// Uptime at which the last delegate callback arrived, or `nil` if none has
+    /// since the stream started.
+    ///
+    /// Deliberately separate from ``lastAcceptedFixAt``: that one tracks the
+    /// *filter*, this one tracks the *provider*. A stream delivering fixes the
+    /// filter rejects and a stream delivering nothing are different faults with
+    /// different fixes, and until #407 both were reported as neither.
+    ///
+    /// On ``ProcessInfo/systemUptime``, not `Date()`. This is an interval
+    /// measurement, and a wall clock that an NTP sync or a manual change steps
+    /// forward would announce a silence that never happened — stepped
+    /// backwards, it would hide a real one indefinitely.
+    private var lastCallbackAt: TimeInterval?
+
+    /// Uptime at which the current continuous stream started, so the first
+    /// window is measured from the request rather than from nothing.
+    private var streamStartedAt: TimeInterval?
+
+    private var silenceTimer: Timer?
+    private var silenceAnnounced = false
+
+    /// Starts the timer that announces a stream delivering nothing at all.
+    ///
+    /// ``noteFilterDecision(_:accepted:)`` cannot do this: it only runs when a
+    /// fix arrives, so total silence — the case where the SDK is most blind —
+    /// never reached it. That is how a 52-second dead window came back from the
+    /// field reported as *"the stream has been accepting fixes"* (#405/#407).
+    private func armSilenceWatchdog() {
+        cancelSilenceWatchdog()
+        streamStartedAt = ProcessInfo.processInfo.systemUptime
+        let timer = Timer.scheduledTimer(
+            withTimeInterval: Self.silencePollSeconds,
+            repeats: true
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.evaluateSilence(atUptime: ProcessInfo.processInfo.systemUptime)
+        }
+        silenceTimer = timer
+    }
+
+    private func cancelSilenceWatchdog() {
+        silenceTimer?.invalidate()
+        silenceTimer = nil
+        silenceAnnounced = false
+        lastCallbackAt = nil
+        streamStartedAt = nil
+    }
+
+    /// One tick of the watchdog, with the clock passed in so the decision can be
+    /// tested without waiting out a real 45-second window.
+    func evaluateSilence(atUptime now: TimeInterval) {
+        // Periodic mode's silence between ticks is the design, not a fault, so
+        // only a stream that is supposed to be continuous is worth announcing.
+        guard isContinuousStreaming, let since = lastCallbackAt ?? streamStartedAt else { return }
+        let silentFor = now - since
+        guard silentFor >= Self.silenceAnnounceSeconds, !silenceAnnounced else { return }
+        silenceAnnounced = true
+
+        TraceletLog.lifecycle(String(
+            format: "location stream silent — no fix delivered for %.0fs%@, requested "
+                + "accuracy=%d interval=%.0fs distanceFilter=%.1fm. The provider is "
+                + "delivering nothing — this is not the filter rejecting fixes (#407).",
+            silentFor,
+            lastCallbackAt == nil ? " since the stream started" : "",
+            runtimeDesiredAccuracy ?? budgetDesiredAccuracy ?? configManager.getDesiredAccuracy(),
+            Double(configManager.getLocationUpdateInterval()) / 1000.0,
+            runtimeDistanceFilter ?? budgetDistanceFilter ?? configManager.getDistanceFilter()))
+    }
+
+    /// Records that CoreLocation delivered something, whatever the filter later
+    /// decides about it, and announces recovery from an earlier silence.
+    func noteCallbackDelivered(atUptime now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        let wasSilent = silenceAnnounced
+        let since = lastCallbackAt ?? streamStartedAt
+        lastCallbackAt = now
+        silenceAnnounced = false
+        guard wasSilent else { return }
+        TraceletLog.lifecycle(String(
+            format: "location stream resumed after %.0fs of silence (#407)",
+            now - (since ?? now)))
     }
 
     /// Installs the battery-budget ladder's overlay, or clears it when the
@@ -1467,6 +1574,11 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     // MARK: - CLLocationManagerDelegate
 
     public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        // Before the `locations.last` guard and before any filtering: the
+        // watchdog's question is whether CoreLocation is talking to us at all,
+        // and an empty or later-rejected delivery still answers it yes (#407).
+        noteCallbackDelivered()
+
         guard let location = locations.last else { return }
 
         // Consumed here so exactly one fix is treated as the session's anchor
