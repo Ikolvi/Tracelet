@@ -30,6 +30,16 @@ import 'package:tracelet_example/issues/issue_card_state.dart';
 /// **Walking is required, and the card says when.** The device has to actually
 /// park — that is what freezes the reading — and then actually move. There is no
 /// desk-bound version of this.
+///
+/// The park has to be a *transition*. A session started stationary is
+/// reconciled straight into the parked posture and never logs a switch, and it
+/// has no resolved speed to freeze — so the card starts *moving*, lets the
+/// stream resolve a speed, and then waits for the smart coordinator to park it.
+/// In smart mode that needs both inputs stationary: the accelerometer after
+/// `stopTimeout`, the GPS-speed machine after `speedStationaryDelay` of
+/// near-zero fixes. Both are shortened so the park lands inside the card's
+/// window. Indoors, with no fix, the speed machine cannot get there and the
+/// run is reported as *not exercised*, not as a failure.
 class Issue404Card extends StatefulWidget {
   const Issue404Card({super.key});
 
@@ -39,11 +49,20 @@ class Issue404Card extends StatefulWidget {
 
 class _Issue404CardState extends State<Issue404Card>
     with IssueCardRun<Issue404Card> {
-  /// Comfortably past the 10 s gate, so the fix the park left behind is
-  /// unambiguously stale by the time the walk starts.
-  static const _settleWindow = Duration(seconds: 90);
+  /// Accelerometer stop timeout, minutes. The shortest the config allows.
+  static const _stopTimeoutMinutes = 1;
 
-  /// Longer than `speedStationaryDelay`, so a real walk has time to be seen.
+  /// GPS-speed machine's stationary delay, seconds. Default 180 s — longer than
+  /// any sensible card. Both inputs have to be stationary for the park.
+  static const _speedStationaryDelaySeconds = 30;
+
+  /// Past both delays with margin, and comfortably past the 10 s freshness
+  /// gate, so the fix the park left behind is unambiguously stale by the time
+  /// the walk starts.
+  static const _settleWindow = Duration(seconds: 120);
+
+  /// Long enough for a real walk to be seen by the accelerometer and reach the
+  /// engine.
   static const _walkWindow = Duration(seconds: 60);
 
   @override
@@ -66,11 +85,12 @@ class _Issue404CardState extends State<Issue404Card>
         const Config(
           geo: GeoConfig(distanceFilter: 0),
           motion: MotionConfig(
-            isMoving: false,
+            // Moving, so the stream runs and a speed resolves; the park that
+            // freezes it is the transition the card then waits for.
+            isMoving: true,
             motionDetectionMode: MotionDetectionMode.smart,
-            // Short, so the card parks within its own runtime rather than
-            // waiting out a production stopTimeout.
-            stopTimeout: 1,
+            stopTimeout: _stopTimeoutMinutes,
+            speedStationaryDelay: _speedStationaryDelaySeconds,
           ),
           http: HttpConfig(autoSync: false),
           // A released app runs here, and this is where the evidence has to
@@ -84,7 +104,8 @@ class _Issue404CardState extends State<Issue404Card>
       await Tracelet.start();
 
       setStatus(
-        '🧍 Put the phone down and keep still for ${_settleWindow.inSeconds}s.\n\n'
+        '🧍 Put the phone down where it has a GPS fix and keep still for '
+        '${_settleWindow.inSeconds}s.\n\n'
         'This is the setup, not the test: the session has to park so the last '
         'resolved speed freezes. That frozen number is what used to veto the '
         'walk you are about to take.',
@@ -95,16 +116,24 @@ class _Issue404CardState extends State<Issue404Card>
       final parked = settleLogs.any(
         (l) => l.message.contains('smart-motion: switching to STATIONARY'),
       );
-      check(
-        'the session parked, so a speed is now frozen behind it',
-        pass: parked,
-        detail: parked
-            ? 'the precondition holds — the stream stopped and the last '
-                  'resolved speed is the one the override will read'
-            : 'the session never parked in ${_settleWindow.inSeconds}s, so '
-                  'nothing is stale yet and the bug cannot be exercised. Try '
-                  'again somewhere with a usable GPS fix, and keep the device '
-                  'still',
+      if (!parked) {
+        // Not a verdict on the build: without the park there is no frozen
+        // reading, and every later check would pass for the wrong reason.
+        await Tracelet.stop();
+        setStatus(
+          'ℹ️ NOT EXERCISED — the session never parked in '
+          '${_settleWindow.inSeconds}s, so nothing is stale yet and the bug '
+          'cannot be reached on this run.\n\n'
+          'The park needs the accelerometer still for $_stopTimeoutMinutes min '
+          'and $_speedStationaryDelaySeconds s of near-zero GPS speed. Indoors '
+          'with no fix the speed machine never gets there. Try again somewhere '
+          'with a usable fix, put the phone down, and do not touch it.',
+        );
+        return;
+      }
+      results.add(
+        '✅ the session parked, so a speed is now frozen behind it — the stream '
+        'stopped and the last resolved speed is the one the override will read',
       );
 
       setStatus(
@@ -117,25 +146,10 @@ class _Issue404CardState extends State<Issue404Card>
       final logs = await Tracelet.getLogs(600);
       bool saw(String needle) => logs.any((l) => l.message.contains(needle));
 
-      // The fix: an old reading routes to the same "unknown" branch an absent
-      // one always did, and says so where a released build can report it.
-      final declined = saw('declining a') && saw('for the tremor override');
-      // The bug: the override fired anyway, on a reading minutes old.
-      final overrode = saw('overriding accel to false (hand tremor)');
+      // Both signals are on the always-on channel; the override's own line is
+      // debug-level and invisible at this logLevel, so it is not consulted.
       final woke = saw('smart-motion: switching to CONTINUOUS');
-
-      check(
-        'the walk was not vetoed by a stale reading',
-        pass: !overrode || woke,
-        detail: !overrode
-            ? 'the tremor override did not fire against the wake'
-            : woke
-            ? 'the override fired but the session still went continuous — check '
-                  'the ordering in the log before trusting this run'
-            : 'the override fired and the session stayed stationary. A reading '
-                  'from before you started walking stood the wake down, which '
-                  'is #404 exactly',
-      );
+      final declined = saw('declining a') && saw('for the tremor override');
 
       check(
         'the session is tracking after the walk',
@@ -145,25 +159,35 @@ class _Issue404CardState extends State<Issue404Card>
                   'tracking resumed'
             : 'no switch to CONTINUOUS in the log. If you genuinely walked, the '
                   'wake was discarded — the symptom users report as "the '
-                  'indicator only appears in the foreground"',
+                  'indicator only appears in the foreground", and #404 exactly',
       );
 
-      check(
-        'a declined stale reading is named on the always-on channel',
-        pass: declined || !overrode,
-        detail: declined
-            ? 'the decline is reported at the default logLevel, so a released '
-                  'build can show why a wake survived'
-            : 'no decline entry — either no stale reading was consulted on this '
-                  'run (fine, if the walk produced fresh fixes quickly) or the '
-                  'gate is not in this build',
-      );
+      // Whether the gate was consulted at all. A fresh fix arriving before the
+      // accelerometer fired gives the override a current speed — a legitimate
+      // pass that proves nothing about staleness, so it is reported as such.
+      final exercised = declined;
+      if (exercised) {
+        results.add(
+          '✅ a declined stale reading is named on the always-on channel — the '
+          'decline is reported at the default logLevel, so a released build can '
+          'show why a wake survived',
+        );
+      } else {
+        results.add(
+          'ℹ️ no decline entry on this run — the wake arrived with a fresh '
+          'fix already in hand, so the stale-reading gate was not consulted. '
+          'The wake survived, but not because of #404. Rerun to exercise it.',
+        );
+      }
 
       await Tracelet.stop();
 
-      final header = allPass
+      final header = !allPass
+          ? '❌ FAILED — #404 not satisfied on this build.'
+          : exercised
           ? '✅ SUCCESS: a stale speed no longer vetoes a real wake.'
-          : '❌ FAILED — #404 not satisfied on this build.';
+          : 'ℹ️ INCONCLUSIVE: the wake survived, but the stale-reading gate was '
+                'not consulted on this run.';
 
       setStatus(
         '$header\n\n${results.join('\n')}\n\n'
@@ -189,9 +213,10 @@ class _Issue404CardState extends State<Issue404Card>
           'foreground only lastEffectiveSpeed fix age 404 344 333',
       title: '#404: a stale near-zero speed vetoes an accelerometer wake',
       description:
-          'Parks a session so the last resolved speed freezes, then has you walk '
-          'for 60 s and checks that the frozen reading is treated as unknown '
-          'rather than as proof you are still standing still. Requires walking.',
+          'Starts moving so a speed resolves, waits for the session to park so '
+          'that reading freezes, then has you walk for 60 s and checks the '
+          'frozen reading is treated as unknown rather than as proof you are '
+          'still standing still. Requires a GPS fix and walking.',
       status: status,
       running: running,
       onRun: _run,
