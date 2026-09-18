@@ -51,15 +51,59 @@ class SmartMotionCoordinator(
     }
 
     /**
-     * The last speed this process actually resolved, or `null` if it has not
-     * resolved one yet.
+     * Whether the last tremor decision declined a stale speed, so the lifecycle
+     * entry below fires once per run rather than once per call — the run is the
+     * event, mirroring `staleFixesSincePace` in [LocationEngine].
+     */
+    private var declinedStaleTremorSpeed = false
+
+    /**
+     * The last speed this process resolved, or `null` when it has resolved none
+     * — or when the one it has is too old to describe *now*.
      *
      * [LocationEngine.lastEffectiveSpeed] and `lastLocation` are written
      * together on every accepted fix, so a null location is exactly "no fix has
      * been accepted in this process" — which is *unknown*, not zero.
+     *
+     * The age gate is the same one the pace sink applies
+     * ([LocationEngine.MAX_PACE_FIX_AGE_MS]) and it exists for the same reason:
+     * a stored speed says nothing about the present. Without it a parked device
+     * froze `lastEffectiveSpeed` at its last value — 0.0057 m/s in the reported
+     * trace, well under [TREMOR_SPEED_THRESHOLD] — and stationary-periodic mode
+     * produces no fresh fix to replace it *by construction*. So when the
+     * accelerometer woke on a real walk minutes later, the override read that
+     * frozen value and overruled the wake, and the session never left
+     * stationary while the app was backgrounded. Reopening the app called
+     * `ready()`, which produced a fresh fix and unwedged it — which is why this
+     * was reported as "the location indicator only appears in the foreground".
+     *
+     * An old reading is *unknown* in exactly the sense `null` already means,
+     * and routing it there is what makes the two agree: `null` leaves the
+     * accelerometer standing, where a stale near-zero actively sided against it
+     * (#404).
      */
     private val resolvedSpeed: Double?
-        get() = locationEngine.getLastLocation()?.let { locationEngine.lastEffectiveSpeed }
+        get() {
+            locationEngine.getLastLocation() ?: return null
+            val ageMs = locationEngine.paceFixAgeMs ?: return null
+            if (ageMs > LocationEngine.MAX_PACE_FIX_AGE_MS) {
+                if (!declinedStaleTremorSpeed) {
+                    declinedStaleTremorSpeed = true
+                    // Always-on: this is a wake being discarded, and at the
+                    // shipped log levels it left no trace at all (#318).
+                    com.ikolvi.tracelet.sdk.util.TraceletLog.lifecycle(
+                        "smart-motion: declining a ${ageMs}ms-old fix's speed " +
+                            "(${"%.4f".format(locationEngine.lastEffectiveSpeed)}m/s) for the " +
+                            "tremor override — a reading older than " +
+                            "${LocationEngine.MAX_PACE_FIX_AGE_MS}ms says nothing about now, " +
+                            "and letting it through vetoed a genuine accelerometer wake (#404)",
+                    )
+                }
+                return null
+            }
+            declinedStaleTremorSpeed = false
+            return locationEngine.lastEffectiveSpeed
+        }
 
     /**
      * Called when the GPS speed state changes.
@@ -100,7 +144,19 @@ class SmartMotionCoordinator(
                     overrideAction = onAccelStateChange(false)
                 }
                 else ->
-                    logger.info("SmartMotionCoordinator: GPS speed $lastSpeed m/s is above the $TREMOR_SPEED_THRESHOLD m/s tremor threshold — trusting accel, staying continuous.")
+                    // Always-on: this is the decision that decides whether a
+                    // session parks, and declining it leaves the OR true with
+                    // only an accelerometer edge able to clear it. A fix taken
+                    // seconds after a walk still reads well above the tremor
+                    // threshold, so this is the branch a "the indicator never
+                    // goes out after I walk" report lands in — and at the
+                    // shipped log levels it left no trace at all (#412).
+                    com.ikolvi.tracelet.sdk.util.TraceletLog.lifecycle(
+                        "smart-motion: speed machine went stationary but accel still " +
+                            "reports moving and GPS speed is ${lastSpeed}m/s (above the " +
+                            "${TREMOR_SPEED_THRESHOLD}m/s tremor threshold) — trusting accel, " +
+                            "staying continuous until the accelerometer stands down",
+                    )
             }
         }
         val action = coreCoordinator.onSpeedStateChange(isMoving)
@@ -147,6 +203,56 @@ class SmartMotionCoordinator(
      * of the committed pace and the engine's actual state — the only reading
      * that survives both directions.
      */
+    /**
+     * Re-reads the posture once [TraceletSdk.start] has settled the engine, and
+     * lets the core act on what it finds.
+     *
+     * [syncCurrentMode] runs *before* start() touches the engine, so it can only
+     * ever read the pace that was committed a few lines earlier. Everything that
+     * opens a stream afterwards leaves the coordinator holding a posture that is
+     * merely a prediction — and when the prediction is wrong the core is silent,
+     * because `evaluate_state` only speaks on a *transition* and both motion
+     * inputs are already where they were.
+     *
+     * The field report is the stationary start of a session that also has a fence
+     * too small for the OS to resolve. The pace branch runs no stream, and then
+     * the #357 branch starts one so the fence has something to be decided from:
+     *
+     *   session: start — mode=continuous resume=false isMoving=false motionMode=SMART
+     *   location stream: continuous updates starting — distanceFilter=0.0m interval=2000ms
+     *   [geofence] starting the location stream for an in-app-evaluated fence
+     *   speed-motion: restored STATIONARY
+     *
+     * — and from there a 2-second GPS stream on a device that never moved, for
+     * the whole session, with the location indicator lit the entire time. The
+     * coordinator was parked, so nothing it could be told would stop the stream:
+     * both inputs were already stationary and the core dedupes a repeat.
+     *
+     * Reconciling asks the core to judge the state it is actually in rather than
+     * waiting for a transition that will never come. A stationary session that
+     * inherited a stream is parked into the stationary schedule — which still
+     * feeds the in-app fence evaluator, at the stationary cadence rather than at
+     * full rate — and a moving one is left streaming (#409).
+     */
+    fun reconcilePosture() {
+        syncCurrentMode()
+        val useGeofences = configManager.getStationaryTrackingMode() ==
+            com.ikolvi.tracelet.sdk.model.StationaryTrackingMode.GEOFENCES
+        val action = coreCoordinator.evaluateConfigurationChange(useGeofences)
+        // Always-on: once per start(), and it is the entry that answers "why is
+        // GPS still running" — it names both motion inputs and the engine at the
+        // one moment the session re-judges them. A release build runs at the
+        // default logLevel, where a `debug` line is discarded and the question
+        // is unanswerable from the report (#414).
+        com.ikolvi.tracelet.sdk.util.TraceletLog.lifecycle(
+            "smart-motion: reconciled the posture — action=$action " +
+                "accelMoving=${coreCoordinator.isAccelMoving()} " +
+                "speedMoving=${coreCoordinator.isSpeedMoving()} " +
+                "streaming=${locationEngine.isTracking}",
+        )
+        handleAction(action)
+    }
+
     fun syncCurrentMode() {
         val useGeofences = configManager.getStationaryTrackingMode() ==
             com.ikolvi.tracelet.sdk.model.StationaryTrackingMode.GEOFENCES
@@ -180,7 +286,38 @@ class SmartMotionCoordinator(
                     stationaryMode
                 }
             TrackingMode.GEOFENCES -> uniffi.tracelet_core.TrackingMode.STATIONARY_GEOFENCES
-            TrackingMode.PERIODIC -> uniffi.tracelet_core.TrackingMode.STATIONARY_PERIODIC
+            TrackingMode.PERIODIC ->
+                // The same OR, for the session mode a *parked* continuous
+                // session is sitting in.
+                //
+                // Android's stationary switch writes `trackingMode = PERIODIC`
+                // (iOS deliberately leaves it alone), so every reconcile after
+                // the first park arrives here rather than in the CONTINUOUS
+                // branch above — and this used to answer STATIONARY_PERIODIC
+                // unconditionally, a posture the core is already holding.
+                // `evaluate_state` emits the stop only from Continuous, so it
+                // returned None and the stream was never parked again.
+                //
+                // Anything that opens a stream behind the coordinator after
+                // that first park was therefore permanent: the in-app fence
+                // branch of [TraceletSdk.applyGeofenceEvaluationCadence] (#357)
+                // and [LocationService.resumeStreamForEvaluator] (#414) both
+                // call `locationEngine.start()` and then ask for a reconcile
+                // that could not do anything. What the device shows is
+                // full-rate GPS with the location indicator lit for the rest of
+                // the session, on a phone reported as `Is moving: false` in
+                // `periodic` mode — the report #412 and #414 were written from,
+                // reappearing because their fix could not reach this branch.
+                //
+                // `isTracking` is the continuous stream specifically
+                // (`trackingCallback != null`), which `startPeriodic()` never
+                // registers, so a genuine periodic *session* still reads as
+                // stationary here.
+                if (locationEngine.isTracking) {
+                    uniffi.tracelet_core.TrackingMode.CONTINUOUS
+                } else {
+                    uniffi.tracelet_core.TrackingMode.STATIONARY_PERIODIC
+                }
             else -> uniffi.tracelet_core.TrackingMode.CONTINUOUS
         }
         coreCoordinator.setCurrentMode(mode)

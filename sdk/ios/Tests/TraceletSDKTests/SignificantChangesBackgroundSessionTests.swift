@@ -62,13 +62,19 @@ final class SignificantChangesBackgroundSessionTests: XCTestCase {
         )
     }
 
-    /// Contrast guard: WITHOUT `useSignificantChangesOnly`, continuous tracking
-    /// while moving SHOULD open the background session on iOS 17+ (the normal
-    /// path). Proves the #261 fix is scoped to significant-change-only mode and
-    /// does not regress ordinary continuous tracking.
-    func testContinuousMovingStartsBackgroundSession() {
+    /// Contrast guard: WITHOUT `useSignificantChangesOnly` but WITH the opt-in,
+    /// continuous tracking while moving SHOULD open the background session on
+    /// iOS 17+. Proves the #261 fix is scoped to significant-change-only mode
+    /// and does not regress ordinary continuous tracking.
+    ///
+    /// This used to run without the opt-in and assert the session opened
+    /// anyway — which was the #423 defect written down as the expected
+    /// behaviour. The opt-in itself is covered in
+    /// `BackgroundActivitySessionOptInTests`.
+    func testContinuousMovingWithOptInStartsBackgroundSession() {
         let sdk = TraceletSdk.shared
         sdk.ready(config: [
+            "useBackgroundActivitySession": true,
             "motion": [
                 "isMoving": true,
                 "disableStopDetection": true,
@@ -80,7 +86,7 @@ final class SignificantChangesBackgroundSessionTests: XCTestCase {
         if #available(iOS 17.0, *) {
             XCTAssertTrue(
                 sdk.backgroundActivitySessionManager.isActive,
-                "continuous moving tracking should open a background session on iOS 17+"
+                "continuous moving tracking with the opt-in should open a background session on iOS 17+"
             )
         } else {
             XCTAssertFalse(sdk.backgroundActivitySessionManager.isActive)

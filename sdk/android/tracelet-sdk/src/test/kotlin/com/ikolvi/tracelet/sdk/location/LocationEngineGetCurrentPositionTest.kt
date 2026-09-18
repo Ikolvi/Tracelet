@@ -17,6 +17,9 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.times
+import org.mockito.kotlin.verify
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
@@ -238,5 +241,139 @@ class LocationEngineGetCurrentPositionTest {
         assertNotNull(result)
         val coords = result!!["coords"] as Map<*, *>
         assertEquals(1.0, coords["latitude"])
+    }
+
+    // =====================================================================
+    // #416 — a fresh fix comes from a continuous request, and every exit
+    // unregisters it
+    // =====================================================================
+
+    private fun fix(lat: Double, lon: Double, acc: Float, provider: String = "gps"): Location =
+        Location(provider).apply {
+            latitude = lat
+            longitude = lon
+            accuracy = acc
+            time = System.currentTimeMillis()
+            elapsedRealtimeNanos = android.os.SystemClock.elapsedRealtimeNanos()
+        }
+
+    /** Stubs the one-shot to answer [location] on every call — null is the reported device. */
+    private fun oneShotAlwaysReturns(location: Location?) {
+        doAnswer { invocation ->
+            invocation.getArgument<(Location?) -> Unit>(2)(location)
+            null
+        }.`when`(mockLocationClient).getCurrentLocation(anyInt(), anyOrNull(), any())
+    }
+
+    /** Stubs the continuous request to deliver [locations] as soon as it is registered. */
+    private fun streamDeliversOnRegistration(vararg locations: Location) {
+        doAnswer { invocation ->
+            val cb = invocation.getArgument<TraceletLocationCallback>(1)
+            if (locations.isNotEmpty()) cb.onLocationResult(locations.toList())
+            null
+        }.`when`(mockLocationClient).requestLocationUpdates(any(), any(), any())
+    }
+
+    private fun runGetCurrentPosition(options: Map<String, Any?>, idleSeconds: Long): Map<String, Any?>? {
+        val latch = CountDownLatch(1)
+        var result: Map<String, Any?>? = null
+        engine.getCurrentPosition(options) { loc ->
+            result = loc
+            latch.countDown()
+        }
+        shadowOf(android.os.Looper.getMainLooper()).idleFor(idleSeconds, TimeUnit.SECONDS)
+        latch.await(2, TimeUnit.SECONDS)
+        return result
+    }
+
+    /**
+     * The reported scenario: the one-shot answers null on every retry, so
+     * before #416 the request spun for the whole timeout and fell back. A
+     * continuous request delivers the fresh fix, and it is the answer.
+     */
+    @Test
+    fun `a fix from the continuous request answers when the one-shot returns nothing`() {
+        oneShotAlwaysReturns(null)
+        streamDeliversOnRegistration(fix(51.5074, -0.1278, 8f))
+
+        val result = runGetCurrentPosition(mapOf("timeout" to 5L, "persist" to false), idleSeconds = 1)
+
+        assertNotNull(result, "the continuous request's fix should have answered")
+        val coords = result!!["coords"] as Map<*, *>
+        assertEquals(51.5074, coords["latitude"])
+        verify(mockLocationClient, times(1)).removeLocationUpdates(any())
+    }
+
+    /**
+     * The other device: the continuous request is throttled and delivers
+     * nothing, and the one-shot is what answers — the reason it stayed.
+     */
+    @Test
+    fun `a fix from the one-shot answers when the continuous request delivers nothing`() {
+        oneShotAlwaysReturns(fix(35.6762, 139.6503, 12f))
+        streamDeliversOnRegistration(/* nothing */)
+
+        val result = runGetCurrentPosition(mapOf("timeout" to 5L, "persist" to false), idleSeconds = 1)
+
+        assertNotNull(result)
+        val coords = result!!["coords"] as Map<*, *>
+        assertEquals(35.6762, coords["latitude"])
+        verify(mockLocationClient, times(1)).removeLocationUpdates(any())
+    }
+
+    /** A one-shot operation must not leave the provider running on timeout either. */
+    @Test
+    fun `timing out with no fix unregisters the continuous request`() {
+        oneShotAlwaysReturns(null)
+        streamDeliversOnRegistration(/* nothing */)
+
+        val result = runGetCurrentPosition(mapOf("timeout" to 2L, "persist" to false), idleSeconds = 3)
+
+        assertNull(result)
+        verify(mockLocationClient, times(1)).removeLocationUpdates(any())
+    }
+
+    /**
+     * Both sources can hand over the same fix. `samples` means distinct fixes,
+     * so the request must keep waiting for a second one rather than finishing
+     * on a duplicate.
+     */
+    @Test
+    fun `the same fix from both sources counts once toward samples`() {
+        val shared = fix(40.7128, -74.0060, 10f)
+        oneShotAlwaysReturns(shared)
+        streamDeliversOnRegistration(shared)
+
+        var result: Map<String, Any?>? = null
+        var completions = 0
+        engine.getCurrentPosition(
+            mapOf("timeout" to 2L, "samples" to 2, "persist" to false)
+        ) { loc ->
+            result = loc
+            completions++
+        }
+        val looper = shadowOf(android.os.Looper.getMainLooper())
+
+        // One distinct fix, delivered by both sources and re-delivered by the
+        // one-shot every 800 ms: without the dedupe this completes right here.
+        looper.idleFor(1, TimeUnit.SECONDS)
+        assertEquals(0, completions, "a duplicate fix must not satisfy samples=2")
+
+        looper.idleFor(2, TimeUnit.SECONDS)
+        assertEquals(1, completions, "the timeout completes it, once")
+        assertNotNull(result)
+        verify(mockLocationClient, times(1)).removeLocationUpdates(any())
+    }
+
+    /** The continuous request is registered at all — this is the whole fix. */
+    @Test
+    fun `getCurrentPosition registers a continuous request`() {
+        oneShotAlwaysReturns(null)
+        streamDeliversOnRegistration(/* nothing */)
+
+        runGetCurrentPosition(mapOf("timeout" to 1L, "persist" to false), idleSeconds = 2)
+
+        verify(mockLocationClient, times(1)).requestLocationUpdates(any(), any(), any())
+        verify(mockLocationClient, never()).getLastLocation(any(), any())
     }
 }

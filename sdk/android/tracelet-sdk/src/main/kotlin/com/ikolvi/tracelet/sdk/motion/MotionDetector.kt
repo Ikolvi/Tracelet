@@ -137,6 +137,14 @@ class MotionDetector(
     private var transitionPendingIntent: PendingIntent? = null
 
     // Timeout & sensor state
+    /**
+     * The pending stop-timeout, or `null` when none is armed.
+     *
+     * Read from the sensor thread by the stillness sampler to decide whether a
+     * countdown still needs arming, so the field has to be visible across
+     * threads rather than only to the main looper that posts it.
+     */
+    @Volatile
     private var stopTimeoutRunnable: Runnable? = null
     private var sensorManager: SensorManager? = null
     private var accelerometerListener: SensorEventListener? = null
@@ -229,6 +237,19 @@ class MotionDetector(
     private val isAccelerometerOnlyMode: Boolean
         get() = config.isMotionActivityUpdatesDisabled()
 
+    /**
+     * The pace this detector itself last reported through
+     * [onMotionStateChanged], or `null` before it has reported one.
+     *
+     * In SMART mode `state.isMoving` is the *coordinator's* answer — the OR of
+     * this detector and the GPS-speed machine — and [SpeedMotionManager] writes
+     * it directly on every one of its own transitions. Using it as this
+     * detector's "have I already said this?" guard therefore let one input
+     * silence the other: see [declareStationary] (#412).
+     */
+    @Volatile
+    private var selfReportedMoving: Boolean? = null
+
     /** Counter for consecutive still samples in accelerometer-only mode (A-M10). */
     @Volatile
     private var consecutiveStillSamples = 0
@@ -263,6 +284,10 @@ class MotionDetector(
             return
         }
         isRunning = true
+        // Seed the detector's own belief from the session pace it is being
+        // started into, so its first edge is measured against that rather than
+        // against "nothing reported yet".
+        selfReportedMoving = state.isMoving
         if (gyroEnabled) startGyroMonitoring()
         if (baroEnabled) startBaroMonitoring()
         if (isAccelerometerOnlyMode) {
@@ -355,6 +380,9 @@ class MotionDetector(
      */
     fun onManualPaceChange(isMoving: Boolean) {
         logger.debug("onManualPaceChange($isMoving) called — isRunning=$isRunning, isMonitoringAccel=$isMonitoringAccelerometer, sigMotionListener=${significantMotionListener != null}, state.isMoving=${state.isMoving}")
+        // The caller is re-arming this detector for `isMoving`, so that is now
+        // what it believes and what its next edge has to differ from.
+        selfReportedMoving = isMoving
         if (isMoving) {
             logger.debug("onManualPaceChange: MOVING — stopping stationary sensors, starting stillness monitoring")
             stopAccelerometerMonitoring()
@@ -569,6 +597,10 @@ class MotionDetector(
 
         stopTimeoutRunnable = Runnable {
             logger.debug("stopTimeout FIRED — declaring stationary")
+            // Clear before declaring: a fired timeout is no longer armed, and
+            // the stillness sampler uses this field to decide whether it still
+            // needs to arm one (#412).
+            stopTimeoutRunnable = null
             declareStationary()
         }
         mainHandler.postDelayed(stopTimeoutRunnable!!, totalDelayMs)
@@ -586,23 +618,45 @@ class MotionDetector(
     // =========================================================================
 
     private fun declareStationary() {
-        logger.debug("declareStationary() called — state.isMoving=${state.isMoving}, onMotionStateChanged=${onMotionStateChanged != null}")
-        if (!state.isMoving) {
-            logger.debug("declareStationary() SKIPPED — already stationary")
-            return
-        }
+        logger.debug("declareStationary() called — state.isMoving=${state.isMoving}, selfReportedMoving=$selfReportedMoving, onMotionStateChanged=${onMotionStateChanged != null}")
         // In SMART mode the accelerometer is only one of two inputs: the
-        // coordinator ANDs it with the GPS-speed machine and owns isMoving. Writing
+        // coordinator ORs it with the GPS-speed machine and owns isMoving. Writing
         // it here would claim STATIONARY on the accelerometer's word alone, leaving
         // getState().isMoving disagreeing with the last motionchange event whenever
         // the coordinator decides to stay continuous.
         val smartMode = config.getMotionDetectionMode() ==
             com.ikolvi.tracelet.sdk.model.MotionDetectionMode.SMART
+        // Guard on what *this* detector last said, not on the shared answer.
+        //
+        // The method already refuses to write `state.isMoving` in SMART mode
+        // because the coordinator owns it — but it used to *read* the same
+        // field to decide whether it had anything to report, which is the same
+        // ownership claim from the other side. [SpeedMotionManager.transitionTo]
+        // sets `state.isMoving = false` the moment its own countdown reaches
+        // STATIONARY, so the accelerometer's stop-timeout, firing any time
+        // after that, saw "already stationary" and returned without ever
+        // invoking [onMotionStateChanged].
+        //
+        // That swallowed edge is unrecoverable. The coordinator's accel flag
+        // only moves on an edge from here, and the speed machine only calls the
+        // coordinator on *entering* STATIONARY — so once the speed side has
+        // gone stationary while the accel flag is still true, the OR stays true
+        // with nothing left to flip it. When the tremor override in
+        // [SmartMotionCoordinator.onSpeedStateChange] also declines (GPS speed
+        // still drifting above the tremor threshold, which is exactly what a
+        // fix taken seconds after a walk looks like), continuous GPS runs for
+        // the rest of the session on a stationary device (#412).
+        val alreadyStationary = if (smartMode) selfReportedMoving == false else !state.isMoving
+        if (alreadyStationary) {
+            logger.debug("declareStationary() SKIPPED — already stationary")
+            return
+        }
         if (smartMode) {
             logger.debug("declareStationary() — SMART mode: leaving isMoving to the coordinator")
         } else {
             state.isMoving = false
         }
+        selfReportedMoving = false
         
         // Stop the stillness monitor before we transition to stationary state
         stopAccelerometerMonitoring()
@@ -623,8 +677,9 @@ class MotionDetector(
     }
 
     private fun declareMoving() {
-        logger.debug("declareMoving() called — state.isMoving=${state.isMoving}, onMotionStateChanged=${onMotionStateChanged != null}")
+        logger.debug("declareMoving() called — state.isMoving=${state.isMoving}, selfReportedMoving=$selfReportedMoving, onMotionStateChanged=${onMotionStateChanged != null}")
         state.isMoving = true
+        selfReportedMoving = true
         stopAccelerometerMonitoring()
         cancelSignificantMotionListener()
         consecutiveStillSamples = 0
@@ -909,8 +964,27 @@ class MotionDetector(
                     // toward an abort, then count toward the still threshold.
                     consecutiveMotionSamples = 0
                     consecutiveStillSamples++
-                    if (consecutiveStillSamples == stillCount) {
-                        logger.debug("[STILLNESS] ★★★ sustained stillness detected ($stillCount samples) → startStopTimeoutCountdown()")
+                    // `>=` with an "is one already armed" guard, not `==`.
+                    //
+                    // The exact-equality form armed the countdown on the single
+                    // sample where the streak *crossed* the threshold, so any
+                    // cancellation that did not also reset the streak was
+                    // permanent: the counter kept climbing and could never equal
+                    // the threshold again, and the detector never declared
+                    // stationary for the rest of the session.
+                    //
+                    // [handleActivityTransition] does exactly that. Every
+                    // ENTER of a moving activity calls `cancelStopTimeout()`
+                    // unconditionally but only resets the streak via
+                    // `declareMoving()`, which it skips when the pace is
+                    // already moving. Sustained walking therefore cancelled a
+                    // countdown and left the streak saturated — the reported
+                    // "walk for a while, then stand still and the location
+                    // indicator never goes out", against a device whose
+                    // accelerometer had been reading still the whole time
+                    // (#412).
+                    if (consecutiveStillSamples >= stillCount && stopTimeoutRunnable == null) {
+                        logger.debug("[STILLNESS] ★★★ sustained stillness detected ($consecutiveStillSamples/$stillCount samples) → startStopTimeoutCountdown()")
                         // NOTE: We intentionally keep the stillness sampler running
                         // during the countdown. It must stay alive so that genuine,
                         // sustained motion can abort the timeout below — stopping the

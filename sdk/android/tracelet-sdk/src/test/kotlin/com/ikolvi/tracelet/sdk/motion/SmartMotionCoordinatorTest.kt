@@ -50,11 +50,19 @@ class SmartMotionCoordinatorTest {
         coordinator.syncCurrentMode()
     }
 
-    /** Makes [LocationEngine] report a resolved effective speed of [speed] m/s. */
-    private fun resolveSpeed(speed: Double) {
+    /**
+     * Makes [LocationEngine] report a resolved effective speed of [speed] m/s,
+     * taken [ageMs] ago.
+     *
+     * The age defaults to current. A stored speed only describes the present
+     * while the fix behind it is recent, which is the whole of #404 — so a test
+     * that means "GPS says near-zero *now*" has to say when.
+     */
+    private fun resolveSpeed(speed: Double, ageMs: Long = 0L) {
         org.mockito.Mockito.`when`(locationEngine.getLastLocation())
             .thenReturn(android.location.Location("test"))
         org.mockito.Mockito.`when`(locationEngine.lastEffectiveSpeed).thenReturn(speed)
+        org.mockito.Mockito.`when`(locationEngine.paceFixAgeMs).thenReturn(ageMs)
     }
 
     @Test
@@ -224,11 +232,19 @@ class SmartMotionCoordinatorAccelSeedTest {
     // #333: an unresolved speed is "unknown", not "parked"
     // =========================================================================
 
-    /** Makes [LocationEngine] report a resolved effective speed of [speed] m/s. */
-    private fun resolveSpeed(speed: Double) {
+    /**
+     * Makes [LocationEngine] report a resolved effective speed of [speed] m/s,
+     * taken [ageMs] ago.
+     *
+     * The age defaults to current. A stored speed only describes the present
+     * while the fix behind it is recent, which is the whole of #404 — so a test
+     * that means "GPS says near-zero *now*" has to say when.
+     */
+    private fun resolveSpeed(speed: Double, ageMs: Long = 0L) {
         org.mockito.Mockito.`when`(locationEngine.getLastLocation())
             .thenReturn(android.location.Location("test"))
         org.mockito.Mockito.`when`(locationEngine.lastEffectiveSpeed).thenReturn(speed)
+        org.mockito.Mockito.`when`(locationEngine.paceFixAgeMs).thenReturn(ageMs)
     }
 
     @Test
@@ -273,6 +289,71 @@ class SmartMotionCoordinatorAccelSeedTest {
 
         assertFalse(coordinator.isAccelMoving)
         assertFalse(state.isMoving)
+    }
+
+    // =========================================================================
+    // #404: a stale near-zero speed must not veto an accelerometer wake
+    // =========================================================================
+
+    @Test
+    fun `a stale near-zero speed no longer vetoes an accelerometer wake`() {
+        // The reported sequence. The device parks, the stream stops, and
+        // `lastEffectiveSpeed` freezes at the last value it resolved —
+        // 0.0057 m/s in the field trace, well under the 0.15 m/s tremor cutoff.
+        // Stationary-periodic mode then produces no fresh fix *by construction*,
+        // so that value is still sitting there minutes later when the user
+        // starts walking with the app in the background.
+        resolveSpeed(0.005714867094123307, ageMs = 5 * 60 * 1000L)
+
+        coordinator.onAccelStateChange(true)
+        assertTrue(coordinator.isAccelMoving)
+
+        coordinator.onSpeedStateChange(false)
+
+        assertTrue(
+            coordinator.isAccelMoving,
+            "a reading five minutes old is unknown, not evidence of standing still — " +
+                "it used to overrule the accelerometer and the wake was discarded (#404)",
+        )
+        assertEquals(TrackingMode.CONTINUOUS, state.trackingMode)
+        assertTrue(state.isMoving)
+    }
+
+    @Test
+    fun `a near-zero speed one second old still overrules hand tremor`() {
+        // The other half. The override exists for a real case — a physically
+        // still device whose accelerometer is picking up tremor — and an age
+        // gate that swallows that case has only moved the bug.
+        resolveSpeed(0.05, ageMs = 1_000L)
+
+        coordinator.onAccelStateChange(true)
+        coordinator.onSpeedStateChange(false)
+
+        assertFalse(coordinator.isAccelMoving)
+        assertFalse(state.isMoving)
+    }
+
+    @Test
+    fun `a stale speed is declined the same way an absent one is`() {
+        // #404's argument in one assertion: "old" and "absent" are the same
+        // kind of not-knowing, and the pre-existing null branch already had the
+        // right behaviour. Anything else means the two disagree about a
+        // question neither can answer.
+        resolveSpeed(0.0, ageMs = 30_000L)
+        coordinator.onAccelStateChange(true)
+        coordinator.onSpeedStateChange(false)
+        val staleLeftMoving = state.isMoving
+
+        setUp()
+        // No resolveSpeed() at all: nothing has ever been accepted.
+        coordinator.onAccelStateChange(true)
+        coordinator.onSpeedStateChange(false)
+
+        assertEquals(
+            state.isMoving,
+            staleLeftMoving,
+            "a stale reading and no reading are both 'unknown' and must decide alike",
+        )
     }
 }
 

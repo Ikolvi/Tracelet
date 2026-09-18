@@ -28,6 +28,22 @@ TlLogEntry _entry(int id, String level, String message) => TlLogEntry(
   timestamp: '2026-08-16T12:0$id:00.000Z',
 );
 
+/// Serves only the foreground-service snapshot. The health section degrades to
+/// an inline error without a health call, which is fine: the verdict under test
+/// is the one that has to fire even when `HealthCheck.warnings` is empty.
+class _FgsHealthPlatform extends TraceletPlatform
+    with MockPlatformInterfaceMixin {
+  _FgsHealthPlatform(this.health);
+
+  final Map<String, Object?> health;
+
+  @override
+  Future<List<TlLogEntry?>> getLogs(int limit) async => <TlLogEntry?>[];
+
+  @override
+  Future<Map<String, Object?>> getForegroundServiceHealth() async => health;
+}
+
 void main() {
   group('TraceletBugReport version header', () {
     test('names the Tracelet version that produced the report', () async {
@@ -141,6 +157,65 @@ void main() {
       // The stall watchdog only ran when a fix arrived, so total silence
       // produced no marker, and no marker rendered as good news (#405, #407).
       expect(section, isNot(contains('the stream has been accepting fixes')));
+    });
+  });
+
+  group('TraceletBugReport health-check blockers', () {
+    /// #406: `HealthCheck.warnings` is computed from the health map alone, and
+    /// the background restrictions live in the foreground-service snapshot — a
+    /// different native call. So the top section reported "all systems
+    /// healthy" on a device where the OS had switched background tracking off,
+    /// with the contradiction sitting one section below in the same report.
+    ///
+    /// The field report that made this concrete read `Warnings: none — all
+    /// systems healthy ✅` above `Background restricted | true`, on a phone
+    /// whose service was demoted with no location capability.
+    test('a Restricted device is never called healthy', () async {
+      TraceletPlatform.instance = _FgsHealthPlatform(<String, Object?>{
+        'platform': 'android',
+        'backgroundRestricted': true,
+      });
+
+      final report = await TraceletBugReport.build(includeConfig: false);
+
+      expect(
+        report,
+        isNot(contains('all systems healthy')),
+        reason:
+            'the OS has blocked background tracking outright — the verdict '
+            'at the top of the report must not contradict the section below it',
+      );
+      // The bullet the health verdict emits, not the foreground-service
+      // verdict further down — that one already said this and was ignored
+      // precisely because the summary above it said healthy.
+      expect(report, contains('- 🔴 App is in the "Restricted" battery state'));
+    });
+
+    test('a promotion the OS refused is named as a blocker', () async {
+      TraceletPlatform.instance = _FgsHealthPlatform(<String, Object?>{
+        'platform': 'android',
+        'lastForegroundPromotionResult': 'refused',
+      });
+
+      final report = await TraceletBugReport.build(includeConfig: false);
+
+      expect(report, isNot(contains('all systems healthy')));
+      expect(report, contains('refused the last foreground-service promotion'));
+    });
+
+    test('an unrestricted device still reads healthy', () async {
+      TraceletPlatform.instance = _FgsHealthPlatform(<String, Object?>{
+        'platform': 'android',
+        'backgroundRestricted': false,
+        'lastForegroundPromotionResult': 'success',
+        'locationCapabilityLikelyDenied': false,
+      });
+
+      final report = await TraceletBugReport.build(includeConfig: false);
+
+      // The other half: a blocker that fires on a healthy device is noise, and
+      // noise is what gets ignored on the day it matters.
+      expect(report, contains('all systems healthy'));
     });
   });
 }

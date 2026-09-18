@@ -1,5 +1,6 @@
 package com.ikolvi.tracelet.sdk.motion
 
+import android.os.Looper
 import com.ikolvi.tracelet.sdk.ConfigManager
 import com.ikolvi.tracelet.sdk.StateManager
 import com.ikolvi.tracelet.sdk.TraceletEventSender
@@ -8,6 +9,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -464,6 +466,41 @@ class SpeedMotionManagerTest {
         override fun sendTrip(data: Map<String, Any?>) {}
         override fun sendBudgetAdjustment(data: Map<String, Any?>) {}
         override fun hasListener(eventName: String): Boolean = false
+    }
+
+    /**
+     * #412: `stop()` cleared `started` but left the posted SLOWING countdown
+     * armed, and the countdown's own guard tested `currentState`, not `started`.
+     *
+     * The transition it then ran is not inert. `switchToStationary()` drives the
+     * coordinator into SWITCH_TO_STATIONARY_PERIODIC, which writes
+     * `trackingMode = PERIODIC`, writes `isMoving`, and arms a repeating
+     * location timer — on a session the user had already stopped. A field trace
+     * shows `session: stop` at 18:43:09 and the countdown expiring at 18:45:59,
+     * leaving a stopped app reporting `Tracking mode: periodic`.
+     */
+    @Test
+    fun `a stopped manager does not fire a SLOWING countdown that was already armed`() {
+        configure(movingThreshold = 1.5, stationaryDelaySeconds = 4)
+
+        manager.onLocation(5.0)
+        manager.onLocation(0.5)
+        assertEquals("slowing", manager.getCurrentState(), "precondition: the countdown is armed")
+
+        manager.stop()
+
+        // Well past the countdown.
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(10))
+
+        assertFalse(
+            callback.switchedToStationaryPeriodic,
+            "a stopped session must not be switched into the stationary schedule (#412)",
+        )
+        assertEquals(
+            "slowing",
+            manager.getCurrentState(),
+            "and the stopped manager must not transition at all",
+        )
     }
 
     private class RecordingCallback : SpeedMotionManager.SpeedMotionCallback {
