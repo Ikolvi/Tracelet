@@ -176,6 +176,21 @@ async function translateTextWithProtection(text, targetLang, engine) {
   return t;
 }
 
+/**
+ * Compiles [mdx] the way the site build will and returns the first syntax
+ * error's message, or null when it parses. Dynamic import: @mdx-js/mdx is
+ * ESM-only and this script is CommonJS.
+ */
+async function mdxSyntaxError(mdx) {
+  const { compile } = await import('@mdx-js/mdx');
+  try {
+    await compile(mdx);
+    return null;
+  } catch (e) {
+    return String(e.message || e).split('\n')[0];
+  }
+}
+
 async function translateMdx(content, targetLang, engine) {
   const lines = content.split('\n');
   const translatedLines = [];
@@ -450,6 +465,22 @@ async function run() {
           // Fix internal links
           translated = translated.replace(/href="\/en\//g, `href="/${task.targetLocale}/`);
           translated = translated.replace(/\]\(\/en\//g, `](/${task.targetLocale}/`);
+          // The engines are line-based and occasionally return something MDX
+          // cannot parse -- a placeholder mangled so the inline code never
+          // comes back, a stray `{` promoted to an expression -- and one such
+          // page fails the whole site build at deploy time (the 3.8.8 release:
+          // zh/reference/tools, three attempts, same file). Compile it here;
+          // a page that does not parse ships in English rather than taking the
+          // deploy down with it.
+          const problem = await mdxSyntaxError(translated);
+          if (problem) {
+            console.warn(
+              `[${engine.toUpperCase()}] ⚠ ${relSrcPath} -> '${task.targetLocale}' did not ` +
+              `compile after translation (${problem}); keeping the English page`);
+            translated = content
+              .replace(/href="\/en\//g, `href="/${task.targetLocale}/`)
+              .replace(/\]\(\/en\//g, `](/${task.targetLocale}/`);
+          }
         } else if (task.srcPath.endsWith('_meta.js')) {
           translated = await translateMetaJs(content, task.targetLocale, engine);
         } else if (task.srcPath.endsWith('.json')) {
