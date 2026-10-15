@@ -373,8 +373,9 @@ snippet).
 
 - **dev license** — for debug builds & emulators. Just your app id, no extra
   setup.
-- **prod license** — for your shipped app; also needs your app signing-cert
-  SHA-256 (Play Console → *App integrity → App signing*, or `./gradlew signingReport`).
+- **prod license** — not available yet: device verification (Play Integrity /
+  App Attest) is not wired up for third-party apps, so a prod key cannot
+  unlock. For a release build, contact us for a release-ready key for your app id.
 
 The portal also lists your issued keys and lets you **revoke** one instantly.
 
