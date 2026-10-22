@@ -44,11 +44,12 @@ object CrashModelLoader {
     var decryptionKey: ByteArray? = null
 
     /**
-     * Optional host-supplied provider of a Google Play Integrity token, used for
-     * `prod` licenses during [unlock]. Kept as a callback so the base SDK does
-     * **not** depend on `com.google.android.play:integrity` — apps that want
-     * production licensing add that dependency themselves and set this provider.
-     * Returns `null` (or unset) ⇒ no token sent (fine for `dev` licenses).
+     * Optional provider of a Play Integrity token sent with [unlock]. Not needed
+     * for any license: `prod` licenses are bound to the app id and signing cert
+     * the SDK reports ([AppIdentity]), and the license server only checks a
+     * token when it runs a stricter attestation tier (#439). A token requested
+     * by the host app is bound to the host's own Cloud project, so it could
+     * never be verified centrally — leave this unset.
      */
     @Volatile
     @JvmStatic

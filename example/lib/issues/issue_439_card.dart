@@ -36,10 +36,11 @@ class _Issue439CardState extends State<Issue439Card>
   @override
   IssueRunner? get cardRunner => _run;
 
-  // The same key and endpoint as the Behavior page (behavior_page.dart).
+  // The same key and endpoint as the Behavior page (behavior_page.dart);
+  // the key expires 2027-10-22.
   static const _unlockUrl = 'https://unlock.ikolvi.com/unlock';
   static const _exampleLicenseKey =
-      'eyJleHAiOjE3ODcwNDUwOTAsImlhdCI6MTc4MTg2MTA5MCwibGljIjoiODU5NzU2MmUtMzliNy00N2I3LTkxOWUtMjBkMjg3NzRiZWNlIiwicGtnIjoiY29tLmlrb2x2aS50cmFjZWxldC5leGFtcGxlIiwicGxhbiI6InBybyIsInNjb3BlIjoiZGV2In0.ZlqvsJyqxRB-FGMEXxLY7-GtmpdkvR7rG_CYZLBqYZNdeiT3B9TzG4TYaCU23ZbHBXDZlB37ZYVZYGMeS_3QDw';
+      'eyJleHAiOjE4MjQxOTk3OTYsImlhdCI6MTc5MjY2Mzc5NiwibGljIjoiM2Q0NTdmYTctNDc2NC00Yjk4LTk5YzgtNDEwMmExYzk5ZjliIiwicGtnIjoiY29tLmlrb2x2aS50cmFjZWxldC5leGFtcGxlIiwicGxhbiI6InBybyIsInNjb3BlIjoiZGV2In0.99MzdeKRNEGs_Stwt1B_7zik_BjO2EsFfABUy_v5oLdwXNjDMV64D6A-izguoXqlfBFBacE02hVnx7qZyCNTCg';
 
   static const _unlocked = 'crash model: unlocked (';
   static const _bindingErrors = ['pkg_mismatch', 'cert_mismatch'];

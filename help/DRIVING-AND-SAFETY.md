@@ -196,16 +196,16 @@ fresh digest), decrypts it **in memory** with a runtime-injected key, and runs
 it; any failure ⇒ **rule-engine fallback**. The key is **never shipped in the
 app** — fetch it from a licensing endpoint you control.
 
-**Android (optional, prod licenses only):** for anti-piracy you bind the model to
-your signed, published app via **Play Integrity**. Add it **only if you use a
-`prod` license** — `dev` licenses unlock in debug builds/emulators without it:
-
-```kotlin
-// app/build.gradle.kts
-dependencies {
-    implementation("com.google.android.play:integrity:1.4.0")
-}
-```
+**dev and prod licenses** need no extra dependency or native setup on either
+platform. A `dev` key is bound to your application id and is meant for debug
+builds and emulators. A `prod` key is for your shipped app: it is bound to the
+application id and, on Android, to the signing cert(s) you list when you create
+it (your Play app-signing cert, plus your upload-key cert if you test release
+builds you sign yourself). The SDK reports both on unlock, so a key used by
+another app is refused. Before #439 a `prod` key needed a Play Integrity token
+that could never be verified for a customer's app, and failed with
+`missing_integrity_token` / `attestation_unconfigured`; don't set
+`CrashModelLoader.integrityTokenProvider`.
 
 > The trained model is **stable**. It is trained on the **CC0 / public-domain**
 > Smartphone IMU Road Accident Detection dataset, so it is cleared for

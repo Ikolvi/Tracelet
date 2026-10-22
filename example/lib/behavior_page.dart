@@ -38,8 +38,10 @@ class _BehaviorPageState extends State<BehaviorPage> {
   // Replace with your own key from https://licenses.ikolvi.com for your app id.
   static const String _unlockUrl = 'https://unlock.ikolvi.com/unlock';
   static const double _crashModelThreshold = 0.5074575792;
+  // Dev key for com.ikolvi.tracelet.example; expires 2027-10-22. The previous
+  // one lapsed on 2026-08-18 and every unlock failed with `expired` (#439).
   static const String _demoLicenseKey =
-      'eyJleHAiOjE3ODcwNDUwOTAsImlhdCI6MTc4MTg2MTA5MCwibGljIjoiODU5NzU2MmUtMzliNy00N2I3LTkxOWUtMjBkMjg3NzRiZWNlIiwicGtnIjoiY29tLmlrb2x2aS50cmFjZWxldC5leGFtcGxlIiwicGxhbiI6InBybyIsInNjb3BlIjoiZGV2In0.ZlqvsJyqxRB-FGMEXxLY7-GtmpdkvR7rG_CYZLBqYZNdeiT3B9TzG4TYaCU23ZbHBXDZlB37ZYVZYGMeS_3QDw';
+      'eyJleHAiOjE4MjQxOTk3OTYsImlhdCI6MTc5MjY2Mzc5NiwibGljIjoiM2Q0NTdmYTctNDc2NC00Yjk4LTk5YzgtNDEwMmExYzk5ZjliIiwicGtnIjoiY29tLmlrb2x2aS50cmFjZWxldC5leGFtcGxlIiwicGxhbiI6InBybyIsInNjb3BlIjoiZGV2In0.99MzdeKRNEGs_Stwt1B_7zik_BjO2EsFfABUy_v5oLdwXNjDMV64D6A-izguoXqlfBFBacE02hVnx7qZyCNTCg';
   bool _useMlModel = true;
 
   // Bench-test mode: crash detection is normally speed-gated at 25 km/h (GPS
