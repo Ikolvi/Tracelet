@@ -1244,12 +1244,16 @@ class Tracelet {
           final raw = call.arguments;
           final List<dynamic> rawLocations;
           final List<dynamic> rawTelematics;
+          final List<dynamic> rawTrips;
           if (raw is Map) {
             rawLocations = (raw['locations'] as List<dynamic>?) ?? const [];
             rawTelematics = (raw['telematics'] as List<dynamic>?) ?? const [];
+            // #401: absent from native versions before trip summaries.
+            rawTrips = (raw['trips'] as List<dynamic>?) ?? const [];
           } else {
             rawLocations = (raw as List<dynamic>?) ?? const []; // legacy shape
             rawTelematics = const [];
+            rawTrips = const [];
           }
           final locations = rawLocations
               .whereType<Map<Object?, Object?>>()
@@ -1259,8 +1263,16 @@ class Tracelet {
               .whereType<Map<Object?, Object?>>()
               .map(_deepCastMap)
               .toList();
+          final trips = rawTrips
+              .whereType<Map<Object?, Object?>>()
+              .map(_deepCastMap)
+              .toList();
           final body = await _syncBodyBuilder!(
-            SyncBodyContext(locations: locations, telematics: telematics),
+            SyncBodyContext(
+              locations: locations,
+              telematics: telematics,
+              trips: trips,
+            ),
           );
           return jsonEncode(body);
         } catch (e) {
@@ -1319,6 +1331,9 @@ class Tracelet {
   ///   return {
   ///     'deviceId': getDeviceId(),
   ///     'points': locations,
+  ///     // Completed-trip summaries (#401); include them, since a trip handed
+  ///     // to the builder is marked delivered once the request succeeds.
+  ///     'trips': event.event['trips'] ?? const [],
   ///   };
   /// }
   /// ```

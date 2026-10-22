@@ -292,6 +292,7 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin, DartSyncInterceptor {
                     locations,
                     timeout: TraceletIosPlugin.dartCallbackTimeout,
                     telematics: TraceletSdk.shared.getTelematicsForCustomBuilder(),
+                    trips: TraceletSdk.shared.getTripsForCustomBuilder(),
                 )
             }
 
@@ -311,6 +312,7 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin, DartSyncInterceptor {
                 locations,
                 timeout: TraceletIosPlugin.dartCallbackTimeout,
                 telematics: TraceletSdk.shared.getTelematicsForCustomBuilder(),
+                    trips: TraceletSdk.shared.getTripsForCustomBuilder(),
             )
         }
         let semaphore = DispatchSemaphore(value: 0)
@@ -322,6 +324,8 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin, DartSyncInterceptor {
         let args: [String: Any] = [
             "locations": locations,
             "telematics": TraceletSdk.shared.getTelematicsForCustomBuilder(),
+            // #401: completed-trip summaries, in the default payload's shape.
+            "trips": TraceletSdk.shared.getTripsForCustomBuilder(),
         ]
         DispatchQueue.main.async {
             self.syncBodyChannel.invokeMethod("buildSyncBody", arguments: args) { result in
@@ -355,6 +359,7 @@ public class TraceletIosPlugin: NSObject, FlutterPlugin, DartSyncInterceptor {
                 locations,
                 timeout: TraceletIosPlugin.dartCallbackTimeout,
                 telematics: TraceletSdk.shared.getTelematicsForCustomBuilder(),
+                    trips: TraceletSdk.shared.getTripsForCustomBuilder(),
             )
             // Sentinel = no headless builder registered. Don't post the default
             // body when a foreground custom builder exists — abort (nil) and let

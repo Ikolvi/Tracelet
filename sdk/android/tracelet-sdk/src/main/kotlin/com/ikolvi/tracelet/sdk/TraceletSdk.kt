@@ -108,6 +108,12 @@ class TraceletSdk private constructor(private val context: Context) {
          */
         private const val MAX_SYNCED_TELEMATICS_RETAINED = 1000
 
+        /** Trip summaries carried per flush (#401). */
+        private const val TRIPS_PER_FLUSH = 100
+
+        /** Synced trip summaries kept for the app's own history (#401). */
+        private const val MAX_SYNCED_TRIPS_RETAINED = 500
+
         fun getInstance(context: Context): TraceletSdk {
             return instance ?: synchronized(this) {
                 instance ?: TraceletSdk(context.applicationContext).also { instance = it }
@@ -296,6 +302,20 @@ class TraceletSdk private constructor(private val context: Context) {
          * for providers that don't queue work.
          */
         fun cancelPendingSync() {}
+
+        /**
+         * Runs [block] under the same lock as the provider's auto-sync, so a
+         * manual or interval [sync] cannot POST the rows an auto-sync is
+         * already uploading (#437). Default: no lock, for providers that run
+         * no auto-sync of their own.
+         */
+        fun <T> runExclusive(block: () -> T): T = block()
+
+        /**
+         * Asks the provider to upload whatever is still queued, batch after
+         * batch, without waiting for the next insert (#437). Default no-op.
+         */
+        fun requestDrain() {}
 
         /**
          * POSTs `body` to `url` — the separate telematics endpoint (#368).
@@ -555,6 +575,21 @@ class TraceletSdk private constructor(private val context: Context) {
         tripManager.onTripStart = { data ->
             rustDatabase?.setActiveTripId(data["tripId"] as? String)
             eventSender.sendTripStart(data)
+        }
+        // #401: one summary row per trip, written before the trip event goes
+        // out and before the active trip id is cleared. Native is the only layer
+        // writing this database, and the row is keyed on the trip id, so a trip
+        // cannot be recorded twice. A new summary asks the provider for a
+        // flush, so it does not wait for the next location to travel.
+        tripManager.onTripSummary = { trip ->
+            try {
+                if (rustDatabase?.insertTrip(trip) == true) {
+                    logger.debug("Trip summary stored for ${trip.tripId} (#401)")
+                    syncProvider?.requestDrain()
+                }
+            } catch (e: Exception) {
+                logger.error("Failed to store trip summary: ${e.message}")
+            }
         }
         tripManager.onTripEnd = { data ->
             eventSender.sendTrip(data)
@@ -893,7 +928,20 @@ class TraceletSdk private constructor(private val context: Context) {
                 logger.info("Resuming tracking with motion detection on ready/takeover")
                 start(isResume = true)
             } else {
-                when (stateManager.trackingMode) {
+                // The strategy the app started, not the pace: the killed-state
+                // engine writes PERIODIC into `trackingMode` when it parks a
+                // stationary device, and resuming that as `startPeriodic()` stopped
+                // the foreground service and the motion detector of a session the
+                // app had started continuous (#428).
+                val sessionMode = stateManager.sessionTrackingMode
+                if (sessionMode != stateManager.trackingMode) {
+                    TraceletLog.lifecycle(
+                        "session: resuming the started strategy $sessionMode, not the " +
+                            "stationary pace ${stateManager.trackingMode} the killed-state " +
+                            "engine left behind (#428)"
+                    )
+                }
+                when (sessionMode) {
                     TrackingMode.CONTINUOUS -> {
                         logger.info("Resuming continuous tracking on ready/takeover")
                         start(isResume = true)
@@ -983,6 +1031,7 @@ class TraceletSdk private constructor(private val context: Context) {
         if (!isResume && isTracking) {
             stateManager.enabled = true
             stateManager.trackingMode = TrackingMode.CONTINUOUS
+            stateManager.sessionTrackingMode = TrackingMode.CONTINUOUS
             logger.debug("start() — already tracking; ignoring redundant start (no pace reset)")
             // #318/#324: recorded even though nothing changed, because "I called
             // start() and nothing happened" is a real report and this is its
@@ -997,6 +1046,7 @@ class TraceletSdk private constructor(private val context: Context) {
 
         stateManager.enabled = true
         stateManager.trackingMode = TrackingMode.CONTINUOUS
+        stateManager.sessionTrackingMode = TrackingMode.CONTINUOUS
         if (!isResume) {
             stateManager.isMoving = configManager.getIsMoving()
         }
@@ -1207,32 +1257,9 @@ class TraceletSdk private constructor(private val context: Context) {
                 smartMotionCoordinator.onAccelStateChange(true)
             }
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val hasMotion = ContextCompat.checkSelfPermission(
-                    context, Manifest.permission.ACTIVITY_RECOGNITION
-                ) == PackageManager.PERMISSION_GRANTED
-                if (!hasMotion) {
-                    permissionManager.requestActivityRecognition(activity)
-                } else {
-                    motionDetector.start()
-                }
-            } else {
-                motionDetector.start()
-            }
+            startMotionDetector()
         } else {
-            // Activity recognition permission + accelerometer motion detector
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val hasMotion = ContextCompat.checkSelfPermission(
-                    context, Manifest.permission.ACTIVITY_RECOGNITION
-                ) == PackageManager.PERMISSION_GRANTED
-                if (!hasMotion) {
-                    permissionManager.requestActivityRecognition(activity)
-                } else {
-                    motionDetector.start()
-                }
-            } else {
-                motionDetector.start()
-            }
+            startMotionDetector()
         }
 
         if (stateManager.isMoving) {
@@ -1423,6 +1450,7 @@ class TraceletSdk private constructor(private val context: Context) {
 
         stateManager.enabled = true
         stateManager.trackingMode = TrackingMode.GEOFENCES
+        stateManager.sessionTrackingMode = TrackingMode.GEOFENCES
 
         geofenceManager.reRegisterAll()
 
@@ -1632,6 +1660,7 @@ class TraceletSdk private constructor(private val context: Context) {
 
         stateManager.enabled = true
         stateManager.trackingMode = TrackingMode.PERIODIC
+        stateManager.sessionTrackingMode = TrackingMode.PERIODIC
         stateManager.isMoving = false
 
         PeriodicLocationWorker.eventSender = eventSender
@@ -1783,7 +1812,8 @@ class TraceletSdk private constructor(private val context: Context) {
                 // Preserve the active tracking mode and motion state across the
                 // clean stop/start so the device doesn't silently revert to a
                 // stationary continuous default.
-                val currentMode = stateManager.trackingMode
+                // The started strategy, not a stationary pace written over it (#428).
+                val currentMode = stateManager.sessionTrackingMode
                 val wasMoving = stateManager.isMoving
 
                 // #256: in SPEED/SMART motion-detection modes the SDK runs a single
@@ -2561,7 +2591,11 @@ class TraceletSdk private constructor(private val context: Context) {
         }
 
         Thread {
-            try {
+            // #437: under the auto-sync lock, so the two cannot send one batch
+            // twice; and a full batch hands the rest of the queue to the
+            // provider's drain instead of waiting for the next insert.
+            var batchWasFull = false
+            try { provider.runExclusive {
                 val config = state.getConfig()
                 val batchSize = if (config.http.maxBatchSize > 0) config.http.maxBatchSize else 250
                 val records = db.getLocationsBatch(uniffi.tracelet_core.LocationQuery(
@@ -2607,9 +2641,11 @@ class TraceletSdk private constructor(private val context: Context) {
                 }
 
                 val hasTelematics = attachedTelematicsMaxId > 0L
-                if (records.isEmpty() && !hasTelematics) {
-                    mainHandler.post { callback(emptyList()) }
-                    return@Thread
+                // #401: completed-trip summaries ride the location request.
+                configHttp = withPendingTrips(configHttp)
+                val hasTrips = hasTripsInFlight
+                if (records.isEmpty() && !hasTelematics && !hasTrips) {
+                    return@runExclusive
                 }
 
                 // #368: posted before the locations so a telematics-only sync still
@@ -2625,7 +2661,7 @@ class TraceletSdk private constructor(private val context: Context) {
                 // ride this request, so it must still be made even with an empty
                 // batch — otherwise they would sit unsynced until a location
                 // happened along.
-                val count = if (records.isEmpty() && telematicsUrl != null) {
+                val count = if (records.isEmpty() && telematicsUrl != null && !hasTrips) {
                     0L
                 } else {
                     provider.syncBatchBlocking(configHttp, records)
@@ -2644,6 +2680,7 @@ class TraceletSdk private constructor(private val context: Context) {
                             db.clearLocationsUpTo(lastRecord.id)
                             syncedLocationsRemoved.addAndGet(count)
                         }
+                        batchWasFull = records.size >= batchSize.toInt()
                     }
                     if (telematicsDelivered && attachedTelematicsMaxId > 0L) {
                         // Mark, don't delete: #313 requires an uploaded event to
@@ -2652,6 +2689,7 @@ class TraceletSdk private constructor(private val context: Context) {
                         db.markTelematicsSynced(attachedTelematicsMaxId)
                         db.pruneSyncedTelematics(MAX_SYNCED_TELEMATICS_RETAINED)
                     }
+                    if (count > 0L) settleTripsInFlight()
                     logger.info("TraceletSdk: Synced locations ($count) and telematics ($telematicsDelivered)")
                 } else if (hasTelematics) {
                     logger.info(
@@ -2659,15 +2697,12 @@ class TraceletSdk private constructor(private val context: Context) {
                             "kept unsynced for the next attempt",
                     )
                 }
-                
-                mainHandler.post {
-                    callback(emptyList()) // Return empty to indicate native handled it
-                }
-            } catch (e: Exception) {
+            } } catch (e: Exception) {
                 logger.error("TraceletSdk: sync failed: ${e.message}")
-                mainHandler.post {
-                    callback(emptyList())
-                }
+            }
+            if (batchWasFull) provider.requestDrain()
+            mainHandler.post {
+                callback(emptyList()) // Return empty to indicate native handled it
             }
         }.start()
     }
@@ -2852,6 +2887,31 @@ class TraceletSdk private constructor(private val context: Context) {
      *
      * @return true if this request code belongs to Tracelet.
      */
+    /**
+     * Starts the motion detector, and asks for ACTIVITY_RECOGNITION only when
+     * the configured mode uses activity transitions.
+     *
+     * The detector used to start only once the permission was granted. Its
+     * accelerometer, gyroscope, barometer and significant-motion sensors need
+     * no permission, and crash/fall detection is fed from that accelerometer —
+     * so a denied prompt, or a background start with no activity to ask from,
+     * left impact detection, motion detection and their corroborating sensors
+     * off for the whole session, even with `disableMotionActivityUpdates: true`,
+     * the mode documented as needing no permissions (#433). [MotionDetector]
+     * runs without the transitions and registers them if the grant arrives.
+     */
+    private fun startMotionDetector() {
+        motionDetector.start()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            !configManager.isMotionActivityUpdatesDisabled() &&
+            ContextCompat.checkSelfPermission(
+                context, Manifest.permission.ACTIVITY_RECOGNITION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            permissionManager.requestActivityRecognition(activity)
+        }
+    }
+
     fun handlePermissionResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -2877,6 +2937,8 @@ class TraceletSdk private constructor(private val context: Context) {
                 stateManager.enabled
             ) {
                 motionDetector.start()
+                // Already running without transitions since start() (#433).
+                motionDetector.onActivityRecognitionGranted()
             }
             callback?.invoke(motionStatus)
             pendingPermissionCallback = null
@@ -3072,6 +3134,85 @@ class TraceletSdk private constructor(private val context: Context) {
      * a successful custom-path sync. No-op when nothing was exposed (e.g. the
      * default payload path), so it can't lose unsent telematics (#214 dedup).
      */
+    // ── Trip summaries in the sync payload (#401) ────────────────────────────
+
+    /**
+     * Highest trip-summary id handed to the request in flight — attached to the
+     * default payload by [withPendingTrips] or exposed to a custom builder by
+     * [getTripsForCustomBuilder]. Settled by [settleTripsInFlight] only once
+     * that request succeeded. Read and written under the sync provider's lock.
+     */
+    @Volatile
+    private var tripsInFlightMaxId: Long = 0L
+
+    /** Whether the request being prepared carries trip summaries. */
+    val hasTripsInFlight: Boolean get() = tripsInFlightMaxId > 0L
+
+    /**
+     * Adds the unsynced trip summaries to [http]'s extras, which the Rust
+     * payload builder emits as a root `trips` array beside `location` and
+     * `telematics` — one POST for all three (#401).
+     */
+    fun withPendingTrips(http: uniffi.tracelet_core.HttpConfig): uniffi.tracelet_core.HttpConfig {
+        val trips = try {
+            rustDatabase?.getUnsyncedTrips(TRIPS_PER_FLUSH) ?: emptyList()
+        } catch (e: Exception) {
+            logger.error("getUnsyncedTrips failed: ${e.message}")
+            emptyList()
+        }
+        if (trips.isEmpty()) {
+            tripsInFlightMaxId = 0L
+            return http
+        }
+        tripsInFlightMaxId = trips.maxOf { it.id }
+        val extras = (http.extras ?: emptyMap()).toMutableMap()
+        extras["__trips"] = uniffi.tracelet_core.tripsSyncJson(trips)
+        return http.copy(extras = extras)
+    }
+
+    /**
+     * Unsynced trip summaries for a custom sync body builder, in the same shape
+     * the default payload uses (#401). Exposing them counts as sending them:
+     * [settleTripsInFlight] marks them once the custom request succeeds.
+     */
+    fun getTripsForCustomBuilder(): List<Map<String, Any?>> {
+        val trips = try {
+            rustDatabase?.getUnsyncedTrips(TRIPS_PER_FLUSH) ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+        if (trips.isEmpty()) return emptyList()
+        tripsInFlightMaxId = maxOf(tripsInFlightMaxId, trips.maxOf { it.id })
+        val array = org.json.JSONArray(uniffi.tracelet_core.tripsSyncJson(trips))
+        return (0 until array.length()).map { jsonToMap(array.getJSONObject(it)) }
+    }
+
+    private fun jsonToMap(obj: org.json.JSONObject): Map<String, Any?> =
+        obj.keys().asSequence().associateWith { key ->
+            when (val v = obj.get(key)) {
+                org.json.JSONObject.NULL -> null
+                is org.json.JSONObject -> jsonToMap(v)
+                else -> v
+            }
+        }
+
+    /**
+     * Marks the trips carried by the request that just **succeeded** as synced
+     * (#401). A failed request never calls this, so its trips stay pending for
+     * the next flush.
+     */
+    fun settleTripsInFlight() {
+        val maxId = tripsInFlightMaxId
+        if (maxId <= 0L) return
+        try {
+            rustDatabase?.markTripsSynced(maxId)
+            rustDatabase?.pruneSyncedTrips(MAX_SYNCED_TRIPS_RETAINED)
+        } catch (e: Exception) {
+            logger.error("markTripsSynced failed: ${e.message}")
+        }
+        tripsInFlightMaxId = 0L
+    }
+
     fun markExposedTelematicsSynced() {
         val maxId = lastExposedTelematicsMaxId
         if (maxId <= 0L) return
@@ -3719,8 +3860,11 @@ class TraceletSdk private constructor(private val context: Context) {
                 if (unlockUrl != null && licenseKey != null) {
                     emitCrashModelStatus("unlocking")
                     val integrityToken = loader.integrityTokenProvider?.invoke()
+                    // The app's id and signing cert, so a prod license bound to
+                    // another app is refused rather than shared.
                     val unlocked = loader.unlock(
                         unlockUrl, licenseKey, integrityToken,
+                        loader.appIdentity(context),
                     ) { msg -> logger.debug(msg) }
                     if (unlocked != null) {
                         modelUrl = unlocked.url

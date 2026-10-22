@@ -1,3 +1,15 @@
+## Unreleased
+
+**FEAT**: custom sync body builders receive completed-trip summaries — `trips` in the foreground and headless builder arguments, from the pinned native SDK's `getTripsForCustomBuilder()` ([#401](https://github.com/Ikolvi/Tracelet/issues/401)).
+
+**FIX**: the vendored `TraceletCore.xcframework` carries a dSYM per slice, so archives no longer warn "Upload Symbols Failed" for `TraceletCore.framework` ([#424](https://github.com/Ikolvi/Tracelet/issues/424)).
+
+**FIX**: the pinned native SDK's `sync()` shares the auto-sync lock, reads the oldest rows, and hands a full batch's remainder to the drain; no Dart or plugin change ([#437](https://github.com/Ikolvi/Tracelet/issues/437)).
+
+**FIX**: the pinned native SDK reports the bundle id on crash-model unlock, so prod licenses unlock; no Dart or plugin change ([#439](https://github.com/Ikolvi/Tracelet/issues/439)).
+
+**FIX**: the pinned native SDK runs CoreLocation unfiltered at 100 m accuracy or better when the background indicator is off and no session is open under Always, so iOS 16.4+ no longer suspends continuous tracking in the background; no Dart or plugin change ([#435](https://github.com/Ikolvi/Tracelet/issues/435)).
+
 ## 3.8.8
 
 **FIX**: the pinned native SDK opens `CLBackgroundActivitySession` on the continuous path only with `useBackgroundActivitySession: true` (or under When-In-Use authorization, where it is what keeps the stream alive), so an Always-authorized app that opted out no longer shows the blue location bar for every trip ([#423](https://github.com/Ikolvi/Tracelet/issues/423)).

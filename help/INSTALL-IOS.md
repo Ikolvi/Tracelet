@@ -272,6 +272,15 @@ post_install do |installer|
 end
 ```
 
+### Debug symbols (dSYMs)
+
+`TraceletCore.xcframework` and `TraceletSyncFFI.xcframework` ship a dSYM for every slice, so archives upload symbols for the Rust core and crashes inside it symbolicate in Xcode Organizer and Crashlytics. Earlier versions (3.8.8 and before) shipped none, which is what produced Xcode's *"Upload Symbols Failed: The archive did not include a dSYM for the TraceletCore.framework"* warning.
+
+**Don't override `DEBUG_INFORMATION_FORMAT`, `STRIP_INSTALLED_PRODUCT` or `STRIP_STYLE` for the Tracelet targets** in a `post_install` hook:
+
+- Setting `DEBUG_INFORMATION_FORMAT = dwarf` does nothing for the prebuilt frameworks. It only removes the dSYMs of the Swift pods (`TraceletSDK`, `tracelet_ios`), which is where most crash-relevant code lives.
+- The podspecs already pin `STRIP_INSTALLED_PRODUCT = NO` and `STRIP_STYLE = non-global`, because the exported Rust symbols must survive. Stripping harder breaks the link.
+
 ---
 
 ## 11. App Store Submission

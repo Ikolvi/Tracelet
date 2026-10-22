@@ -884,8 +884,12 @@ class LocationService : Service(), DefaultLifecycleObserver {
         // WorkManager mode, or foregroundService.enabled=false — #243).
         if (intent == null) {
             val state = StateManager(applicationContext)
+            // The started strategy, not the pace: a continuous session the
+            // killed-state engine parked reads PERIODIC in `trackingMode`, and
+            // declining its restart left the process cached with no service and
+            // nothing to wake it (#428, #436).
             val periodicWithoutService =
-                state.trackingMode == com.ikolvi.tracelet.sdk.model.TrackingMode.PERIODIC &&
+                state.sessionTrackingMode == com.ikolvi.tracelet.sdk.model.TrackingMode.PERIODIC &&
                     !configManager.getPeriodicUseForegroundService()
             val wantsService = state.enabled &&
                 configManager.isForegroundServiceEnabled() &&
@@ -893,7 +897,7 @@ class LocationService : Service(), DefaultLifecycleObserver {
             if (!wantsService) {
                 TraceletLog.lifecycle(
                     "service: sticky restart declined — enabled=${state.enabled} " +
-                        "mode=${state.trackingMode} fgsEnabled=" +
+                        "mode=${state.sessionTrackingMode} fgsEnabled=" +
                         "${configManager.isForegroundServiceEnabled()}; stopping"
                 )
                 stopSelf()
@@ -901,7 +905,8 @@ class LocationService : Service(), DefaultLifecycleObserver {
                 return START_NOT_STICKY
             }
             TraceletLog.lifecycle(
-                "service: sticky restart after process death — mode=${state.trackingMode}"
+                "service: sticky restart after process death — " +
+                    "mode=${state.sessionTrackingMode} pace=${state.trackingMode}"
             )
         }
 
@@ -1031,7 +1036,7 @@ class LocationService : Service(), DefaultLifecycleObserver {
             // the foreground service at all — WorkManager/AlarmManager handles
             // the scheduling independently. Stop the service to avoid showing
             // an unnecessary persistent notification.
-            if (state.trackingMode == TrackingMode.PERIODIC && !configManager.getPeriodicUseForegroundService()) {
+            if (state.sessionTrackingMode == TrackingMode.PERIODIC && !configManager.getPeriodicUseForegroundService()) {
                 // Ensure WorkManager/AlarmManager is scheduled (may already be)
                 PeriodicLocationWorker.eventSender = null // No UI
 
@@ -1264,7 +1269,12 @@ class LocationService : Service(), DefaultLifecycleObserver {
         // Bootstrap succeeded — cancel any retry armed by an earlier attempt.
         cancelBootTrackingRetry()
 
-        val trackingMode = state.trackingMode
+        // The started strategy, not the stationary pace written over it. A
+        // continuous session parked by this engine used to come back through the
+        // PERIODIC branch, which without a periodic foreground service builds no
+        // engine and no motion detector — nothing could ever wake it (#428, #436).
+        // A parked session is re-parked below once its detector is armed.
+        val trackingMode = state.sessionTrackingMode
         TraceletLog.debug("Bootstrapping native tracking after boot/task-removal (trackingMode=$trackingMode, isMoving=${state.isMoving}, speedState=${state.speedMotionState}, enabled=${state.enabled})")
         // #318: the anchor entry for every killed-state investigation — it records
         // that the background pipeline actually came up, in which mode, and what
@@ -1529,26 +1539,12 @@ class LocationService : Service(), DefaultLifecycleObserver {
                     }
                     detector.onStopRequested = {}
 
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        val hasMotion = ContextCompat.checkSelfPermission(
-                            ctx, Manifest.permission.ACTIVITY_RECOGNITION
-                        ) == PackageManager.PERMISSION_GRANTED
-                        if (hasMotion) {
-                            detector.start()
-                        } else {
-                            // #318: a killed-state session with no motion detector
-                            // can never change pace. Recorded as a lifecycle entry
-                            // because it explains "stationary forever" days later,
-                            // and a warning at the default OFF level is not kept.
-                            TraceletLog.lifecycle(
-                                "motion (killed-state, smart): DETECTOR NOT STARTED — " +
-                                    "ACTIVITY_RECOGNITION not granted; pace cannot change"
-                            )
-                            TraceletLog.warning("ACTIVITY_RECOGNITION not granted in boot mode")
-                        }
-                    } else {
-                        detector.start()
-                    }
+                    // Started regardless of ACTIVITY_RECOGNITION: only the
+                    // activity transitions need it, and the detector skips them
+                    // and records that on the always-on channel. Without the
+                    // detector a killed-state session could never change pace
+                    // and impact detection got no samples (#318, #433).
+                    detector.start()
                     TraceletLog.debug("Smart-based motion detection started (boot mode)")
                     TraceletLog.lifecycle(
                         "motion (killed-state): smart detector started " +
@@ -1580,19 +1576,24 @@ class LocationService : Service(), DefaultLifecycleObserver {
                     }
                     detector.onStopRequested = {}
 
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        val hasMotion = ContextCompat.checkSelfPermission(
-                            ctx, Manifest.permission.ACTIVITY_RECOGNITION
-                        ) == PackageManager.PERMISSION_GRANTED
-                        if (hasMotion) {
-                            detector.start()
-                        } else {
-                            TraceletLog.warning("ACTIVITY_RECOGNITION not granted in boot mode")
-                        }
-                    } else {
-                        detector.start()
-                    }
+                    // See the smart branch: no permission gate (#433).
+                    detector.start()
                     TraceletLog.debug("Accelerometer-based motion detection started (boot mode)")
+
+                    // Mirrors the smart branch: a session persisted as stationary
+                    // comes back parked rather than streaming until the detector
+                    // next decides. Before #428 a parked continuous session never
+                    // reached this branch at all.
+                    if (!state.isMoving && trackingMode == TrackingMode.CONTINUOUS) {
+                        TraceletLog.lifecycle(
+                            "motion (killed-state, accelerometer): persisted pace is " +
+                                "stationary — re-parking the restored session (#428)"
+                        )
+                        when (config.getStationaryTrackingMode()) {
+                            com.ikolvi.tracelet.sdk.model.StationaryTrackingMode.GEOFENCES -> LocationService.switchToStationaryGeofences(engine, state, config)
+                            else -> LocationService.switchToStationaryPeriodic(engine, config, state)
+                        }
+                    }
                 }
             } // end let
 

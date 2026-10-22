@@ -41,6 +41,72 @@ void main() {
   // ==========================================================================
   // setSyncBodyBuilder — foreground MethodChannel handler
   // ==========================================================================
+  group('trip summaries in the custom builder (#401)', () {
+    test('trips from native reach context.trips', () async {
+      Tracelet.setSyncBodyBuilder((SyncBodyContext context) async {
+        return <String, Object?>{
+          'points': context.locations,
+          'trips': context.trips,
+        };
+      });
+
+      final response = await _invokeSyncBodyChannelRaw(
+        syncBodyChannel,
+        'buildSyncBody',
+        <String, Object?>{
+          'locations': <Object?>[
+            <String, Object?>{'uuid': 'loc-1'},
+          ],
+          'telematics': <Object?>[],
+          'trips': <Object?>[
+            <String, Object?>{
+              'trip_id': '9f2c0f1e-4c31-4b2a-9a77-1d0f3b5e7c88',
+              'distance': 18420.0,
+              'start_location': <String, Object?>{
+                'latitude': 24.81,
+                'longitude': 67.05,
+              },
+              'stop_location': null,
+            },
+          ],
+        },
+      );
+
+      final decoded = jsonDecode(response!) as Map<String, Object?>;
+      final trips = decoded['trips']! as List;
+      expect(trips, hasLength(1));
+      final trip = trips.single as Map<String, Object?>;
+      expect(trip['trip_id'], '9f2c0f1e-4c31-4b2a-9a77-1d0f3b5e7c88');
+      expect((trip['start_location']! as Map)['latitude'], 24.81);
+      expect(trip['stop_location'], isNull);
+    });
+
+    test('a native without trip summaries yields empty trips', () async {
+      Tracelet.setSyncBodyBuilder((SyncBodyContext context) async {
+        return <String, Object?>{'tripCount': context.trips.length};
+      });
+
+      final response = await _invokeSyncBodyChannelRaw(
+        syncBodyChannel,
+        'buildSyncBody',
+        <String, Object?>{'locations': <Object?>[], 'telematics': <Object?>[]},
+      );
+
+      expect(jsonDecode(response!), <String, Object?>{'tripCount': 0});
+    });
+
+    test('fromMap and toMap carry trips', () {
+      final context = SyncBodyContext.fromMap(const <String, Object?>{
+        'locations': <Object?>[],
+        'trips': <Object?>[
+          <String, Object?>{'trip_id': 'a'},
+        ],
+      });
+      expect(context.trips.single['trip_id'], 'a');
+      expect(context.toMap()['trips']! as List, hasLength(1));
+    });
+  });
+
   group('setSyncBodyBuilder (foreground MethodChannel)', () {
     test('handler invokes builder and returns JSON-encoded body', () async {
       Tracelet.setSyncBodyBuilder((SyncBodyContext context) async {

@@ -139,7 +139,12 @@ class LocationEngine(
     private val fusedClient: TraceletLocationClient =
         TraceletServices.getProvider(context).getLocationClient(context)
 
+    @Volatile
     private var trackingCallback: TraceletLocationCallback? = null
+
+    /** One "superseded callback" lifecycle line per stray callback (#432). */
+    @Volatile
+    private var reportedSupersededCallback = false
 
     /** Cancellation source for the in-flight stationary→moving one-shot fix.
      *  Cancelled on `stop()` and superseded on each new transition so that
@@ -793,6 +798,7 @@ class LocationEngine(
      * When GPS is re-enabled, [restoreOriginalPriority] re-subscribes
      * with the configured accuracy.
      */
+    @Synchronized
     fun start() {
         if (!hasPermission()) {
             TraceletLog.warning("start() — no location permission granted, dispatching providerChange(status=0)")
@@ -820,8 +826,34 @@ class LocationEngine(
 
         val request = buildLocationRequestWithGpsFallback()
 
+        reportedSupersededCallback = false
         trackingCallback = object : TraceletLocationCallback {
+            /**
+             * A continuous callback the engine no longer holds must not feed
+             * the pipeline (#432). Once `trackingCallback` has moved on — or
+             * been cleared by `stop()` — any delivery here is a registration
+             * that outlived it, and `changePace(false)` cannot reach it because
+             * the engine already reports not tracking. Unregister it and drop
+             * the fix rather than record a position from a stream nobody asked
+             * for.
+             */
+            private fun isSuperseded(): Boolean {
+                if (this === trackingCallback) return false
+                fusedClient.removeLocationUpdates(this)
+                if (!reportedSupersededCallback) {
+                    reportedSupersededCallback = true
+                    TraceletLog.lifecycle(
+                        "location stream: dropping a fix from a superseded continuous " +
+                            "callback and unregistering it — " +
+                            "engine=${System.identityHashCode(this@LocationEngine)} " +
+                            "tracking=${trackingCallback != null} (#432)",
+                    )
+                }
+                return true
+            }
+
             override fun onLocationResult(locations: List<Location>) {
+                if (isSuperseded()) return
                 // #407: before the filter gets a say. What the provider
                 // delivered and what the filter kept are separate questions,
                 // and the watchdogs that answer them must not share a clock.
@@ -832,6 +864,7 @@ class LocationEngine(
             }
 
             override fun onLocationAvailability(isLocationAvailable: Boolean) {
+                if (isSuperseded()) return
                 val providerState = buildProviderState()
                 val gpsNowEnabled = providerState["gps"] as? Boolean ?: false
 
@@ -895,6 +928,7 @@ class LocationEngine(
         val count = java.util.concurrent.atomic.AtomicInteger(0)
     }
 
+    @Synchronized
     fun stop() {
         gpsFallbackActive = false
         runtimeDesiredAccuracy = null

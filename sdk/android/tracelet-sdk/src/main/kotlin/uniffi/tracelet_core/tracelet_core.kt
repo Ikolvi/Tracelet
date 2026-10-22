@@ -650,6 +650,8 @@ external fun uniffi_tracelet_core_checksum_func_compute_genesis_hash(
 ): Short
 external fun uniffi_tracelet_core_checksum_func_sha256(
 ): Short
+external fun uniffi_tracelet_core_checksum_func_trips_sync_json(
+): Short
 external fun uniffi_tracelet_core_checksum_method_crashmodel_feature_names(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_crashmodel_is_crash(
@@ -792,6 +794,10 @@ external fun uniffi_tracelet_core_checksum_method_databasemanager_get_telematics
 ): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_get_telematics_history(
 ): Short
+external fun uniffi_tracelet_core_checksum_method_databasemanager_get_trips(
+): Short
+external fun uniffi_tracelet_core_checksum_method_databasemanager_get_unsynced_trips(
+): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_insert_audit_trail(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_insert_geofence(
@@ -804,9 +810,13 @@ external fun uniffi_tracelet_core_checksum_method_databasemanager_insert_privacy
 ): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_insert_telematics_event(
 ): Short
+external fun uniffi_tracelet_core_checksum_method_databasemanager_insert_trip(
+): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_is_empty(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_mark_telematics_synced(
+): Short
+external fun uniffi_tracelet_core_checksum_method_databasemanager_mark_trips_synced(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_prune_locations_older_than(
 ): Short
@@ -815,6 +825,8 @@ external fun uniffi_tracelet_core_checksum_method_databasemanager_prune_logs(
 external fun uniffi_tracelet_core_checksum_method_databasemanager_prune_logs_older_than(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_prune_synced_telematics(
+): Short
+external fun uniffi_tracelet_core_checksum_method_databasemanager_prune_synced_trips(
 ): Short
 external fun uniffi_tracelet_core_checksum_method_databasemanager_set_active_trip_id(
 ): Short
@@ -1152,6 +1164,10 @@ external fun uniffi_tracelet_core_fn_method_databasemanager_get_telematics_event
 ): RustBuffer.ByValue
 external fun uniffi_tracelet_core_fn_method_databasemanager_get_telematics_history(`ptr`: Long,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+external fun uniffi_tracelet_core_fn_method_databasemanager_get_trips(`ptr`: Long,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_tracelet_core_fn_method_databasemanager_get_unsynced_trips(`ptr`: Long,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 external fun uniffi_tracelet_core_fn_method_databasemanager_insert_audit_trail(`ptr`: Long,`uuid`: RustBuffer.ByValue,`hash`: RustBuffer.ByValue,`prevHash`: RustBuffer.ByValue,`index`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 external fun uniffi_tracelet_core_fn_method_databasemanager_insert_geofence(`ptr`: Long,`identifier`: RustBuffer.ByValue,`lat`: Double,`lng`: Double,`radius`: Double,`vertices`: RustBuffer.ByValue,`extras`: RustBuffer.ByValue,`notifyOnEntry`: Byte,`notifyOnExit`: Byte,`notifyOnDwell`: Byte,`loiteringDelay`: Int,uniffi_out_err: UniffiRustCallStatus, 
@@ -1164,9 +1180,13 @@ external fun uniffi_tracelet_core_fn_method_databasemanager_insert_privacy_zone(
 ): Unit
 external fun uniffi_tracelet_core_fn_method_databasemanager_insert_telematics_event(`ptr`: Long,`eventType`: RustBuffer.ByValue,`severity`: Double,`speed`: Double,`value`: Double,`lat`: Double,`lng`: Double,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
+external fun uniffi_tracelet_core_fn_method_databasemanager_insert_trip(`ptr`: Long,`trip`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
 external fun uniffi_tracelet_core_fn_method_databasemanager_is_empty(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
 external fun uniffi_tracelet_core_fn_method_databasemanager_mark_telematics_synced(`ptr`: Long,`maxId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_tracelet_core_fn_method_databasemanager_mark_trips_synced(`ptr`: Long,`maxId`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 external fun uniffi_tracelet_core_fn_method_databasemanager_prune_locations_older_than(`ptr`: Long,`maxDays`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
@@ -1175,6 +1195,8 @@ external fun uniffi_tracelet_core_fn_method_databasemanager_prune_logs(`ptr`: Lo
 external fun uniffi_tracelet_core_fn_method_databasemanager_prune_logs_older_than(`ptr`: Long,`maxDays`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 external fun uniffi_tracelet_core_fn_method_databasemanager_prune_synced_telematics(`ptr`: Long,`keep`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_tracelet_core_fn_method_databasemanager_prune_synced_trips(`ptr`: Long,`keep`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
 external fun uniffi_tracelet_core_fn_method_databasemanager_set_active_trip_id(`ptr`: Long,`tripId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -1297,6 +1319,8 @@ external fun uniffi_tracelet_core_fn_func_build_canonical_string(`previousHash`:
 external fun uniffi_tracelet_core_fn_func_compute_genesis_hash(`deviceId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun uniffi_tracelet_core_fn_func_sha256(`input`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_tracelet_core_fn_func_trips_sync_json(`trips`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun ffi_tracelet_core_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -1436,6 +1460,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_func_sha256() != 14625.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tracelet_core_checksum_func_trips_sync_json() != 45905.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_crashmodel_feature_names() != 11927.toShort()) {
@@ -1651,6 +1678,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_get_telematics_history() != 54287.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_tracelet_core_checksum_method_databasemanager_get_trips() != 26085.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tracelet_core_checksum_method_databasemanager_get_unsynced_trips() != 12780.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_insert_audit_trail() != 2860.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1669,10 +1702,16 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_insert_telematics_event() != 45645.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_tracelet_core_checksum_method_databasemanager_insert_trip() != 51258.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_is_empty() != 5940.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_mark_telematics_synced() != 38059.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tracelet_core_checksum_method_databasemanager_mark_trips_synced() != 54632.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_prune_locations_older_than() != 38098.toShort()) {
@@ -1685,6 +1724,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_prune_synced_telematics() != 11319.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tracelet_core_checksum_method_databasemanager_prune_synced_trips() != 42351.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tracelet_core_checksum_method_databasemanager_set_active_trip_id() != 51416.toShort()) {
@@ -3978,6 +4020,18 @@ public interface DatabaseManagerInterface {
     fun `getTelematicsHistory`(`limit`: kotlin.Int): List<DbTelematicsRecord>
     
     /**
+     * The most recent trips, **newest first**, whatever their sync state (#401).
+     */
+    fun `getTrips`(`limit`: kotlin.Int): List<DbTripRecord>
+    
+    /**
+     * Trips not yet delivered, **oldest first**, for the next flush (#401).
+     * Ascending so the caller can mark exactly what it sent with
+     * [`mark_trips_synced`](Self::mark_trips_synced).
+     */
+    fun `getUnsyncedTrips`(`limit`: kotlin.Int): List<DbTripRecord>
+    
+    /**
      * Inserts or replaces a validated tamper-proof cryptographic audit trail record.
      */
     fun `insertAuditTrail`(`uuid`: kotlin.String, `hash`: kotlin.String, `prevHash`: kotlin.String, `index`: kotlin.Int)
@@ -4021,6 +4075,13 @@ public interface DatabaseManagerInterface {
     fun `insertTelematicsEvent`(`eventType`: kotlin.String, `severity`: kotlin.Double, `speed`: kotlin.Double, `value`: kotlin.Double, `lat`: kotlin.Double, `lng`: kotlin.Double): kotlin.Long
     
     /**
+     * Records a completed trip's summary (#401). Returns `false` when nothing
+     * was written: the trip has no id (it cannot be correlated, and an empty
+     * key would collide) or a summary for it already exists.
+     */
+    fun `insertTrip`(`trip`: TripData): kotlin.Boolean
+    
+    /**
      * Gets the total count of locations persisted in the database.
      */
     fun `isEmpty`(): kotlin.Boolean
@@ -4029,6 +4090,12 @@ public interface DatabaseManagerInterface {
      * Marks telematics events up to max_id as synced.
      */
     fun `markTelematicsSynced`(`maxId`: kotlin.Long)
+    
+    /**
+     * Marks trips up to `max_id` as delivered. Call only after the request
+     * that carried them succeeded (#401).
+     */
+    fun `markTripsSynced`(`maxId`: kotlin.Long)
     
     /**
      * Deletes location rows older than `max_days`, reporting how many went
@@ -4112,6 +4179,12 @@ public interface DatabaseManagerInterface {
      * owed to the server, and losing them is the bug this accompanies.
      */
     fun `pruneSyncedTelematics`(`keep`: kotlin.Int): kotlin.ULong
+    
+    /**
+     * Deletes **synced** trips beyond the newest `keep` of them. Unsynced rows
+     * are still owed to the server and are never touched here (#401).
+     */
+    fun `pruneSyncedTrips`(`keep`: kotlin.Int): kotlin.ULong
     
     /**
      * Sets the trip that subsequent inserts are stamped with (#402).
@@ -4641,6 +4714,42 @@ open class DatabaseManager: Disposable, AutoCloseable, DatabaseManagerInterface
 
     
     /**
+     * The most recent trips, **newest first**, whatever their sync state (#401).
+     */
+    @Throws(TraceletException::class)override fun `getTrips`(`limit`: kotlin.Int): List<DbTripRecord> {
+            return FfiConverterSequenceTypeDbTripRecord.lift(
+    callWithHandle {
+    uniffiRustCallWithError(TraceletException) { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_databasemanager_get_trips(
+        it,
+        FfiConverterInt.lower(`limit`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Trips not yet delivered, **oldest first**, for the next flush (#401).
+     * Ascending so the caller can mark exactly what it sent with
+     * [`mark_trips_synced`](Self::mark_trips_synced).
+     */
+    @Throws(TraceletException::class)override fun `getUnsyncedTrips`(`limit`: kotlin.Int): List<DbTripRecord> {
+            return FfiConverterSequenceTypeDbTripRecord.lift(
+    callWithHandle {
+    uniffiRustCallWithError(TraceletException) { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_databasemanager_get_unsynced_trips(
+        it,
+        FfiConverterInt.lower(`limit`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Inserts or replaces a validated tamper-proof cryptographic audit trail record.
      */
     @Throws(TraceletException::class)override fun `insertAuditTrail`(`uuid`: kotlin.String, `hash`: kotlin.String, `prevHash`: kotlin.String, `index`: kotlin.Int)
@@ -4752,6 +4861,25 @@ open class DatabaseManager: Disposable, AutoCloseable, DatabaseManagerInterface
 
     
     /**
+     * Records a completed trip's summary (#401). Returns `false` when nothing
+     * was written: the trip has no id (it cannot be correlated, and an empty
+     * key would collide) or a summary for it already exists.
+     */
+    @Throws(TraceletException::class)override fun `insertTrip`(`trip`: TripData): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCallWithError(TraceletException) { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_databasemanager_insert_trip(
+        it,
+        FfiConverterTypeTripData.lower(`trip`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Gets the total count of locations persisted in the database.
      */
     @Throws(TraceletException::class)override fun `isEmpty`(): kotlin.Boolean {
@@ -4776,6 +4904,23 @@ open class DatabaseManager: Disposable, AutoCloseable, DatabaseManagerInterface
     callWithHandle {
     uniffiRustCallWithError(TraceletException) { _status ->
     UniffiLib.uniffi_tracelet_core_fn_method_databasemanager_mark_telematics_synced(
+        it,
+        FfiConverterLong.lower(`maxId`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Marks trips up to `max_id` as delivered. Call only after the request
+     * that carried them succeeded (#401).
+     */
+    @Throws(TraceletException::class)override fun `markTripsSynced`(`maxId`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(TraceletException) { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_databasemanager_mark_trips_synced(
         it,
         FfiConverterLong.lower(`maxId`),_status)
 }
@@ -4904,6 +5049,24 @@ open class DatabaseManager: Disposable, AutoCloseable, DatabaseManagerInterface
     callWithHandle {
     uniffiRustCallWithError(TraceletException) { _status ->
     UniffiLib.uniffi_tracelet_core_fn_method_databasemanager_prune_synced_telematics(
+        it,
+        FfiConverterInt.lower(`keep`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Deletes **synced** trips beyond the newest `keep` of them. Unsynced rows
+     * are still owed to the server and are never touched here (#401).
+     */
+    @Throws(TraceletException::class)override fun `pruneSyncedTrips`(`keep`: kotlin.Int): kotlin.ULong {
+            return FfiConverterULong.lift(
+    callWithHandle {
+    uniffiRustCallWithError(TraceletException) { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_method_databasemanager_prune_synced_trips(
         it,
         FfiConverterInt.lower(`keep`),_status)
 }
@@ -10730,6 +10893,115 @@ public object FfiConverterTypeDbTelematicsRecord: FfiConverterRustBuffer<DbTelem
 
 
 /**
+ * A completed trip's summary, persisted when the trip ends (#401).
+ *
+ * Written once per trip by the native layer, the only layer that writes to
+ * this database, and keyed on `trip_id` so a trip can never be recorded
+ * twice. `synced` follows the telematics rule: a row is marked, not deleted,
+ * once the request that carried it succeeds.
+ */
+data class DbTripRecord (
+    var `id`: kotlin.Long
+    , 
+    /**
+     * The UUIDv4 minted at trip start, shared with every location and driving
+     * event recorded during the trip (#402).
+     */
+    var `tripId`: kotlin.String
+    , 
+    var `startedAtMs`: kotlin.Long
+    , 
+    var `endedAtMs`: kotlin.Long
+    , 
+    /**
+     * Metres along the trip's waypoints.
+     */
+    var `distance`: kotlin.Double
+    , 
+    /**
+     * Seconds from start to end.
+     */
+    var `duration`: kotlin.Double
+    , 
+    /**
+     * `distance / duration` in m/s; 0 for a zero-length trip.
+     */
+    var `averageSpeed`: kotlin.Double
+    , 
+    var `startLatitude`: kotlin.Double?
+    , 
+    var `startLongitude`: kotlin.Double?
+    , 
+    var `stopLatitude`: kotlin.Double?
+    , 
+    var `stopLongitude`: kotlin.Double?
+    , 
+    var `synced`: kotlin.Boolean
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeDbTripRecord: FfiConverterRustBuffer<DbTripRecord> {
+    override fun read(buf: ByteBuffer): DbTripRecord {
+        return DbTripRecord(
+            FfiConverterLong.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: DbTripRecord) = (
+            FfiConverterLong.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`tripId`) +
+            FfiConverterLong.allocationSize(value.`startedAtMs`) +
+            FfiConverterLong.allocationSize(value.`endedAtMs`) +
+            FfiConverterDouble.allocationSize(value.`distance`) +
+            FfiConverterDouble.allocationSize(value.`duration`) +
+            FfiConverterDouble.allocationSize(value.`averageSpeed`) +
+            FfiConverterOptionalDouble.allocationSize(value.`startLatitude`) +
+            FfiConverterOptionalDouble.allocationSize(value.`startLongitude`) +
+            FfiConverterOptionalDouble.allocationSize(value.`stopLatitude`) +
+            FfiConverterOptionalDouble.allocationSize(value.`stopLongitude`) +
+            FfiConverterBoolean.allocationSize(value.`synced`)
+    )
+
+    override fun write(value: DbTripRecord, buf: ByteBuffer) {
+            FfiConverterLong.write(value.`id`, buf)
+            FfiConverterString.write(value.`tripId`, buf)
+            FfiConverterLong.write(value.`startedAtMs`, buf)
+            FfiConverterLong.write(value.`endedAtMs`, buf)
+            FfiConverterDouble.write(value.`distance`, buf)
+            FfiConverterDouble.write(value.`duration`, buf)
+            FfiConverterDouble.write(value.`averageSpeed`, buf)
+            FfiConverterOptionalDouble.write(value.`startLatitude`, buf)
+            FfiConverterOptionalDouble.write(value.`startLongitude`, buf)
+            FfiConverterOptionalDouble.write(value.`stopLatitude`, buf)
+            FfiConverterOptionalDouble.write(value.`stopLongitude`, buf)
+            FfiConverterBoolean.write(value.`synced`, buf)
+    }
+}
+
+
+
+/**
  * A detected driving event.
  */
 data class DrivingEvent (
@@ -14160,6 +14432,34 @@ public object FfiConverterSequenceTypeDbTelematicsRecord: FfiConverterRustBuffer
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeDbTripRecord: FfiConverterRustBuffer<List<DbTripRecord>> {
+    override fun read(buf: ByteBuffer): List<DbTripRecord> {
+        val len = buf.getInt()
+        return List<DbTripRecord>(len) {
+            FfiConverterTypeDbTripRecord.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<DbTripRecord>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeDbTripRecord.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<DbTripRecord>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeDbTripRecord.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeDrivingEvent: FfiConverterRustBuffer<List<DrivingEvent>> {
     override fun read(buf: ByteBuffer): List<DrivingEvent> {
         val len = buf.getInt()
@@ -14434,6 +14734,23 @@ public object FfiConverterMapStringString: FfiConverterRustBuffer<Map<kotlin.Str
     UniffiLib.uniffi_tracelet_core_fn_func_sha256(
     
         FfiConverterString.lower(`input`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Serializes trip summaries to the `trips` array of the sync payload (#401).
+         *
+         * One implementation for both platforms, so Android and iOS cannot drift on
+         * the shape. Keys follow the location/telematics payloads (snake_case);
+         * timestamps are ISO 8601 UTC; a missing start/stop position is JSON `null`.
+         */ fun `tripsSyncJson`(`trips`: List<DbTripRecord>): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_tracelet_core_fn_func_trips_sync_json(
+    
+        FfiConverterSequenceTypeDbTripRecord.lower(`trips`),_status)
 }
     )
     }

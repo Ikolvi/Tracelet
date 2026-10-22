@@ -124,6 +124,11 @@ delay = min(retryBackoffCap, retryBackoffBase × 2^(attempt-1)) ± jitter
 | `429`       | Too Many Requests       | ✅ Yes   |
 | `500–599`   | Server Error            | ✅ Yes   |
 
+With a custom sync body builder, a request that **times out after its body was
+sent** is not retried: the server may already be processing it, and a retry
+would deliver the batch twice. The rows stay queued for the next sync
+([#437](https://github.com/Ikolvi/Tracelet/issues/437)).
+
 ### What's NOT Retried (Permanent Errors)
 
 | Status Code | Meaning                | Retried? |
@@ -205,6 +210,76 @@ Fetch batch → Send → Mark synced → Fetch next batch → ... → Done
 This ensures that even with thousands of queued locations, a single sync
 trigger flushes everything.
 
+- **Nothing triggered mid-sync is dropped.** A location recorded while a batch
+  is uploading is picked up by the same run before it finishes.
+- **Oldest first.** Batches are always taken oldest-first.
+  `locationsOrderDirection` sets the order of the locations *inside* each
+  request, not which rows are sent.
+- **A failure ends the run.** The rows stay queued, and the next trigger
+  (a new location, `syncInterval`, or `sync()`) tries again, so a down server
+  is not hammered in a loop.
+- **Manual and automatic syncs don't overlap.** `sync()` waits for an
+  auto-sync in progress, so the same rows are never sent twice by the two.
+
+On 3.8.8 and earlier, auto-sync uploaded one batch per newly recorded location
+and dropped triggers that arrived during an upload, so with `maxBatchSize: 1`
+the queue never shrank ([#437](https://github.com/Ikolvi/Tracelet/issues/437)).
+
+---
+
+## Trip Summaries
+
+Every completed trip is stored once on the device, under the `trip_id` its
+locations and driving events carry, and goes out with the next sync as a
+**root-level `trips` array**, in the same POST as `location` (and `telematics`):
+
+```json
+{
+  "location": [ ... ],
+  "trips": [
+    {
+      "trip_id": "9f2c0f1e-4c31-4b2a-9a77-1d0f3b5e7c88",
+      "started_at": "2026-08-20T08:52:11.000Z",
+      "ended_at": "2026-08-20T09:14:11.000Z",
+      "distance": 18420.0,
+      "duration": 1320.0,
+      "average_speed": 13.95,
+      "start_location": { "latitude": 24.81, "longitude": 67.05 },
+      "stop_location": { "latitude": 24.8607, "longitude": 67.0011 },
+      "synced": false
+    }
+  ]
+}
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `trip_id` | String | The trip's UUIDv4 — join key with `location` and `telematics` rows |
+| `started_at` / `ended_at` | ISO 8601 | Trip bounds, UTC |
+| `distance` | double | Metres along the trip's waypoints |
+| `duration` | double | Seconds |
+| `average_speed` | double | `distance / duration` in m/s; `0` for a zero-length trip |
+| `start_location` / `stop_location` | object or null | `{latitude, longitude}`; null when no fix was available |
+| `synced` | bool | Always `false` in a payload |
+
+- **One summary per trip**, keyed on `trip_id`. Use it as your upsert key in
+  case a retry delivers the same request again.
+- **Marked sent only when the request succeeds**; a failed flush leaves the
+  trip pending. A trip that ends after its last location was uploaded still
+  goes out on its own request.
+- **`trips` is absent when there is nothing to send**, and existing consumers
+  can ignore it.
+- **Custom body builders** receive the same objects as `context.trips`
+  (headless: `event['trips']`). Include them — a trip handed to the builder is
+  marked sent once the request succeeds.
+- The device keeps up to 1,000 summaries; beyond that the oldest are dropped.
+- Trip detection runs in the SDK session. A journey made entirely under
+  killed-state tracking (after the process was restarted) produces no trip
+  and no summary; its locations carry `trip_id: null`.
+
+Added in [#401](https://github.com/Ikolvi/Tracelet/issues/401); before it, the
+summary only existed as the `onTrip()` event.
+
 ---
 
 ## HttpEvent — Monitoring Sync
@@ -268,6 +343,12 @@ HttpConfig(
 
 This is useful for battery savings — instead of one HTTP request per
 location, the engine waits until a threshold is reached or groups rapid updates into a single batch using the debounce delay.
+
+The threshold counts every queued location, and is checked when a new one is
+recorded. A parked device that stays below it records nothing new, so pair a
+threshold with `syncInterval` if the last few points must still go out. On
+3.8.8 and earlier the threshold was ignored on Android and iOS
+([#437](https://github.com/Ikolvi/Tracelet/issues/437)).
 
 ---
 

@@ -8,12 +8,13 @@ import io.flutter.plugin.common.MethodChannel.Result
 
 import com.ikolvi.tracelet.sdk.TraceletSdk
 import com.ikolvi.tracelet.sdk.location.LocationDataSink
+import com.ikolvi.tracelet.sdk.sync.AutoSyncDrainer
 import com.ikolvi.tracelet.sdk.sync.NO_SYNC_BODY_BUILDER_SENTINEL
+import com.ikolvi.tracelet.sdk.sync.SyncRetryPolicy
 import uniffi.tracelet_sync.SyncManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -24,25 +25,28 @@ class TraceletSyncSink(private val sdk: TraceletSdk) : LocationDataSink, Tracele
     private val syncMutex = Mutex()
     private val syncManager = SyncManager()
 
-    private var syncJob: kotlinx.coroutines.Job? = null
-    private val DEBOUNCE_MS = 10_000L
+    // #437: drains batch after batch and never drops a request made while a
+    // sync is in flight — see AutoSyncDrainer.
+    private val drainer = AutoSyncDrainer(scope, syncMutex, ::uploadOneBatch) { msg ->
+        sdk.logger.error("TraceletSyncSink: $msg")
+    }
 
     override fun insertLocation(location: Map<String, Any?>) {
-        val delayMs = sdk.rustEngineState?.getConfig()?.http?.autoSyncDelay?.toLong() ?: 10_000L
-        if (syncJob?.isActive == true) return
-        syncJob = scope.launch {
-            // Contain any throwable so a single failed iteration can't tear down
-            // auto-sync; re-throw real cancellation so stop() still works (#134).
-            try {
-                kotlinx.coroutines.delay(delayMs)
-                triggerSync()
-            } catch (ce: kotlinx.coroutines.CancellationException) {
-                throw ce
-            } catch (t: Throwable) {
-                sdk.logger.error("TraceletSyncSink: auto-sync iteration failed (contained): ${t.message}")
-            }
+        val http = sdk.rustEngineState?.getConfig()?.http
+        // #437: autoSyncThreshold was stored and passed to Rust but never read,
+        // so every insert scheduled a sync.
+        val threshold = http?.autoSyncThreshold ?: 0
+        if (threshold > 0) {
+            val pending = try { sdk.rustDatabase?.getLocationsCount() } catch (_: Exception) { null }
+            if (pending != null && pending < threshold) return
         }
+        drainer.request(http?.autoSyncDelay?.toLong() ?: 10_000L)
     }
+
+    override fun <T> runExclusive(block: () -> T): T =
+        kotlinx.coroutines.runBlocking { syncMutex.withLock { block() } }
+
+    override fun requestDrain() = drainer.request(0)
 
     // Cancel the in-flight debounce so stop() takes effect immediately (#213).
     // TraceletSdk.stop() calls syncProvider?.cancelPendingSync(); without this
@@ -50,51 +54,58 @@ class TraceletSyncSink(private val sdk: TraceletSdk) : LocationDataSink, Tracele
     // through delay(autoSyncDelay) and still fired an HTTP sync up to ~10s after
     // the user stopped tracking.
     override fun cancelPendingSync() {
-        syncJob?.cancel()
-        syncJob = null
+        drainer.cancel()
         sdk.logger.debug("TraceletSyncSink: pending debounced background sync cancelled on stop().")
     }
     
-    private suspend fun triggerSync() {
-        syncMutex.withLock {
-            sdk.logger.debug("triggerSync started")
-            val db = sdk.rustDatabase ?: run {
-                sdk.logger.error("rustDatabase is null")
-                return
+    /**
+     * Uploads the oldest batch and clears it. Returns the rows cleared, or 0
+     * when the queue is empty or the upload failed. Called under [syncMutex].
+     */
+    private fun uploadOneBatch(): Int {
+        val db = sdk.rustDatabase ?: run {
+            sdk.logger.error("rustDatabase is null")
+            return 0
+        }
+        val state = sdk.rustEngineState ?: run {
+            sdk.logger.error("rustEngineState is null")
+            return 0
+        }
+        return try {
+            val configured = state.getConfig().http
+            if (configured.url.isNullOrEmpty() || !configured.autoSync) return 0
+            // #401: pending trip summaries ride the request as a root `trips` array.
+            val coreHttp = sdk.withPendingTrips(configured)
+
+            val limit = if (coreHttp.maxBatchSize > 0) coreHttp.maxBatchSize else 250
+            // Always the OLDEST rows: `clearLocationsUpTo` deletes every id up
+            // to the one given, so reading the newest N and clearing up to the
+            // smallest of them deleted older rows that were never sent (#437).
+            // `locationsOrderDirection` (#138) orders the rows inside the
+            // payload instead.
+            val oldest = db.getLocationsBatch(uniffi.tracelet_core.LocationQuery(
+                startTimeMs = null,
+                endTimeMs = null,
+                limit = limit.toInt(),
+                offset = null,
+                orderDescending = false
+            ))
+            // A trip that ended after its last location was uploaded still has
+            // to go out, so a trips-only request is allowed (#401).
+            if (oldest.isEmpty() && !sdk.hasTripsInFlight) return 0
+            val payloadOrder = if (coreHttp.locationsOrderDirection == 1) oldest.reversed() else oldest
+
+            val count = syncBatchBlocking(coreHttp, payloadOrder)
+            if (count <= 0L) return 0
+            if (oldest.isNotEmpty()) {
+                db.clearLocationsUpTo(oldest.maxOf { it.id })
+                sdk.logger.info("Synced and cleared $count locations.")
             }
-            val state = sdk.rustEngineState ?: run {
-                sdk.logger.error("rustEngineState is null")
-                return
-            }
-            
-            try {
-                val coreHttp = state.getConfig().http
-                sdk.logger.debug("coreHttp config: url=${coreHttp.url}, autoSync=${coreHttp.autoSync}")
-                if (coreHttp.url.isNullOrEmpty() || !coreHttp.autoSync) return
-                
-                val limit = if (coreHttp.maxBatchSize > 0) coreHttp.maxBatchSize else 250
-                val records = db.getLocationsBatch(uniffi.tracelet_core.LocationQuery(
-                    startTimeMs = null,
-                    endTimeMs = null,
-                    limit = limit.toInt(),
-                    offset = null,
-                    // Honor the configured sort order (0=ascending, 1=descending)
-                    // instead of always defaulting to ascending (Issue #138).
-                    orderDescending = coreHttp.locationsOrderDirection == 1
-                ))
-                sdk.logger.debug("Found ${records.size} locations in DB")
-                if (records.isEmpty()) return
-                
-                val count = syncBatchBlocking(coreHttp, records)
-                if (count > 0L) {
-                    records.lastOrNull()?.id?.let { lastId ->
-                        db.clearLocationsUpTo(lastId)
-                        sdk.logger.info("Synced and cleared $count locations.")
-                    }
-                }
-            } catch (e: Exception) {
-                sdk.logger.error("Sync failed: ${e.message}")
-            }
+            sdk.settleTripsInFlight()
+            maxOf(oldest.size, 1)
+        } catch (e: Exception) {
+            sdk.logger.error("Sync failed: ${e.message}")
+            0
         }
     }
     
@@ -270,14 +281,17 @@ class TraceletSyncSink(private val sdk: TraceletSdk) : LocationDataSink, Tracele
         var lastResponse = "Unknown error"
 
         for (attempt in 0..maxRetries) {
+            var bodyWritten = false
             try {
                 val url = java.net.URL(coreHttp.url)
                 val conn = url.openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = if (coreHttp.method.toInt() == 1) "PUT" else "POST"
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/json")
-                conn.connectTimeout = 15000
-                conn.readTimeout = 15000
+                // #437: the configured timeout, not a fixed 15 s.
+                val timeout = SyncRetryPolicy.timeoutMs(coreHttp.httpTimeout)
+                conn.connectTimeout = timeout
+                conn.readTimeout = timeout
 
                 if (currentHeaders.isNotEmpty()) {
                     try {
@@ -293,6 +307,7 @@ class TraceletSyncSink(private val sdk: TraceletSdk) : LocationDataSink, Tracele
                     val input = customBody.toByteArray(kotlin.text.Charsets.UTF_8)
                     os.write(input, 0, input.size)
                 }
+                bodyWritten = true
 
                 val status = conn.responseCode
                 lastStatus = status
@@ -323,9 +338,17 @@ class TraceletSyncSink(private val sdk: TraceletSdk) : LocationDataSink, Tracele
                 sdk.logger.error("HTTP Sync failed: ${e.message}")
                 lastResponse = e.message ?: "Unknown exception"
                 lastStatus = 0
+                if (!SyncRetryPolicy.mayRetry(e, bodyWritten)) {
+                    // The server may be processing it: a retry would send the
+                    // batch twice. The rows stay queued for the next sync (#437).
+                    sdk.logger.error("HTTP Sync: timed out after the body was sent — not retrying")
+                    return FallbackSyncResult(false, lastStatus, lastResponse)
+                }
             }
             if (attempt < maxRetries) {
-                kotlinx.coroutines.delay(1000L * (attempt + 1))
+                kotlinx.coroutines.delay(
+                    SyncRetryPolicy.backoffMs(attempt, coreHttp.retryBackoffBase, coreHttp.retryBackoffCap),
+                )
             }
         }
         return FallbackSyncResult(false, lastStatus, lastResponse)

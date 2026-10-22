@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -16,6 +17,8 @@ import android.os.Handler
 import android.os.Looper
 import com.ikolvi.tracelet.sdk.ConfigManager
 import com.ikolvi.tracelet.sdk.TraceletEventSender
+import androidx.core.content.ContextCompat
+import com.ikolvi.tracelet.sdk.util.TraceletLog
 import com.ikolvi.tracelet.sdk.util.TraceletLogger
 import com.ikolvi.tracelet.sdk.StateManager
 import com.ikolvi.tracelet.sdk.wrapper.TraceletActivityRecognitionClient
@@ -420,7 +423,20 @@ class MotionDetector(
 
     private fun startFullMode() {
         logger.debug("startFullMode() — state.isMoving=${state.isMoving}")
-        registerActivityTransitions()
+        // Only the activity transitions need ACTIVITY_RECOGNITION. The
+        // accelerometer, gyroscope, barometer and significant-motion sensors
+        // need no runtime permission, and crash/fall detection is fed from the
+        // accelerometer, so the detector runs without it and the transitions
+        // are registered if the permission arrives later (#433).
+        if (hasActivityRecognitionPermission()) {
+            registerActivityTransitions()
+        } else {
+            TraceletLog.lifecycle(
+                "motion: ACTIVITY_RECOGNITION not granted — activity transitions " +
+                    "unavailable; accelerometer, significant-motion and impact " +
+                    "detection still run (#433)"
+            )
+        }
 
         if (!state.isMoving) {
             logger.debug("startFullMode: STATIONARY — starting shake+sigMotion monitoring")
@@ -498,6 +514,24 @@ class MotionDetector(
             // Graceful degradation: use accelerometer instead
             startAccelerometerOnlyMode()
         }
+    }
+
+    private fun hasActivityRecognitionPermission(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+            ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.ACTIVITY_RECOGNITION
+            ) == PackageManager.PERMISSION_GRANTED
+
+    /**
+     * Registers the activity transitions a running detector started without
+     * because ACTIVITY_RECOGNITION was missing (#433). `start()` is a no-op
+     * while running, so a late grant needs its own entry point.
+     */
+    fun onActivityRecognitionGranted() {
+        if (!isRunning || isAccelerometerOnlyMode || transitionPendingIntent != null) return
+        if (!hasActivityRecognitionPermission()) return
+        logger.debug("ACTIVITY_RECOGNITION granted while running — registering activity transitions")
+        registerActivityTransitions()
     }
 
     private fun unregisterActivityTransitions() {

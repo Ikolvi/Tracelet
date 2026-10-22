@@ -1,3 +1,15 @@
+## Unreleased
+
+**FEAT**: `TraceletTripManager.onTripSummary` hands the ended trip's `TripData` to `TraceletSdk`, which stores it with `DatabaseManager.insertTrip`; `withPendingTrips(_:)`, `getTripsForCustomBuilder()` and `settleTripsInFlight()` attach, expose and settle trips for `sync()` and the auto-sync drain, as on Android ([#401](https://github.com/Ikolvi/Tracelet/issues/401)).
+
+**FIX**: `build-ios.sh` builds with `CARGO_PROFILE_RELEASE_DEBUG=line-tables-only` / `STRIP=none` (the shared release profile, which Android uses, is unchanged); `create_dynamic_framework` runs `dsymutil` after `install_name_tool -id` and then `strip -S -x`, which keeps `LC_UUID` and the global `uniffi_*`/`frb_*` exports; `-create-xcframework` attaches each slice's dSYM with `-debug-symbols`, and the build fails unless every slice carries a dSYM with matching UUIDs ([#424](https://github.com/Ikolvi/Tracelet/issues/424)).
+
+**FIX**: `SyncProvider` gains `runExclusive(_:)` and `requestDrain()` (no-op defaults). `TraceletSdk.sync()` runs under `runExclusive`, reads the oldest rows and clears up to their max id (reversing for the payload when descending), defaults a zero `maxBatchSize` to 250 — `LIMIT 0` returned nothing — and calls `requestDrain()` after a full batch ([#437](https://github.com/Ikolvi/Tracelet/issues/437)).
+
+**FIX**: `CrashModelLoader.unlock()` sends `platform: "ios"` and `pkg` (`Bundle.main.bundleIdentifier`) through the new `unlockBody()` ([#439](https://github.com/Ikolvi/Tracelet/issues/439)).
+
+**FIX**: `LocationEngine.applyLocationProviderOptions()` sets `distanceFilter = kCLDistanceFilterNone` and raises `desiredAccuracy` coarser than 100 m to `kCLLocationAccuracyHundredMeters` when `needsSuspensionSafeProviderOptions` holds — `showsBackgroundLocationIndicator` and `useBackgroundActivitySession` both off under `.authorizedAlways` — so `startUpdatingLocation()` plus `startMonitoringSignificantLocationChanges()` no longer meets Apple's iOS 16.4+ background-suspension conditions. The configured filter stays in the Rust `LocationProcessor`; the guard is logged once per engine on the lifecycle channel. The sample-collection failure path now restores the provider through `applyLocationProviderOptions()` instead of writing the raw config value back ([#435](https://github.com/Ikolvi/Tracelet/issues/435)).
+
 ## 3.8.8
 
 **FIX**: `TraceletSdk.startBackgroundActivitySessionIfNeeded()` — every moving transition and the in-app-evaluated geofence posture — now honours `useBackgroundActivitySession`, opening the session only with the opt-in or under When-In-Use authorization, where it is what lets the stream survive suspension. Under Always it only ever added the indicator ([#423](https://github.com/Ikolvi/Tracelet/issues/423)).

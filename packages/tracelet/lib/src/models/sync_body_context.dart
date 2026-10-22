@@ -2,8 +2,9 @@ import 'package:meta/meta.dart';
 
 /// Context passed to a custom sync body builder callback.
 ///
-/// Contains the locations about to be synced (and, when `syncTelematics` is
-/// enabled, the unsynced telematics/crash events). The builder returns a
+/// Contains the locations about to be synced, the unsynced telematics/crash
+/// events when `syncTelematics` is enabled, and any completed-trip summaries
+/// not yet delivered (#401). The builder returns a
 /// `Map<String, Object?>` that becomes the full HTTP request body, giving
 /// integrators full control over the JSON structure.
 ///
@@ -14,6 +15,7 @@ import 'package:meta/meta.dart';
 ///     'taskId': currentTaskId,
 ///     'points': context.locations,
 ///     'events': context.telematics, // driving/crash events (#214)
+///     'trips': context.trips, // completed-trip summaries (#401)
 ///     'sentAt': DateTime.now().toIso8601String(),
 ///   };
 /// });
@@ -24,6 +26,7 @@ class SyncBodyContext {
   const SyncBodyContext({
     required this.locations,
     this.telematics = const <Map<String, Object?>>[],
+    this.trips = const <Map<String, Object?>>[],
   });
 
   /// Creates a [SyncBodyContext] from a map.
@@ -37,6 +40,7 @@ class SyncBodyContext {
     return SyncBodyContext(
       locations: _mapList(map['locations']),
       telematics: _mapList(map['telematics']),
+      trips: _mapList(map['trips']),
     );
   }
 
@@ -73,8 +77,22 @@ class SyncBodyContext {
   /// `timestamp`, `synced`.
   final List<Map<String, Object?>> telematics;
 
+  /// Completed-trip summaries not yet delivered (#401), in the same shape as
+  /// the default payload's `trips` array: `trip_id`, `started_at`, `ended_at`,
+  /// `distance` (m), `duration` (s), `average_speed` (m/s), `start_location`,
+  /// `stop_location`, `synced`.
+  ///
+  /// Include them in the body you return: a trip handed to the builder is
+  /// marked delivered once the request succeeds, and is not offered again.
+  /// Empty when there are none, and from native versions before #401.
+  final List<Map<String, Object?>> trips;
+
   /// Serializes to a map.
   Map<String, Object?> toMap() {
-    return <String, Object?>{'locations': locations, 'telematics': telematics};
+    return <String, Object?>{
+      'locations': locations,
+      'telematics': telematics,
+      'trips': trips,
+    };
   }
 }

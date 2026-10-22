@@ -100,9 +100,11 @@ def cmd_mint(args: argparse.Namespace) -> int:
     print(license_key)
     print(f"\n# scope: {args.scope}  (license id for revocation: {payload['lic']})", file=sys.stderr)
     if args.scope == "dev":
-        print("# dev license: works in debug builds/emulators (no Play Integrity).", file=sys.stderr)
+        print("# dev license: bound to the app id; works in debug builds and emulators.", file=sys.stderr)
     else:
-        print("# prod license: Worker requires a valid Play Integrity token.", file=sys.stderr)
+        # #439: prod no longer needs a Play Integrity token — it is bound to the
+        # app id and, on Android, the signing cert(s) the SDK reports.
+        print("# prod license: bound to the app id and, on Android, the signing cert.", file=sys.stderr)
     if "exp" in payload:
         print(f"# expires: {time.strftime('%Y-%m-%d', time.gmtime(payload['exp']))}", file=sys.stderr)
     return 0

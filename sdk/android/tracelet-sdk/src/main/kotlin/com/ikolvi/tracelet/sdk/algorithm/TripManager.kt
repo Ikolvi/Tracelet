@@ -22,6 +22,13 @@ class TripManager {
      */
     var onTripStart: ((Map<String, Any?>) -> Unit)? = null
 
+    /**
+     * Callback invoked with the ended trip's summary as Rust computed it, just
+     * before [onTripEnd] (#401). The SDK persists it, so the summary is synced
+     * with the same values the event reported rather than a re-derivation.
+     */
+    var onTripSummary: ((uniffi.tracelet_core.TripData) -> Unit)? = null
+
     private val rustTripManager = RustTripManager()
 
     /** Whether a trip is currently active. */
@@ -77,6 +84,7 @@ class TripManager {
         val tripData = (transition as? uniffi.tracelet_core.TripTransition.Ended)?.data
 
         if (tripData != null) {
+            onTripSummary?.invoke(tripData)
             val startMap = mutableMapOf<String, Any?>()
             tripData.startLocation?.let {
                 startMap["latitude"] = it.latitude

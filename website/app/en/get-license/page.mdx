@@ -55,12 +55,12 @@ import { Callout } from 'nextra/components'
 | | **dev** | **prod** |
 |---|---|---|
 | **Use for** | Debug builds, emulators, CI | Released app on the stores |
-| **Binding** | App id only | Bound to your published app |
-| **Needs** | Just your app id | App id **+** signing-cert SHA-256 |
-| **Max validity** | 90 days | 730 days |
+| **Binding** | App id | App id, plus your Android signing cert |
+| **Needs** | Just your app id | App id; Android signing-cert SHA-256 recommended (and your upload-key cert if you test self-signed release builds) |
+| **Max validity** | 90 days (0 = no expiry) | 365 days, always expires |
 
 <Callout type="info" emoji="🔒">
-  Each key is cryptographically signed and validated on-device. A license only unlocks the crash model — nothing else — and you can revoke any key you’ve issued right from the portal.
+  Each key is cryptographically signed and checked by the Tracelet license server when tracking starts — the one network call; the model itself runs on-device. The SDK reports your app id (and on Android its signing cert), so a key only unlocks the app it was issued for. A license only unlocks the crash model — nothing else — and you can revoke any key you’ve issued right from the portal.
 </Callout>
 
 ## Drop it into your app

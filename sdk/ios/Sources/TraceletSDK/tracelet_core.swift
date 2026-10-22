@@ -1647,6 +1647,18 @@ public protocol DatabaseManagerProtocol: AnyObject, Sendable {
     func getTelematicsHistory(limit: Int32) throws  -> [DbTelematicsRecord]
     
     /**
+     * The most recent trips, **newest first**, whatever their sync state (#401).
+     */
+    func getTrips(limit: Int32) throws  -> [DbTripRecord]
+    
+    /**
+     * Trips not yet delivered, **oldest first**, for the next flush (#401).
+     * Ascending so the caller can mark exactly what it sent with
+     * [`mark_trips_synced`](Self::mark_trips_synced).
+     */
+    func getUnsyncedTrips(limit: Int32) throws  -> [DbTripRecord]
+    
+    /**
      * Inserts or replaces a validated tamper-proof cryptographic audit trail record.
      */
     func insertAuditTrail(uuid: String, hash: String, prevHash: String, index: Int32) throws 
@@ -1690,6 +1702,13 @@ public protocol DatabaseManagerProtocol: AnyObject, Sendable {
     func insertTelematicsEvent(eventType: String, severity: Double, speed: Double, value: Double, lat: Double, lng: Double) throws  -> Int64
     
     /**
+     * Records a completed trip's summary (#401). Returns `false` when nothing
+     * was written: the trip has no id (it cannot be correlated, and an empty
+     * key would collide) or a summary for it already exists.
+     */
+    func insertTrip(trip: TripData) throws  -> Bool
+    
+    /**
      * Gets the total count of locations persisted in the database.
      */
     func isEmpty() throws  -> Bool
@@ -1698,6 +1717,12 @@ public protocol DatabaseManagerProtocol: AnyObject, Sendable {
      * Marks telematics events up to max_id as synced.
      */
     func markTelematicsSynced(maxId: Int64) throws 
+    
+    /**
+     * Marks trips up to `max_id` as delivered. Call only after the request
+     * that carried them succeeded (#401).
+     */
+    func markTripsSynced(maxId: Int64) throws 
     
     /**
      * Deletes location rows older than `max_days`, reporting how many went
@@ -1781,6 +1806,12 @@ public protocol DatabaseManagerProtocol: AnyObject, Sendable {
      * owed to the server, and losing them is the bug this accompanies.
      */
     func pruneSyncedTelematics(keep: Int32) throws  -> UInt64
+    
+    /**
+     * Deletes **synced** trips beyond the newest `keep` of them. Unsynced rows
+     * are still owed to the server and are never touched here (#401).
+     */
+    func pruneSyncedTrips(keep: Int32) throws  -> UInt64
     
     /**
      * Sets the trip that subsequent inserts are stamped with (#402).
@@ -2141,6 +2172,32 @@ open func getTelematicsHistory(limit: Int32)throws  -> [DbTelematicsRecord]  {
 }
     
     /**
+     * The most recent trips, **newest first**, whatever their sync state (#401).
+     */
+open func getTrips(limit: Int32)throws  -> [DbTripRecord]  {
+    return try  FfiConverterSequenceTypeDbTripRecord.lift(try rustCallWithError(FfiConverterTypeTraceletError_lift) {
+    uniffi_tracelet_core_fn_method_databasemanager_get_trips(
+            self.uniffiCloneHandle(),
+        FfiConverterInt32.lower(limit),$0
+    )
+})
+}
+    
+    /**
+     * Trips not yet delivered, **oldest first**, for the next flush (#401).
+     * Ascending so the caller can mark exactly what it sent with
+     * [`mark_trips_synced`](Self::mark_trips_synced).
+     */
+open func getUnsyncedTrips(limit: Int32)throws  -> [DbTripRecord]  {
+    return try  FfiConverterSequenceTypeDbTripRecord.lift(try rustCallWithError(FfiConverterTypeTraceletError_lift) {
+    uniffi_tracelet_core_fn_method_databasemanager_get_unsynced_trips(
+            self.uniffiCloneHandle(),
+        FfiConverterInt32.lower(limit),$0
+    )
+})
+}
+    
+    /**
      * Inserts or replaces a validated tamper-proof cryptographic audit trail record.
      */
 open func insertAuditTrail(uuid: String, hash: String, prevHash: String, index: Int32)throws   {try rustCallWithError(FfiConverterTypeTraceletError_lift) {
@@ -2261,6 +2318,20 @@ open func insertTelematicsEvent(eventType: String, severity: Double, speed: Doub
 }
     
     /**
+     * Records a completed trip's summary (#401). Returns `false` when nothing
+     * was written: the trip has no id (it cannot be correlated, and an empty
+     * key would collide) or a summary for it already exists.
+     */
+open func insertTrip(trip: TripData)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeTraceletError_lift) {
+    uniffi_tracelet_core_fn_method_databasemanager_insert_trip(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTripData_lower(trip),$0
+    )
+})
+}
+    
+    /**
      * Gets the total count of locations persisted in the database.
      */
 open func isEmpty()throws  -> Bool  {
@@ -2276,6 +2347,18 @@ open func isEmpty()throws  -> Bool  {
      */
 open func markTelematicsSynced(maxId: Int64)throws   {try rustCallWithError(FfiConverterTypeTraceletError_lift) {
     uniffi_tracelet_core_fn_method_databasemanager_mark_telematics_synced(
+            self.uniffiCloneHandle(),
+        FfiConverterInt64.lower(maxId),$0
+    )
+}
+}
+    
+    /**
+     * Marks trips up to `max_id` as delivered. Call only after the request
+     * that carried them succeeded (#401).
+     */
+open func markTripsSynced(maxId: Int64)throws   {try rustCallWithError(FfiConverterTypeTraceletError_lift) {
+    uniffi_tracelet_core_fn_method_databasemanager_mark_trips_synced(
             self.uniffiCloneHandle(),
         FfiConverterInt64.lower(maxId),$0
     )
@@ -2385,6 +2468,19 @@ open func pruneLogsOlderThan(maxDays: Int32)throws   {try rustCallWithError(FfiC
 open func pruneSyncedTelematics(keep: Int32)throws  -> UInt64  {
     return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeTraceletError_lift) {
     uniffi_tracelet_core_fn_method_databasemanager_prune_synced_telematics(
+            self.uniffiCloneHandle(),
+        FfiConverterInt32.lower(keep),$0
+    )
+})
+}
+    
+    /**
+     * Deletes **synced** trips beyond the newest `keep` of them. Unsynced rows
+     * are still owed to the server and are never touched here (#401).
+     */
+open func pruneSyncedTrips(keep: Int32)throws  -> UInt64  {
+    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeTraceletError_lift) {
+    uniffi_tracelet_core_fn_method_databasemanager_prune_synced_trips(
             self.uniffiCloneHandle(),
         FfiConverterInt32.lower(keep),$0
     )
@@ -6777,6 +6873,134 @@ public func FfiConverterTypeDbTelematicsRecord_lower(_ value: DbTelematicsRecord
 
 
 /**
+ * A completed trip's summary, persisted when the trip ends (#401).
+ *
+ * Written once per trip by the native layer, the only layer that writes to
+ * this database, and keyed on `trip_id` so a trip can never be recorded
+ * twice. `synced` follows the telematics rule: a row is marked, not deleted,
+ * once the request that carried it succeeds.
+ */
+public struct DbTripRecord: Equatable, Hashable {
+    public var id: Int64
+    /**
+     * The UUIDv4 minted at trip start, shared with every location and driving
+     * event recorded during the trip (#402).
+     */
+    public var tripId: String
+    public var startedAtMs: Int64
+    public var endedAtMs: Int64
+    /**
+     * Metres along the trip's waypoints.
+     */
+    public var distance: Double
+    /**
+     * Seconds from start to end.
+     */
+    public var duration: Double
+    /**
+     * `distance / duration` in m/s; 0 for a zero-length trip.
+     */
+    public var averageSpeed: Double
+    public var startLatitude: Double?
+    public var startLongitude: Double?
+    public var stopLatitude: Double?
+    public var stopLongitude: Double?
+    public var synced: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: Int64, 
+        /**
+         * The UUIDv4 minted at trip start, shared with every location and driving
+         * event recorded during the trip (#402).
+         */tripId: String, startedAtMs: Int64, endedAtMs: Int64, 
+        /**
+         * Metres along the trip's waypoints.
+         */distance: Double, 
+        /**
+         * Seconds from start to end.
+         */duration: Double, 
+        /**
+         * `distance / duration` in m/s; 0 for a zero-length trip.
+         */averageSpeed: Double, startLatitude: Double?, startLongitude: Double?, stopLatitude: Double?, stopLongitude: Double?, synced: Bool) {
+        self.id = id
+        self.tripId = tripId
+        self.startedAtMs = startedAtMs
+        self.endedAtMs = endedAtMs
+        self.distance = distance
+        self.duration = duration
+        self.averageSpeed = averageSpeed
+        self.startLatitude = startLatitude
+        self.startLongitude = startLongitude
+        self.stopLatitude = stopLatitude
+        self.stopLongitude = stopLongitude
+        self.synced = synced
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension DbTripRecord: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDbTripRecord: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DbTripRecord {
+        return
+            try DbTripRecord(
+                id: FfiConverterInt64.read(from: &buf), 
+                tripId: FfiConverterString.read(from: &buf), 
+                startedAtMs: FfiConverterInt64.read(from: &buf), 
+                endedAtMs: FfiConverterInt64.read(from: &buf), 
+                distance: FfiConverterDouble.read(from: &buf), 
+                duration: FfiConverterDouble.read(from: &buf), 
+                averageSpeed: FfiConverterDouble.read(from: &buf), 
+                startLatitude: FfiConverterOptionDouble.read(from: &buf), 
+                startLongitude: FfiConverterOptionDouble.read(from: &buf), 
+                stopLatitude: FfiConverterOptionDouble.read(from: &buf), 
+                stopLongitude: FfiConverterOptionDouble.read(from: &buf), 
+                synced: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DbTripRecord, into buf: inout [UInt8]) {
+        FfiConverterInt64.write(value.id, into: &buf)
+        FfiConverterString.write(value.tripId, into: &buf)
+        FfiConverterInt64.write(value.startedAtMs, into: &buf)
+        FfiConverterInt64.write(value.endedAtMs, into: &buf)
+        FfiConverterDouble.write(value.distance, into: &buf)
+        FfiConverterDouble.write(value.duration, into: &buf)
+        FfiConverterDouble.write(value.averageSpeed, into: &buf)
+        FfiConverterOptionDouble.write(value.startLatitude, into: &buf)
+        FfiConverterOptionDouble.write(value.startLongitude, into: &buf)
+        FfiConverterOptionDouble.write(value.stopLatitude, into: &buf)
+        FfiConverterOptionDouble.write(value.stopLongitude, into: &buf)
+        FfiConverterBool.write(value.synced, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDbTripRecord_lift(_ buf: RustBuffer) throws -> DbTripRecord {
+    return try FfiConverterTypeDbTripRecord.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDbTripRecord_lower(_ value: DbTripRecord) -> RustBuffer {
+    return FfiConverterTypeDbTripRecord.lower(value)
+}
+
+
+/**
  * A detected driving event.
  */
 public struct DrivingEvent: Equatable, Hashable {
@@ -10936,6 +11160,31 @@ fileprivate struct FfiConverterSequenceTypeDbTelematicsRecord: FfiConverterRustB
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeDbTripRecord: FfiConverterRustBuffer {
+    typealias SwiftType = [DbTripRecord]
+
+    public static func write(_ value: [DbTripRecord], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeDbTripRecord.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [DbTripRecord] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [DbTripRecord]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeDbTripRecord.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeDrivingEvent: FfiConverterRustBuffer {
     typealias SwiftType = [DrivingEvent]
 
@@ -11177,6 +11426,20 @@ public func sha256(input: String) -> String  {
     )
 })
 }
+/**
+ * Serializes trip summaries to the `trips` array of the sync payload (#401).
+ *
+ * One implementation for both platforms, so Android and iOS cannot drift on
+ * the shape. Keys follow the location/telematics payloads (snake_case);
+ * timestamps are ISO 8601 UTC; a missing start/stop position is JSON `null`.
+ */
+public func tripsSyncJson(trips: [DbTripRecord]) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_tracelet_core_fn_func_trips_sync_json(
+        FfiConverterSequenceTypeDbTripRecord.lower(trips),$0
+    )
+})
+}
 
 private enum InitializationResult {
     case ok
@@ -11212,6 +11475,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_func_sha256() != 14625) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tracelet_core_checksum_func_trips_sync_json() != 45905) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_crashmodel_feature_names() != 11927) {
@@ -11427,6 +11693,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_tracelet_core_checksum_method_databasemanager_get_telematics_history() != 54287) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_tracelet_core_checksum_method_databasemanager_get_trips() != 26085) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tracelet_core_checksum_method_databasemanager_get_unsynced_trips() != 12780) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_tracelet_core_checksum_method_databasemanager_insert_audit_trail() != 2860) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -11445,10 +11717,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_tracelet_core_checksum_method_databasemanager_insert_telematics_event() != 45645) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_tracelet_core_checksum_method_databasemanager_insert_trip() != 51258) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_tracelet_core_checksum_method_databasemanager_is_empty() != 5940) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_databasemanager_mark_telematics_synced() != 38059) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tracelet_core_checksum_method_databasemanager_mark_trips_synced() != 54632) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_databasemanager_prune_locations_older_than() != 38098) {
@@ -11461,6 +11739,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_databasemanager_prune_synced_telematics() != 11319) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_tracelet_core_checksum_method_databasemanager_prune_synced_trips() != 42351) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_databasemanager_set_active_trip_id() != 51416) {

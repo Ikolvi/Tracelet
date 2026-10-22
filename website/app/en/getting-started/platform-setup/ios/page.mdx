@@ -148,6 +148,10 @@ Even with `showsBackgroundLocationIndicator: false`, iOS **forces the indicator 
 2. Keep `showsBackgroundLocationIndicator: false` (don't set it to `true`).
 3. Avoid unnecessary continuous background location. **Geofence‑only mode uses native region monitoring (no continuous GPS), so it shows no indicator** — `startGeofences()` does not run continuous updates in standard mode.
 
+<Callout type="info">
+  **Hidden indicator and iOS 16.4+ background suspension.** Since iOS 16.4, Apple can suspend an app in the background if it runs continuous updates and significant-change monitoring together while asking for a distance filter or accuracy coarser than 100 m, unless the indicator is showing. Tracelet runs both. So with "Always" permission, `showsBackgroundLocationIndicator: false` and `useBackgroundActivitySession: false`, Tracelet runs CoreLocation with **no distance filter and accuracy of 100 m or better**. Your `distanceFilter` is still applied before a point is recorded or synced, so stored and uploaded volume doesn't change; the device just delivers more raw fixes for Tracelet to filter. On 3.8.8 and earlier this configuration was suspended in the background and only delivered at significant-change wakes. Turning the indicator on, or opting into `useBackgroundActivitySession`, keeps your configured values.
+</Callout>
+
 ---
 
 ## Scenario 4: The Dynamic Island Indicator (iOS 17+)
@@ -393,3 +397,13 @@ When a user manually force-quits the app:
 Tracelet cannot bypass Apple's fundamental OS constraints. However, Tracelet ensures that:
 1. All unsynced locations are safely persisted in the Rust SQLite database *before* the app is killed.
 2. As soon as the user opens the app again, Tracelet instantly resumes tracking and syncs any offline data without missing a beat.
+
+---
+
+## Release Builds: Debug Symbols (dSYMs)
+
+`TraceletCore.xcframework` and `TraceletSyncFFI.xcframework` ship a dSYM for every slice, so an archive uploads symbols for the Rust core and crashes inside it symbolicate in Xcode Organizer and Crashlytics. Up to 3.8.8 they shipped none, which produced Xcode's *"Upload Symbols Failed: The archive did not include a dSYM for the TraceletCore.framework"* warning ([#424](https://github.com/Ikolvi/Tracelet/issues/424)).
+
+<Callout type="warning">
+  **Don't override `DEBUG_INFORMATION_FORMAT`, `STRIP_INSTALLED_PRODUCT` or `STRIP_STYLE` for the Tracelet targets** in a Podfile `post_install` hook. `DEBUG_INFORMATION_FORMAT = dwarf` never reaches the prebuilt frameworks, and only removes the dSYMs of the Swift pods (`TraceletSDK`, `tracelet_ios`), which is where most crash-relevant code lives. The podspecs already pin `STRIP_INSTALLED_PRODUCT = NO` and `STRIP_STYLE = non-global`, because the exported Rust symbols must survive. Stripping harder breaks the link.
+</Callout>

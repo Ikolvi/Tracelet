@@ -60,7 +60,7 @@ create_dynamic_framework() {
     local OUT=$4
 
     local FWK="$OUT/$NAME.framework"
-    rm -rf "$FWK"
+    rm -rf "$FWK" "$OUT/$NAME.framework.dSYM"
     mkdir -p "$FWK/Headers"
     mkdir -p "$FWK/Modules"
 
@@ -68,6 +68,15 @@ create_dynamic_framework() {
     # The install name must be @rpath-relative so the framework resolves when
     # embedded under <App>.app/Frameworks/<NAME>.framework/<NAME>.
     install_name_tool -id "@rpath/$NAME.framework/$NAME" "$FWK/$NAME"
+
+    # #424: archives warned "Upload Symbols Failed" and Rust frames were
+    # unsymbolicated, because nothing produced a dSYM. dsymutil reads the debug
+    # map from the binary (the DWARF stays in cargo's object files), so it runs
+    # before the strip; the strip keeps LC_UUID, so the dSYM still matches.
+    # `-S -x` drops debug and local symbols only — the exported uniffi_*/frb_*
+    # symbols are global and must survive (the symbol verification checks).
+    dsymutil "$FWK/$NAME" -o "$OUT/$NAME.framework.dSYM"
+    strip -S -x "$FWK/$NAME"
     cp "$HEADERS"/*.h "$FWK/Headers/"
     cp "$HEADERS"/module.modulemap "$FWK/Modules/module.modulemap"
     # A module bundled inside a .framework must be declared as a `framework

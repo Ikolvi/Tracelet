@@ -3,31 +3,44 @@ import UIKit
 import TraceletSDK
 
 actor SyncCoordinator {
-    private var isSyncing = false
     private var syncTask: Task<Void, Never>?
-    
-    func scheduleSync(sink: TraceletSyncSink) {
-        let delayMs = TraceletSdk.shared.rustEngineState?.getConfig().http.autoSyncDelay ?? 10000
-        let delayNanos = UInt64(delayMs) * 1_000_000
-        
+    /// Set by every request and re-checked before a drain finishes, so a fix
+    /// stored while a sync is in flight is never dropped (#437).
+    private var requested = false
+
+    /// Batches per run before yielding; the run then continues (#437).
+    static let maxBatchesPerRun = 50
+
+    /// Asks for a drain after the configured `autoSyncDelay` (#437).
+    ///
+    /// This used to return when a task already existed, and that task covered
+    /// the debounce *and* the upload; and each run uploaded one batch. So a fix
+    /// stored during a sync scheduled nothing, the queue shrank by at most one
+    /// batch per later fix, and with `maxBatchSize: 1` it never shrank. Now a
+    /// request made at any moment is picked up before the run ends, and each
+    /// run drains until a batch comes back empty or fails.
+    func scheduleSync(sink: TraceletSyncSink, delayMs: Int? = nil) {
+        requested = true
         if syncTask != nil { return }
-        
-        // CRITICAL FIX: Explicitly request background execution time.
-        // Without this, iOS will suspend the app immediately after the location event completes,
-        // preventing the HTTP sync task from ever firing.
-        let bgTaskId = BackgroundTaskHelper.shared.begin("tracelet_sync_task")
-        
+        let delay = delayMs ?? Int(TraceletSdk.shared.rustEngineState?.getConfig().http.autoSyncDelay ?? 10000)
+        let delayNanos = UInt64(max(0, delay)) * 1_000_000
+
         syncTask = Task {
-            try? await Task.sleep(nanoseconds: delayNanos)
-            // Bail if the debounce was cancelled while sleeping (stop(), #213).
-            if Task.isCancelled {
-                self.syncTask = nil
+            while !Task.isCancelled {
+                // Background time per run: without it iOS suspends the app as
+                // soon as the location event returns and the sync never fires.
+                let bgTaskId = BackgroundTaskHelper.shared.begin("tracelet_sync_task")
+                try? await Task.sleep(nanoseconds: delayNanos)
+                if Task.isCancelled {
+                    BackgroundTaskHelper.shared.end(bgTaskId)
+                    break
+                }
+                self.requested = false
+                await self.drain(sink: sink)
                 BackgroundTaskHelper.shared.end(bgTaskId)
-                return
+                if !self.requested { break }
             }
             self.syncTask = nil
-            await self.triggerSync(sink: sink)
-            BackgroundTaskHelper.shared.end(bgTaskId)
         }
     }
 
@@ -35,58 +48,86 @@ actor SyncCoordinator {
     func cancel() {
         syncTask?.cancel()
         syncTask = nil
+        requested = false
     }
 
-    func triggerSync(sink: TraceletSyncSink) async {
-        guard !isSyncing else { return }
-        isSyncing = true
-        defer { isSyncing = false }
-        
+    private func drain(sink: TraceletSyncSink) async {
+        var batches = 0
+        while batches < Self.maxBatchesPerRun {
+            if Task.isCancelled { return }
+            if await uploadOneBatch(sink: sink) <= 0 { return }
+            batches += 1
+        }
+        // Rows may remain: hand them to another run.
+        requested = true
+    }
+
+    /// Uploads the oldest batch and clears it. Returns the rows cleared, or 0
+    /// when the queue is empty or the upload failed.
+    private func uploadOneBatch(sink: TraceletSyncSink) async -> Int {
         guard let db = TraceletSdk.shared.rustDatabase,
               let state = TraceletSdk.shared.rustEngineState else {
-            return
+            return 0
         }
-        
-        do {
-            let updatedHttp = state.getConfig().http
-            guard let url = updatedHttp.url, !url.isEmpty else { return }
-            guard updatedHttp.autoSync else { return }
-            
-            TraceletSdk.shared.logger.debug("Triggering sync to URL: \(url)")
-            
-            let limit: Int32 = updatedHttp.maxBatchSize > 0 ? updatedHttp.maxBatchSize : 250
-            let coreRecords = try db.getLocationsBatch(query: LocationQuery(
-                startTimeMs: nil,
-                endTimeMs: nil,
-                limit: limit,
-                offset: nil,
-                orderDescending: nil
-            ))
-            TraceletSdk.shared.logger.debug("Found \(coreRecords.count) locations in DB.")
-            if coreRecords.isEmpty { return }
-            
-            // CRITICAL FIX: Offload the synchronous blocking FFI call to a background 
-            // DispatchQueue so we do not starve the Swift Concurrency cooperative thread pool.
-            let count = try await withCheckedThrowingContinuation { continuation in
-                DispatchQueue.global(qos: .utility).async {
+        let configured = state.getConfig().http
+        guard let url = configured.url, !url.isEmpty, configured.autoSync else { return 0 }
+        TraceletSdk.shared.logger.debug("Triggering sync to URL: \(url)")
+
+        // CRITICAL FIX: Offload the synchronous blocking FFI call to a background
+        // DispatchQueue so we do not starve the Swift Concurrency cooperative thread pool.
+        // The whole read-upload-clear runs under the sink's lock, shared with a
+        // manual or interval sync() (#437).
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                let cleared: Int = sink.runExclusive {
+                    // #401: pending trip summaries ride the request as a root
+                    // `trips` array. Attached under the lock that settles them.
+                    let updatedHttp = TraceletSdk.shared.withPendingTrips(configured)
                     do {
-                        let result = try sink.syncBatchBlocking(config: updatedHttp, records: coreRecords)
-                        continuation.resume(returning: result)
+                        let limit: Int32 = updatedHttp.maxBatchSize > 0 ? updatedHttp.maxBatchSize : 250
+                        // Always the OLDEST rows: `clearLocationsUpTo` deletes
+                        // every id up to the one given (#437). The configured
+                        // order (#138) applies inside the payload.
+                        let oldest = try db.getLocationsBatch(query: LocationQuery(
+                            startTimeMs: nil,
+                            endTimeMs: nil,
+                            limit: limit,
+                            offset: nil,
+                            orderDescending: false
+                        ))
+                        // A trip that ended after its last location was uploaded
+                        // still has to go out: a trips-only request is allowed.
+                        if oldest.isEmpty && !TraceletSdk.shared.hasTripsInFlight { return 0 }
+                        let records = updatedHttp.locationsOrderDirection == 1
+                            ? Array(oldest.reversed()) : oldest
+                        let count = try sink.syncBatchBlocking(config: updatedHttp, records: records)
+                        guard count > 0 else {
+                            TraceletSdk.shared.logger.debug("No locations synced or count was 0.")
+                            return 0
+                        }
+                        if let maxId = oldest.map({ $0.id }).max() {
+                            try db.clearLocationsUpTo(maxId: maxId)
+                            TraceletSdk.shared.logger.debug("Synced and cleared \(count) locations.")
+                        }
+                        TraceletSdk.shared.settleTripsInFlight()
+                        return max(oldest.count, 1)
                     } catch {
-                        continuation.resume(throwing: error)
+                        TraceletSdk.shared.logger.debug("Sync failed with error: \(error)")
+                        return 0
                     }
                 }
+                continuation.resume(returning: cleared)
             }
-            
-            if count > 0, let lastId = coreRecords.last?.id {
-                try db.clearLocationsUpTo(maxId: lastId)
-                TraceletSdk.shared.logger.debug("Synced and cleared \(count) locations.")
-            } else {
-                TraceletSdk.shared.logger.debug("No locations synced or count was 0.")
-            }
-        } catch {
-            TraceletSdk.shared.logger.debug("Sync failed with error: \(error)")
         }
+    }
+
+    /// Exponential backoff from `retryBackoffBase`, capped at `retryBackoffCap`
+    /// — the spacing the default path already uses (#437).
+    nonisolated static func backoffNanos(attempt: Int, base: Int, cap: Int) -> UInt64 {
+        let b = UInt64(base > 0 ? base : 1000)
+        let c = UInt64(cap > 0 ? cap : 60_000)
+        let ms = min(c, b << UInt64(min(max(attempt, 0), 20)))
+        return ms * 1_000_000
     }
 
 struct FallbackSyncResult {
@@ -116,7 +157,8 @@ struct FallbackSyncResult {
             var request = URLRequest(url: url)
             request.httpMethod = coreHttp.method == 1 ? "PUT" : "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.timeoutInterval = 15.0
+            // #437: the configured timeout, not a fixed 15 s.
+            request.timeoutInterval = TimeInterval(coreHttp.httpTimeout > 0 ? coreHttp.httpTimeout : 60_000) / 1000
             
             for (k, v) in currentHeaders {
                 request.setValue(v, forHTTPHeaderField: k)
@@ -151,10 +193,16 @@ struct FallbackSyncResult {
                 TraceletSdk.shared.logger.debug("Fallback sync error: \(error)")
                 lastResponse = error.localizedDescription
                 lastStatus = 0
+                // A timeout may land after the server received the body; a retry
+                // would deliver the batch twice. The rows stay queued (#437).
+                if (error as? URLError)?.code == .timedOut {
+                    return FallbackSyncResult(success: false, status: lastStatus, responseText: lastResponse)
+                }
             }
-            
+
             if attempt < maxRetries {
-                try? await Task.sleep(nanoseconds: UInt64(1_000_000_000 * (attempt + 1)))
+                try? await Task.sleep(nanoseconds: Self.backoffNanos(
+                    attempt: attempt, base: Int(coreHttp.retryBackoffBase), cap: Int(coreHttp.retryBackoffCap)))
             }
         }
         return FallbackSyncResult(success: false, status: lastStatus, responseText: lastResponse)
@@ -163,6 +211,18 @@ struct FallbackSyncResult {
 
 class TraceletSyncSink: LocationDataSink, SyncProvider {
     let coordinator = SyncCoordinator()
+    /// Shared by auto-sync and a manual or interval `sync()` (#437).
+    private let exclusive = NSLock()
+
+    func runExclusive<T>(_ body: () throws -> T) rethrows -> T {
+        exclusive.lock()
+        defer { exclusive.unlock() }
+        return try body()
+    }
+
+    func requestDrain() {
+        Task { await coordinator.scheduleSync(sink: self, delayMs: 0) }
+    }
 
     private static let syncBodySourceLock = NSLock()
     private static var lastSyncBodySource: String?
@@ -196,6 +256,13 @@ class TraceletSyncSink: LocationDataSink, SyncProvider {
     
     @discardableResult
     func insertLocation(_ location: [String: Any]) -> String {
+        // #437: autoSyncThreshold was stored and passed to Rust but never read.
+        if let http = TraceletSdk.shared.rustEngineState?.getConfig().http,
+           http.autoSyncThreshold > 0,
+           let pending = try? TraceletSdk.shared.rustDatabase?.getLocationsCount(),
+           Int64(pending) < Int64(http.autoSyncThreshold) {
+            return ""
+        }
         Task {
             await coordinator.scheduleSync(sink: self)
         }

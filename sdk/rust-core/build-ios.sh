@@ -20,6 +20,12 @@ done
 
 echo "Compiling for iOS targets..."
 export RUSTFLAGS="-C embed-bitcode=no"
+# #424: line tables and function names for a dSYM. The shared release profile
+# strips debug info (right for Android's .so), so the iOS build overrides it
+# here; create_dynamic_framework moves it into a .dSYM and strips the binary,
+# so the shipped framework is no larger.
+export CARGO_PROFILE_RELEASE_DEBUG=line-tables-only
+export CARGO_PROFILE_RELEASE_STRIP=none
 cargo build --release --target aarch64-apple-ios
 cargo build --release --target aarch64-apple-ios-sim
 cargo build --release --target x86_64-apple-ios
@@ -79,9 +85,14 @@ rm -rf "$OUT_DIR/TraceletCore.xcframework"
 # ExternalLibrary.open('TraceletCore.framework/TraceletCore')).
 create_dynamic_framework "TraceletCore" "target/aarch64-apple-ios/release/libtracelet_core.dylib" "$OUT_DIR/core/Headers/TraceletCore" "$OUT_DIR/fwk/device"
 create_dynamic_framework "TraceletCore" "$OUT_DIR/sim/libtracelet_core.dylib" "$OUT_DIR/core/Headers/TraceletCore" "$OUT_DIR/fwk/sim"
+# -debug-symbols needs absolute paths; it carries each slice's dSYM into the
+# xcframework, and from there into the app's archive (#424).
+ABS_OUT="$(cd "$OUT_DIR" && pwd)"
 xcodebuild -create-xcframework \
     -framework "$OUT_DIR/fwk/device/TraceletCore.framework" \
+    -debug-symbols "$ABS_OUT/fwk/device/TraceletCore.framework.dSYM" \
     -framework "$OUT_DIR/fwk/sim/TraceletCore.framework" \
+    -debug-symbols "$ABS_OUT/fwk/sim/TraceletCore.framework.dSYM" \
     -output "$OUT_DIR/TraceletCore.xcframework"
 
 
@@ -113,7 +124,9 @@ create_dynamic_framework "TraceletSyncFFI" "target/aarch64-apple-ios/release/lib
 create_dynamic_framework "TraceletSyncFFI" "$OUT_DIR/sim/libtracelet_sync.dylib" "$OUT_DIR/sync/Headers/TraceletSyncFFI" "$OUT_DIR/fwk-sync/sim"
 xcodebuild -create-xcframework \
     -framework "$OUT_DIR/fwk-sync/device/TraceletSyncFFI.framework" \
+    -debug-symbols "$ABS_OUT/fwk-sync/device/TraceletSyncFFI.framework.dSYM" \
     -framework "$OUT_DIR/fwk-sync/sim/TraceletSyncFFI.framework" \
+    -debug-symbols "$ABS_OUT/fwk-sync/sim/TraceletSyncFFI.framework.dSYM" \
     -output "$OUT_DIR/TraceletSyncFFI.xcframework"
 
 # Copy the built xcframework to the plugin's ios directory so CocoaPods can vendor it
@@ -137,6 +150,28 @@ if nm -gU "$CORE_BIN" 2>/dev/null | grep -i 'reqwest'; then
     exit 1
 fi
 echo "✅ TraceletCore symbol verification passed (dynamic + FRB symbols exported, no heavy deps)."
+
+# #424: every slice must carry a dSYM whose UUIDs match its binary, or the
+# archive's symbol upload still fails.
+echo "Verifying dSYMs ship inside the xcframeworks..."
+for XCF in "$OUT_DIR/TraceletCore.xcframework" "$OUT_DIR/TraceletSyncFFI.xcframework"; do
+    NAME="$(basename "$XCF" .xcframework)"
+    for SLICE in "$XCF"/ios-*; do
+        BIN="$SLICE/$NAME.framework/$NAME"
+        DSYM="$SLICE/dSYMs/$NAME.framework.dSYM"
+        if [ ! -d "$DSYM" ]; then
+            echo "❌ ERROR: no dSYM in $SLICE"
+            exit 1
+        fi
+        BIN_UUIDS="$(dwarfdump --uuid "$BIN" | awk '{print $2}' | sort)"
+        DSYM_UUIDS="$(dwarfdump --uuid "$DSYM" | awk '{print $2}' | sort)"
+        if [ -z "$BIN_UUIDS" ] || [ "$BIN_UUIDS" != "$DSYM_UUIDS" ]; then
+            echo "❌ ERROR: dSYM UUIDs do not match the binary in $SLICE"
+            exit 1
+        fi
+    done
+done
+echo "✅ dSYMs present with matching UUIDs."
 
 # Surface sccache effectiveness (compile requests / cache hits / misses). Guarded
 # so local builds without sccache still succeed under `set -e`.

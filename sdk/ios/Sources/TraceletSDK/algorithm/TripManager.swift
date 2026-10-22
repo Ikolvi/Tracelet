@@ -12,6 +12,11 @@ public class TraceletTripManager {
     /// on and had to re-derive the boundary from raw motion changes.
     public var onTripStart: (([String: Any?]) -> Void)?
 
+    /// Callback invoked with the ended trip's summary as Rust computed it, just
+    /// before `onTripEnd` (#401). The SDK persists it, so the summary is synced
+    /// with the same values the event reported.
+    public var onTripSummary: ((TripData) -> Void)?
+
     private let rustTripManager = TripManager()
 
     /// Whether a trip is currently active.
@@ -63,6 +68,7 @@ public class TraceletTripManager {
         }
 
         guard case .ended(let tripData) = transition else { return }
+        onTripSummary?(tripData)
 
         var startMap: [String: Any?] = [:]
         if let startLoc = tripData.startLocation {
