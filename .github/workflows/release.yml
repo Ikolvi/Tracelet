@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       deploy_website:
-        description: "Deploy Documentation Website to Firebase Hosting"
+        description: "Deploy Documentation Website to Cloudflare Pages"
         required: false
         type: boolean
         default: true
@@ -1119,7 +1119,7 @@ jobs:
   # Job 6: Deploy Documentation Website
   # ─────────────────────────────────────────────────────────────
   deploy_docs:
-    name: Deploy Docs to Firebase
+    name: Deploy Docs to Cloudflare Pages
     # Deploy the website ONLY after the Flutter packages have finished publishing
     # to pub.dev. Without this dependency the job races the publish jobs and the
     # version shown on the site (sidebar/version badge) can read the new version
@@ -1207,15 +1207,24 @@ jobs:
           echo "::error::Next.js build failed 3 consecutive times — this is no longer the known flake; investigate."
           exit 1
         
-      - name: Deploy to Firebase Hosting
-        uses: FirebaseExtended/action-hosting-deploy@v0
+      # Cloudflare Pages, not Firebase Hosting. The 3.8.9 docs deploy failed at
+      # this step: the Firebase action runs `firebase-tools@latest`, and 15.x
+      # began checking the Hosting API through serviceusage.googleapis.com,
+      # which the deploy service account was never granted (403,
+      # serviceusage.services.get) — the site built, then could not upload.
+      # ikolvi.com is a Cloudflare zone already, so the docs now live on the
+      # `tracelet-docs` Pages project behind tracelet.ikolvi.com. Pages serves
+      # `/en/faq` from `faq.html` by default, which is all `cleanUrls` did.
+      #
+      # Needs the CLOUDFLARE_API_TOKEN secret (Account → Cloudflare Pages:
+      # Edit). The account id is not a secret.
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v4
         with:
-          repoToken: '${{ secrets.GITHUB_TOKEN }}'
-          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_IKOLVI }}'
-          projectId: 'ikolvi'
-          target: 'tracelet-docs'
-          channelId: 'live'
-          entryPoint: './website'
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: e09b6e290483127c3121bba67095241d
+          workingDirectory: ./website
+          command: pages deploy out --project-name tracelet-docs --branch main
 
   # ─────────────────────────────────────────────────────────────
   # Job 7: Post to Discord Announcements
