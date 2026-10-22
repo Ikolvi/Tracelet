@@ -124,6 +124,11 @@ delay = min(retryBackoffCap, retryBackoffBase × 2^(attempt-1)) ± jitter
 | `429`       | Too Many Requests       | ✅ Yes   |
 | `500–599`   | Server Error            | ✅ Yes   |
 
+With a custom sync body builder, a request that **times out after its body was
+sent** is not retried: the server may already be processing it, and a retry
+would deliver the batch twice. The rows stay queued for the next sync
+([#437](https://github.com/Ikolvi/Tracelet/issues/437)).
+
 ### What's NOT Retried (Permanent Errors)
 
 | Status Code | Meaning                | Retried? |
@@ -205,6 +210,21 @@ Fetch batch → Send → Mark synced → Fetch next batch → ... → Done
 This ensures that even with thousands of queued locations, a single sync
 trigger flushes everything.
 
+- **Nothing triggered mid-sync is dropped.** A location recorded while a batch
+  is uploading is picked up by the same run before it finishes.
+- **Oldest first.** Batches are always taken oldest-first.
+  `locationsOrderDirection` sets the order of the locations *inside* each
+  request, not which rows are sent.
+- **A failure ends the run.** The rows stay queued, and the next trigger
+  (a new location, `syncInterval`, or `sync()`) tries again, so a down server
+  is not hammered in a loop.
+- **Manual and automatic syncs don't overlap.** `sync()` waits for an
+  auto-sync in progress, so the same rows are never sent twice by the two.
+
+On 3.8.8 and earlier, auto-sync uploaded one batch per newly recorded location
+and dropped triggers that arrived during an upload, so with `maxBatchSize: 1`
+the queue never shrank ([#437](https://github.com/Ikolvi/Tracelet/issues/437)).
+
 ---
 
 ## HttpEvent — Monitoring Sync
@@ -268,6 +288,12 @@ HttpConfig(
 
 This is useful for battery savings — instead of one HTTP request per
 location, the engine waits until a threshold is reached or groups rapid updates into a single batch using the debounce delay.
+
+The threshold counts every queued location, and is checked when a new one is
+recorded. A parked device that stays below it records nothing new, so pair a
+threshold with `syncInterval` if the last few points must still go out. On
+3.8.8 and earlier the threshold was ignored on Android and iOS
+([#437](https://github.com/Ikolvi/Tracelet/issues/437)).
 
 ---
 

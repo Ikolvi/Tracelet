@@ -62,7 +62,7 @@ Mark is using your fitness app to track a 3-hour hike through the mountains. He 
    When Mark finally drives down the mountain and regains 4G, he suddenly has 500 queued locations. Instead of firing off 500 immediate HTTP requests (which would freeze his phone), `autoSyncDelay: 10000` tells Tracelet to wait 10 seconds. It debounces the rapid influx of data, letting the connection stabilize.
 
 3. **Batch Syncing (`batchSync` & `maxBatchSize`)**
-   Instead of 500 individual `POST` requests, `batchSync: true` and `maxBatchSize: 250` bundles the locations into two massive JSON arrays. It sends the first 250 points, waits for your server to return an `HTTP 200 OK`, deletes those points from SQLite, and then sends the next batch, oldest first, until the queue is empty. A location recorded while a batch is uploading is picked up by the same run, so one trigger always drains the whole backlog. If a batch fails, the run stops and the next trigger retries; a down server isn't hammered in a loop.
+   Instead of 500 individual `POST` requests, `batchSync: true` and `maxBatchSize: 250` bundles the locations into two massive JSON arrays. It sends the first 250 points, waits for your server to return an `HTTP 200 OK`, deletes those points from SQLite, and then sends the next batch, oldest first, until the queue is empty. A location recorded while a batch is uploading is picked up by the same run, so one trigger always drains the whole backlog. If a batch fails, the run stops and the next trigger retries; a down server isn't hammered in a loop. A manual `sync()` waits for an auto-sync in progress, so the two never send the same rows.
 
 4. **Interval-Based Sync (`syncInterval`)**
    `autoSyncDelay` reacts to *new* locations. If you also want a time-driven flush — uploading whatever is queued on a fixed cadence, regardless of how many points have accumulated — set `syncInterval` to the number of seconds between flushes (e.g. `syncInterval: 60` flushes the offline queue once a minute). It runs alongside the debounce and is disabled by default (`0`).
@@ -136,7 +136,7 @@ Mark's auth token (JWT) expired while he was hiking. When Tracelet finally tries
    ```
 
 2. **Exponential Backoff (`maxRetries` & `retryBackoffCap`)**
-   What if your auth server is down and returns a 503? Tracelet handles this gracefully. It attempts a retry. It fails. It waits 1 second (`retryBackoffBase`), then 2 seconds, then 4 seconds. The exponential backoff is capped at 60 seconds (`retryBackoffCap`). After 3 attempts (`maxRetries`), it gives up entirely, leaving the data safely in SQLite to try again tomorrow.
+   What if your auth server is down and returns a 503? Tracelet handles this gracefully. It attempts a retry. It fails. It waits 1 second (`retryBackoffBase`), then 2 seconds, then 4 seconds. The exponential backoff is capped at 60 seconds (`retryBackoffCap`). After 3 attempts (`maxRetries`), it gives up entirely, leaving the data safely in SQLite to try again tomorrow. One exception: with a custom sync body builder, a request that times out *after* its body was sent is not retried, because the server may already be processing it and a retry would deliver the batch twice; the rows wait for the next sync.
 
 ---
 

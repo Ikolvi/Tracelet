@@ -289,7 +289,7 @@ Controls the network synchronization engine. [See Sync Story 📖](/en/core/trac
 - **`maxBatchSize`**: `int` *(Default: `250`)*
   Locations per request. A sync uploads batch after batch until the queue is empty, so this sizes each request, not how much one sync can send.
 - **`autoSyncThreshold`**: `int` *(Default: `0`)*
-  Number of queued locations required before a new location triggers an auto-sync. `0` syncs on every location. (On 3.8.8 and earlier this was ignored on Android and iOS.)
+  Number of queued locations required before a new location triggers an auto-sync. `0` syncs on every location. A parked device below the threshold records nothing new, so pair it with `syncInterval` if the last points must still go out. (On 3.8.8 and earlier this was ignored on Android and iOS.)
 - **`autoSyncDelay`**: `int` *(Default: `10000`)*
   Ms to wait before syncing after a location arrives.
 - **`syncInterval`**: `int` *(Default: `0`)*
