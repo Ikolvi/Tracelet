@@ -397,3 +397,13 @@ When a user manually force-quits the app:
 Tracelet cannot bypass Apple's fundamental OS constraints. However, Tracelet ensures that:
 1. All unsynced locations are safely persisted in the Rust SQLite database *before* the app is killed.
 2. As soon as the user opens the app again, Tracelet instantly resumes tracking and syncs any offline data without missing a beat.
+
+---
+
+## Release Builds: Debug Symbols (dSYMs)
+
+`TraceletCore.xcframework` and `TraceletSyncFFI.xcframework` ship a dSYM for every slice, so an archive uploads symbols for the Rust core and crashes inside it symbolicate in Xcode Organizer and Crashlytics. Up to 3.8.8 they shipped none, which produced Xcode's *"Upload Symbols Failed: The archive did not include a dSYM for the TraceletCore.framework"* warning ([#424](https://github.com/Ikolvi/Tracelet/issues/424)).
+
+<Callout type="warning">
+  **Don't override `DEBUG_INFORMATION_FORMAT`, `STRIP_INSTALLED_PRODUCT` or `STRIP_STYLE` for the Tracelet targets** in a Podfile `post_install` hook. `DEBUG_INFORMATION_FORMAT = dwarf` never reaches the prebuilt frameworks, and only removes the dSYMs of the Swift pods (`TraceletSDK`, `tracelet_ios`), which is where most crash-relevant code lives. The podspecs already pin `STRIP_INSTALLED_PRODUCT = NO` and `STRIP_STYLE = non-global`, because the exported Rust symbols must survive. Stripping harder breaks the link.
+</Callout>
