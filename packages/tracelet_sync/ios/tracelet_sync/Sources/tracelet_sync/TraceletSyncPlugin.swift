@@ -69,8 +69,8 @@ actor SyncCoordinator {
               let state = TraceletSdk.shared.rustEngineState else {
             return 0
         }
-        let updatedHttp = state.getConfig().http
-        guard let url = updatedHttp.url, !url.isEmpty, updatedHttp.autoSync else { return 0 }
+        let configured = state.getConfig().http
+        guard let url = configured.url, !url.isEmpty, configured.autoSync else { return 0 }
         TraceletSdk.shared.logger.debug("Triggering sync to URL: \(url)")
 
         // CRITICAL FIX: Offload the synchronous blocking FFI call to a background
@@ -80,6 +80,9 @@ actor SyncCoordinator {
         return await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
                 let cleared: Int = sink.runExclusive {
+                    // #401: pending trip summaries ride the request as a root
+                    // `trips` array. Attached under the lock that settles them.
+                    let updatedHttp = TraceletSdk.shared.withPendingTrips(configured)
                     do {
                         let limit: Int32 = updatedHttp.maxBatchSize > 0 ? updatedHttp.maxBatchSize : 250
                         // Always the OLDEST rows: `clearLocationsUpTo` deletes
@@ -92,17 +95,22 @@ actor SyncCoordinator {
                             offset: nil,
                             orderDescending: false
                         ))
-                        if oldest.isEmpty { return 0 }
+                        // A trip that ended after its last location was uploaded
+                        // still has to go out: a trips-only request is allowed.
+                        if oldest.isEmpty && !TraceletSdk.shared.hasTripsInFlight { return 0 }
                         let records = updatedHttp.locationsOrderDirection == 1
                             ? Array(oldest.reversed()) : oldest
                         let count = try sink.syncBatchBlocking(config: updatedHttp, records: records)
-                        guard count > 0, let maxId = oldest.map({ $0.id }).max() else {
+                        guard count > 0 else {
                             TraceletSdk.shared.logger.debug("No locations synced or count was 0.")
                             return 0
                         }
-                        try db.clearLocationsUpTo(maxId: maxId)
-                        TraceletSdk.shared.logger.debug("Synced and cleared \(count) locations.")
-                        return oldest.count
+                        if let maxId = oldest.map({ $0.id }).max() {
+                            try db.clearLocationsUpTo(maxId: maxId)
+                            TraceletSdk.shared.logger.debug("Synced and cleared \(count) locations.")
+                        }
+                        TraceletSdk.shared.settleTripsInFlight()
+                        return max(oldest.count, 1)
                     } catch {
                         TraceletSdk.shared.logger.debug("Sync failed with error: \(error)")
                         return 0

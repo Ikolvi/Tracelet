@@ -72,8 +72,10 @@ class TraceletSyncSink(private val sdk: TraceletSdk) : LocationDataSink, Tracele
             return 0
         }
         return try {
-            val coreHttp = state.getConfig().http
-            if (coreHttp.url.isNullOrEmpty() || !coreHttp.autoSync) return 0
+            val configured = state.getConfig().http
+            if (configured.url.isNullOrEmpty() || !configured.autoSync) return 0
+            // #401: pending trip summaries ride the request as a root `trips` array.
+            val coreHttp = sdk.withPendingTrips(configured)
 
             val limit = if (coreHttp.maxBatchSize > 0) coreHttp.maxBatchSize else 250
             // Always the OLDEST rows: `clearLocationsUpTo` deletes every id up
@@ -88,14 +90,19 @@ class TraceletSyncSink(private val sdk: TraceletSdk) : LocationDataSink, Tracele
                 offset = null,
                 orderDescending = false
             ))
-            if (oldest.isEmpty()) return 0
+            // A trip that ended after its last location was uploaded still has
+            // to go out, so a trips-only request is allowed (#401).
+            if (oldest.isEmpty() && !sdk.hasTripsInFlight) return 0
             val payloadOrder = if (coreHttp.locationsOrderDirection == 1) oldest.reversed() else oldest
 
             val count = syncBatchBlocking(coreHttp, payloadOrder)
             if (count <= 0L) return 0
-            db.clearLocationsUpTo(oldest.maxOf { it.id })
-            sdk.logger.info("Synced and cleared $count locations.")
-            oldest.size
+            if (oldest.isNotEmpty()) {
+                db.clearLocationsUpTo(oldest.maxOf { it.id })
+                sdk.logger.info("Synced and cleared $count locations.")
+            }
+            sdk.settleTripsInFlight()
+            maxOf(oldest.size, 1)
         } catch (e: Exception) {
             sdk.logger.error("Sync failed: ${e.message}")
             0

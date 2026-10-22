@@ -217,9 +217,11 @@ The trip manager is reset. No partial trip event is dispatched. This is by
 design — a trip requires both a start and stop transition.
 
 **...the app is killed and restarted?**
-Trip state is in-memory only (not persisted). If the app is killed during a
-trip and later relaunched by `startOnBoot`, the trip data from the previous
-session is lost. A new trip starts on the next moving→stationary cycle.
+The *active* trip is in-memory only. If the app is killed during a trip and
+later relaunched by `startOnBoot`, that unfinished trip is lost and a new one
+starts on the next stationary→moving transition. A trip that has *ended* is
+stored on the device and synced (see below), so a kill after the trip ended
+loses nothing.
 
 **...multiple `isMoving: true` events fire in a row?**
 The trip manager guards against this. Only the first `isMoving: true` event
@@ -269,7 +271,11 @@ Tracelet.onMotionChange((location) {
 ```
 
 **Q: Can I persist trips to a server?**
-Yes. Serialize with `trip.toMap()` and send via your HTTP layer:
+With HTTP sync configured, it happens for you: every completed trip is stored
+and sent as a root `trips` array with the next sync, and marked sent only when
+that request succeeds ([#401](https://github.com/Ikolvi/Tracelet/issues/401);
+see the *Trip Summaries* section of [HTTP-SYNC.md](HTTP-SYNC.md)). Without
+HTTP sync, serialize with `trip.toMap()` and send via your own HTTP layer:
 ```dart
 Tracelet.onTrip((trip) async {
   await http.post(

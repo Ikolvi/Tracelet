@@ -437,7 +437,7 @@ final thisDrive = events.where((e) => e.tripId == someTripId);
 | `TripStartEvent` | `tripId`, `startedAt`, `startLocation` |
 | `TripEvent` (from `onTrip`) | `tripId`, `startedAt`, `endedAt`, plus the existing distance/duration/waypoints |
 | `TelematicsRecord` | `tripId` |
-| Sync payload | `trip_id` on each location and telematics record — see [Tracelet Sync](/en/core/tracelet-sync#scenario-6-the-telematics-backend) |
+| Sync payload | `trip_id` on each location and telematics record, plus one summary per completed trip in a root `trips` array — see [Tracelet Sync](/en/core/tracelet-sync#scenario-6-the-telematics-backend) |
 
 ### Rules worth knowing
 
@@ -447,8 +447,12 @@ final thisDrive = events.where((e) => e.tripId == someTripId);
 - **A few points around a trip's start carry `null`.** Trip detection follows a motion transition, so some fixes land before the SDK declares the trip started. They are not back-filled — the value records the state at the moment of the write.
 - **`null` is normal.** Anything recorded outside a trip has no trip id, as do rows and trips written by a version from before trip identity shipped.
 
-<Callout type="warning">
-  The trip **summary** is still delivered only through `onTrip()` — it is not written to SQLite and not synced. `trip_id` is the exception: it is persisted on locations and driving events, so a journey can be reconstructed from the synced rows even when the summary never reaches your backend.
+### Trip summaries reach your backend
+
+When a trip ends, its summary (start and end time, distance, duration, average speed, start and stop position) is stored on the device under the trip's `trip_id` and sent with the next sync as a root `trips` array, beside `location` and `telematics`. It is sent once and marked delivered only when that request succeeds, so an offline device delivers it later rather than losing it. Trip detection runs in the SDK session; a journey made entirely under killed-state tracking (after the process was restarted) produces no trip and therefore no summary. Payload shape and rules: [Tracelet Sync → Trip summaries](/en/core/tracelet-sync#scenario-6-the-telematics-backend).
+
+<Callout type="info">
+  Before trip summaries were persisted, the summary only existed as the `onTrip()` event and never reached a backend. Trips that ended on an older version were not stored, so they have no summary; their locations and driving events still carry `trip_id`.
 </Callout>
 
 ---

@@ -111,9 +111,11 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
                     sdk.logger.debug("NativeSyncProvider: Headers refreshed via Dart interceptor")
                 }
 
-                val coreHttp = state.getConfig().http
-                sdk.logger.debug("NativeSyncProvider: coreHttp config: url=${coreHttp.url}, autoSync=${coreHttp.autoSync}")
-                if (coreHttp.url.isNullOrEmpty() || !coreHttp.autoSync) return 0
+                val configured = state.getConfig().http
+                sdk.logger.debug("NativeSyncProvider: coreHttp config: url=${configured.url}, autoSync=${configured.autoSync}")
+                if (configured.url.isNullOrEmpty() || !configured.autoSync) return 0
+                // #401: pending trip summaries ride the request as a root `trips` array.
+                val coreHttp = sdk.withPendingTrips(configured)
 
                 val limit = if (coreHttp.maxBatchSize > 0) coreHttp.maxBatchSize else 250
                 // Always the OLDEST rows: `clearLocationsUpTo` deletes every id
@@ -128,9 +130,11 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
                     orderDescending = false
                 ))
                 sdk.logger.debug("NativeSyncProvider: Found ${oldest.size} locations in DB")
-                if (oldest.isEmpty()) return 0
+                // A trip that ended after its last location was uploaded still has
+                // to go out, so a trips-only request is allowed (#401).
+                if (oldest.isEmpty() && !sdk.hasTripsInFlight) return 0
                 val records = if (coreHttp.locationsOrderDirection == 1) oldest.reversed() else oldest
-                val clearUpTo = oldest.maxOf { it.id }
+                val clearUpTo = oldest.maxOfOrNull { it.id } ?: 0L
 
                 // Prepare maps for Dart interceptor (Issue #126: nested schema
                 // matching onLocation/getLocations, not a flat map).
@@ -169,7 +173,8 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
                     reportSyncBodySource("custom", "posting the app's custom sync body")
                     val result = executeFallbackHttpSync(coreHttp, customBody, interceptor)
                     if (result.success) {
-                        db.clearLocationsUpTo(clearUpTo)
+                        if (clearUpTo > 0L) db.clearLocationsUpTo(clearUpTo)
+                        sdk.settleTripsInFlight()
                         sdk.logger.info("NativeSyncProvider: Synced and cleared ${records.size} locations via custom body fallback.")
                         sdk.getEventSender().sendHttp(mapOf(
                             "success" to true,
@@ -188,7 +193,7 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
                             "retryCount" to 0
                         ))
                     }
-                    return if (result.success) records.size else 0
+                    return if (result.success) maxOf(records.size, 1) else 0
                 }
 
                 val syncConfig = uniffi.tracelet_sync.SyncHttpConfig(
@@ -236,7 +241,8 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
 
                 val count = syncManager.syncBatchBlocking(syncConfig, syncRecords)
                 if (count > 0U) {
-                    db.clearLocationsUpTo(clearUpTo)
+                    if (clearUpTo > 0L) db.clearLocationsUpTo(clearUpTo)
+                    sdk.settleTripsInFlight()
                     sdk.logger.info("NativeSyncProvider: Synced and cleared $count locations.")
                     sdk.getEventSender().sendHttp(mapOf(
                         "success" to true,
@@ -254,7 +260,7 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
                         "retryCount" to 0
                     ))
                 }
-                return if (count > 0U) records.size else 0
+                return if (count > 0U) maxOf(records.size, 1) else 0
             } catch (e: Exception) {
                 sdk.logger.error("NativeSyncProvider: Sync failed: ${e.message}")
                 sdk.getEventSender().sendHttp(mapOf(

@@ -587,6 +587,7 @@ class TraceletAndroidPlugin :
                     locations,
                     DART_CALLBACK_TIMEOUT_MS,
                     sdk.getTelematicsForCustomBuilder(),
+                    sdk.getTripsForCustomBuilder(),
                 )
             }
 
@@ -608,6 +609,7 @@ class TraceletAndroidPlugin :
                 locations,
                 10000L,
                 sdk.getTelematicsForCustomBuilder(),
+                sdk.getTripsForCustomBuilder(),
             )
         }
         val handler = Handler(Looper.getMainLooper())
@@ -620,6 +622,8 @@ class TraceletAndroidPlugin :
         val args = mapOf(
             "locations" to locations,
             "telematics" to sdk.getTelematicsForCustomBuilder(),
+            // #401: completed-trip summaries, in the default payload's shape.
+            "trips" to sdk.getTripsForCustomBuilder(),
         )
         handler.post {
             syncBodyChannel?.invokeMethod("buildSyncBody", args, object : MethodChannel.Result {
@@ -655,6 +659,7 @@ class TraceletAndroidPlugin :
                 locations,
                 DART_CALLBACK_TIMEOUT_MS,
                 sdk.getTelematicsForCustomBuilder(),
+                sdk.getTripsForCustomBuilder(),
             )
             // The headless runner returns the sentinel when no headless builder is
             // registered. We must NOT post the default body in that case (a

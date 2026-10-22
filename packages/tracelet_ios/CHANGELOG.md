@@ -1,5 +1,7 @@
 ## Unreleased
 
+**FEAT**: custom sync body builders receive completed-trip summaries — `trips` in the foreground and headless builder arguments, from the pinned native SDK's `getTripsForCustomBuilder()` ([#401](https://github.com/Ikolvi/Tracelet/issues/401)).
+
 **FIX**: the vendored `TraceletCore.xcframework` carries a dSYM per slice, so archives no longer warn "Upload Symbols Failed" for `TraceletCore.framework` ([#424](https://github.com/Ikolvi/Tracelet/issues/424)).
 
 **FIX**: the pinned native SDK's `sync()` shares the auto-sync lock, reads the oldest rows, and hands a full batch's remainder to the drain; no Dart or plugin change ([#437](https://github.com/Ikolvi/Tracelet/issues/437)).

@@ -299,6 +299,12 @@ Locations buffer within your retention limits (`maxDaysToPersist`, defaulting to
 
 On 3.8.8 and earlier: keep `maxBatchSize` at 50 or more (an empty queue still uploads a single new point immediately), set `syncInterval` so a stationary device still flushes, and clear a stale backlog with `Tracelet.destroyLocations()` if you don't need it.
 
+### Are trips sent to my backend, and what happens if the app is killed mid-trip?
+
+**Completed trips are, automatically.** With HTTP sync configured, every trip that ends is stored on the device under its `trip_id` and sent with the next sync as a root `trips` array (start/end time, distance, duration, average speed, start and stop position). It is marked sent only when that request succeeds, so an offline device delivers it later. [Payload and rules 📖](/en/core/tracelet-sync#scenario-6-the-telematics-backend)
+
+The trip **in progress** lives in memory. If the app is killed before it ends, that unfinished trip is lost and a new one starts with the next movement; its locations are kept and carry its `trip_id`. A journey made entirely under killed-state tracking (after the process was restarted) produces no trip at all. Before [#401](https://github.com/Ikolvi/Tracelet/issues/401), summaries existed only as the `onTrip()` event and never reached a backend.
+
 ### Will tracelet_sync automatically push to my backend when the internet comes back?
 
 **Yes, automatically and entirely in the background.** If you use `tracelet_sync` (or its wrappers like `tracelet_supabase` / `tracelet_firebase`), you do not need to write any network-retry logic yourself. 

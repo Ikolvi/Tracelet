@@ -299,6 +299,8 @@ class HeadlessTaskService(
         // #214: telematics for the killed-state custom builder. Defaults to empty
         // so existing callers/headless callbacks keep working unchanged.
         telematics: List<Map<String, Any?>> = emptyList(),
+        // #401: completed-trip summaries, empty when none are pending.
+        trips: List<Map<String, Any?>> = emptyList(),
     ): String? {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val dispatchId = prefs.getLong("headlessSyncBody_dispatchId", -1L)
@@ -326,7 +328,12 @@ class HeadlessTaskService(
             "name" to "syncBodyBuild",
             // #214: include telematics so headless custom builders can read
             // event['telematics'] (empty unless syncTelematics is enabled).
-            "event" to mapOf("locations" to locations, "telematics" to telematics),
+            "event" to mapOf(
+                "locations" to locations,
+                "telematics" to telematics,
+                // #401: event['trips'] for headless custom builders.
+                "trips" to trips,
+            ),
             "dispatchId" to dispatchId,
         )
 

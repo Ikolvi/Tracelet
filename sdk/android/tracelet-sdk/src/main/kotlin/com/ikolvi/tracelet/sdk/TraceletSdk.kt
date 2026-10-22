@@ -108,6 +108,12 @@ class TraceletSdk private constructor(private val context: Context) {
          */
         private const val MAX_SYNCED_TELEMATICS_RETAINED = 1000
 
+        /** Trip summaries carried per flush (#401). */
+        private const val TRIPS_PER_FLUSH = 100
+
+        /** Synced trip summaries kept for the app's own history (#401). */
+        private const val MAX_SYNCED_TRIPS_RETAINED = 500
+
         fun getInstance(context: Context): TraceletSdk {
             return instance ?: synchronized(this) {
                 instance ?: TraceletSdk(context.applicationContext).also { instance = it }
@@ -569,6 +575,21 @@ class TraceletSdk private constructor(private val context: Context) {
         tripManager.onTripStart = { data ->
             rustDatabase?.setActiveTripId(data["tripId"] as? String)
             eventSender.sendTripStart(data)
+        }
+        // #401: one summary row per trip, written before the trip event goes
+        // out and before the active trip id is cleared. Native is the only layer
+        // writing this database, and the row is keyed on the trip id, so a trip
+        // cannot be recorded twice. A new summary asks the provider for a
+        // flush, so it does not wait for the next location to travel.
+        tripManager.onTripSummary = { trip ->
+            try {
+                if (rustDatabase?.insertTrip(trip) == true) {
+                    logger.debug("Trip summary stored for ${trip.tripId} (#401)")
+                    syncProvider?.requestDrain()
+                }
+            } catch (e: Exception) {
+                logger.error("Failed to store trip summary: ${e.message}")
+            }
         }
         tripManager.onTripEnd = { data ->
             eventSender.sendTrip(data)
@@ -2620,7 +2641,10 @@ class TraceletSdk private constructor(private val context: Context) {
                 }
 
                 val hasTelematics = attachedTelematicsMaxId > 0L
-                if (records.isEmpty() && !hasTelematics) {
+                // #401: completed-trip summaries ride the location request.
+                configHttp = withPendingTrips(configHttp)
+                val hasTrips = hasTripsInFlight
+                if (records.isEmpty() && !hasTelematics && !hasTrips) {
                     return@runExclusive
                 }
 
@@ -2637,7 +2661,7 @@ class TraceletSdk private constructor(private val context: Context) {
                 // ride this request, so it must still be made even with an empty
                 // batch — otherwise they would sit unsynced until a location
                 // happened along.
-                val count = if (records.isEmpty() && telematicsUrl != null) {
+                val count = if (records.isEmpty() && telematicsUrl != null && !hasTrips) {
                     0L
                 } else {
                     provider.syncBatchBlocking(configHttp, records)
@@ -2665,6 +2689,7 @@ class TraceletSdk private constructor(private val context: Context) {
                         db.markTelematicsSynced(attachedTelematicsMaxId)
                         db.pruneSyncedTelematics(MAX_SYNCED_TELEMATICS_RETAINED)
                     }
+                    if (count > 0L) settleTripsInFlight()
                     logger.info("TraceletSdk: Synced locations ($count) and telematics ($telematicsDelivered)")
                 } else if (hasTelematics) {
                     logger.info(
@@ -3109,6 +3134,85 @@ class TraceletSdk private constructor(private val context: Context) {
      * a successful custom-path sync. No-op when nothing was exposed (e.g. the
      * default payload path), so it can't lose unsent telematics (#214 dedup).
      */
+    // ── Trip summaries in the sync payload (#401) ────────────────────────────
+
+    /**
+     * Highest trip-summary id handed to the request in flight — attached to the
+     * default payload by [withPendingTrips] or exposed to a custom builder by
+     * [getTripsForCustomBuilder]. Settled by [settleTripsInFlight] only once
+     * that request succeeded. Read and written under the sync provider's lock.
+     */
+    @Volatile
+    private var tripsInFlightMaxId: Long = 0L
+
+    /** Whether the request being prepared carries trip summaries. */
+    val hasTripsInFlight: Boolean get() = tripsInFlightMaxId > 0L
+
+    /**
+     * Adds the unsynced trip summaries to [http]'s extras, which the Rust
+     * payload builder emits as a root `trips` array beside `location` and
+     * `telematics` — one POST for all three (#401).
+     */
+    fun withPendingTrips(http: uniffi.tracelet_core.HttpConfig): uniffi.tracelet_core.HttpConfig {
+        val trips = try {
+            rustDatabase?.getUnsyncedTrips(TRIPS_PER_FLUSH) ?: emptyList()
+        } catch (e: Exception) {
+            logger.error("getUnsyncedTrips failed: ${e.message}")
+            emptyList()
+        }
+        if (trips.isEmpty()) {
+            tripsInFlightMaxId = 0L
+            return http
+        }
+        tripsInFlightMaxId = trips.maxOf { it.id }
+        val extras = (http.extras ?: emptyMap()).toMutableMap()
+        extras["__trips"] = uniffi.tracelet_core.tripsSyncJson(trips)
+        return http.copy(extras = extras)
+    }
+
+    /**
+     * Unsynced trip summaries for a custom sync body builder, in the same shape
+     * the default payload uses (#401). Exposing them counts as sending them:
+     * [settleTripsInFlight] marks them once the custom request succeeds.
+     */
+    fun getTripsForCustomBuilder(): List<Map<String, Any?>> {
+        val trips = try {
+            rustDatabase?.getUnsyncedTrips(TRIPS_PER_FLUSH) ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+        if (trips.isEmpty()) return emptyList()
+        tripsInFlightMaxId = maxOf(tripsInFlightMaxId, trips.maxOf { it.id })
+        val array = org.json.JSONArray(uniffi.tracelet_core.tripsSyncJson(trips))
+        return (0 until array.length()).map { jsonToMap(array.getJSONObject(it)) }
+    }
+
+    private fun jsonToMap(obj: org.json.JSONObject): Map<String, Any?> =
+        obj.keys().asSequence().associateWith { key ->
+            when (val v = obj.get(key)) {
+                org.json.JSONObject.NULL -> null
+                is org.json.JSONObject -> jsonToMap(v)
+                else -> v
+            }
+        }
+
+    /**
+     * Marks the trips carried by the request that just **succeeded** as synced
+     * (#401). A failed request never calls this, so its trips stay pending for
+     * the next flush.
+     */
+    fun settleTripsInFlight() {
+        val maxId = tripsInFlightMaxId
+        if (maxId <= 0L) return
+        try {
+            rustDatabase?.markTripsSynced(maxId)
+            rustDatabase?.pruneSyncedTrips(MAX_SYNCED_TRIPS_RETAINED)
+        } catch (e: Exception) {
+            logger.error("markTripsSynced failed: ${e.message}")
+        }
+        tripsInFlightMaxId = 0L
+    }
+
     fun markExposedTelematicsSynced() {
         val maxId = lastExposedTelematicsMaxId
         if (maxId <= 0L) return

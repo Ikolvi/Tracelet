@@ -1997,6 +1997,12 @@ public final class TraceletSdk {
     /// to it; they are still owed to the server.
     static let maxSyncedTelematicsRetained: Int32 = 1000
 
+    /// Trip summaries carried per flush (#401).
+    static let tripsPerFlush: Int32 = 100
+
+    /// Synced trip summaries kept for the app's own history (#401).
+    static let maxSyncedTripsRetained: Int32 = 500
+
     /// Serializes telematics rows to the wire shape (#366, #367).
     ///
     /// The key names are the ones apps already parse out of `extras.__telematics`,
@@ -2132,7 +2138,10 @@ public final class TraceletSdk {
                 }
 
                 let hasTelematics = attachedTelematicsMaxId > 0
-                if records.isEmpty && !hasTelematics {
+                // #401: completed-trip summaries ride the location request.
+                configHttp = self.withPendingTrips(configHttp)
+                let hasTrips = self.hasTripsInFlight
+                if records.isEmpty && !hasTelematics && !hasTrips {
                     return
                 }
 
@@ -2153,7 +2162,7 @@ public final class TraceletSdk {
                 // ride this request, so it must still be made even with an empty
                 // batch — otherwise they would sit unsynced until a location
                 // happened along.
-                let syncedCount = (records.isEmpty && telematicsUrl != nil)
+                let syncedCount = (records.isEmpty && telematicsUrl != nil && !hasTrips)
                     ? 0
                     : try syncProvider.syncBatchBlocking(config: configHttp, records: records)
 
@@ -2162,6 +2171,7 @@ public final class TraceletSdk {
                 // is the location POST; sent to `telematicsUrl`, it is their own.
                 let telematicsDelivered = telematicsUrl != nil ? telematicsPosted : syncedCount > 0
                 if syncedCount > 0 || telematicsDelivered {
+                    if syncedCount > 0 { self.settleTripsInFlight() }
                     if syncedCount > 0, let maxId = oldest.map({ $0.id }).max() {
                         try db.clearLocationsUpTo(maxId: maxId)
                         self.syncedLocationsLock.lock()
@@ -2419,6 +2429,63 @@ public final class TraceletSdk {
     /// `getTelematicsForCustomBuilder`, marked synced on a successful custom-path
     /// sync (#214 dedup).
     private var lastExposedTelematicsMaxId: Int64 = 0
+
+    // MARK: - Trip summaries in the sync payload (#401)
+
+    /// Highest trip-summary id handed to the request in flight — attached to the
+    /// default payload by `withPendingTrips` or exposed to a custom builder by
+    /// `getTripsForCustomBuilder`. Settled by `settleTripsInFlight` only once
+    /// that request succeeded. Accessed under the sync provider's lock.
+    private var tripsInFlightMaxId: Int64 = 0
+
+    /// Whether the request being prepared carries trip summaries.
+    public var hasTripsInFlight: Bool { tripsInFlightMaxId > 0 }
+
+    /// Adds the unsynced trip summaries to `http`'s extras, which the Rust
+    /// payload builder emits as a root `trips` array beside `location` and
+    /// `telematics` — one POST for all three (#401).
+    public func withPendingTrips(_ http: HttpConfig) -> HttpConfig {
+        let trips = (try? rustDatabase?.getUnsyncedTrips(limit: Self.tripsPerFlush)) ?? []
+        guard let maxId = trips.map({ $0.id }).max() else {
+            tripsInFlightMaxId = 0
+            return http
+        }
+        tripsInFlightMaxId = maxId
+        var updated = http
+        var extras = updated.extras ?? [:]
+        extras["__trips"] = tripsSyncJson(trips: trips)
+        updated.extras = extras
+        return updated
+    }
+
+    /// Unsynced trip summaries for a custom sync body builder, in the default
+    /// payload's shape (#401). Exposing them counts as sending them:
+    /// `settleTripsInFlight` marks them once the custom request succeeds.
+    public func getTripsForCustomBuilder() -> [[String: Any]] {
+        let trips = (try? rustDatabase?.getUnsyncedTrips(limit: Self.tripsPerFlush)) ?? []
+        guard let maxId = trips.map({ $0.id }).max() else { return [] }
+        tripsInFlightMaxId = max(tripsInFlightMaxId, maxId)
+        let json = tripsSyncJson(trips: trips)
+        guard let data = json.data(using: .utf8),
+              let list = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            return []
+        }
+        return list
+    }
+
+    /// Marks the trips carried by the request that just **succeeded** as synced
+    /// (#401). A failed request never calls this, so its trips stay pending.
+    public func settleTripsInFlight() {
+        let maxId = tripsInFlightMaxId
+        guard maxId > 0 else { return }
+        do {
+            try rustDatabase?.markTripsSynced(maxId: maxId)
+            _ = try rustDatabase?.pruneSyncedTrips(keep: Self.maxSyncedTripsRetained)
+        } catch {
+            TraceletLog.error("markTripsSynced failed: \(error)")
+        }
+        tripsInFlightMaxId = 0
+    }
 
     /// Marks the telematics previously exposed to a custom builder as synced after
     /// a successful custom-path sync. No-op when nothing was exposed (default
@@ -2759,6 +2826,21 @@ public final class TraceletSdk {
         tripManager.onTripStart = { [weak self] data in
             self?.rustDatabase?.setActiveTripId(tripId: data["tripId"] as? String)
             self?.eventSender.sendTripStart(data)
+        }
+        // #401: one summary row per trip, written before the trip event goes
+        // out and before the active trip id is cleared. Native is the only layer
+        // writing this database, and the row is keyed on the trip id, so a trip
+        // cannot be recorded twice. A new summary asks the provider for a flush.
+        tripManager.onTripSummary = { [weak self] trip in
+            guard let self = self else { return }
+            do {
+                if try self.rustDatabase?.insertTrip(trip: trip) == true {
+                    TraceletLog.debug("Trip summary stored for \(trip.tripId) (#401)")
+                    self.syncProvider?.requestDrain()
+                }
+            } catch {
+                TraceletLog.error("Failed to store trip summary: \(error)")
+            }
         }
         tripManager.onTripEnd = { [weak self] data in
             self?.eventSender.sendTrip(data)

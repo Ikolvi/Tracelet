@@ -227,6 +227,61 @@ the queue never shrank ([#437](https://github.com/Ikolvi/Tracelet/issues/437)).
 
 ---
 
+## Trip Summaries
+
+Every completed trip is stored once on the device, under the `trip_id` its
+locations and driving events carry, and goes out with the next sync as a
+**root-level `trips` array**, in the same POST as `location` (and `telematics`):
+
+```json
+{
+  "location": [ ... ],
+  "trips": [
+    {
+      "trip_id": "9f2c0f1e-4c31-4b2a-9a77-1d0f3b5e7c88",
+      "started_at": "2026-08-20T08:52:11.000Z",
+      "ended_at": "2026-08-20T09:14:11.000Z",
+      "distance": 18420.0,
+      "duration": 1320.0,
+      "average_speed": 13.95,
+      "start_location": { "latitude": 24.81, "longitude": 67.05 },
+      "stop_location": { "latitude": 24.8607, "longitude": 67.0011 },
+      "synced": false
+    }
+  ]
+}
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `trip_id` | String | The trip's UUIDv4 — join key with `location` and `telematics` rows |
+| `started_at` / `ended_at` | ISO 8601 | Trip bounds, UTC |
+| `distance` | double | Metres along the trip's waypoints |
+| `duration` | double | Seconds |
+| `average_speed` | double | `distance / duration` in m/s; `0` for a zero-length trip |
+| `start_location` / `stop_location` | object or null | `{latitude, longitude}`; null when no fix was available |
+| `synced` | bool | Always `false` in a payload |
+
+- **One summary per trip**, keyed on `trip_id`. Use it as your upsert key in
+  case a retry delivers the same request again.
+- **Marked sent only when the request succeeds**; a failed flush leaves the
+  trip pending. A trip that ends after its last location was uploaded still
+  goes out on its own request.
+- **`trips` is absent when there is nothing to send**, and existing consumers
+  can ignore it.
+- **Custom body builders** receive the same objects as `context.trips`
+  (headless: `event['trips']`). Include them — a trip handed to the builder is
+  marked sent once the request succeeds.
+- The device keeps up to 1,000 summaries; beyond that the oldest are dropped.
+- Trip detection runs in the SDK session. A journey made entirely under
+  killed-state tracking (after the process was restarted) produces no trip
+  and no summary; its locations carry `trip_id: null`.
+
+Added in [#401](https://github.com/Ikolvi/Tracelet/issues/401); before it, the
+summary only existed as the `onTrip()` event.
+
+---
+
 ## HttpEvent — Monitoring Sync
 
 Subscribe to HTTP events to monitor sync progress in your UI:
