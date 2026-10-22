@@ -378,6 +378,14 @@ snippet).
   if you test release builds you sign yourself, your upload-key cert
   (`./gradlew signingReport`). Valid up to 365 days.
 
+Neither needs an extra dependency or any native setup, on Android or iOS: the SDK
+reports your application id (and on Android the signing cert) when it unlocks, so
+a key used by another app is refused. Don't add Play Integrity for licensing and
+don't set `CrashModelLoader.integrityTokenProvider`. Before
+[#439](https://github.com/Ikolvi/Tracelet/issues/439) a prod key needed a Play
+Integrity token that could never be verified for a customer's app and failed
+with `missing_integrity_token` / `attestation_unconfigured`.
+
 The portal also lists your issued keys and lets you **revoke** one instantly.
 
 ---
