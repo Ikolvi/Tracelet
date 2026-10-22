@@ -1457,17 +1457,25 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             var map = buildLocationMap(loc, speed: lastEffectiveSpeed)
             map["isMoving"] = isMoving
             map["event"] = "motionchange"
-            locationMap = map
+            locationMap = motionChangeTransform?(map) ?? map
             
             enrichWithAddressIfNeeded(locationMap: locationMap, location: loc) { [weak self] enrichedMap in
                 self?.eventDispatcher.sendMotionChange(enrichedMap)
             }
         } else {
-            locationMap = ["isMoving": isMoving]
+            let bare: [String: Any] = ["isMoving": isMoving]
+            locationMap = motionChangeTransform?(bare) ?? bare
             eventDispatcher.sendMotionChange(locationMap)
         }
         return true
     }
+
+    /// Applied to the motion change `changePace` emits, before it is sent
+    /// (#442). The SDK uses it to record the transition with the native trip
+    /// manager and attach the trip's id: this event used to leave unstamped,
+    /// before the trip manager had seen the transition, so Dart minted a trip
+    /// id of its own that matched nothing in the database.
+    public var motionChangeTransform: (([String: Any]) -> [String: Any])?
 
     /// Acquires the single fix that anchors a session which *starts* stationary
     /// (#385).

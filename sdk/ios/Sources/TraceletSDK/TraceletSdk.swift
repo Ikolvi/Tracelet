@@ -337,6 +337,22 @@ public final class TraceletSdk {
     ///
     /// Assigning `nil` removes the key, which is the intended shape: no key
     /// means no trip was active.
+    /// Records a motion change with the native trip manager and returns it with
+    /// the trip's id attached (#442). Installed as the location engine's
+    /// `motionChangeTransform`, so the accelerometer path's `changePace` is
+    /// stamped like every other motion change. Re-sending the current state is
+    /// not a transition, and the trip manager ignores it.
+    private func recordTripTransition(_ data: [String: Any]) -> [String: Any] {
+        guard let isMoving = (data["isMoving"] ?? data["is_moving"]) as? Bool else { return data }
+        let coords = data["coords"] as? [String: Any]
+        let lat = (data["latitude"] as? Double) ?? (coords?["latitude"] as? Double)
+        let lng = (data["longitude"] as? Double) ?? (coords?["longitude"] as? Double)
+        tripManager.onMotionStateChanged(isMoving: isMoving, latitude: lat, longitude: lng)
+        var stamped = data
+        stamped["tripId"] = tripManager.currentTripId
+        return stamped
+    }
+
     private func sendMotionChangeWithTrip(_ data: [String: Any]) {
         var withTrip = data
         withTrip["tripId"] = tripManager.currentTripId
@@ -2807,6 +2823,11 @@ public final class TraceletSdk {
             stateManager: stateManager,
             eventDispatcher: eventSender
         )
+        // #442: the motion change `changePace` sends records the trip
+        // transition and carries the trip id, like every other one.
+        locationEngine.motionChangeTransform = { [weak self] data in
+            self?.recordTripTransition(data) ?? data
+        }
         locationEngine.registerSink(RustDatabaseSinkWrapper(sdk: self))
         locationEngine.registerSink(TelematicsSinkWrapper(sdk: self))
         if let syncSink = syncProvider as? LocationDataSink {
@@ -3045,6 +3066,8 @@ public final class TraceletSdk {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.stateManager.isMoving = isMoving
+            // Feeds the trip manager and stamps the trip id on the event it
+            // sends, via `motionChangeTransform` (#442).
             self.locationEngine.changePace(isMoving)
 
             if isMoving {
@@ -3052,15 +3075,6 @@ public final class TraceletSdk {
             } else {
                 self.backgroundActivitySessionManager.stop()
             }
-
-            // Feed TripManager with motion state change
-            let lastLoc = self.locationEngine.getLastLocation()
-            self.tripManager.onMotionStateChanged(
-                isMoving: isMoving,
-                latitude: lastLoc?.coordinate.latitude,
-                longitude: lastLoc?.coordinate.longitude,
-                timestamp: lastLoc.map { ISO8601DateFormatter().string(from: $0.timestamp) }
-            )
         }
     }
 

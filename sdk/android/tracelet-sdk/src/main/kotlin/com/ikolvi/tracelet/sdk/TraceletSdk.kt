@@ -371,6 +371,12 @@ class TraceletSdk private constructor(private val context: Context) {
      * Sets the event sender implementation. Must be called before [initialize].
      */
     fun setEventSender(sender: TraceletEventSender) {
+        // #442: every motion change the session emits feeds the trip manager,
+        // whichever motion mode produced it. Unwrapped first so swapping senders
+        // never stacks two wrappers.
+        val raw = (sender as? TripStampingEventSender)?.delegate ?: sender
+        @Suppress("NAME_SHADOWING")
+        val sender: TraceletEventSender = TripStampingEventSender(raw, ::recordTripTransition)
         this.eventSender = sender
         
         if (::locationEngine.isInitialized) locationEngine.events = sender
@@ -3633,29 +3639,37 @@ class TraceletSdk private constructor(private val context: Context) {
                 map
             } ?: mapOf("isMoving" to isMoving)
 
-        // Feed TripManager with motion state change
-        val lat = (locationMap["latitude"] as? Number)?.toDouble()
-            ?: ((locationMap["coords"] as? Map<*, *>)?.get("latitude") as? Number)?.toDouble()
-        val lng = (locationMap["longitude"] as? Number)?.toDouble()
-            ?: ((locationMap["coords"] as? Map<*, *>)?.get("longitude") as? Number)?.toDouble()
+        // The trip manager is fed, and `tripId` stamped, by the event sender
+        // (recordTripTransition, #442) — the one path every motion mode shares.
+        eventSender.sendMotionChange(locationMap)
+    }
+
+    /**
+     * Records a motion change with the native trip manager and returns the
+     * event with the trip's id attached (#402, #442). Called by
+     * [TripStampingEventSender] for every motion change the session emits.
+     *
+     * The id travels with the motion change that opened or closed the trip:
+     * the Dart layer runs its own trip detection for waypoints and distance and
+     * adopts this id rather than minting a second one that matches nothing in
+     * the database. It is read on the thread that just set it, so it cannot
+     * race the event.
+     */
+    private fun recordTripTransition(data: Map<String, Any?>): Map<String, Any?> {
+        if (!::tripManager.isInitialized) return data
+        val isMoving = (data["isMoving"] ?: data["is_moving"]) as? Boolean ?: return data
+        val coords = data["coords"] as? Map<*, *>
+        val lat = (data["latitude"] as? Number)?.toDouble()
+            ?: (coords?.get("latitude") as? Number)?.toDouble()
+        val lng = (data["longitude"] as? Number)?.toDouble()
+            ?: (coords?.get("longitude") as? Number)?.toDouble()
         tripManager.onMotionStateChanged(
             isMoving = isMoving,
             latitude = lat,
             longitude = lng,
-            timestamp = locationMap["timestamp"],
+            timestamp = data["timestamp"],
         )
-
-        // #402: the trip id travels with the motion change that opened or
-        // closed the trip. The Dart layer runs its own trip detection for
-        // waypoints and distance, and would otherwise mint a *second* id for
-        // the same journey — one that matched nothing in the database. Sending
-        // it here rather than having Dart ask for it afterwards also makes it
-        // race-free: the id is read on the same thread that just set it,
-        // before the event leaves.
-        val motionMap = locationMap.toMutableMap()
-        motionMap["tripId"] = tripManager.currentTripId
-
-        eventSender.sendMotionChange(motionMap)
+        return data.toMutableMap().apply { this["tripId"] = tripManager.currentTripId }
     }
 
     private fun handleScheduleStart() {
