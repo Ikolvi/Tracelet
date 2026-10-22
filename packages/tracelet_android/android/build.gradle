@@ -77,12 +77,12 @@ android {
         testImplementation("androidx.security:security-crypto:1.1.0")
         testImplementation("com.google.android.play:integrity:1.6.0")
         testImplementation("org.jetbrains.kotlin:kotlin-test")
-        testImplementation("org.mockito:mockito-core:5.23.0")
+        testImplementation("org.mockito:mockito-core:5.24.0")
         testImplementation("org.robolectric:robolectric:4.17")
         testImplementation("junit:junit:4.13.2")
-        testImplementation("org.mockito.kotlin:mockito-kotlin:6.3.0")
+        testImplementation("org.mockito.kotlin:mockito-kotlin:6.4.0")
         testImplementation("androidx.test:core:1.7.0")
-        testImplementation("androidx.work:work-testing:2.11.2")
+        testImplementation("androidx.work:work-testing:2.12.0")
         testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
         // JVM (JAR) build of JNA so its native dispatch (libjnidispatch,
         // incl. darwin-aarch64) is on the unit-test classpath. The runtime
