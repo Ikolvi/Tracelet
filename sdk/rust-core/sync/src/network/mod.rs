@@ -294,6 +294,11 @@ impl SyncManager {
                     if k == "__telematics" {
                         let parsed_val = serde_json::from_str(v).unwrap_or_else(|_| serde_json::Value::String(v.clone()));
                         obj.insert("telematics".to_string(), parsed_val);
+                    } else if k == "__trips" {
+                        // #401: completed-trip summaries ride the same request as a
+                        // root-level array, beside `location` and `telematics`.
+                        let parsed_val = serde_json::from_str(v).unwrap_or_else(|_| serde_json::Value::String(v.clone()));
+                        obj.insert("trips".to_string(), parsed_val);
                     } else {
                         let parsed_val = serde_json::from_str(v).unwrap_or_else(|_| serde_json::Value::String(v.clone()));
                         extras_obj.insert(k.clone(), parsed_val);
@@ -320,8 +325,9 @@ impl SyncManager {
         };
 
         let has_telematics = config.extras.as_ref().map_or(false, |e| e.contains_key("__telematics"));
-        if records.is_empty() && !has_telematics {
-            tracelet_core::logger::info("[Rust Core] ℹ️ Sync skipped: Location batch is empty and no telematics.");
+        let has_trips = config.extras.as_ref().map_or(false, |e| e.contains_key("__trips"));
+        if records.is_empty() && !has_telematics && !has_trips {
+            tracelet_core::logger::info("[Rust Core] ℹ️ Sync skipped: Location batch is empty and no telematics or trips.");
             return Ok(0);
         }
 
@@ -434,6 +440,13 @@ impl SyncManager {
                     let status = response.status();
                     if status.is_success() {
                         tracelet_core::logger::info(&format!("[Rust Core] ✅ HTTP Sync succeeded! Status: {}, successfully synced {} location(s).", status, records.len()));
+                        // A request carrying only telematics or trips succeeded
+                        // too. Callers read `> 0` as "delivered", and returning the
+                        // empty location count left those rows unsynced to be sent
+                        // again on every flush (#401).
+                        if records.is_empty() {
+                            return Ok(1);
+                        }
                         return Ok(records.len() as i32);
                     } else if status.is_client_error() {
                         // Do not retry 4xx errors
@@ -617,6 +630,27 @@ mod tests {
         // Assert extras are attached at the root level of the payload as an object
         let extras = payload.get("extras").expect("Missing 'extras' object in payload");
         assert_eq!(extras.get("custom_meta").and_then(serde_json::Value::as_i64), Some(123), "extras were not attached to the payload!");
+    }
+
+    #[test]
+    fn trips_become_a_root_array_beside_location_and_telematics() {
+        // #401: one POST, three root arrays; the private keys never leak into
+        // `extras`.
+        let mut config = get_test_config(true);
+        config.extras = Some(HashMap::from([
+            ("__trips".to_string(), r#"[{"trip_id":"9f2c","distance":10.0}]"#.to_string()),
+            ("__telematics".to_string(), r#"[{"id":1}]"#.to_string()),
+            ("app".to_string(), "\"x\"".to_string()),
+        ]));
+        let payload = SyncManager::build_sync_payload(&config, &[get_test_record()]);
+
+        let trips = payload.get("trips").and_then(Value::as_array).expect("root trips array");
+        assert_eq!(trips[0]["trip_id"], "9f2c");
+        assert!(payload.get("telematics").is_some());
+        assert!(payload.get("location").is_some());
+        let extras = payload.get("extras").and_then(Value::as_object).unwrap();
+        assert!(!extras.contains_key("__trips"));
+        assert_eq!(extras.get("app"), Some(&Value::String("x".into())));
     }
 
     #[test]

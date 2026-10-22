@@ -118,6 +118,159 @@ pub struct DbTelematicsRecord {
     pub trip_id: Option<String>,
 }
 
+/// A completed trip's summary, persisted when the trip ends (#401).
+///
+/// Written once per trip by the native layer, the only layer that writes to
+/// this database, and keyed on `trip_id` so a trip can never be recorded
+/// twice. `synced` follows the telematics rule: a row is marked, not deleted,
+/// once the request that carried it succeeds.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct DbTripRecord {
+    pub id: i64,
+    /// The UUIDv4 minted at trip start, shared with every location and driving
+    /// event recorded during the trip (#402).
+    pub trip_id: String,
+    pub started_at_ms: i64,
+    pub ended_at_ms: i64,
+    /// Metres along the trip's waypoints.
+    pub distance: f64,
+    /// Seconds from start to end.
+    pub duration: f64,
+    /// `distance / duration` in m/s; 0 for a zero-length trip.
+    pub average_speed: f64,
+    pub start_latitude: Option<f64>,
+    pub start_longitude: Option<f64>,
+    pub stop_latitude: Option<f64>,
+    pub stop_longitude: Option<f64>,
+    pub synced: bool,
+}
+
+/// Most trip rows kept, whatever their sync state (#401). A summary is small,
+/// but an app that never syncs would otherwise grow the table for the life of
+/// the install; past this the oldest go first.
+pub const MAX_TRIPS_RETAINED: i64 = 1000;
+
+/// Serializes trip summaries to the `trips` array of the sync payload (#401).
+///
+/// One implementation for both platforms, so Android and iOS cannot drift on
+/// the shape. Keys follow the location/telematics payloads (snake_case);
+/// timestamps are ISO 8601 UTC; a missing start/stop position is JSON `null`.
+#[uniffi::export]
+pub fn trips_sync_json(trips: Vec<DbTripRecord>) -> String {
+    fn iso(ms: i64) -> serde_json::Value {
+        match chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms) {
+            Some(t) => serde_json::Value::String(t.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)),
+            None => serde_json::Value::Null,
+        }
+    }
+    fn point(lat: Option<f64>, lng: Option<f64>) -> serde_json::Value {
+        match (lat, lng) {
+            (Some(latitude), Some(longitude)) => serde_json::json!({
+                "latitude": latitude,
+                "longitude": longitude,
+            }),
+            _ => serde_json::Value::Null,
+        }
+    }
+    let items: Vec<serde_json::Value> = trips
+        .iter()
+        .map(|t| {
+            serde_json::json!({
+                "trip_id": t.trip_id,
+                "started_at": iso(t.started_at_ms),
+                "ended_at": iso(t.ended_at_ms),
+                "distance": t.distance,
+                "duration": t.duration,
+                "average_speed": t.average_speed,
+                "start_location": point(t.start_latitude, t.start_longitude),
+                "stop_location": point(t.stop_latitude, t.stop_longitude),
+                "synced": t.synced,
+            })
+        })
+        .collect();
+    serde_json::Value::Array(items).to_string()
+}
+
+#[uniffi::export]
+impl DatabaseManager {
+    /// Records a completed trip's summary (#401). Returns `false` when nothing
+    /// was written: the trip has no id (it cannot be correlated, and an empty
+    /// key would collide) or a summary for it already exists.
+    pub fn insert_trip(&self, trip: crate::algorithms::trip_manager::TripData) -> Result<bool, TraceletError> {
+        if trip.trip_id.is_empty() {
+            return Ok(false);
+        }
+        let average_speed = if trip.duration_seconds > 0.0 {
+            trip.distance_meters / trip.duration_seconds
+        } else {
+            0.0
+        };
+        let conn = self.conn.lock().unwrap();
+        let inserted = conn.execute(
+            "INSERT OR IGNORE INTO tracelet_trips
+                 (trip_id, started_at_ms, ended_at_ms, distance, duration, average_speed,
+                  start_latitude, start_longitude, stop_latitude, stop_longitude, synced)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0)",
+            params![
+                trip.trip_id,
+                trip.started_at_ms,
+                trip.ended_at_ms,
+                trip.distance_meters,
+                trip.duration_seconds,
+                average_speed,
+                trip.start_location.as_ref().map(|l| l.latitude),
+                trip.start_location.as_ref().map(|l| l.longitude),
+                trip.stop_location.as_ref().map(|l| l.latitude),
+                trip.stop_location.as_ref().map(|l| l.longitude),
+            ],
+        ).map_err(|e| TraceletError::Database(e.to_string()))?;
+        conn.execute(
+            "DELETE FROM tracelet_trips WHERE id NOT IN (
+                 SELECT id FROM tracelet_trips ORDER BY id DESC LIMIT ?1
+             )",
+            params![MAX_TRIPS_RETAINED],
+        ).map_err(|e| TraceletError::Database(e.to_string()))?;
+        Ok(inserted == 1)
+    }
+
+    /// Trips not yet delivered, **oldest first**, for the next flush (#401).
+    /// Ascending so the caller can mark exactly what it sent with
+    /// [`mark_trips_synced`](Self::mark_trips_synced).
+    pub fn get_unsynced_trips(&self, limit: i32) -> Result<Vec<DbTripRecord>, TraceletError> {
+        self.query_trips("SELECT id, trip_id, started_at_ms, ended_at_ms, distance, duration, average_speed, start_latitude, start_longitude, stop_latitude, stop_longitude, synced FROM tracelet_trips WHERE synced = 0 ORDER BY id ASC LIMIT ?1", limit)
+    }
+
+    /// The most recent trips, **newest first**, whatever their sync state (#401).
+    pub fn get_trips(&self, limit: i32) -> Result<Vec<DbTripRecord>, TraceletError> {
+        self.query_trips("SELECT id, trip_id, started_at_ms, ended_at_ms, distance, duration, average_speed, start_latitude, start_longitude, stop_latitude, stop_longitude, synced FROM tracelet_trips ORDER BY id DESC LIMIT ?1", limit)
+    }
+
+    /// Marks trips up to `max_id` as delivered. Call only after the request
+    /// that carried them succeeded (#401).
+    pub fn mark_trips_synced(&self, max_id: i64) -> Result<(), TraceletError> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("UPDATE tracelet_trips SET synced = 1 WHERE id <= ?1", params![max_id])
+            .map_err(|e| TraceletError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Deletes **synced** trips beyond the newest `keep` of them. Unsynced rows
+    /// are still owed to the server and are never touched here (#401).
+    pub fn prune_synced_trips(&self, keep: i32) -> Result<u64, TraceletError> {
+        if keep <= 0 {
+            return Ok(0);
+        }
+        let conn = self.conn.lock().unwrap();
+        let removed = conn.execute(
+            "DELETE FROM tracelet_trips WHERE synced = 1 AND id NOT IN (
+                 SELECT id FROM tracelet_trips WHERE synced = 1 ORDER BY id DESC LIMIT ?1
+             )",
+            params![keep],
+        ).map_err(|e| TraceletError::Database(e.to_string()))?;
+        Ok(removed as u64)
+    }
+}
+
 #[uniffi::export]
 impl DatabaseManager {
     /// Initializes a new database connection and creates tables if they don't exist.
@@ -206,6 +359,25 @@ impl DatabaseManager {
                 message TEXT NOT NULL,
                 timestamp TEXT DEFAULT (datetime('now')),
                 source TEXT DEFAULT 'plugin'
+            )",
+            [],
+        ).map_err(|e| TraceletError::Database(e.to_string()))?;
+
+        // #401: one summary per completed trip, keyed on its id.
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS tracelet_trips (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                trip_id TEXT NOT NULL UNIQUE,
+                started_at_ms INTEGER NOT NULL,
+                ended_at_ms INTEGER NOT NULL,
+                distance REAL NOT NULL DEFAULT 0.0,
+                duration REAL NOT NULL DEFAULT 0.0,
+                average_speed REAL NOT NULL DEFAULT 0.0,
+                start_latitude REAL,
+                start_longitude REAL,
+                stop_latitude REAL,
+                stop_longitude REAL,
+                synced INTEGER NOT NULL DEFAULT 0
             )",
             [],
         ).map_err(|e| TraceletError::Database(e.to_string()))?;
@@ -1155,6 +1327,33 @@ impl DatabaseManager {
 /// exports every method in its block regardless of visibility, so putting a
 /// SQL-taking helper there would hand hosts an arbitrary-query FFI entry point.
 impl DatabaseManager {
+    /// Runs a trips `SELECT` taking one `LIMIT` parameter, whose columns are
+    /// those of [`DbTripRecord`] in declaration order (#401).
+    fn query_trips(&self, sql: &str, limit: i32) -> Result<Vec<DbTripRecord>, TraceletError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(sql).map_err(|e| TraceletError::Database(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![limit], |row| {
+                Ok(DbTripRecord {
+                    id: row.get(0)?,
+                    trip_id: row.get(1)?,
+                    started_at_ms: row.get(2)?,
+                    ended_at_ms: row.get(3)?,
+                    distance: row.get(4)?,
+                    duration: row.get(5)?,
+                    average_speed: row.get(6)?,
+                    start_latitude: row.get(7)?,
+                    start_longitude: row.get(8)?,
+                    stop_latitude: row.get(9)?,
+                    stop_longitude: row.get(10)?,
+                    synced: row.get::<_, i64>(11)? != 0,
+                })
+            })
+            .map_err(|e| TraceletError::Database(e.to_string()))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| TraceletError::Database(e.to_string()))
+    }
+
     /// Runs a telematics `SELECT` taking a single `LIMIT` parameter and whose
     /// columns are `id, event_type, severity, latitude, longitude, timestamp,
     /// synced` in that order.
@@ -2192,5 +2391,125 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].trip_id, None);
         assert_eq!(rows[0].uuid.as_deref(), Some("legacy"));
+    }
+}
+
+#[cfg(test)]
+mod trip_summary_tests {
+    //! #401: one summary per completed trip, delivered with the next flush and
+    //! marked only once that flush succeeds.
+    use super::*;
+    use crate::algorithms::trip_manager::{TripData, TripLocation};
+
+    fn trip(id: &str, start_ms: i64) -> TripData {
+        TripData {
+            trip_id: id.to_string(),
+            distance_meters: 18_420.0,
+            duration_seconds: 1_320.0,
+            started_at_ms: start_ms,
+            ended_at_ms: start_ms + 1_320_000,
+            start_location: Some(TripLocation { latitude: 24.81, longitude: 67.05 }),
+            stop_location: Some(TripLocation { latitude: 24.8607, longitude: 67.0011 }),
+            waypoints: vec![],
+        }
+    }
+
+    fn db() -> DatabaseManager {
+        DatabaseManager::new(":memory:").expect("in-memory db")
+    }
+
+    #[test]
+    fn a_trip_is_recorded_exactly_once() {
+        let db = db();
+        assert!(db.insert_trip(trip("9f2c0f1e-4c31-4b2a-9a77-1d0f3b5e7c88", 1_000)).unwrap());
+        assert!(!db.insert_trip(trip("9f2c0f1e-4c31-4b2a-9a77-1d0f3b5e7c88", 1_000)).unwrap());
+        assert_eq!(db.get_trips(10).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_trip_without_an_id_is_not_recorded() {
+        let db = db();
+        assert!(!db.insert_trip(trip("", 1_000)).unwrap());
+        assert!(db.get_trips(10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn average_speed_is_distance_over_duration() {
+        let db = db();
+        db.insert_trip(trip("a", 1_000)).unwrap();
+        let t = &db.get_trips(1).unwrap()[0];
+        assert!((t.average_speed - 18_420.0 / 1_320.0).abs() < 1e-9);
+
+        let mut zero = trip("b", 2_000);
+        zero.duration_seconds = 0.0;
+        db.insert_trip(zero).unwrap();
+        assert_eq!(db.get_trips(1).unwrap()[0].average_speed, 0.0);
+    }
+
+    #[test]
+    fn unsynced_trips_come_oldest_first_and_marking_settles_exactly_those() {
+        let db = db();
+        for (i, id) in ["a", "b", "c"].iter().enumerate() {
+            db.insert_trip(trip(id, i as i64 * 10_000)).unwrap();
+        }
+        let pending = db.get_unsynced_trips(2).unwrap();
+        assert_eq!(pending.iter().map(|t| t.trip_id.as_str()).collect::<Vec<_>>(), ["a", "b"]);
+
+        db.mark_trips_synced(pending.iter().map(|t| t.id).max().unwrap()).unwrap();
+
+        let rest = db.get_unsynced_trips(10).unwrap();
+        assert_eq!(rest.len(), 1);
+        assert_eq!(rest[0].trip_id, "c");
+        // Marked, not deleted: still in the history.
+        assert_eq!(db.get_trips(10).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn pruning_never_drops_an_unsynced_trip() {
+        let db = db();
+        for i in 0..5 {
+            db.insert_trip(trip(&format!("t{i}"), i * 10_000)).unwrap();
+        }
+        let first_three = db.get_unsynced_trips(3).unwrap();
+        db.mark_trips_synced(first_three.last().unwrap().id).unwrap();
+
+        assert_eq!(db.prune_synced_trips(1).unwrap(), 2);
+        assert_eq!(db.get_unsynced_trips(10).unwrap().len(), 2);
+        assert_eq!(db.get_trips(10).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn the_table_is_capped_oldest_first() {
+        let db = db();
+        let n = MAX_TRIPS_RETAINED + 5;
+        for i in 0..n {
+            db.insert_trip(trip(&format!("t{i}"), i * 1_000)).unwrap();
+        }
+        let all = db.get_trips((n + 10) as i32).unwrap();
+        assert_eq!(all.len() as i64, MAX_TRIPS_RETAINED);
+        assert_eq!(all.last().unwrap().trip_id, "t5", "the five oldest went first");
+    }
+
+    #[test]
+    fn the_sync_json_matches_the_requested_shape() {
+        let db = db();
+        db.insert_trip(trip("9f2c0f1e-4c31-4b2a-9a77-1d0f3b5e7c88", 1_787_000_000_000)).unwrap();
+        let mut no_stop = trip("second", 1_787_000_100_000);
+        no_stop.stop_location = None;
+        db.insert_trip(no_stop).unwrap();
+
+        let json: serde_json::Value =
+            serde_json::from_str(&trips_sync_json(db.get_unsynced_trips(10).unwrap())).unwrap();
+        let first = &json[0];
+        assert_eq!(first["trip_id"], "9f2c0f1e-4c31-4b2a-9a77-1d0f3b5e7c88");
+        assert_eq!(first["started_at"], "2026-08-17T20:53:20.000Z");
+        assert_eq!(first["ended_at"], "2026-08-17T21:15:20.000Z");
+        assert_eq!(first["distance"], 18_420.0);
+        assert_eq!(first["duration"], 1_320.0);
+        assert!((first["average_speed"].as_f64().unwrap() - 13.954545).abs() < 1e-5);
+        assert_eq!(first["start_location"]["latitude"], 24.81);
+        assert_eq!(first["stop_location"]["longitude"], 67.0011);
+        assert_eq!(first["synced"], false);
+        assert!(json[1]["stop_location"].is_null());
     }
 }
