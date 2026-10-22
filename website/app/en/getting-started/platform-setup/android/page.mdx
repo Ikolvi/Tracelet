@@ -104,7 +104,7 @@ Tracelet's native code is fully guarded with `checkSelfPermission()`. **Missing 
 
 | Permission | Effect when removed (`tools:node="remove"`) |
 |---|---|
-| `ACTIVITY_RECOGNITION` | **Safe.** Falls back to basic accelerometer-only motion detection. The `onActivityChange` stream won't fire (no walking/running/driving classification). |
+| `ACTIVITY_RECOGNITION` | **Safe.** Falls back to basic accelerometer-only motion detection. The `onActivityChange` stream won't fire (no walking/running/driving classification). Crash/fall detection keeps working, since the accelerometer needs no permission (on 3.8.8 and earlier it got no samples without this permission). |
 | `ACCESS_BACKGROUND_LOCATION` | **Safe.** Android 10+ will restrict tracking when the app is completely backgrounded or swiped away. |
 | `SCHEDULE_EXACT_ALARM` | **Safe.** Periodic mode falls back to using battery-friendly, but inexact, WorkManager timers. |
 | `POST_NOTIFICATIONS` | **Safe.** The foreground service persistent notification is hidden on Android 13+. Service still runs. |

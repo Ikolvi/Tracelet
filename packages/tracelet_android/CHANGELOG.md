@@ -1,5 +1,7 @@
 ## Unreleased
 
+**FIX**: the pinned native SDK's `sync()` shares the auto-sync lock and hands a full batch's remainder to the drain; no Dart or plugin change ([#437](https://github.com/Ikolvi/Tracelet/issues/437)).
+
 **FIX**: the pinned native SDK reports the app id and signing cert on crash-model unlock, so prod licenses unlock; no Dart or plugin change ([#439](https://github.com/Ikolvi/Tracelet/issues/439)).
 
 **FIX**: the pinned native SDK replaces the fused location subscription when it re-requests in place instead of orphaning the previous callback, so no request outlives `stop()` or `changePace(false)`; no Dart or plugin change ([#432](https://github.com/Ikolvi/Tracelet/issues/432)).

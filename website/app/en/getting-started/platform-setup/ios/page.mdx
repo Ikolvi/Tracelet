@@ -148,6 +148,10 @@ Even with `showsBackgroundLocationIndicator: false`, iOS **forces the indicator 
 2. Keep `showsBackgroundLocationIndicator: false` (don't set it to `true`).
 3. Avoid unnecessary continuous background location. **Geofence‑only mode uses native region monitoring (no continuous GPS), so it shows no indicator** — `startGeofences()` does not run continuous updates in standard mode.
 
+<Callout type="info">
+  **Hidden indicator and iOS 16.4+ background suspension.** Since iOS 16.4, Apple can suspend an app in the background if it runs continuous updates and significant-change monitoring together while asking for a distance filter or accuracy coarser than 100 m, unless the indicator is showing. Tracelet runs both. So with "Always" permission, `showsBackgroundLocationIndicator: false` and `useBackgroundActivitySession: false`, Tracelet runs CoreLocation with **no distance filter and accuracy of 100 m or better**. Your `distanceFilter` is still applied before a point is recorded or synced, so stored and uploaded volume doesn't change; the device just delivers more raw fixes for Tracelet to filter. On 3.8.8 and earlier this configuration was suspended in the background and only delivered at significant-change wakes. Turning the indicator on, or opting into `useBackgroundActivitySession`, keeps your configured values.
+</Callout>
+
 ---
 
 ## Scenario 4: The Dynamic Island Indicator (iOS 17+)

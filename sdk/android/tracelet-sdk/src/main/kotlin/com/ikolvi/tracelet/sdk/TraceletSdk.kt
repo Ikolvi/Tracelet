@@ -298,6 +298,20 @@ class TraceletSdk private constructor(private val context: Context) {
         fun cancelPendingSync() {}
 
         /**
+         * Runs [block] under the same lock as the provider's auto-sync, so a
+         * manual or interval [sync] cannot POST the rows an auto-sync is
+         * already uploading (#437). Default: no lock, for providers that run
+         * no auto-sync of their own.
+         */
+        fun <T> runExclusive(block: () -> T): T = block()
+
+        /**
+         * Asks the provider to upload whatever is still queued, batch after
+         * batch, without waiting for the next insert (#437). Default no-op.
+         */
+        fun requestDrain() {}
+
+        /**
          * POSTs `body` to `url` — the separate telematics endpoint (#368).
          * Returns whether the server accepted it; `false` leaves the events
          * unsynced for the next attempt.
@@ -2556,7 +2570,11 @@ class TraceletSdk private constructor(private val context: Context) {
         }
 
         Thread {
-            try {
+            // #437: under the auto-sync lock, so the two cannot send one batch
+            // twice; and a full batch hands the rest of the queue to the
+            // provider's drain instead of waiting for the next insert.
+            var batchWasFull = false
+            try { provider.runExclusive {
                 val config = state.getConfig()
                 val batchSize = if (config.http.maxBatchSize > 0) config.http.maxBatchSize else 250
                 val records = db.getLocationsBatch(uniffi.tracelet_core.LocationQuery(
@@ -2603,8 +2621,7 @@ class TraceletSdk private constructor(private val context: Context) {
 
                 val hasTelematics = attachedTelematicsMaxId > 0L
                 if (records.isEmpty() && !hasTelematics) {
-                    mainHandler.post { callback(emptyList()) }
-                    return@Thread
+                    return@runExclusive
                 }
 
                 // #368: posted before the locations so a telematics-only sync still
@@ -2639,6 +2656,7 @@ class TraceletSdk private constructor(private val context: Context) {
                             db.clearLocationsUpTo(lastRecord.id)
                             syncedLocationsRemoved.addAndGet(count)
                         }
+                        batchWasFull = records.size >= batchSize.toInt()
                     }
                     if (telematicsDelivered && attachedTelematicsMaxId > 0L) {
                         // Mark, don't delete: #313 requires an uploaded event to
@@ -2654,15 +2672,12 @@ class TraceletSdk private constructor(private val context: Context) {
                             "kept unsynced for the next attempt",
                     )
                 }
-                
-                mainHandler.post {
-                    callback(emptyList()) // Return empty to indicate native handled it
-                }
-            } catch (e: Exception) {
+            } } catch (e: Exception) {
                 logger.error("TraceletSdk: sync failed: ${e.message}")
-                mainHandler.post {
-                    callback(emptyList())
-                }
+            }
+            if (batchWasFull) provider.requestDrain()
+            mainHandler.post {
+                callback(emptyList()) // Return empty to indicate native handled it
             }
         }.start()
     }

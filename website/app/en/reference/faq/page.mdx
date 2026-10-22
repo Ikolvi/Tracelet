@@ -13,6 +13,9 @@ import LottiePlayer from '../../../../components/LottiePlayer'
 **No, it will not crash.** If the `ACTIVITY_RECOGNITION` (Android) or `Motion & Fitness` (iOS) permission is not granted, Tracelet will automatically fall back to standard distance-based tracking. 
 However, **battery drain will increase significantly**. Without motion detection, Tracelet cannot put the GPS hardware to sleep when the device is stationary. It is highly recommended to request this permission for production apps to ensure optimal battery life.
 
+
+**Crash and fall detection keep working without it.** They read the accelerometer, which needs no runtime permission. On Android 3.8.8 and earlier, `start()` only started the motion detector once `ACTIVITY_RECOGNITION` was granted. A denied prompt, or a background start with no screen to ask from, therefore left crash/fall detection with no samples for the whole session, even with `disableMotionActivityUpdates: true`. The detector now always starts. Only the walking/driving activity classification needs the permission, and it switches on if the permission is granted later.
+
 ## iOS Build & Setup
 
 ### iOS build fails with "Undefined symbol" Rust/UniFFI errors (`_ffi_tracelet_core_rustbuffer_free`, `_uniffi_tracelet_core_checksum_method_*`)
@@ -33,6 +36,12 @@ Notes:
 - Build/run from the **Flutter CLI or your IDE** (VS Code), which drives the SPM-aware build, rather than opening the `.xcworkspace` and building straight from Xcode.
 - This is a one-time global Flutter setting; you don't need to change it per project.
 - `flutter clean` + a fresh `pod install` alone will **not** resolve it — the missing piece is SPM linking the Rust framework, not stale Pods.
+
+### Archiving warns "Upload Symbols Failed: The archive did not include a dSYM for the TraceletCore.framework"
+
+**Harmless, and fixed after 3.8.8.** Up to 3.8.8, `TraceletCore.xcframework` and `TraceletSyncFFI.xcframework` shipped without dSYMs. The archive still uploads and your Swift code symbolicates normally; only crash frames inside the Rust core showed as raw addresses. Newer versions ship a dSYM for every slice, and Xcode carries it into the archive.
+
+If you silenced the warning with a Podfile `post_install` hook that sets `DEBUG_INFORMATION_FORMAT = dwarf` for the Tracelet targets, **remove it**. It never reached the prebuilt frameworks, and it dropped the dSYMs of the Swift pods (`TraceletSDK`, `tracelet_ios`). Don't override `STRIP_INSTALLED_PRODUCT` or `STRIP_STYLE` for those targets either: the podspecs pin them because the Rust exports must survive the strip. [Details 📖](https://github.com/Ikolvi/Tracelet/blob/main/help/INSTALL-IOS.md#debug-symbols-dsyms)
 
 ## Battery & Motion Sensors
 
@@ -250,6 +259,29 @@ Tracelet resolves it in favour of the survival promise: with `stopOnTerminate: f
 
 Set `stopOnTerminate: true` if you would rather have the hidden notification and are happy for tracking to end when the app is swiped away. [Full explanation 📖](/en/getting-started/platform-setup/android#hiding-the-notification-while-the-app-is-open-shownotificationonpauseonly)
 
+### Android: tracking works for hours, then stops and doesn't come back. Can Tracelet recover after the system kills the app?
+
+**Yes, natively, without the Flutter UI.** The tracking service asks Android to restart it after the process dies (`START_STICKY`). On restart it reloads the saved config and state and resumes tracking itself; a headless task is only needed if you want Dart callbacks while the app is closed. That restart needs:
+
+- `app: AppConfig(stopOnTerminate: false)`. The default `true` ends tracking when the app is swiped away.
+- `startOnBoot: true` if tracking should also survive a reboot.
+- "Allow all the time" location (`ACCESS_BACKGROUND_LOCATION`) on Android 10+. Without it, tracking stops when the app is swiped away.
+- On Samsung (One UI) and other aggressive OEMs, the app's battery usage set to **Unrestricted**. See [OEM power management](/en/core/oem-power-management).
+
+**Read `exit-info` by importance.** `adb shell dumpsys activity exit-info <package>` records the process importance at death. `125` means the foreground service was still running; `400` (cached) means the service had already ended *before* the low-memory killer arrived. A string of `LOW_MEMORY` exits at `400` points at whatever stopped the service, not at memory.
+
+**A cause fixed after 3.8.8.** When a swiped-away session sat still long enough for the killed-state engine to park it, the parked state was misread as "periodic mode". A restart after process death then declined itself, leaving a cached process with no service and nothing to wake it. Reopening the app resumed periodic tracking, which stopped the foreground service and the motion detector. Both now resume the mode your app started.
+
+To find what ended a session, check `Tracelet.getForegroundServiceHealth()` (`desiredEnabled: true` with `serviceRunning: false` means the service ended) and `Tracelet.getLogs()`. Look for lines such as `service: sticky restart declined`.
+
+### Android: GPS kept running after `stop()` / `changePace(false)` and drained the battery
+
+**Fixed after 3.8.8.** Each time the live location request changed in place (`updateLocationProviderOptions()`, `setConfig()` while streaming, the GPS fallback, the battery-budget ladder), the Play-services client registered a new callback and lost track of the old one. After the next `stop()` or `changePace(false)`, that orphan kept delivering high-accuracy fixes until the process died, and nothing in the API could stop it. In the log it shows as `a fix arrived while continuous updates are stopped` after every stop. Re-requests now replace the subscription, and a stray callback unregisters itself.
+
+### iOS: with the blue bar hidden, no locations arrive in the background until a Wi-Fi change
+
+**Fixed after 3.8.8; you no longer need a workaround.** Since iOS 16.4, Apple suspends an app in the background if it runs continuous updates together with significant-change monitoring, unless it uses no distance filter, asks for 100 m accuracy or better, or shows the location indicator. Tracelet always runs both and passed your `distanceFilter` (default 10 m) to CoreLocation. With "Always" permission, `showsBackgroundLocationIndicator: false` and `useBackgroundActivitySession: false`, the stream was suspended and only significant-change wakes (for example joining a known Wi-Fi network) delivered anything. In that configuration Tracelet now runs CoreLocation with no filter at 100 m accuracy or better. Your `distanceFilter` still decides which points are recorded and synced. [Details 📖](/en/getting-started/platform-setup/ios#scenario-3-the-blue-location-indicator-showsbackgroundlocationindicator)
+
 ---
 
 ## Offline & Sync
@@ -259,6 +291,13 @@ Set `stopOnTerminate: true` if you would rather have the hidden notification and
 **Nothing is lost.** Every fix is written to the on-device database (encrypted when `encryptDatabase: true`) the instant it's captured — independent of the network. Auto-sync uploads them when connectivity returns, retrying with exponential backoff (`maxRetries`, `retryBackoffBase`, `retryBackoffCap`). A batch is deleted from the database **only after the server confirms receipt**, so a failed or interrupted upload is simply retried, never dropped.
 
 Locations buffer within your retention limits (`maxDaysToPersist`, defaulting to 3 days, and `maxRecordsToPersist`, unlimited by default); the oldest are pruned once those are exceeded. Set either to `-1` to switch that limit off — worth doing deliberately if you expect offline stretches longer than the default window, since a record dropped by retention was never uploaded. Before 3.8.3 neither limit was actually enforced, so the queue grew without bound. You can also hold uploads off cellular with `disableAutoSyncOnCellular: true`.
+
+
+### My server's position lags behind the device, or replays the route one point at a time
+
+**Fixed after 3.8.8.** Auto-sync uploaded one batch per newly recorded location. A location recorded while an upload was in flight scheduled nothing. So the queue only shrank by one batch per later fix, and with `maxBatchSize: 1` it could not shrink at all. The server replayed the route a point at a time, a long trip ended with the server marker halfway along it, and a parked phone, which records nothing new, never caught up. Now every trigger drains the queue batch after batch until it is empty or a batch fails, and nothing triggered during an upload is dropped.
+
+On 3.8.8 and earlier: keep `maxBatchSize` at 50 or more (an empty queue still uploads a single new point immediately), set `syncInterval` so a stationary device still flushes, and clear a stale backlog with `Tracelet.destroyLocations()` if you don't need it.
 
 ### Will tracelet_sync automatically push to my backend when the internet comes back?
 
@@ -347,6 +386,16 @@ await tl.Tracelet.addGeofence(tl.Geofence(identifier: 'OFFICE', latitude: lat, l
 ```
 
 Only call `removeGeofence()` / `removeGeofences()` when a fence is actually being deleted, not to refresh one that still exists with the same identifier. On a device that rarely gets killed, the remove-then-add init path runs once at cold start and is invisible. On an aggressive OEM it can rerun dozens of times an hour as the OS repeatedly kills and relaunches your app, and each run wipes the inside-state right before a real GPS fix arrives — producing a fresh, technically-correct `ENTER` from the SDK's now-blank perspective every time.
+
+## Crash Model Licensing
+
+### My `prod` license key fails with `401 missing_integrity_token` or `attestation_unconfigured`
+
+**Fixed; no app-side setup is needed.** A `prod` key depended on a device-attestation step that could not complete for a customer's app, so it failed on both platforms; `dev` keys were unaffected. A prod key now unlocks like any other key and is bound to your app: the SDK reports your application id (and on Android the signing-cert SHA-256), and a key issued for a different app is refused. Don't set `integrityTokenProvider`.
+
+When you create a prod key in the [portal](/en/get-license), add your Play **app signing** cert SHA-256. If you test release builds you sign yourself, also add your **upload key** cert. A cert mismatch makes the model fall back to the rule engine, and the log shows `cert_mismatch`. Prod keys last up to 365 days; a validity of `0` means 365.
+
+---
 
 ## Data Security & Privacy
 

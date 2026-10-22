@@ -6,7 +6,6 @@ import uniffi.tracelet_sync.SyncManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
@@ -21,8 +20,11 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
     private val syncMutex = Mutex()
     private val syncManager = SyncManager()
 
-    private var syncJob: kotlinx.coroutines.Job? = null
-    private val DEBOUNCE_MS = 10_000L
+    // #437: drains batch after batch and never drops a request made while a
+    // sync is in flight — see AutoSyncDrainer.
+    private val drainer = AutoSyncDrainer(scope, syncMutex, ::uploadOneBatch) { msg ->
+        sdk.logger.error("NativeSyncProvider: $msg")
+    }
 
     @Volatile
     private var lastSyncBodySource: String? = null
@@ -60,23 +62,20 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
     }
 
     override fun insertLocation(location: Map<String, Any?>) {
-        val delayMs = sdk.rustEngineState?.getConfig()?.http?.autoSyncDelay?.toLong() ?: 10_000L
-        if (syncJob?.isActive == true) return
-        syncJob = scope.launch {
-            // Contain ANY throwable from a single sync iteration so it can never
-            // propagate out of the coroutine and tear down auto-sync. Real
-            // cancellation (stop() → cancelPendingSync) is re-thrown so it still
-            // works. (Issue #134: keep background auto-sync firing every cycle.)
-            try {
-                kotlinx.coroutines.delay(delayMs)
-                triggerSync()
-            } catch (ce: kotlinx.coroutines.CancellationException) {
-                throw ce
-            } catch (t: Throwable) {
-                sdk.logger.error("NativeSyncProvider: auto-sync iteration failed (contained): ${t.message}")
-            }
+        val http = sdk.rustEngineState?.getConfig()?.http
+        // #437: autoSyncThreshold was stored and passed to Rust but never read.
+        val threshold = http?.autoSyncThreshold ?: 0
+        if (threshold > 0) {
+            val pending = try { sdk.rustDatabase?.getLocationsCount() } catch (_: Exception) { null }
+            if (pending != null && pending < threshold) return
         }
+        drainer.request(http?.autoSyncDelay?.toLong() ?: 10_000L)
     }
+
+    override fun <T> runExclusive(block: () -> T): T =
+        kotlinx.coroutines.runBlocking { syncMutex.withLock { block() } }
+
+    override fun requestDrain() = drainer.request(0)
 
     /**
      * Cancels a pending (debounced) or in-flight auto-sync so no further POSTs
@@ -85,20 +84,24 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
      * this does not need to be reset.
      */
     override fun cancelPendingSync() {
-        syncJob?.cancel()
-        syncJob = null
+        drainer.cancel()
     }
 
-    private suspend fun triggerSync() {
-        syncMutex.withLock {
+    /**
+     * Uploads the oldest batch and clears it. Returns the rows cleared, or 0
+     * when the queue is empty or the upload failed. Called under [syncMutex]
+     * by the drainer.
+     */
+    private suspend fun uploadOneBatch(): Int {
+        run {
             sdk.logger.debug("NativeSyncProvider: triggerSync started")
             val db = sdk.rustDatabase ?: run {
                 sdk.logger.error("NativeSyncProvider: rustDatabase is null")
-                return
+                return 0
             }
             val state = sdk.rustEngineState ?: run {
                 sdk.logger.error("NativeSyncProvider: rustEngineState is null")
-                return
+                return 0
             }
 
             try {
@@ -110,20 +113,24 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
 
                 val coreHttp = state.getConfig().http
                 sdk.logger.debug("NativeSyncProvider: coreHttp config: url=${coreHttp.url}, autoSync=${coreHttp.autoSync}")
-                if (coreHttp.url.isNullOrEmpty() || !coreHttp.autoSync) return
+                if (coreHttp.url.isNullOrEmpty() || !coreHttp.autoSync) return 0
 
                 val limit = if (coreHttp.maxBatchSize > 0) coreHttp.maxBatchSize else 250
-                val records = db.getLocationsBatch(uniffi.tracelet_core.LocationQuery(
+                // Always the OLDEST rows: `clearLocationsUpTo` deletes every id
+                // up to the one given, so reading the newest N and clearing up to
+                // the smallest of them deleted older rows that were never sent
+                // (#437). `locationsOrderDirection` (#138) orders the payload.
+                val oldest = db.getLocationsBatch(uniffi.tracelet_core.LocationQuery(
                     startTimeMs = null,
                     endTimeMs = null,
                     limit = limit.toInt(),
                     offset = null,
-                    // Honor the configured sort order (0=ascending, 1=descending)
-                    // instead of always defaulting to ascending (Issue #138).
-                    orderDescending = coreHttp.locationsOrderDirection == 1
+                    orderDescending = false
                 ))
-                sdk.logger.debug("NativeSyncProvider: Found ${records.size} locations in DB")
-                if (records.isEmpty()) return
+                sdk.logger.debug("NativeSyncProvider: Found ${oldest.size} locations in DB")
+                if (oldest.isEmpty()) return 0
+                val records = if (coreHttp.locationsOrderDirection == 1) oldest.reversed() else oldest
+                val clearUpTo = oldest.maxOf { it.id }
 
                 // Prepare maps for Dart interceptor (Issue #126: nested schema
                 // matching onLocation/getLocations, not a flat map).
@@ -143,7 +150,7 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
                         "isRetry" to false,
                         "retryCount" to 0
                     ))
-                    return
+                    return 0
                 }
 
                 if (customBody == null || customBody == NO_SYNC_BODY_BUILDER_SENTINEL) {
@@ -162,10 +169,8 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
                     reportSyncBodySource("custom", "posting the app's custom sync body")
                     val result = executeFallbackHttpSync(coreHttp, customBody, interceptor)
                     if (result.success) {
-                        records.lastOrNull()?.id?.let { lastId ->
-                            db.clearLocationsUpTo(lastId)
-                            sdk.logger.info("NativeSyncProvider: Synced and cleared ${records.size} locations via custom body fallback.")
-                        }
+                        db.clearLocationsUpTo(clearUpTo)
+                        sdk.logger.info("NativeSyncProvider: Synced and cleared ${records.size} locations via custom body fallback.")
                         sdk.getEventSender().sendHttp(mapOf(
                             "success" to true,
                             "status" to result.status,
@@ -183,7 +188,7 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
                             "retryCount" to 0
                         ))
                     }
-                    return
+                    return if (result.success) records.size else 0
                 }
 
                 val syncConfig = uniffi.tracelet_sync.SyncHttpConfig(
@@ -231,10 +236,8 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
 
                 val count = syncManager.syncBatchBlocking(syncConfig, syncRecords)
                 if (count > 0U) {
-                    records.lastOrNull()?.id?.let { lastId ->
-                        db.clearLocationsUpTo(lastId)
-                        sdk.logger.info("NativeSyncProvider: Synced and cleared $count locations.")
-                    }
+                    db.clearLocationsUpTo(clearUpTo)
+                    sdk.logger.info("NativeSyncProvider: Synced and cleared $count locations.")
                     sdk.getEventSender().sendHttp(mapOf(
                         "success" to true,
                         "status" to 200,
@@ -251,6 +254,7 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
                         "retryCount" to 0
                     ))
                 }
+                return if (count > 0U) records.size else 0
             } catch (e: Exception) {
                 sdk.logger.error("NativeSyncProvider: Sync failed: ${e.message}")
                 sdk.getEventSender().sendHttp(mapOf(
@@ -260,6 +264,7 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
                     "isRetry" to false,
                     "retryCount" to 0
                 ))
+                return 0
             }
         }
     }
@@ -448,14 +453,17 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
         var lastResponse = "Unknown error"
 
         for (attempt in 0..maxRetries) {
+            var bodyWritten = false
             try {
                 val url = URL(coreHttp.url)
                 val conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = if (coreHttp.method.toInt() == 1) "PUT" else "POST"
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/json")
-                conn.connectTimeout = 15000
-                conn.readTimeout = 15000
+                // #437: the configured timeout, not a fixed 15 s.
+                val timeout = SyncRetryPolicy.timeoutMs(coreHttp.httpTimeout)
+                conn.connectTimeout = timeout
+                conn.readTimeout = timeout
 
                 if (currentHeaders.isNotEmpty()) {
                     try {
@@ -471,6 +479,7 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
                     val input = customBody.toByteArray(Charsets.UTF_8)
                     os.write(input, 0, input.size)
                 }
+                bodyWritten = true
 
                 val status = conn.responseCode
                 lastStatus = status
@@ -499,15 +508,24 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
                 }
                 
                 if (attempt < maxRetries) {
-                    kotlinx.coroutines.delay(1000L * (attempt + 1))
+                    kotlinx.coroutines.delay(
+                        SyncRetryPolicy.backoffMs(attempt, coreHttp.retryBackoffBase, coreHttp.retryBackoffCap),
+                    )
                 }
             } catch (e: Exception) {
-                sdk.logger.error("HTTP Sync failed: ${e.message}")
                 sdk.logger.error("NativeSyncProvider: executeFallbackHttpSync Exception: ${e.message}")
                 lastResponse = e.message ?: "Unknown exception"
                 lastStatus = 0
+                if (!SyncRetryPolicy.mayRetry(e, bodyWritten)) {
+                    // The server may be processing it: a retry would send the
+                    // batch twice. The rows stay queued for the next sync (#437).
+                    sdk.logger.error("NativeSyncProvider: timed out after the body was sent — not retrying")
+                    return FallbackSyncResult(false, lastStatus, lastResponse)
+                }
                 if (attempt < maxRetries) {
-                    kotlinx.coroutines.delay(1000L * (attempt + 1))
+                    kotlinx.coroutines.delay(
+                        SyncRetryPolicy.backoffMs(attempt, coreHttp.retryBackoffBase, coreHttp.retryBackoffCap),
+                    )
                 }
             }
         }

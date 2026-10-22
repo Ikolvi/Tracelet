@@ -1,3 +1,9 @@
+## Unreleased
+
+**FIX**: (iOS) the vendored `TraceletSyncFFI.xcframework` carries a dSYM per slice, so archives no longer warn "Upload Symbols Failed" for `TraceletSyncFFI.framework` ([#424](https://github.com/Ikolvi/Tracelet/issues/424)).
+
+**FIX**: (Android, iOS) auto-sync drains the queue batch after batch instead of uploading one batch per inserted location, and a location stored while a sync is in flight is no longer dropped. `TraceletSyncSink` (Android) runs through the SDK's `AutoSyncDrainer`; the iOS `SyncCoordinator` keeps a pending flag and loops until a batch is empty or fails. Both honour `autoSyncThreshold`, read the oldest rows (the configured order applies inside the payload), share their lock with a manual `sync()`, and in the custom-body path use `httpTimeout` and `retryBackoffBase`/`retryBackoffCap` and do not retry a request that timed out after its body was sent ([#437](https://github.com/Ikolvi/Tracelet/issues/437)).
+
 ## 3.8.8
 
 **FEAT**: `SyncLocationRecord` carries `tripId`, emitted into the default payload as `trip_id` on each location — taken from the stored row rather than the trip running at flush time ([#402](https://github.com/Ikolvi/Tracelet/issues/402)).
