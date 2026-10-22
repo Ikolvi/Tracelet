@@ -1,5 +1,7 @@
 ## Unreleased
 
+**FIX**: the pinned native SDK records trips in SMART and SPEED mode and from `changePace()`, so stored rows carry `trip_id` and trip summaries are stored; no Dart or plugin change ([#442](https://github.com/Ikolvi/Tracelet/issues/442)).
+
 **FEAT**: custom sync body builders receive completed-trip summaries — `trips` in the foreground and headless builder arguments, from the pinned native SDK's `getTripsForCustomBuilder()` ([#401](https://github.com/Ikolvi/Tracelet/issues/401)).
 
 **FIX**: the pinned native SDK's `sync()` shares the auto-sync lock and hands a full batch's remainder to the drain; no Dart or plugin change ([#437](https://github.com/Ikolvi/Tracelet/issues/437)).

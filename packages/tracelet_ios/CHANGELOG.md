@@ -1,5 +1,7 @@
 ## Unreleased
 
+**FIX**: the pinned native SDK stamps the native trip id on the motion change `changePace` sends, so Dart adopts it instead of minting its own; no Dart or plugin change ([#442](https://github.com/Ikolvi/Tracelet/issues/442)).
+
 **FEAT**: custom sync body builders receive completed-trip summaries — `trips` in the foreground and headless builder arguments, from the pinned native SDK's `getTripsForCustomBuilder()` ([#401](https://github.com/Ikolvi/Tracelet/issues/401)).
 
 **FIX**: the vendored `TraceletCore.xcframework` carries a dSYM per slice, so archives no longer warn "Upload Symbols Failed" for `TraceletCore.framework` ([#424](https://github.com/Ikolvi/Tracelet/issues/424)).

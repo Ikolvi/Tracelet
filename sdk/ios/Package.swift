@@ -62,6 +62,8 @@ let package = Package(
                 "CrashModelUnlockBodyTests.swift",
                 // #401: one stored, synced summary per completed trip.
                 "TripSummaryTests.swift",
+                // #442: changePace's motion change records the trip before it is sent.
+                "MotionChangeTripStampTests.swift",
                 "LocationEngineRuntimeProviderOptionsTests.swift",
                 "MotionDetectorTests.swift",
                 "BatteryBudgetRemoteConfigTests.swift",

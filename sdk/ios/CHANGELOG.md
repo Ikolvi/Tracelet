@@ -1,5 +1,7 @@
 ## Unreleased
 
+**FIX**: `LocationEngine.motionChangeTransform` is applied to the motion change `changePace` sends; `TraceletSdk` installs `recordTripTransition(_:)` there, so the transition is recorded and `tripId` stamped before the event leaves. `handleMotionStateChange` previously fed the trip manager after `changePace` had already sent the event unstamped ([#442](https://github.com/Ikolvi/Tracelet/issues/442)).
+
 **FEAT**: `TraceletTripManager.onTripSummary` hands the ended trip's `TripData` to `TraceletSdk`, which stores it with `DatabaseManager.insertTrip`; `withPendingTrips(_:)`, `getTripsForCustomBuilder()` and `settleTripsInFlight()` attach, expose and settle trips for `sync()` and the auto-sync drain, as on Android ([#401](https://github.com/Ikolvi/Tracelet/issues/401)).
 
 **FIX**: `build-ios.sh` builds with `CARGO_PROFILE_RELEASE_DEBUG=line-tables-only` / `STRIP=none` (the shared release profile, which Android uses, is unchanged); `create_dynamic_framework` runs `dsymutil` after `install_name_tool -id` and then `strip -S -x`, which keeps `LC_UUID` and the global `uniffi_*`/`frb_*` exports; `-create-xcframework` attaches each slice's dSYM with `-debug-symbols`, and the build fails unless every slice carries a dSYM with matching UUIDs ([#424](https://github.com/Ikolvi/Tracelet/issues/424)).
