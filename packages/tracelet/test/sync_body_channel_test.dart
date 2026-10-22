@@ -96,14 +96,14 @@ void main() {
     });
 
     test('fromMap and toMap carry trips', () {
-      final context = SyncBodyContext.fromMap(<String, Object?>{
+      final context = SyncBodyContext.fromMap(const <String, Object?>{
         'locations': <Object?>[],
         'trips': <Object?>[
           <String, Object?>{'trip_id': 'a'},
         ],
       });
       expect(context.trips.single['trip_id'], 'a');
-      expect((context.toMap()['trips']! as List), hasLength(1));
+      expect(context.toMap()['trips']! as List, hasLength(1));
     });
   });
 
