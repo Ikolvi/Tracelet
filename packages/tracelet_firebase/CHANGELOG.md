@@ -1,3 +1,7 @@
+## 3.8.9
+
+Version alignment with tracelet 3.8.9.
+
 ## 3.8.8
 
 Version alignment with tracelet 3.8.8.

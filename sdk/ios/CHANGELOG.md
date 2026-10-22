@@ -1,4 +1,4 @@
-## Unreleased
+## 3.8.9
 
 **FIX**: `LocationEngine.motionChangeTransform` is applied to the motion change `changePace` sends; `TraceletSdk` installs `recordTripTransition(_:)` there, so the transition is recorded and `tripId` stamped before the event leaves. `handleMotionStateChange` previously fed the trip manager after `changePace` had already sent the event unstamped ([#442](https://github.com/Ikolvi/Tracelet/issues/442)).
 

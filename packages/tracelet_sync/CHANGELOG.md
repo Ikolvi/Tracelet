@@ -1,4 +1,4 @@
-## Unreleased
+## 3.8.9
 
 **FEAT**: (Android, iOS) the auto-sync drain attaches pending trip summaries to each request as a root `trips` array, sends a trips-only request when a trip ends after its last location was uploaded, and marks them sent only after the request succeeds ([#401](https://github.com/Ikolvi/Tracelet/issues/401)).
 

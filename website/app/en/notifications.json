@@ -1,9 +1,29 @@
 {
-  "badgeTitle": "New in 3.8.8",
+  "badgeTitle": "New in 3.8.9",
   "items": [
     {
-      "title": "iOS builds link again with Swift Package Manager disabled",
-      "description": "Flutter installs plugins as CocoaPods :path pods, and CocoaPods never downloads a podspec's s.source for those. The published podspecs pointed at the TraceletCore / TraceletSyncFFI release archives through exactly that mechanism, so the Rust core was simply absent and an iOS build failed at link time with hundreds of undefined UniFFI symbols — silently, with no warning from pod install. The podspecs now fetch and checksum their own binary when CocoaPods evaluates them, and each links the framework it vendors. Apps on Swift Package Manager, which is the default, were never affected.",
+      "title": "Trip summaries reach your backend",
+      "description": "Every completed trip is stored once under its trip_id and sent with the next sync as a root `trips` array — start and end time, distance, duration, average speed, start and stop position. It is marked sent only when the request succeeds. Native trips are now recorded in every motion mode and from changePace().",
+      "href": "/core/tracelet-sync"
+    },
+    {
+      "title": "Auto-sync drains the whole queue",
+      "description": "Each trigger used to upload one batch and stop, and a fix recorded mid-upload scheduled nothing — with maxBatchSize: 1 the server replayed the route one point at a time. A single trigger now drains the backlog, and autoSyncThreshold, httpTimeout and the backoff settings are honoured.",
+      "href": "/core/tracelet-sync"
+    },
+    {
+      "title": "Prod crash-model license keys work",
+      "description": "A prod key no longer needs a Play Integrity token: it is bound to your app id (and Android signing cert) and unlocks on Android and iOS with no native setup. Create one from the license portal.",
+      "href": "/get-license"
+    },
+    {
+      "title": "Android tracking that stays on — and stops when told",
+      "description": "A reopened app no longer drops a parked session to periodic tracking, a restart after process death no longer gives up, a stopped stream can no longer keep GPS running until the battery dies, and crash detection works without the Physical activity permission.",
+      "href": "/reference/faq"
+    },
+    {
+      "title": "iOS keeps streaming with the blue bar off",
+      "description": "With Always permission and the indicator hidden, iOS 16.4+ suspended continuous tracking in the background. Tracelet now runs CoreLocation the way Apple requires to stay awake; your distanceFilter still decides what is recorded. Archives also ship dSYMs for the Rust frameworks.",
       "href": "/getting-started/platform-setup/ios"
     }
   ]

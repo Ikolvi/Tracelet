@@ -1,4 +1,4 @@
-## Unreleased
+## 3.8.9
 
 **FIX**: `TraceletSdk.setEventSender()` wraps the sender in `TripStampingEventSender`, whose `sendMotionChange` runs `recordTripTransition()` — feed `tripManager`, stamp `tripId` — for every motion change, from `handleMotionStateChange`, `SmartMotionCoordinator`, the `SpeedMotionManager` callbacks and `LocationEngine.changePace` alike. The direct feed in `handleMotionStateChange`, skipped by SMART mode's early return, is removed ([#442](https://github.com/Ikolvi/Tracelet/issues/442)).
 

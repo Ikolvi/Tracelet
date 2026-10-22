@@ -1,4 +1,4 @@
-## Unreleased
+## 3.8.9
 
 **FIX**: (Android, iOS) trips are now recorded natively in every motion mode and from `changePace()`. The native trip manager — the one that stamps `trip_id` onto stored locations and driving events (#402) and stores trip summaries (#401) — was fed only from the sensor-driven motion handler. On Android, SMART mode left that handler early, SPEED-mode transitions never reached it, and `changePace()` bypassed it in every mode; on iOS the accelerometer path sent its motion change before the trip manager had seen the transition. In all of these, Dart's `onTrip` still fired, but under an id Dart minted itself: the stored rows carried `trip_id: null` and no summary was stored or synced. Every motion change the session emits now records the transition first and carries the native trip id ([#442](https://github.com/Ikolvi/Tracelet/issues/442)).
 

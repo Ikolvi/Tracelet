@@ -1,4 +1,4 @@
-## Unreleased
+## 3.8.9
 
 **FIX**: the pinned native SDK stamps the native trip id on the motion change `changePace` sends, so Dart adopts it instead of minting its own; no Dart or plugin change ([#442](https://github.com/Ikolvi/Tracelet/issues/442)).
 

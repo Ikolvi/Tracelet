@@ -1,29 +1,27 @@
 import os
 import re
 
-version_from = "3.8.7"
-version_to = "3.8.8"
+version_from = "3.8.8"
+version_to = "3.8.9"
 
-# A background-tracking release, and the theme is that the SDK reported itself
-# healthy while it was not recording:
+# A release about things that quietly stopped working, and kept looking fine:
 #
-#   - the SMART coordinator read its posture from the committed pace alone, so
-#     any stream opened behind it — a stationary start with an in-app fence, a
-#     resume over a live engine, a fence wake-up — was never parked, and
-#     full-rate GPS ran for whole sessions on a device sitting still
-#     (#409, #412, #414, #357)
-#   - stopping tracking left the speed machine's countdown armed, so a stopped
-#     session rearmed the stationary schedule minutes later (#412)
-#   - on Android a walk permanently disarmed the accelerometer's stop countdown,
-#     and the speed machine swallowed its stationary edge (#412)
-#   - a foreground service created from the background is denied the location
-#     capability for the life of the record, and the "Restricted" battery state
-#     makes the OS refuse the promotion outright without throwing — both were
-#     recorded as successful promotions (#405, #406)
-#   - the stall watchdog only ran when a fix arrived, so a provider delivering
-#     nothing tripped nothing (#407)
+#   - on Android a continuous location request could outlive stop() and drain
+#     the battery until process death (#432); a session parked by the
+#     killed-state engine reopened as PERIODIC without its service or motion
+#     detector, and a restart after process death declined itself (#428, #436);
+#     crash/fall detection got no accelerometer samples without
+#     ACTIVITY_RECOGNITION (#433)
+#   - on iOS 16.4+ continuous tracking was suspended in the background with the
+#     indicator off and no session (#435); the Rust frameworks shipped without
+#     dSYMs (#424)
+#   - auto-sync uploaded one batch per new fix and dropped triggers that arrived
+#     mid-upload, so the queue never drained (#437)
+#   - prod crash-model licenses never unlocked (#439)
+#   - the native trip manager missed SMART/SPEED transitions and changePace()
+#     (#442)
 #
-# Trips also gain an identity that is stamped on rows at insert time (#402).
+# Completed-trip summaries are now stored and synced as a `trips` array (#401).
 #
 # Entries were written under `## Unreleased` as the work landed; the promotion
 # logic below renames that heading rather than prepending a second block.

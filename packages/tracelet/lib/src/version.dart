@@ -12,4 +12,4 @@
 library;
 
 /// The `tracelet` package version, as published to pub.dev.
-const String traceletVersion = '3.8.8';
+const String traceletVersion = '3.8.9';
