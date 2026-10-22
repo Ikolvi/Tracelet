@@ -54,6 +54,9 @@ let package = Package(
                 // #423: useBackgroundActivitySession is an opt-in, and the
                 // continuous path never read it.
                 "BackgroundActivitySessionOptInTests.swift",
+                // #435: with the indicator off and no session, a CoreLocation
+                // distance filter gets the stream suspended in the background.
+                "LocationEngineSuspensionGuardTests.swift",
                 "LocationEngineRuntimeProviderOptionsTests.swift",
                 "MotionDetectorTests.swift",
                 "BatteryBudgetRemoteConfigTests.swift",

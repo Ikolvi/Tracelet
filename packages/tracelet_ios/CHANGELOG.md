@@ -1,3 +1,7 @@
+## Unreleased
+
+**FIX**: the pinned native SDK runs CoreLocation unfiltered at 100 m accuracy or better when the background indicator is off and no session is open under Always, so iOS 16.4+ no longer suspends continuous tracking in the background; no Dart or plugin change ([#435](https://github.com/Ikolvi/Tracelet/issues/435)).
+
 ## 3.8.8
 
 **FIX**: the pinned native SDK opens `CLBackgroundActivitySession` on the continuous path only with `useBackgroundActivitySession: true` (or under When-In-Use authorization, where it is what keeps the stream alive), so an Always-authorized app that opted out no longer shows the blue location bar for every trip ([#423](https://github.com/Ikolvi/Tracelet/issues/423)).

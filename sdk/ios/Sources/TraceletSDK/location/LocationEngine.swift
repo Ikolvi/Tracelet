@@ -1203,11 +1203,15 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// continuity or changing which delivered points are accepted.
     private func applyLocationProviderOptions() {
         let accuracy = runtimeDesiredAccuracy ?? budgetDesiredAccuracy ?? configManager.getDesiredAccuracy()
+        let avoidsSuspension = needsSuspensionSafeProviderOptions
         switch accuracy {
         case 0: locationManager.desiredAccuracy = kCLLocationAccuracyBest
         case 1: locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
-        case 2: locationManager.desiredAccuracy = kCLLocationAccuracyKilometer
-        case 3, 4: locationManager.desiredAccuracy = kCLLocationAccuracyThreeKilometers
+        // Coarser than 100 m is one of the conditions Apple suspends on (#435).
+        case 2: locationManager.desiredAccuracy = avoidsSuspension
+            ? kCLLocationAccuracyHundredMeters : kCLLocationAccuracyKilometer
+        case 3, 4: locationManager.desiredAccuracy = avoidsSuspension
+            ? kCLLocationAccuracyHundredMeters : kCLLocationAccuracyThreeKilometers
         default: locationManager.desiredAccuracy = kCLLocationAccuracyBest
         }
 
@@ -1216,11 +1220,54 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         // High-accuracy geofence mode needs time-based delivery so a stationary
         // device still gets fixes to evaluate crossings against. Persistence
         // volume is unaffected — the Rust processor keeps its own distance filter.
-        if isStopTimeoutActive || geofenceHighAccuracyMode {
+        // The suspension guard relies on the same decoupling (#435).
+        if isStopTimeoutActive || geofenceHighAccuracyMode || avoidsSuspension {
             locationManager.distanceFilter = kCLDistanceFilterNone
         } else {
             locationManager.distanceFilter = (distanceFilter > 0 && !isSpeedMode) ? distanceFilter : kCLDistanceFilterNone
         }
+
+        if avoidsSuspension && distanceFilter > 0 && !suspensionGuardAnnounced {
+            suspensionGuardAnnounced = true
+            TraceletLog.lifecycle(
+                "location stream: background indicator off and no background session — "
+                    + "CoreLocation distanceFilter set to none so iOS 16.4+ does not suspend "
+                    + "the stream; the configured \(distanceFilter)m filter still applies to "
+                    + "recorded locations (#435)")
+        }
+    }
+
+    /// One lifecycle line per engine for the suspension guard (#435).
+    private var suspensionGuardAnnounced = false
+
+    /// Whether the continuous stream has to run with CoreLocation's distance
+    /// filter off and accuracy of 100 m or better to keep delivering in the
+    /// background (#435).
+    ///
+    /// Since iOS 16.4 an app that runs both `startUpdatingLocation()` and
+    /// significant-change monitoring can be suspended in the background when it
+    /// asks for a distance filter or coarse accuracy — unless the location
+    /// indicator is showing. `start()` always runs both. Before 3.8.8 every
+    /// moving transition opened a `CLBackgroundActivitySession`, which shows the
+    /// indicator and so hid this rule; #423 correctly stopped opening it without
+    /// the opt-in, and from then on an Always-authorized app with the indicator
+    /// off got nothing in the background between significant-change wakes.
+    ///
+    /// Either opt-in shows the indicator, which is Apple's other way out. Under
+    /// When-In-Use the OS shows it in the background regardless. Only the
+    /// CoreLocation filter is dropped: the configured distance filter stays in
+    /// the Rust `LocationProcessor`, so stored and synced volume do not change —
+    /// the same split `geofenceHighAccuracyMode` already relies on.
+    var needsSuspensionSafeProviderOptions: Bool {
+        if configManager.getShowsBackgroundLocationIndicator() { return false }
+        if configManager.getUseBackgroundActivitySession() { return false }
+        let status: CLAuthorizationStatus
+        if #available(iOS 14.0, *) {
+            status = locationManager.authorizationStatus
+        } else {
+            status = CLLocationManager.authorizationStatus()
+        }
+        return status == .authorizedAlways
     }
 
     private var activeStopTimeouts: Set<String> = []
@@ -2009,9 +2056,15 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
             if !isTracking {
                 locationManager.stopUpdatingLocation()
             }
-            locationManager.distanceFilter = geofenceHighAccuracyMode
-                ? kCLDistanceFilterNone
-                : configManager.getDistanceFilter()
+            // Back to whatever the live stream runs with — including the
+            // suspension guard, which a bare config read would undo (#435).
+            if isTracking {
+                applyLocationProviderOptions()
+            } else {
+                locationManager.distanceFilter = geofenceHighAccuracyMode
+                    ? kCLDistanceFilterNone
+                    : configManager.getDistanceFilter()
+            }
 
             if !state.collected.isEmpty {
                 deliverBest(samples: state.collected, persist: state.persist, extras: state.extras, callback: state.callback)

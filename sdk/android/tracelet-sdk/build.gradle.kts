@@ -120,10 +120,12 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
 
     // Optional deps needed for tests (security-crypto for EncryptionManager tests,
-    // play-integrity for DeviceAttestor tests). SQLCipher is intentionally NOT
+    // play-integrity for DeviceAttestor tests, play-services-location for the
+    // PlayLocationClient wrapper tests — #432). SQLCipher is intentionally NOT
     // included so SqlCipherMigratorTest can verify the "unavailable" code path.
     testImplementation("androidx.security:security-crypto:1.1.0")
     testImplementation("com.google.android.play:integrity:1.6.0")
+    testImplementation("com.google.android.gms:play-services-location:21.3.0")
 
     // JNA JAR for running local JVM tests on Mac/Linux/Windows
     testImplementation("net.java.dev.jna:jna:5.18.1")

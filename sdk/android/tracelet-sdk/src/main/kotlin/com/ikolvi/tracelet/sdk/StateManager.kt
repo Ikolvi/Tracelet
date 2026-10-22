@@ -16,6 +16,7 @@ class StateManager(context: Context) {
         private const val PREFS_NAME = "com.tracelet.state"
         private const val KEY_ENABLED = "enabled"
         private const val KEY_TRACKING_MODE = "trackingMode"
+        private const val KEY_SESSION_TRACKING_MODE = "sessionTrackingMode"
         private const val KEY_SCHEDULER_ENABLED = "schedulerEnabled"
         private const val KEY_ODOMETER = "odometer"
         private const val KEY_IS_MOVING = "isMoving"
@@ -41,6 +42,30 @@ class StateManager(context: Context) {
     var trackingMode: TrackingMode
         get() = TrackingMode.fromInt(prefs.getInt(KEY_TRACKING_MODE, 0))
         set(value) = prefs.edit().putInt(KEY_TRACKING_MODE, value.value).apply()
+
+    /**
+     * The strategy the app last asked for — `start()`, `startPeriodic()` or
+     * `startGeofences()` — as opposed to [trackingMode], which the killed-state
+     * engine also rewrites as a *pace* when it parks a stationary device
+     * (`LocationService.switchToStationaryPeriodic` writes PERIODIC, #319).
+     *
+     * Anything that decides how a session *resumes* — `ready()`, a sticky
+     * restart, task removal — must read this. Reading [trackingMode] there
+     * turned a continuous session parked by the killed-state engine into a
+     * periodic one on reopen: `startPeriodic()` stopped the foreground service
+     * and the motion detector, and a sticky restart was declined outright
+     * (#428, #436).
+     *
+     * Falls back to [trackingMode] when nothing was recorded, i.e. a session
+     * started before this field existed.
+     */
+    var sessionTrackingMode: TrackingMode
+        get() = if (prefs.contains(KEY_SESSION_TRACKING_MODE)) {
+            TrackingMode.fromInt(prefs.getInt(KEY_SESSION_TRACKING_MODE, 0))
+        } else {
+            trackingMode
+        }
+        set(value) = prefs.edit().putInt(KEY_SESSION_TRACKING_MODE, value.value).apply()
 
     var schedulerEnabled: Boolean
         get() = prefs.getBoolean(KEY_SCHEDULER_ENABLED, false)

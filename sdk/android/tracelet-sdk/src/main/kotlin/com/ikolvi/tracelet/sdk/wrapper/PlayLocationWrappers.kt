@@ -17,8 +17,11 @@ class PlayServicesProvider : TraceletServicesProvider {
     override fun getEventExtractor() = PlayEventExtractor()
 }
 
-class PlayLocationClient(context: Context) : TraceletLocationClient {
-    private val fusedClient: FusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(context)
+class PlayLocationClient internal constructor(
+    private val fusedClient: FusedLocationProviderClient,
+) : TraceletLocationClient {
+    constructor(context: Context) : this(LocationServices.getFusedLocationProviderClient(context))
+
     private val callbackMap = ConcurrentHashMap<TraceletLocationCallback, LocationCallback>()
 
     @SuppressLint("MissingPermission")
@@ -29,12 +32,39 @@ class PlayLocationClient(context: Context) : TraceletLocationClient {
         if (request.maxUpdateDelayMillis > 0) builder.setMaxUpdateDelayMillis(request.maxUpdateDelayMillis)
 
         val playRequest = builder.build()
-        val playCallback = object : LocationCallback() {
-            override fun onLocationResult(result: LocationResult) { callback.onLocationResult(result.locations) }
-            override fun onLocationAvailability(availability: LocationAvailability) { callback.onLocationAvailability(availability.isLocationAvailable) }
-        }
-        callbackMap[callback] = playCallback
+        // Re-registering an existing callback must replace its subscription, not
+        // add a second one (#432). The engine's live re-subscription paths
+        // (`updateLocationProviderOptions`, the GPS fallback and its restore, the
+        // budget overlay) all pass the same callback again and rely on that. The
+        // fused client only replaces the request when it gets the *same*
+        // `LocationCallback`, so a fresh wrapper per call left the previous one
+        // registered with nothing pointing at it. `removeLocationUpdates` could
+        // then reach only the newest wrapper, and the orphan kept delivering
+        // fixes after `stop()` until the process died.
+        val playCallback = callbackMap.getOrPut(callback) { PlayCallback(callback) }
         fusedClient.requestLocationUpdates(playRequest, playCallback, looper)
+    }
+
+    /**
+     * Forwards fused-provider results to [callback] for as long as it is the
+     * registered wrapper for that callback. A wrapper that was removed but still
+     * gets a delivery (removal is asynchronous, and any wrapper leaked before
+     * #432) unregisters itself and drops the fix.
+     */
+    private inner class PlayCallback(private val callback: TraceletLocationCallback) : LocationCallback() {
+        private fun isCurrent(): Boolean {
+            if (callbackMap[callback] === this) return true
+            fusedClient.removeLocationUpdates(this)
+            return false
+        }
+
+        override fun onLocationResult(result: LocationResult) {
+            if (isCurrent()) callback.onLocationResult(result.locations)
+        }
+
+        override fun onLocationAvailability(availability: LocationAvailability) {
+            if (isCurrent()) callback.onLocationAvailability(availability.isLocationAvailable)
+        }
     }
 
     override fun removeLocationUpdates(callback: TraceletLocationCallback) {

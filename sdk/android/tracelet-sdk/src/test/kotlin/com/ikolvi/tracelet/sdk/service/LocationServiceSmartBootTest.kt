@@ -56,6 +56,13 @@ class LocationServiceSmartBootTest {
         state.isMoving = false
         state.trackingMode = com.ikolvi.tracelet.sdk.model.TrackingMode.CONTINUOUS
         
+        // Boot tracking dispatches through the SDK singleton's event sender. It
+        // used to be wired by whichever test class ran earlier in the shared
+        // Robolectric sandbox; a class that resets the singleton (#428, #433)
+        // leaves it unset, so wire it here rather than depend on class order.
+        com.ikolvi.tracelet.sdk.TraceletSdk.getInstance(context)
+            .setEventSender(com.ikolvi.tracelet.sdk.ListenerEventSender())
+
         serviceController = Robolectric.buildService(LocationService::class.java)
     }
 

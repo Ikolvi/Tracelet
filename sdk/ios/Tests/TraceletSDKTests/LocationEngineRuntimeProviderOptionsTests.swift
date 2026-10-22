@@ -12,6 +12,11 @@ final class LocationEngineRuntimeProviderOptionsTests: XCTestCase {
             "desiredAccuracy": 0,
             "distanceFilter": 10.0,
             "pausesLocationUpdatesAutomatically": false,
+            // These tests are about the runtime override, not background
+            // suspension. With the indicator off under Always the engine drops
+            // CoreLocation's distance filter on purpose (#435) — covered by
+            // LocationEngineSuspensionGuardTests.
+            "showsBackgroundLocationIndicator": true,
         ])
 
         let engine = LocationEngine(

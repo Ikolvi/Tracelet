@@ -1,3 +1,11 @@
+## Unreleased
+
+**FIX**: the pinned native SDK replaces the fused location subscription when it re-requests in place instead of orphaning the previous callback, so no request outlives `stop()` or `changePace(false)`; no Dart or plugin change ([#432](https://github.com/Ikolvi/Tracelet/issues/432)).
+
+**FIX**: the pinned native SDK resumes the strategy `start()` chose rather than the stationary pace the killed-state engine wrote, so `ready()` after a killed-state park keeps the foreground service and motion detector and a sticky restart is no longer declined; no Dart or plugin change ([#428](https://github.com/Ikolvi/Tracelet/issues/428), [#436](https://github.com/Ikolvi/Tracelet/issues/436)).
+
+**FIX**: the pinned native SDK starts the motion detector without `ACTIVITY_RECOGNITION`, so crash/fall detection gets accelerometer samples; no Dart or plugin change ([#433](https://github.com/Ikolvi/Tracelet/issues/433)).
+
 ## 3.8.8
 
 **FIX**: the pinned native SDK's `getCurrentPosition()` registers a continuous location request alongside the one-shot retries, so a device whose `getCurrentLocation()` answers null or from cache no longer spins to the timeout; the request is removed on every exit ([#416](https://github.com/Ikolvi/Tracelet/issues/416)).

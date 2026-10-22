@@ -893,7 +893,20 @@ class TraceletSdk private constructor(private val context: Context) {
                 logger.info("Resuming tracking with motion detection on ready/takeover")
                 start(isResume = true)
             } else {
-                when (stateManager.trackingMode) {
+                // The strategy the app started, not the pace: the killed-state
+                // engine writes PERIODIC into `trackingMode` when it parks a
+                // stationary device, and resuming that as `startPeriodic()` stopped
+                // the foreground service and the motion detector of a session the
+                // app had started continuous (#428).
+                val sessionMode = stateManager.sessionTrackingMode
+                if (sessionMode != stateManager.trackingMode) {
+                    TraceletLog.lifecycle(
+                        "session: resuming the started strategy $sessionMode, not the " +
+                            "stationary pace ${stateManager.trackingMode} the killed-state " +
+                            "engine left behind (#428)"
+                    )
+                }
+                when (sessionMode) {
                     TrackingMode.CONTINUOUS -> {
                         logger.info("Resuming continuous tracking on ready/takeover")
                         start(isResume = true)
@@ -983,6 +996,7 @@ class TraceletSdk private constructor(private val context: Context) {
         if (!isResume && isTracking) {
             stateManager.enabled = true
             stateManager.trackingMode = TrackingMode.CONTINUOUS
+            stateManager.sessionTrackingMode = TrackingMode.CONTINUOUS
             logger.debug("start() — already tracking; ignoring redundant start (no pace reset)")
             // #318/#324: recorded even though nothing changed, because "I called
             // start() and nothing happened" is a real report and this is its
@@ -997,6 +1011,7 @@ class TraceletSdk private constructor(private val context: Context) {
 
         stateManager.enabled = true
         stateManager.trackingMode = TrackingMode.CONTINUOUS
+        stateManager.sessionTrackingMode = TrackingMode.CONTINUOUS
         if (!isResume) {
             stateManager.isMoving = configManager.getIsMoving()
         }
@@ -1207,32 +1222,9 @@ class TraceletSdk private constructor(private val context: Context) {
                 smartMotionCoordinator.onAccelStateChange(true)
             }
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val hasMotion = ContextCompat.checkSelfPermission(
-                    context, Manifest.permission.ACTIVITY_RECOGNITION
-                ) == PackageManager.PERMISSION_GRANTED
-                if (!hasMotion) {
-                    permissionManager.requestActivityRecognition(activity)
-                } else {
-                    motionDetector.start()
-                }
-            } else {
-                motionDetector.start()
-            }
+            startMotionDetector()
         } else {
-            // Activity recognition permission + accelerometer motion detector
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val hasMotion = ContextCompat.checkSelfPermission(
-                    context, Manifest.permission.ACTIVITY_RECOGNITION
-                ) == PackageManager.PERMISSION_GRANTED
-                if (!hasMotion) {
-                    permissionManager.requestActivityRecognition(activity)
-                } else {
-                    motionDetector.start()
-                }
-            } else {
-                motionDetector.start()
-            }
+            startMotionDetector()
         }
 
         if (stateManager.isMoving) {
@@ -1423,6 +1415,7 @@ class TraceletSdk private constructor(private val context: Context) {
 
         stateManager.enabled = true
         stateManager.trackingMode = TrackingMode.GEOFENCES
+        stateManager.sessionTrackingMode = TrackingMode.GEOFENCES
 
         geofenceManager.reRegisterAll()
 
@@ -1632,6 +1625,7 @@ class TraceletSdk private constructor(private val context: Context) {
 
         stateManager.enabled = true
         stateManager.trackingMode = TrackingMode.PERIODIC
+        stateManager.sessionTrackingMode = TrackingMode.PERIODIC
         stateManager.isMoving = false
 
         PeriodicLocationWorker.eventSender = eventSender
@@ -1783,7 +1777,8 @@ class TraceletSdk private constructor(private val context: Context) {
                 // Preserve the active tracking mode and motion state across the
                 // clean stop/start so the device doesn't silently revert to a
                 // stationary continuous default.
-                val currentMode = stateManager.trackingMode
+                // The started strategy, not a stationary pace written over it (#428).
+                val currentMode = stateManager.sessionTrackingMode
                 val wasMoving = stateManager.isMoving
 
                 // #256: in SPEED/SMART motion-detection modes the SDK runs a single
@@ -2852,6 +2847,31 @@ class TraceletSdk private constructor(private val context: Context) {
      *
      * @return true if this request code belongs to Tracelet.
      */
+    /**
+     * Starts the motion detector, and asks for ACTIVITY_RECOGNITION only when
+     * the configured mode uses activity transitions.
+     *
+     * The detector used to start only once the permission was granted. Its
+     * accelerometer, gyroscope, barometer and significant-motion sensors need
+     * no permission, and crash/fall detection is fed from that accelerometer —
+     * so a denied prompt, or a background start with no activity to ask from,
+     * left impact detection, motion detection and their corroborating sensors
+     * off for the whole session, even with `disableMotionActivityUpdates: true`,
+     * the mode documented as needing no permissions (#433). [MotionDetector]
+     * runs without the transitions and registers them if the grant arrives.
+     */
+    private fun startMotionDetector() {
+        motionDetector.start()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            !configManager.isMotionActivityUpdatesDisabled() &&
+            ContextCompat.checkSelfPermission(
+                context, Manifest.permission.ACTIVITY_RECOGNITION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            permissionManager.requestActivityRecognition(activity)
+        }
+    }
+
     fun handlePermissionResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -2877,6 +2897,8 @@ class TraceletSdk private constructor(private val context: Context) {
                 stateManager.enabled
             ) {
                 motionDetector.start()
+                // Already running without transitions since start() (#433).
+                motionDetector.onActivityRecognitionGranted()
             }
             callback?.invoke(motionStatus)
             pendingPermissionCallback = null

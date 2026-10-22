@@ -26,6 +26,10 @@ final class LocationEngineGeofenceStarvationTests: XCTestCase {
         _ = config.setConfig([
             "desiredAccuracy": 0,
             "distanceFilter": 10.0,
+            // Isolates the fence-driven filter switch from the suspension
+            // guard, which drops the filter under Always with the indicator
+            // off regardless of fences (#435).
+            "showsBackgroundLocationIndicator": true,
             // persistMode 3 = none → dispatch skips DB writes so the test needs
             // no native persistence wiring.
             "persistMode": 3,
