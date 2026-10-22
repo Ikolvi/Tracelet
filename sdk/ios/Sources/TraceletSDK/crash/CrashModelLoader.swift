@@ -144,8 +144,11 @@ public enum CrashModelLoader {
         log: (String) -> Void = { _ in }
     ) -> Unlocked? {
         guard let endpoint = URL(string: unlockUrl) else { return nil }
-        var body: [String: Any] = ["licenseKey": licenseKey]
-        if let token = integrityToken { body["integrityToken"] = token }
+        let body = unlockBody(
+            licenseKey: licenseKey,
+            integrityToken: integrityToken,
+            bundleId: Bundle.main.bundleIdentifier
+        )
         guard let payload = try? JSONSerialization.data(withJSONObject: body) else { return nil }
 
         var req = URLRequest(url: endpoint)
@@ -174,6 +177,23 @@ public enum CrashModelLoader {
         decryptionKey = keyBytes
         log("crash model: unlocked (\(json["scope"] as? String ?? "?"))")
         return Unlocked(url: modelUrl, sha256: json["sha256"] as? String)
+    }
+
+    /// The JSON body POSTed to the unlock endpoint. Reports the running app's
+    /// bundle id so a license bound to another app is refused rather than
+    /// shared (#439). iOS has no signing-cert equivalent to report.
+    static func unlockBody(
+        licenseKey: String,
+        integrityToken: String?,
+        bundleId: String?
+    ) -> [String: Any] {
+        var body: [String: Any] = ["licenseKey": licenseKey]
+        if let token = integrityToken { body["integrityToken"] = token }
+        if let bundleId = bundleId, !bundleId.isEmpty {
+            body["platform"] = "ios"
+            body["pkg"] = bundleId
+        }
+        return body
     }
 
     // MARK: - Private

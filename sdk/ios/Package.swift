@@ -57,6 +57,9 @@ let package = Package(
                 // #435: with the indicator off and no session, a CoreLocation
                 // distance filter gets the stream suspended in the background.
                 "LocationEngineSuspensionGuardTests.swift",
+                // #439: the unlock request names the app so a prod license
+                // bound to another app is refused.
+                "CrashModelUnlockBodyTests.swift",
                 "LocationEngineRuntimeProviderOptionsTests.swift",
                 "MotionDetectorTests.swift",
                 "BatteryBudgetRemoteConfigTests.swift",

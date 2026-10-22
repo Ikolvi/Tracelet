@@ -373,8 +373,10 @@ snippet).
 
 - **dev license** — for debug builds & emulators. Just your app id, no extra
   setup.
-- **prod license** — for your shipped app; also needs your app signing-cert
-  SHA-256 (Play Console → *App integrity → App signing*, or `./gradlew signingReport`).
+- **prod license** — for your shipped app, Android and iOS. Add your Android
+  app signing-cert SHA-256 (Play Console → *App integrity → App signing*) and,
+  if you test release builds you sign yourself, your upload-key cert
+  (`./gradlew signingReport`). Valid up to 365 days.
 
 The portal also lists your issued keys and lets you **revoke** one instantly.
 

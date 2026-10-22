@@ -155,19 +155,68 @@ object CrashModelLoader {
      * @param integrityToken optional Play Integrity token — required only for
      *   `prod` licenses (debug/`dev` licenses omit it).
      */
+    /**
+     * What the unlock endpoint is told about the running app, so a license
+     * bound to one app cannot unlock another: the application id, and the
+     * SHA-256 of the cert the APK is signed with. A prod license names both.
+     */
+    data class AppIdentity(val pkg: String, val certSha256: String?)
+
+    /** The running app's [AppIdentity]; the cert is null where unreadable. */
+    fun appIdentity(context: Context): AppIdentity =
+        AppIdentity(context.packageName, signingCertSha256(context))
+
+    @Suppress("DEPRECATION")
+    private fun signingCertSha256(context: Context): String? = try {
+        val pm = context.packageManager
+        val cert: ByteArray? = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            val info = pm.getPackageInfo(
+                context.packageName, android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES,
+            ).signingInfo
+            val signers = if (info == null) null
+                else if (info.hasMultipleSigners()) info.apkContentsSigners
+                else info.signingCertificateHistory
+            // With key rotation the history runs oldest → newest; the current
+            // cert is the one Play Console shows.
+            signers?.lastOrNull()?.toByteArray()
+        } else {
+            pm.getPackageInfo(
+                context.packageName, android.content.pm.PackageManager.GET_SIGNATURES,
+            ).signatures?.firstOrNull()?.toByteArray()
+        }
+        cert?.let { sha256Hex(it) }
+    } catch (_: Exception) {
+        null
+    }
+
+    /** The JSON body POSTed to the unlock endpoint. */
+    internal fun unlockPayload(
+        licenseKey: String,
+        integrityToken: String?,
+        identity: AppIdentity?,
+    ): String = buildString {
+        append("{\"licenseKey\":\"").append(jsonEscape(licenseKey)).append('"')
+        if (integrityToken != null) {
+            append(",\"integrityToken\":\"").append(jsonEscape(integrityToken)).append('"')
+        }
+        if (identity != null) {
+            append(",\"platform\":\"android\"")
+            append(",\"pkg\":\"").append(jsonEscape(identity.pkg)).append('"')
+            identity.certSha256?.let {
+                append(",\"certSha256\":\"").append(jsonEscape(it)).append('"')
+            }
+        }
+        append('}')
+    }
+
     fun unlock(
         unlockUrl: String,
         licenseKey: String,
         integrityToken: String? = null,
+        identity: AppIdentity? = null,
         log: (String) -> Unit = {},
     ): Unlocked? = try {
-        val payload = buildString {
-            append("{\"licenseKey\":\"").append(jsonEscape(licenseKey)).append('"')
-            if (integrityToken != null) {
-                append(",\"integrityToken\":\"").append(jsonEscape(integrityToken)).append('"')
-            }
-            append('}')
-        }
+        val payload = unlockPayload(licenseKey, integrityToken, identity)
         val conn = (URL(unlockUrl).openConnection() as HttpURLConnection).apply {
             connectTimeout = 15_000
             readTimeout = 30_000

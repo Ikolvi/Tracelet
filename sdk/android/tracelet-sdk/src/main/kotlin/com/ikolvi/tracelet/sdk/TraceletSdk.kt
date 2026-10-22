@@ -3741,8 +3741,11 @@ class TraceletSdk private constructor(private val context: Context) {
                 if (unlockUrl != null && licenseKey != null) {
                     emitCrashModelStatus("unlocking")
                     val integrityToken = loader.integrityTokenProvider?.invoke()
+                    // The app's id and signing cert, so a prod license bound to
+                    // another app is refused rather than shared.
                     val unlocked = loader.unlock(
                         unlockUrl, licenseKey, integrityToken,
+                        loader.appIdentity(context),
                     ) { msg -> logger.debug(msg) }
                     if (unlocked != null) {
                         modelUrl = unlocked.url

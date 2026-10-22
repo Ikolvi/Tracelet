@@ -1,5 +1,7 @@
 ## Unreleased
 
+**FIX**: `CrashModelLoader.unlock()` sends `platform: "ios"` and `pkg` (`Bundle.main.bundleIdentifier`) through the new `unlockBody()` ([#439](https://github.com/Ikolvi/Tracelet/issues/439)).
+
 **FIX**: `LocationEngine.applyLocationProviderOptions()` sets `distanceFilter = kCLDistanceFilterNone` and raises `desiredAccuracy` coarser than 100 m to `kCLLocationAccuracyHundredMeters` when `needsSuspensionSafeProviderOptions` holds — `showsBackgroundLocationIndicator` and `useBackgroundActivitySession` both off under `.authorizedAlways` — so `startUpdatingLocation()` plus `startMonitoringSignificantLocationChanges()` no longer meets Apple's iOS 16.4+ background-suspension conditions. The configured filter stays in the Rust `LocationProcessor`; the guard is logged once per engine on the lifecycle channel. The sample-collection failure path now restores the provider through `applyLocationProviderOptions()` instead of writing the raw config value back ([#435](https://github.com/Ikolvi/Tracelet/issues/435)).
 
 ## 3.8.8

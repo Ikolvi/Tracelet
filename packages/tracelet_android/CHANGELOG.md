@@ -1,5 +1,7 @@
 ## Unreleased
 
+**FIX**: the pinned native SDK reports the app id and signing cert on crash-model unlock, so prod licenses unlock; no Dart or plugin change ([#439](https://github.com/Ikolvi/Tracelet/issues/439)).
+
 **FIX**: the pinned native SDK replaces the fused location subscription when it re-requests in place instead of orphaning the previous callback, so no request outlives `stop()` or `changePace(false)`; no Dart or plugin change ([#432](https://github.com/Ikolvi/Tracelet/issues/432)).
 
 **FIX**: the pinned native SDK resumes the strategy `start()` chose rather than the stationary pace the killed-state engine wrote, so `ready()` after a killed-state park keeps the foreground service and motion detector and a sticky restart is no longer declined; no Dart or plugin change ([#428](https://github.com/Ikolvi/Tracelet/issues/428), [#436](https://github.com/Ikolvi/Tracelet/issues/436)).

@@ -1,5 +1,7 @@
 ## Unreleased
 
+**FIX**: the pinned native SDK reports the bundle id on crash-model unlock, so prod licenses unlock; no Dart or plugin change ([#439](https://github.com/Ikolvi/Tracelet/issues/439)).
+
 **FIX**: the pinned native SDK runs CoreLocation unfiltered at 100 m accuracy or better when the background indicator is off and no session is open under Always, so iOS 16.4+ no longer suspends continuous tracking in the background; no Dart or plugin change ([#435](https://github.com/Ikolvi/Tracelet/issues/435)).
 
 ## 3.8.8
