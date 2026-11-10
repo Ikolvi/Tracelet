@@ -45,6 +45,10 @@ class _Issue447CardState extends State<Issue447Card>
         ),
       );
       await Tracelet.start();
+      // Move, then stop: only a real moving -> stationary switch writes the
+      // PERIODIC pace the bug needs.
+      await Tracelet.changePace(true);
+      await Future<void>.delayed(const Duration(seconds: 2));
       await Tracelet.changePace(false);
       final s = await Tracelet.getState();
       setStatus(
