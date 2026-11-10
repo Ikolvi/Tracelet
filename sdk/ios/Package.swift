@@ -81,6 +81,9 @@ let package = Package(
                 // #446: getters on the motion sampler queue vs. setConfig on
                 // main — a Dictionary race that crashed in production.
                 "ConfigManagerConcurrencyTests.swift",
+                // #447/#448/#449 on iOS: resume reads the started strategy, not
+                // the stationary pace, and re-arms the SMART stationary timer.
+                "SessionStrategyResumeTests.swift",
                 "SignificantChangesBackgroundSessionTests.swift",
                 // #280: pure LocationMapper API (buildLocationMap) — current, not
                 // stale — wired up so the persisted-metadata mapping is covered.

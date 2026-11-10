@@ -1,5 +1,7 @@
 ## Unreleased
 
+**FIX**: `StateManager.sessionTrackingMode` records the strategy `start()`, `startPeriodic()` and `startGeofences()` started, separately from `trackingMode`, which `switchToStationaryGeofencesForce` rewrites as a pace. `ready()`, the `setConfig` restart and `autoResumeTracking` switch on it in every motion mode, replacing the SMART/SPEED special case (iOS side of [#447](https://github.com/Ikolvi/Tracelet/issues/447), [#449](https://github.com/Ikolvi/Tracelet/issues/449)).
+
 **FIX**: `TraceletSdk.insertLocation` passes the three fix accuracies to the Rust `insertLocation`; `mapRecordToLocation` and `LocationMapper.buildLocationMap` return them, `-1` for rows stored before ([#445](https://github.com/Ikolvi/Tracelet/issues/445)).
 
 **FIX**: `ConfigManager`'s `cache` dictionary is guarded by an `NSRecursiveLock`: getters read a locked snapshot, and `setConfig`, `reset`, `loadFromDisk` and `saveToDisk` mutate or serialise it under the lock. `MotionDetector` reads it on the sampler queue while `setConfig` writes on main ([#446](https://github.com/Ikolvi/Tracelet/issues/446)).

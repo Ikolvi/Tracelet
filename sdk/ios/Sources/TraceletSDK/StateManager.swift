@@ -16,6 +16,21 @@ public final class StateManager {
         set { defaults.set(newValue.rawValue, forKey: prefix + "trackingMode") }
     }
 
+    /// The strategy the app last started — `start()`, `startPeriodic()` or
+    /// `startGeofences()` — as opposed to [trackingMode], which the SPEED/SMART
+    /// pipeline also rewrites as a *pace* when it parks
+    /// (`switchToStationaryGeofencesForce`). Everything that decides how a
+    /// session *resumes* reads this (#447, #449; Android's #428).
+    ///
+    /// Falls back to [trackingMode] for a session started before it existed.
+    public var sessionTrackingMode: TraceletTrackingMode {
+        get {
+            guard defaults.object(forKey: prefix + "sessionTrackingMode") != nil else { return trackingMode }
+            return TraceletTrackingMode.fromInt(defaults.integer(forKey: prefix + "sessionTrackingMode"))
+        }
+        set { defaults.set(newValue.rawValue, forKey: prefix + "sessionTrackingMode") }
+    }
+
     public var schedulerEnabled: Bool {
         get { defaults.bool(forKey: prefix + "schedulerEnabled") }
         set { defaults.set(newValue, forKey: prefix + "schedulerEnabled") }
@@ -118,6 +133,7 @@ public final class StateManager {
     public func reset() {
         enabled = false
         trackingMode = .continuous
+        defaults.removeObject(forKey: prefix + "sessionTrackingMode")
         schedulerEnabled = false
         isMoving = false
         odometer = 0.0
