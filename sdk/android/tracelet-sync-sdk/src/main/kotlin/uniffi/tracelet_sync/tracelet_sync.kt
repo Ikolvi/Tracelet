@@ -1567,6 +1567,16 @@ data class SyncLocationRecord (
      * time, so a queued record uploads with the trip it belongs to.
      */
     var `tripId`: kotlin.String?
+    , 
+    /**
+     * Vertical, speed and heading accuracy (#445); `None` for rows written
+     * before they were stored, emitted as -1 ("unknown") in the payload.
+     */
+    var `altitudeAccuracy`: kotlin.Double? = null 
+    , 
+    var `speedAccuracy`: kotlin.Double? = null 
+    , 
+    var `headingAccuracy`: kotlin.Double? = null 
     
 ){
     
@@ -1599,6 +1609,9 @@ public object FfiConverterTypeSyncLocationRecord: FfiConverterRustBuffer<SyncLoc
             FfiConverterOptionalString.read(buf),
             FfiConverterOptionalString.read(buf),
             FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalDouble.read(buf),
         )
     }
 
@@ -1618,7 +1631,10 @@ public object FfiConverterTypeSyncLocationRecord: FfiConverterRustBuffer<SyncLoc
             FfiConverterString.allocationSize(value.`event`) +
             FfiConverterOptionalString.allocationSize(value.`routeContext`) +
             FfiConverterOptionalString.allocationSize(value.`address`) +
-            FfiConverterOptionalString.allocationSize(value.`tripId`)
+            FfiConverterOptionalString.allocationSize(value.`tripId`) +
+            FfiConverterOptionalDouble.allocationSize(value.`altitudeAccuracy`) +
+            FfiConverterOptionalDouble.allocationSize(value.`speedAccuracy`) +
+            FfiConverterOptionalDouble.allocationSize(value.`headingAccuracy`)
     )
 
     override fun write(value: SyncLocationRecord, buf: ByteBuffer) {
@@ -1638,6 +1654,41 @@ public object FfiConverterTypeSyncLocationRecord: FfiConverterRustBuffer<SyncLoc
             FfiConverterOptionalString.write(value.`routeContext`, buf)
             FfiConverterOptionalString.write(value.`address`, buf)
             FfiConverterOptionalString.write(value.`tripId`, buf)
+            FfiConverterOptionalDouble.write(value.`altitudeAccuracy`, buf)
+            FfiConverterOptionalDouble.write(value.`speedAccuracy`, buf)
+            FfiConverterOptionalDouble.write(value.`headingAccuracy`, buf)
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalDouble: FfiConverterRustBuffer<kotlin.Double?> {
+    override fun read(buf: ByteBuffer): kotlin.Double? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterDouble.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.Double?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterDouble.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.Double?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterDouble.write(value, buf)
+        }
     }
 }
 

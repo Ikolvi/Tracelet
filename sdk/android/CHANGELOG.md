@@ -1,3 +1,13 @@
+## Unreleased
+
+**FIX**: `TraceletSdk.insertLocation` passes `coords.altitudeAccuracy`, `speedAccuracy` and `headingAccuracy` to the Rust `insert_location`, which stores them in three new nullable `location_events` columns (plaintext, or inside the encrypted payload). `LocationMapper.buildLocationMap` emits them, `-1` for rows stored before; `NativeSyncProvider` carries them into `SyncLocationRecord` ([#445](https://github.com/Ikolvi/Tracelet/issues/445)).
+
+**FIX**: `BootReceiver.onReceive` branches on `StateManager.sessionTrackingMode` (the started strategy) instead of `trackingMode` (the pace), so a parked SMART `start()` session reboots through `LocationService.startFromBoot()` rather than `scheduleBackgroundFallback()` ([#447](https://github.com/Ikolvi/Tracelet/issues/447)).
+
+**FIX**: `start(isResume = true)` calls `SmartMotionCoordinator.reconcilePosture(stationaryScheduleCancelled = true)`. When the core answers `NONE` for a parked posture with no stream, it now runs the `SWITCH_TO_STATIONARY_PERIODIC` handler, re-arming the timer or work that `start()` had just cancelled ([#448](https://github.com/Ikolvi/Tracelet/issues/448)).
+
+**FIX**: `TraceletSdk.completeReady` no longer special-cases SMART and SPEED with an unconditional `start(isResume = true)`; every motion mode switches on `sessionTrackingMode` ([#449](https://github.com/Ikolvi/Tracelet/issues/449)).
+
 ## 3.8.9
 
 **FIX**: `TraceletSdk.setEventSender()` wraps the sender in `TripStampingEventSender`, whose `sendMotionChange` runs `recordTripTransition()` — feed `tripManager`, stamp `tripId` — for every motion change, from `handleMotionStateChange`, `SmartMotionCoordinator`, the `SpeedMotionManager` callbacks and `LocationEngine.changePace` alike. The direct feed in `handleMotionStateChange`, skipped by SMART mode's early return, is removed ([#442](https://github.com/Ikolvi/Tracelet/issues/442)).

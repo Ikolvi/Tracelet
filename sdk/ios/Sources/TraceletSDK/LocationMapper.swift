@@ -36,7 +36,10 @@ public enum LocationMapper {
         odometer: Double,
         eventType: String? = nil,
         eventPayload: String? = nil,
-        address: String? = nil
+        address: String? = nil,
+        altitudeAccuracy: Double? = nil,
+        speedAccuracy: Double? = nil,
+        headingAccuracy: Double? = nil
     ) -> [String: Any] {
         var map: [String: Any] = [
             "uuid": uuid ?? String(id),
@@ -52,6 +55,11 @@ public enum LocationMapper {
                 "speed": speed,
                 "heading": heading,
                 "accuracy": accuracy,
+                // #445: -1 for rows stored before these were persisted, the
+                // same "unknown" the live map uses — never absent, never 0.
+                "altitudeAccuracy": altitudeAccuracy ?? -1.0,
+                "speedAccuracy": speedAccuracy ?? -1.0,
+                "headingAccuracy": headingAccuracy ?? -1.0,
             ],
             "activity": [
                 // #245: the persisted confidence — was hardcoded 100, masking

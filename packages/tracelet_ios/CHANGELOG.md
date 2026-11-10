@@ -1,3 +1,7 @@
+## Unreleased
+
+**FIX**: the pinned native SDK persists and returns the fix accuracies and synchronises `ConfigManager` access; no Dart or plugin change ([#445](https://github.com/Ikolvi/Tracelet/issues/445)), ([#446](https://github.com/Ikolvi/Tracelet/issues/446)).
+
 ## 3.8.9
 
 **FIX**: the pinned native SDK stamps the native trip id on the motion change `changePace` sends, so Dart adopts it instead of minting its own; no Dart or plugin change ([#442](https://github.com/Ikolvi/Tracelet/issues/442)).

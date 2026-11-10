@@ -1667,8 +1667,11 @@ public protocol DatabaseManagerProtocol: AnyObject, Sendable {
     
     /**
      * Inserts a new location record into the database.
+     *
+     * The three trailing accuracies default to `None` across the FFI so
+     * existing callers keep compiling (#445).
      */
-    func insertLocation(uuid: String?, lat: Double, lng: Double, acc: Double, speed: Double, heading: Double, altitude: Double, isMock: Bool, isMoving: Bool, activity: String, activityConfidence: Int32, routeContext: String?, timestampOverride: String?, eventType: String?, eventPayload: String?, address: String?) throws  -> Int64
+    func insertLocation(uuid: String?, lat: Double, lng: Double, acc: Double, speed: Double, heading: Double, altitude: Double, isMock: Bool, isMoving: Bool, activity: String, activityConfidence: Int32, routeContext: String?, timestampOverride: String?, eventType: String?, eventPayload: String?, address: String?, altitudeAccuracy: Double?, speedAccuracy: Double?, headingAccuracy: Double?) throws  -> Int64
     
     /**
      * Inserts a log entry into the database.
@@ -2230,8 +2233,11 @@ open func insertGeofence(identifier: String, lat: Double, lng: Double, radius: D
     
     /**
      * Inserts a new location record into the database.
+     *
+     * The three trailing accuracies default to `None` across the FFI so
+     * existing callers keep compiling (#445).
      */
-open func insertLocation(uuid: String?, lat: Double, lng: Double, acc: Double, speed: Double, heading: Double, altitude: Double, isMock: Bool, isMoving: Bool, activity: String, activityConfidence: Int32, routeContext: String?, timestampOverride: String?, eventType: String?, eventPayload: String?, address: String?)throws  -> Int64  {
+open func insertLocation(uuid: String?, lat: Double, lng: Double, acc: Double, speed: Double, heading: Double, altitude: Double, isMock: Bool, isMoving: Bool, activity: String, activityConfidence: Int32, routeContext: String?, timestampOverride: String?, eventType: String?, eventPayload: String?, address: String?, altitudeAccuracy: Double? = nil, speedAccuracy: Double? = nil, headingAccuracy: Double? = nil)throws  -> Int64  {
     return try  FfiConverterInt64.lift(try rustCallWithError(FfiConverterTypeTraceletError_lift) {
     uniffi_tracelet_core_fn_method_databasemanager_insert_location(
             self.uniffiCloneHandle(),
@@ -2250,7 +2256,10 @@ open func insertLocation(uuid: String?, lat: Double, lng: Double, acc: Double, s
         FfiConverterOptionString.lower(timestampOverride),
         FfiConverterOptionString.lower(eventType),
         FfiConverterOptionString.lower(eventPayload),
-        FfiConverterOptionString.lower(address),$0
+        FfiConverterOptionString.lower(address),
+        FfiConverterOptionDouble.lower(altitudeAccuracy),
+        FfiConverterOptionDouble.lower(speedAccuracy),
+        FfiConverterOptionDouble.lower(headingAccuracy),$0
     )
 })
 }
@@ -6644,6 +6653,14 @@ public struct DbLocationRecord: Equatable, Hashable {
      * later still carries the trip it actually belongs to.
      */
     public var tripId: String?
+    /**
+     * Vertical, speed and heading accuracy of the fix (#445). `None` for rows
+     * written before these columns existed; the platform mappers report that
+     * as -1, the same "unknown" the live location map uses.
+     */
+    public var altitudeAccuracy: Double?
+    public var speedAccuracy: Double?
+    public var headingAccuracy: Double?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -6667,7 +6684,12 @@ public struct DbLocationRecord: Equatable, Hashable {
          * The trip this row was written during (#402), or `None` if no trip was
          * active. Stamped at INSERT and never rewritten, so a row uploaded hours
          * later still carries the trip it actually belongs to.
-         */tripId: String?) {
+         */tripId: String?, 
+        /**
+         * Vertical, speed and heading accuracy of the fix (#445). `None` for rows
+         * written before these columns existed; the platform mappers report that
+         * as -1, the same "unknown" the live location map uses.
+         */altitudeAccuracy: Double?, speedAccuracy: Double?, headingAccuracy: Double?) {
         self.id = id
         self.uuid = uuid
         self.timestamp = timestamp
@@ -6686,6 +6708,9 @@ public struct DbLocationRecord: Equatable, Hashable {
         self.eventPayload = eventPayload
         self.address = address
         self.tripId = tripId
+        self.altitudeAccuracy = altitudeAccuracy
+        self.speedAccuracy = speedAccuracy
+        self.headingAccuracy = headingAccuracy
     }
 
     
@@ -6721,7 +6746,10 @@ public struct FfiConverterTypeDbLocationRecord: FfiConverterRustBuffer {
                 eventType: FfiConverterString.read(from: &buf), 
                 eventPayload: FfiConverterOptionString.read(from: &buf), 
                 address: FfiConverterOptionString.read(from: &buf), 
-                tripId: FfiConverterOptionString.read(from: &buf)
+                tripId: FfiConverterOptionString.read(from: &buf), 
+                altitudeAccuracy: FfiConverterOptionDouble.read(from: &buf), 
+                speedAccuracy: FfiConverterOptionDouble.read(from: &buf), 
+                headingAccuracy: FfiConverterOptionDouble.read(from: &buf)
         )
     }
 
@@ -6744,6 +6772,9 @@ public struct FfiConverterTypeDbLocationRecord: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.eventPayload, into: &buf)
         FfiConverterOptionString.write(value.address, into: &buf)
         FfiConverterOptionString.write(value.tripId, into: &buf)
+        FfiConverterOptionDouble.write(value.altitudeAccuracy, into: &buf)
+        FfiConverterOptionDouble.write(value.speedAccuracy, into: &buf)
+        FfiConverterOptionDouble.write(value.headingAccuracy, into: &buf)
     }
 }
 
@@ -11705,7 +11736,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_tracelet_core_checksum_method_databasemanager_insert_geofence() != 47636) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_tracelet_core_checksum_method_databasemanager_insert_location() != 47283) {
+    if (uniffi_tracelet_core_checksum_method_databasemanager_insert_location() != 19383) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_tracelet_core_checksum_method_databasemanager_insert_log() != 43891) {

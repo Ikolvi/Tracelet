@@ -151,4 +151,26 @@ final class LocationMapperTests: XCTestCase {
         XCTAssertEqual(geofenceMap?["identifier"] as? String, "zone-1")
         XCTAssertEqual(geofenceMap?["action"] as? String, "ENTER")
     }
+
+    /// #445: stored fix accuracies come back as given; a row stored before they
+    /// were persisted reads -1 ("unknown"), never absent and never 0.
+    func testFixAccuraciesAreMappedAndDefaultToUnknown() {
+        let base: (Double?, Double?, Double?) -> [String: Any]? = { alt, spd, hdg in
+            LocationMapper.buildLocationMap(
+                id: 1, uuid: "u", timestamp: "2026-06-08T10:00:00Z",
+                latitude: 1, longitude: 2, altitude: 3, speed: 0, heading: 0, accuracy: 5,
+                isMock: false, activity: "still", activityConfidence: -1, routeContext: nil,
+                isMoving: false, odometer: 0,
+                altitudeAccuracy: alt, speedAccuracy: spd, headingAccuracy: hdg
+            )["coords"] as? [String: Any]
+        }
+        let with = base(3.8, 0.5, 12.0)
+        XCTAssertEqual(with?["altitudeAccuracy"] as? Double, 3.8)
+        XCTAssertEqual(with?["speedAccuracy"] as? Double, 0.5)
+        XCTAssertEqual(with?["headingAccuracy"] as? Double, 12.0)
+        let without = base(nil, nil, nil)
+        XCTAssertEqual(without?["altitudeAccuracy"] as? Double, -1.0)
+        XCTAssertEqual(without?["speedAccuracy"] as? Double, -1.0)
+        XCTAssertEqual(without?["headingAccuracy"] as? Double, -1.0)
+    }
 }

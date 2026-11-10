@@ -1,3 +1,7 @@
+## Unreleased
+
+**FIX**: the pinned native SDK persists and returns the fix accuracies, restores the started strategy on boot and on `ready()` in every motion mode, and re-arms the SMART stationary periodic check on `ready()`; no Dart or plugin change ([#445](https://github.com/Ikolvi/Tracelet/issues/445)), ([#447](https://github.com/Ikolvi/Tracelet/issues/447)), ([#448](https://github.com/Ikolvi/Tracelet/issues/448)), ([#449](https://github.com/Ikolvi/Tracelet/issues/449)).
+
 ## 3.8.9
 
 **FIX**: the pinned native SDK records trips in SMART and SPEED mode and from `changePace()`, so stored rows carry `trip_id` and trip summaries are stored; no Dart or plugin change ([#442](https://github.com/Ikolvi/Tracelet/issues/442)).

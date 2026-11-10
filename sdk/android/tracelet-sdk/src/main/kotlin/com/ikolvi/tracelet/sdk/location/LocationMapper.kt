@@ -44,6 +44,9 @@ object LocationMapper {
         eventType: String = "location",
         eventPayload: String? = null,
         address: String? = null,
+        altitudeAccuracy: Double? = null,
+        speedAccuracy: Double? = null,
+        headingAccuracy: Double? = null,
     ): Map<String, Any?> {
         val map = mutableMapOf<String, Any?>(
             "uuid" to (uuid ?: id.toString()),
@@ -59,6 +62,11 @@ object LocationMapper {
                 "speed" to speed,
                 "heading" to heading,
                 "accuracy" to accuracy,
+                // #445: -1 for rows stored before these were persisted, the
+                // same "unknown" the live map uses — never absent, never 0.
+                "altitudeAccuracy" to (altitudeAccuracy ?: -1.0),
+                "speedAccuracy" to (speedAccuracy ?: -1.0),
+                "headingAccuracy" to (headingAccuracy ?: -1.0),
             ),
             "activity" to mapOf(
                 // #245: the persisted confidence — was hardcoded 100, masking

@@ -609,9 +609,9 @@ class Coords {
     this.speed = 0.0,
     this.heading = 0.0,
     this.accuracy = 0.0,
-    this.speedAccuracy = 0.0,
-    this.headingAccuracy = 0.0,
-    this.altitudeAccuracy = 0.0,
+    this.speedAccuracy = -1.0,
+    this.headingAccuracy = -1.0,
+    this.altitudeAccuracy = -1.0,
     this.floor,
   });
 
@@ -626,15 +626,15 @@ class Coords {
       accuracy: ensureDouble(map['accuracy'], fallback: 0),
       speedAccuracy: ensureDouble(
         map['speed_accuracy'] ?? map['speedAccuracy'],
-        fallback: 0,
+        fallback: -1,
       ),
       headingAccuracy: ensureDouble(
         map['heading_accuracy'] ?? map['headingAccuracy'],
-        fallback: 0,
+        fallback: -1,
       ),
       altitudeAccuracy: ensureDouble(
         map['altitude_accuracy'] ?? map['altitudeAccuracy'],
-        fallback: 0,
+        fallback: -1,
       ),
       floor: map['floor'] as int?,
     );
@@ -658,13 +658,16 @@ class Coords {
   /// Horizontal accuracy in meters.
   final double accuracy;
 
-  /// Speed accuracy in meters per second (Android only).
+  /// Speed accuracy in meters per second; `-1` when unknown.
+  ///
+  /// The three accuracies default to `-1`, the native "unknown", rather than
+  /// `0`, which reads as a perfect fix (#445).
   final double speedAccuracy;
 
-  /// Heading accuracy in degrees.
+  /// Heading accuracy in degrees; `-1` when unknown.
   final double headingAccuracy;
 
-  /// Altitude accuracy in meters.
+  /// Altitude (vertical) accuracy in meters; `-1` when unknown.
   final double altitudeAccuracy;
 
   /// The floor of the building (iOS only).

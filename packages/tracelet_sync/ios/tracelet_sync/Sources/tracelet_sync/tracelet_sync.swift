@@ -832,6 +832,13 @@ public struct SyncLocationRecord: Equatable, Hashable {
      * time, so a queued record uploads with the trip it belongs to.
      */
     public var tripId: String?
+    /**
+     * Vertical, speed and heading accuracy (#445); `None` for rows written
+     * before they were stored, emitted as -1 ("unknown") in the payload.
+     */
+    public var altitudeAccuracy: Double?
+    public var speedAccuracy: Double?
+    public var headingAccuracy: Double?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -852,7 +859,11 @@ public struct SyncLocationRecord: Equatable, Hashable {
          * The trip this record was written during (#402), or `None` if none was
          * active. Carried straight from the row rather than resolved at flush
          * time, so a queued record uploads with the trip it belongs to.
-         */tripId: String?) {
+         */tripId: String?, 
+        /**
+         * Vertical, speed and heading accuracy (#445); `None` for rows written
+         * before they were stored, emitted as -1 ("unknown") in the payload.
+         */altitudeAccuracy: Double? = nil, speedAccuracy: Double? = nil, headingAccuracy: Double? = nil) {
         self.id = id
         self.uuid = uuid
         self.timestamp = timestamp
@@ -869,6 +880,9 @@ public struct SyncLocationRecord: Equatable, Hashable {
         self.routeContext = routeContext
         self.address = address
         self.tripId = tripId
+        self.altitudeAccuracy = altitudeAccuracy
+        self.speedAccuracy = speedAccuracy
+        self.headingAccuracy = headingAccuracy
     }
 
     
@@ -902,7 +916,10 @@ public struct FfiConverterTypeSyncLocationRecord: FfiConverterRustBuffer {
                 event: FfiConverterString.read(from: &buf), 
                 routeContext: FfiConverterOptionString.read(from: &buf), 
                 address: FfiConverterOptionString.read(from: &buf), 
-                tripId: FfiConverterOptionString.read(from: &buf)
+                tripId: FfiConverterOptionString.read(from: &buf), 
+                altitudeAccuracy: FfiConverterOptionDouble.read(from: &buf), 
+                speedAccuracy: FfiConverterOptionDouble.read(from: &buf), 
+                headingAccuracy: FfiConverterOptionDouble.read(from: &buf)
         )
     }
 
@@ -923,6 +940,9 @@ public struct FfiConverterTypeSyncLocationRecord: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.routeContext, into: &buf)
         FfiConverterOptionString.write(value.address, into: &buf)
         FfiConverterOptionString.write(value.tripId, into: &buf)
+        FfiConverterOptionDouble.write(value.altitudeAccuracy, into: &buf)
+        FfiConverterOptionDouble.write(value.speedAccuracy, into: &buf)
+        FfiConverterOptionDouble.write(value.headingAccuracy, into: &buf)
     }
 }
 
@@ -939,6 +959,30 @@ public func FfiConverterTypeSyncLocationRecord_lift(_ buf: RustBuffer) throws ->
 #endif
 public func FfiConverterTypeSyncLocationRecord_lower(_ value: SyncLocationRecord) -> RustBuffer {
     return FfiConverterTypeSyncLocationRecord.lower(value)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionDouble: FfiConverterRustBuffer {
+    typealias SwiftType = Double?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterDouble.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterDouble.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
 }
 
 #if swift(>=5.8)

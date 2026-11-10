@@ -1,3 +1,9 @@
+## Unreleased
+
+**FIX**: `TraceletSdk.insertLocation` passes the three fix accuracies to the Rust `insertLocation`; `mapRecordToLocation` and `LocationMapper.buildLocationMap` return them, `-1` for rows stored before ([#445](https://github.com/Ikolvi/Tracelet/issues/445)).
+
+**FIX**: `ConfigManager`'s `cache` dictionary is guarded by an `NSRecursiveLock`: getters read a locked snapshot, and `setConfig`, `reset`, `loadFromDisk` and `saveToDisk` mutate or serialise it under the lock. `MotionDetector` reads it on the sampler queue while `setConfig` writes on main ([#446](https://github.com/Ikolvi/Tracelet/issues/446)).
+
 ## 3.8.9
 
 **FIX**: `LocationEngine.motionChangeTransform` is applied to the motion change `changePace` sends; `TraceletSdk` installs `recordTripTransition(_:)` there, so the transition is recorded and `tripId` stamped before the event leaves. `handleMotionStateChange` previously fed the trip manager after `changePace` had already sent the event unstamped ([#442](https://github.com/Ikolvi/Tracelet/issues/442)).

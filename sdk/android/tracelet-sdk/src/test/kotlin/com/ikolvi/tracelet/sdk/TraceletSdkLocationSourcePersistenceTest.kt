@@ -95,4 +95,33 @@ class TraceletSdkLocationSourcePersistenceTest {
         assertEquals(null, loc["locationSource"])
         assertEquals(null, loc["reducedAccuracy"])
     }
+
+    @Test
+    fun insertLocation_fixAccuracies_surviveGetLocations() {
+        // #445: the live map carries these; storage used to drop them, and Dart
+        // then read the missing value as 0 — a "perfect" vertical accuracy.
+        sdk.insertLocation(
+            mapOf(
+                "uuid" to "issue-445",
+                "timestamp" to "2026-06-09T10:00:00Z",
+                "coords" to mapOf(
+                    "latitude" to 36.1, "longitude" to -121.1, "accuracy" to 8.0,
+                    "altitudeAccuracy" to 3.8, "speedAccuracy" to 0.5, "headingAccuracy" to 12.0,
+                ),
+            ),
+        )
+        sdk.insertLocation(
+            mapOf(
+                "uuid" to "issue-445-none",
+                "timestamp" to "2026-06-09T10:01:00Z",
+                "coords" to mapOf("latitude" to 36.2, "longitude" to -121.2, "accuracy" to 8.0),
+            ),
+        )
+
+        val byUuid = sdk.getLocations(null).associateBy { it["uuid"] }
+        val with = byUuid.getValue("issue-445")["coords"] as Map<*, *>
+        assertEquals(listOf(3.8, 0.5, 12.0), listOf(with["altitudeAccuracy"], with["speedAccuracy"], with["headingAccuracy"]))
+        val without = byUuid.getValue("issue-445-none")["coords"] as Map<*, *>
+        assertEquals(listOf(-1.0, -1.0, -1.0), listOf(without["altitudeAccuracy"], without["speedAccuracy"], without["headingAccuracy"]))
+    }
 }

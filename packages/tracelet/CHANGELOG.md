@@ -1,3 +1,15 @@
+## Unreleased
+
+**FIX**: (Android, iOS) stored locations keep `altitudeAccuracy`, `speedAccuracy` and `headingAccuracy`. They were dropped when a fix was written to the database, so `getLocations()`, the custom sync body builder and the default sync payload never carried them, and `Coords.fromMap` filled the gap with `0`, which reads as a perfect fix. They are now persisted, returned by every stored read, and added to the default payload's `coords`. **Behaviour change:** a missing accuracy is now `-1` (unknown) in Dart, matching the native convention, instead of `0` ([#445](https://github.com/Ikolvi/Tracelet/issues/445)).
+
+**FIX**: (iOS) a crash (`EXC_BAD_ACCESS` in `ConfigManager` getters) when `setConfig()` ran while the motion sampler was reading the config on a background queue — for example while refreshing a Live Activity during a session. Config access is now synchronised ([#446](https://github.com/Ikolvi/Tracelet/issues/446)).
+
+**FIX**: (Android) after a reboot, a session started with `start()` that had parked stationary in SMART mode came back as a 15-minute WorkManager fix with no foreground service, motion detector or heartbeat. Boot now restores the strategy the app started ([#447](https://github.com/Ikolvi/Tracelet/issues/447)).
+
+**FIX**: (Android) opening the app while a SMART session was parked stationary cancelled the stationary periodic check and never re-armed it, so no periodic fix arrived and only an accelerometer wake could detect movement. `ready()` now re-arms it ([#448](https://github.com/Ikolvi/Tracelet/issues/448)).
+
+**FIX**: (Android) in SMART and SPEED motion modes, `ready()` resumed every session as continuous tracking, so a `startPeriodic()` or `startGeofences()` session came back continuous with a foreground service. It now resumes the stored strategy, as accelerometer mode already did ([#449](https://github.com/Ikolvi/Tracelet/issues/449)).
+
 ## 3.8.9
 
 **FIX**: (Android, iOS) trips are now recorded natively in every motion mode and from `changePace()`. The native trip manager — the one that stamps `trip_id` onto stored locations and driving events (#402) and stores trip summaries (#401) — was fed only from the sensor-driven motion handler. On Android, SMART mode left that handler early, SPEED-mode transitions never reached it, and `changePace()` bypassed it in every mode; on iOS the accelerometer path sent its motion change before the trip manager had seen the transition. In all of these, Dart's `onTrip` still fired, but under an id Dart minted itself: the stored rows carried `trip_id: null` and no summary was stored or synced. Every motion change the session emits now records the transition first and carries the native trip id ([#442](https://github.com/Ikolvi/Tracelet/issues/442)).

@@ -235,7 +235,10 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
                         routeContext = it.routeContext,
                         // #402: carried from the row, not resolved at flush time.
                         tripId = it.tripId,
-                        address = it.address  // #212
+                        address = it.address,  // #212
+                        altitudeAccuracy = it.altitudeAccuracy,  // #445
+                        speedAccuracy = it.speedAccuracy,
+                        headingAccuracy = it.headingAccuracy
                     )
                 }
 
@@ -341,7 +344,10 @@ class NativeSyncProvider(private val sdk: TraceletSdk) : LocationDataSink, Trace
                 routeContext = it.routeContext,
                 // #402: carried from the row, not resolved at flush time.
                 tripId = it.tripId,
-                address = it.address  // #212
+                address = it.address,  // #212
+                altitudeAccuracy = it.altitudeAccuracy,  // #445
+                speedAccuracy = it.speedAccuracy,
+                headingAccuracy = it.headingAccuracy
             )
         }
 

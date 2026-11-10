@@ -153,6 +153,8 @@ Mark's company has a legacy backend that expects location data in a very specifi
    
    Starting from **Tracelet 3.2.8**, the locations passed to this builder use a robust **nested schema** (where coordinates are safely grouped under `coords` and activity data under `activity`).
 
+   `coords` also carries `altitudeAccuracy`, `speedAccuracy` and `headingAccuracy`, in these locations and in the default payload. `-1` means the platform reported no value, so filter on them with `>= 0` first: a value of `0` is a real reading. Locations stored by versions before the fix read `-1` ([#445](https://github.com/Ikolvi/Tracelet/issues/445)).
+
    ```dart
    Tracelet.setSyncBodyBuilder((context) async {
      // Map Tracelet's nested schema to your legacy server's flat schema

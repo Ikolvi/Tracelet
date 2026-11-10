@@ -167,6 +167,52 @@ class StationaryPaceResumeTest {
     }
 
     @Test
+    fun `ready in SMART mode resumes a periodic session as periodic (#449)`() {
+        val smart = config + ("motionDetectionMode" to 2)
+        sdk.ready(smart) {}
+        idle()
+        sdk.startPeriodic()
+        idle()
+
+        sdk.ready(smart) {}
+        idle()
+
+        assertEquals(
+            TrackingMode.PERIODIC, sdk.stateManager.trackingMode,
+            "SMART/SPEED ready() must resume the stored strategy, not always start() (#449)",
+        )
+    }
+
+    @Test
+    fun `ready resuming a parked SMART session re-arms the stationary periodic check (#448)`() {
+        // No foreground service, so the stationary schedule is WorkManager +
+        // exact alarm, which the test can observe. interval < 900 s → one-time work.
+        val smart = config + mapOf(
+            "motionDetectionMode" to 2,
+            "fg_enabled" to false,
+            "stationaryPeriodicInterval" to 300,
+        )
+        sdk.ready(smart) {}
+        idle()
+        sdk.start()
+        idle()
+        assertFalse(sdk.stateManager.isMoving)
+
+        // The app is reopened while parked: ready() resumes with start(isResume),
+        // which cancels the periodic work before re-syncing the coordinator.
+        sdk.ready(smart) {}
+        idle()
+
+        val work = androidx.work.WorkManager.getInstance(context)
+            .getWorkInfosForUniqueWork("${com.ikolvi.tracelet.sdk.location.PeriodicLocationWorker.WORK_NAME}_onetime")
+            .get()
+        kotlin.test.assertTrue(
+            work.isNotEmpty() && work.none { it.state == androidx.work.WorkInfo.State.CANCELLED },
+            "a parked SMART session resumed by ready() must have its stationary periodic check armed (#448); got $work",
+        )
+    }
+
+    @Test
     fun `sticky restart of a parked continuous session is not declined`() {
         ConfigManager.getInstance(context).setConfig(config)
         val state = StateManager(context)

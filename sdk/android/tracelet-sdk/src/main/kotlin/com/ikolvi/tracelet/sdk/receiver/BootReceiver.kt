@@ -83,9 +83,14 @@ class BootReceiver : BroadcastReceiver() {
             return
         }
 
-        val trackingMode = stateManager.trackingMode
+        // The strategy the app started, not the pace. A parked SMART session has
+        // `trackingMode = PERIODIC` (the stationary switch writes it), and reading
+        // that here rebooted a `start()` session into a 15-minute WorkManager fix
+        // with no service, detector or heartbeat (#447) — the same split
+        // `onTaskRemoved` and `startBootTracking` already read (#428).
+        val trackingMode = stateManager.sessionTrackingMode
 
-        TraceletLog.debug("startOnBoot=true, trackingMode=$trackingMode — restoring tracking")
+        TraceletLog.debug("startOnBoot=true, trackingMode=$trackingMode (pace=${stateManager.trackingMode}) — restoring tracking")
 
         // Acquire a temporary OEM-safe wakelock to prevent aggressive power
         // managers (Huawei PowerGenie, Xiaomi MIUI) from killing our process

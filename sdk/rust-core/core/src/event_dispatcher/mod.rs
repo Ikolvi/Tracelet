@@ -32,7 +32,7 @@ impl EventDispatcher {
 
         // 2. Persist to Database
         // HealthState tracks no activity confidence — unknown at this layer (#245).
-        if let Err(e) = self.db.insert_location(uuid, lat, lng, accuracy, speed, heading, altitude, is_mock, is_moving, &activity, -1, route_context, timestamp, None, None, None) {
+        if let Err(e) = self.db.insert_location(uuid, lat, lng, accuracy, speed, heading, altitude, is_mock, is_moving, &activity, -1, route_context, timestamp, None, None, None, None, None, None) {
             crate::logger::error(&format!("[Rust Core] ❌ Failed to insert location into database: {}", e));
             return false;
         }

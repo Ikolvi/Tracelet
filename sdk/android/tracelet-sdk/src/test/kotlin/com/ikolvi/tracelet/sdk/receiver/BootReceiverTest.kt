@@ -48,7 +48,7 @@ class BootReceiverTest {
 
     @After
     fun tearDown() {
-        StateManager(context).enabled = false
+        StateManager(context).reset()
         ConfigManager.resetInstance()
     }
 
@@ -65,6 +65,23 @@ class BootReceiverTest {
         assertNull(
             shadowOf(context as Application).nextStartedService,
             "No tracking service may be started when tracking was stopped",
+        )
+    }
+
+    @Test
+    fun `boot restores the started strategy, not a parked SMART pace (#447)`() {
+        val state = StateManager(context)
+        state.enabled = true
+        state.sessionTrackingMode = com.ikolvi.tracelet.sdk.model.TrackingMode.CONTINUOUS
+        // What switchToStationaryPeriodic persists when a SMART session parks.
+        state.trackingMode = com.ikolvi.tracelet.sdk.model.TrackingMode.PERIODIC
+
+        BootReceiver().onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
+
+        assertEquals(
+            LocationService::class.java.name,
+            shadowOf(context as Application).nextStartedService?.component?.className,
+            "a start() session must reboot through the service, not a 15-min WorkManager fix (#447)",
         )
     }
 

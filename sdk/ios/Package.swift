@@ -78,6 +78,9 @@ let package = Package(
                 // has to reach the flat getters. It did not, so the whole
                 // location-filter block was pinned to its defaults on iOS.
                 "ConfigManagerFilterSectionTests.swift",
+                // #446: getters on the motion sampler queue vs. setConfig on
+                // main — a Dictionary race that crashed in production.
+                "ConfigManagerConcurrencyTests.swift",
                 "SignificantChangesBackgroundSessionTests.swift",
                 // #280: pure LocationMapper API (buildLocationMap) — current, not
                 // stale — wired up so the persisted-metadata mapping is covered.

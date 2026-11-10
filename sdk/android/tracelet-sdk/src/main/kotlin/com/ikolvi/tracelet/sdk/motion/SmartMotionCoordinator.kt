@@ -234,11 +234,23 @@ class SmartMotionCoordinator(
      * feeds the in-app fence evaluator, at the stationary cadence rather than at
      * full rate — and a moving one is left streaming (#409).
      */
-    fun reconcilePosture() {
+    fun reconcilePosture(stationaryScheduleCancelled: Boolean = false) {
         syncCurrentMode()
         val useGeofences = configManager.getStationaryTrackingMode() ==
             com.ikolvi.tracelet.sdk.model.StationaryTrackingMode.GEOFENCES
-        val action = coreCoordinator.evaluateConfigurationChange(useGeofences)
+        var action = coreCoordinator.evaluateConfigurationChange(useGeofences)
+        // A resumed start() cancels the stationary periodic work and alarm, then
+        // syncs the posture to STATIONARY_PERIODIC — which the core already
+        // holds, so it answers NONE and nothing re-arms the timer. A parked
+        // session reopened by ready() then got no periodic fix at all, and only
+        // an accelerometer wake could ever move it (#448). The core's posture is
+        // right; the schedule behind it is gone, so arm it again.
+        if (stationaryScheduleCancelled && action == uniffi.tracelet_core.CoordinatorAction.NONE &&
+            !useGeofences && !coreCoordinator.isAccelMoving() &&
+            !coreCoordinator.isSpeedMoving() && !locationEngine.isTracking
+        ) {
+            action = uniffi.tracelet_core.CoordinatorAction.SWITCH_TO_STATIONARY_PERIODIC
+        }
         // Always-on: once per start(), and it is the entry that answers "why is
         // GPS still running" — it names both motion inputs and the engine at the
         // one moment the session re-judges them. A release build runs at the

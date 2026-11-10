@@ -1657,7 +1657,10 @@ public final class TraceletSdk {
             odometer: locationEngine.getOdometer(),
             eventType: record.eventType,
             eventPayload: record.eventPayload,
-            address: record.address
+            address: record.address,
+            altitudeAccuracy: record.altitudeAccuracy,
+            speedAccuracy: record.speedAccuracy,
+            headingAccuracy: record.headingAccuracy
         )
     }
 
@@ -1803,6 +1806,10 @@ public final class TraceletSdk {
         let speed = coords["speed"] as? Double ?? 0.0
         let heading = coords["heading"] as? Double ?? 0.0
         let altitude = coords["altitude"] as? Double ?? 0.0
+        // #445: stored as given; -1 already means "unknown" in the live map.
+        let altitudeAccuracy = coords["altitudeAccuracy"] as? Double
+        let speedAccuracy = coords["speedAccuracy"] as? Double
+        let headingAccuracy = coords["headingAccuracy"] as? Double
         let isMock = (params["mock"] as? Bool) ?? (params["is_mock"] as? Bool) ?? false
         let isMoving = params["is_moving"] as? Bool ?? false
         let activityMap = params["activity"] as? [String: Any]
@@ -1922,7 +1929,10 @@ public final class TraceletSdk {
                 timestampOverride: timestamp,
                 eventType: eventType,
                 eventPayload: eventPayload,
-                address: address
+                address: address,
+                altitudeAccuracy: altitudeAccuracy,
+                speedAccuracy: speedAccuracy,
+                headingAccuracy: headingAccuracy
             )
             enforceRetentionCaps(db)
             // Notify the sync plugin so it can trigger auto-sync
