@@ -80,6 +80,28 @@ class LocationServiceForegroundRecreateTest {
     }
 
     @Test
+    fun `replacing the service keeps a stationary timer armed by the same start`() {
+        createInBackground()
+        lifecycle.currentState = Lifecycle.State.STARTED
+        val sdk = com.ikolvi.tracelet.sdk.TraceletSdk.getInstance(context)
+        sdk.initialize()
+
+        LocationService.start(context)
+        // What start() does next for a parked SMART session (#448).
+        LocationService.switchToStationaryPeriodic(
+            sdk.locationEngine, ConfigManager.getInstance(context), sdk.stateManager,
+        )
+        controller?.destroy() // the old instance's onDestroy arrives afterwards
+        controller = null
+
+        kotlin.test.assertTrue(
+            LocationService.isStationaryTimerActive(),
+            "the replaced service's onDestroy must not cancel the new session's stationary timer",
+        )
+        LocationService.stopStationaryTimer()
+    }
+
+    @Test
     fun `a background start leaves the running service alone`() {
         createInBackground()
 

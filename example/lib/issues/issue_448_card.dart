@@ -33,6 +33,9 @@ class _Issue448CardState extends State<Issue448Card>
       motionDetectionMode: MotionDetectionMode.smart,
       stationaryTrackingMode: StationaryTrackingMode.periodic,
       stationaryPeriodicInterval: 60,
+      // Low accuracy so a network fix is enough: indoors a high-accuracy
+      // request can time out, and the card would fail with the timer armed.
+      stationaryPeriodicAccuracy: DesiredAccuracy.low,
     ),
     app: AppConfig(stopOnTerminate: false),
     http: HttpConfig(autoSync: false),
@@ -66,8 +69,10 @@ class _Issue448CardState extends State<Issue448Card>
       );
     } on TimeoutException {
       setStatus(
-        '❌ FAILED — no periodic fix in 2 min after ready(): the stationary '
-        'check was not re-armed (#448).',
+        '❌ FAILED — no periodic fix in 2 min after ready(). Either the '
+        'stationary check was not re-armed (#448), or it fired and the device '
+        'could not get a fix (check logcat for "switching to '
+        'STATIONARY_PERIODIC", and try near a window).',
       );
     } catch (e) {
       setStatus('❌ FAILED: $e');

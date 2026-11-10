@@ -176,6 +176,9 @@ class LocationService : Service(), DefaultLifecycleObserver {
         @Volatile
         private var serviceCreatedInForeground: Boolean? = null
 
+        /** Set while [start] replaces a background-created service (#436). */
+        private var replacingService = false
+
         /** Whether [announceLocationBlindPromotion] has already fired for this record. */
         @Volatile
         private var locationBlindAnnounced = false
@@ -589,6 +592,7 @@ class LocationService : Service(), DefaultLifecycleObserver {
                         "foreground so Android grants it location (#436, #405)"
                 )
                 isRunning = false
+                replacingService = true
                 context.applicationContext.stopService(Intent(context, LocationService::class.java))
             }
             val intent = Intent(context, LocationService::class.java).apply {
@@ -1107,8 +1111,17 @@ class LocationService : Service(), DefaultLifecycleObserver {
         // a destroy with `stopRequested=false` is the OS reclaiming a service
         // nobody asked to stop — the shape of "tracking died while idle".
         TraceletLog.lifecycle("service: onDestroy — stopRequested=${!isRunning}")
-        cancelBootTrackingRetry()
-        stopBootTrackingInternal()
+        if (replacingService) {
+            // #436: this instance is being replaced, not stopped. Its onDestroy
+            // runs after the start() that replaced it, so tearing down here
+            // would cancel the stationary timer that start() just armed (#448).
+            // ready() already stopped boot tracking before calling start().
+            replacingService = false
+            cancelBootTrackingRetry()
+        } else {
+            cancelBootTrackingRetry()
+            stopBootTrackingInternal()
+        }
         releaseOemWakelock()
         isRunning = false
         // #255: the service is gone — it is no longer a foreground service.
