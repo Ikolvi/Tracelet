@@ -1,5 +1,7 @@
 ## Unreleased
 
+**FIX**: the pinned native SDK replaces a background-started foreground service when tracking starts from the foreground, so opening the app recovers location; no Dart or plugin change ([#436](https://github.com/Ikolvi/Tracelet/issues/436)).
+
 **FIX**: the pinned native SDK persists and returns the fix accuracies, restores the started strategy on boot and on `ready()` in every motion mode, and re-arms the SMART stationary periodic check on `ready()`; no Dart or plugin change ([#445](https://github.com/Ikolvi/Tracelet/issues/445)), ([#447](https://github.com/Ikolvi/Tracelet/issues/447)), ([#448](https://github.com/Ikolvi/Tracelet/issues/448)), ([#449](https://github.com/Ikolvi/Tracelet/issues/449)).
 
 ## 3.8.9

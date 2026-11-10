@@ -1,5 +1,7 @@
 ## Unreleased
 
+**FIX**: `LocationService.start()` stops a running service whose record was created in the background (`serviceCreatedInForeground == false`) before starting it again when the app is in the foreground (`ProcessLifecycleOwner` ≥ STARTED), so Android creates a new, foreground-created record that is granted location ([#436](https://github.com/Ikolvi/Tracelet/issues/436)).
+
 **FIX**: `TraceletSdk.insertLocation` passes `coords.altitudeAccuracy`, `speedAccuracy` and `headingAccuracy` to the Rust `insert_location`, which stores them in three new nullable `location_events` columns (plaintext, or inside the encrypted payload). `LocationMapper.buildLocationMap` emits them, `-1` for rows stored before; `NativeSyncProvider` carries them into `SyncLocationRecord` ([#445](https://github.com/Ikolvi/Tracelet/issues/445)).
 
 **FIX**: `BootReceiver.onReceive` branches on `StateManager.sessionTrackingMode` (the started strategy) instead of `trackingMode` (the pace), so a parked SMART `start()` session reboots through `LocationService.startFromBoot()` rather than `scheduleBackgroundFallback()` ([#447](https://github.com/Ikolvi/Tracelet/issues/447)).

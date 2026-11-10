@@ -574,6 +574,23 @@ class LocationService : Service(), DefaultLifecycleObserver {
         fun isServiceRunning(): Boolean = isRunning
 
         fun start(context: Context) {
+            // #436: Android decides whether a foreground service may use location
+            // when its record is *created*, for the record's whole life (#405).
+            // A START_STICKY restart or another background trigger creates one
+            // that never gets a fix, and sending ACTION_START to it from a
+            // foregrounded app reuses it — so opening the app did not recover
+            // tracking either. With the app in the foreground, drop that record
+            // first so this start creates a new one from the foreground.
+            if (isRunning && serviceCreatedInForeground == false &&
+                ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+            ) {
+                TraceletLog.lifecycle(
+                    "service: re-creating the background-started service from the " +
+                        "foreground so Android grants it location (#436, #405)"
+                )
+                isRunning = false
+                context.applicationContext.stopService(Intent(context, LocationService::class.java))
+            }
             val intent = Intent(context, LocationService::class.java).apply {
                 action = ACTION_START
             }
