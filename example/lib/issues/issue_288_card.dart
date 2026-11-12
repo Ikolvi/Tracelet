@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:tracelet/tracelet.dart' as tl;
 import 'package:tracelet_example/issues/issue_card_shell.dart';

@@ -1,5 +1,3 @@
-import 'package:flutter/cupertino.dart' show State;
-import 'package:flutter/material.dart' show State;
 import 'package:flutter/widgets.dart' show State;
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 

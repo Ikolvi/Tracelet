@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:tracelet_example/local_test_server.dart';
 import 'package:tracelet_example/server_logs_page.dart';
 

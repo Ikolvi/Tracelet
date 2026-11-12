@@ -45,6 +45,7 @@ dependencies:
   # needs the direct dependency to import it.
   qr: ^3.0.2
   qr_flutter: ^4.1.0
+  material_ui: ^1.11.0
 
 dev_dependencies:
   integration_test:

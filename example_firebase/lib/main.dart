@@ -2,7 +2,7 @@
 import 'package:example_firebase/firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:tracelet/tracelet.dart';
 import 'package:tracelet_firebase/tracelet_firebase.dart';
 

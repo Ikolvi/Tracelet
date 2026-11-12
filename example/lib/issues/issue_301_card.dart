@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_platform_interface/tracelet_platform_interface.dart'
     show TlLocationTuning, TlModeChangeEvent;
