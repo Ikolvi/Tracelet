@@ -1,8 +1,14 @@
 import os
 import re
+from datetime import date
 
 version_from = "3.8.9"
 version_to = "3.8.10"
+
+# Changelog headings carry the release date: `## 3.8.10 - 2026-11-12`. Run this
+# on release day; an existing heading keeps the date it already has.
+version_heading = f"## {version_to} - {date.today().isoformat()}"
+DATE_SUFFIX = r'(?: - \d{4}-\d{2}-\d{2})?'
 
 # A fixes-only release:
 #
@@ -143,7 +149,7 @@ generic_changelogs = [
     'packages/tracelet_firebase/CHANGELOG.md',
 ]
 
-generic_addition = f"""## {version_to}
+generic_addition = f"""{version_heading}
 
 Version alignment with tracelet {version_to}.
 
@@ -162,7 +168,7 @@ def merge_unreleased_into(content, version):
     nxt = re.search(r'^## ', content[m.end():], flags=re.M)
     body = content[m.end():m.end() + nxt.start()] if nxt else content[m.end():]
     rest = content[:m.start()] + (content[m.end() + nxt.start():] if nxt else '')
-    vm = re.search(rf'^## {re.escape(version)}[ \t]*\n\n', rest, flags=re.M)
+    vm = re.search(rf'^## {re.escape(version)}{DATE_SUFFIX}[ \t]*\n\n', rest, flags=re.M)
     if not vm:
         return None
     return rest[:vm.end()] + body.strip('\n') + '\n\n' + rest[vm.end():]
@@ -177,7 +183,7 @@ def has_version_heading(content, version):
     existing `## 3.8.0-beta.2` heading and silently skipped every changelog, so
     the release shipped with its entries still stranded under `## Unreleased`.
     """
-    return re.search(rf'^## {re.escape(version)}[ \t]*$', content, flags=re.M) is not None
+    return re.search(rf'^## {re.escape(version)}{DATE_SUFFIX}[ \t]*$', content, flags=re.M) is not None
 
 
 for cl in detailed_changelogs:
@@ -202,7 +208,7 @@ for cl in detailed_changelogs:
     # `[ \t]*` not `\s*`: \s matches newlines, so the greedy form swallowed the
     # blank line after the heading and glued it to the first entry.
     if re.search(r'^## Unreleased[ \t]*$', content, flags=re.M):
-        content = re.sub(r'^## Unreleased[ \t]*$', f'## {version_to}', content, count=1, flags=re.M)
+        content = re.sub(r'^## Unreleased[ \t]*$', version_heading, content, count=1, flags=re.M)
         with open(cl, 'w', encoding='utf-8') as f:
             f.write(content)
         print(f"Promoted Unreleased -> {version_to} in {cl}")

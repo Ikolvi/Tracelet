@@ -1,4 +1,4 @@
-## 3.8.10
+## 3.8.10 - 2026-11-12
 
 **FIX**: (Android) tracking recovers when the app is opened after a background restart. A foreground service that Android restarts in the background (for example after a low-memory kill) is denied location for its whole life, and opening the app reused that same service, so the notification stayed up and no fix arrived. Starting tracking with the app in the foreground now replaces it with a new service that Android allows to use location ([#436](https://github.com/Ikolvi/Tracelet/issues/436)).
 
@@ -14,7 +14,7 @@
 
 **FIX**: (Android) in SMART and SPEED motion modes, `ready()` resumed every session as continuous tracking, so a `startPeriodic()` or `startGeofences()` session came back continuous with a foreground service. It now resumes the stored strategy, as accelerometer mode already did ([#449](https://github.com/Ikolvi/Tracelet/issues/449)).
 
-## 3.8.9
+## 3.8.9 - 2026-10-22
 
 **FIX**: (Android, iOS) trips are now recorded natively in every motion mode and from `changePace()`. The native trip manager — the one that stamps `trip_id` onto stored locations and driving events (#402) and stores trip summaries (#401) — was fed only from the sensor-driven motion handler. On Android, SMART mode left that handler early, SPEED-mode transitions never reached it, and `changePace()` bypassed it in every mode; on iOS the accelerometer path sent its motion change before the trip manager had seen the transition. In all of these, Dart's `onTrip` still fired, but under an id Dart minted itself: the stored rows carried `trip_id: null` and no summary was stored or synced. Every motion change the session emits now records the transition first and carries the native trip id ([#442](https://github.com/Ikolvi/Tracelet/issues/442)).
 
@@ -34,7 +34,7 @@
 
 **FIX**: (iOS) continuous tracking no longer gets suspended in the background on iOS 16.4+ when the blue location bar is off. Apple suspends an app that runs both `startUpdatingLocation()` and significant-change monitoring if it sets a distance filter or coarse accuracy, unless the location indicator shows; the SDK always runs both and passed `distanceFilter` (default 10 m) straight to CoreLocation. Before 3.8.8 an unconditional `CLBackgroundActivitySession` showed the indicator and hid the rule, so the #423 fix exposed it: an Always-authorized app with `showsBackgroundLocationIndicator: false` and no session delivered nothing in the background except at significant-change wakes. In that configuration CoreLocation now runs with no distance filter and accuracy of 100 m or better; the configured `distanceFilter` still gates what is recorded and synced, so stored volume does not change. Either opt-in (`showsBackgroundLocationIndicator` or `useBackgroundActivitySession`), or When-In-Use authorization, leaves the configured values in place ([#435](https://github.com/Ikolvi/Tracelet/issues/435)).
 
-## 3.8.8
+## 3.8.8 - 2026-09-18
 
 **FIX**: (Android) `getCurrentPosition()` now wakes the provider for a fresh fix instead of retrying a call that can answer from cache forever. The 1.8.7 fix for #46 said `getCurrentPosition(samples: 1)` had moved to `requestLocationUpdates()` so it would wake GPS and return a fresh position; the code never did — every sample came from a one-shot `getCurrentLocation()`, retried every 800 ms, which can return null or a cached fix without engaging the hardware, and on the reporting device did exactly that until the timeout. Samples are now collected from two sources side by side for the bounded window: a continuous request, which is the only API that actually wakes the provider, and the one-shot loop, kept because it is the path that answers on budget devices whose battery optimisation throttles continuous requests for an app without a foreground service. The first genuine fix from either counts, a fix both deliver is counted once so `samples` still means distinct fixes, and every exit — enough samples, timeout, permission failure — removes the continuous request so a one-shot operation never leaves the provider running ([#416](https://github.com/Ikolvi/Tracelet/issues/416)).
 
@@ -74,7 +74,7 @@
 
 **FEAT**: (Android, iOS) trips have an identity, and the records made during them carry it. The SDK mints a UUIDv4 when a trip starts, keeps it for the trip's lifetime, and discards it at the end, so an id is never handed to a second journey. It is written into the new `trip_id` column on locations and driving events **at insert time**, which is what makes an offline backlog correct: a row recorded during one trip still uploads as that trip's even when a different trip is running by the time the flush happens, where resolving it at sync time would silently reassign the whole queue. The default sync payload gains a `trip_id` field on each location and telematics record — present as an explicit `null` outside a trip, so the key can be relied on — and nothing else is renamed or moved. `Tracelet.onTripStart` is new: a trip previously only became observable once it had *ended*, so an app that wanted to group records by trip had to re-derive the boundary from `onMotionChange` and would drift from the SDK's own detection. `Tracelet.currentTripId` reports the trip in force right now, so app-side data can be tagged with the same key. `TripEvent` gains `tripId` plus absolute `startedAt`/`endedAt` bounds — `duration` alone could not place a trip on a timeline. Additive throughout: the new fields are nullable and read `null` for trips and rows from before this version ([#402](https://github.com/Ikolvi/Tracelet/issues/402)).
 
-## 3.8.7
+## 3.8.7 - 2026-08-16
 
 **FIX**: (Android, iOS) the events that explain a background tracking failure are recorded on the always-on lifecycle channel, so a **release** build can report them. A released app runs at the default `logLevel`, where every `debug` line is discarded — which is why diagnosing the last round took repeated captures and a source read rather than one report. Now recorded regardless of level, and all per-session rather than per-fix: the continuous location stream starting and stopping (the transition the OS location indicator follows, so "the icon disappeared" is answerable); the app moving to background and to foreground — iOS never observed the background edge at all, so a report could show the app coming back but never leaving; foreground-service promotion and demotion, naming the demotion window in which a task removal is fatal; a pace machine refused a stale fix's speed, and the moment it gets a current one again; and a session start that declined to seed the pace machine because no fix had been resolved yet. The stale-fix lines are emitted once per run rather than once per fix, so a long run of them costs one line.
 
@@ -92,11 +92,11 @@
 
 **FIX**: (Dart) the Doctor bug report says which Tracelet produced it. The report opened with a generation timestamp and, optionally, the host app's own version, so triage began by asking — and a report pasted into an issue weeks later could not answer at all. `traceletVersion` is now exported from `package:tracelet` and kept in lockstep with the pubspec by the release hook, and the report header carries it. The report also gained a **Location stream health** section: stalls, recoveries and throttle movements lifted out of the general log, each stall line carrying the rejection histogram, the gate the last fix was measured against, the configured gate beside it and the thresholds in force ([#398](https://github.com/Ikolvi/Tracelet/issues/398)).
 
-## 3.8.6
+## 3.8.6 - 2026-08-16
 
 **FIX**: (iOS) an app with Swift Package Manager disabled links again. Flutter installs plugins as `:path` pods, and the published podspecs pointed `s.source :http` at the GitHub Release zips — a source CocoaPods never downloads for path pods, so `TraceletCore.xcframework` / `TraceletSyncFFI.xcframework` were simply absent and the build failed at `ld` with hundreds of undefined UniFFI symbols. The podspecs now fetch and checksum their own binary during evaluation, and each links the framework it vendors, which CocoaPods does only for a *dependency's* vendored frameworks ([#390](https://github.com/Ikolvi/Tracelet/issues/390)).
 
-## 3.8.5
+## 3.8.5 - 2026-08-15
 
 **FIX**: (Android, iOS, web) `Tracelet.setOdometer()` moves the reference the odometer measures from, not just the total. Distance is accumulated from an anchor held by the location processor, and setting the odometer wrote the counter alone — so the next accepted fix immediately added the whole span since the previous one and the value you had just set survived exactly one fix. The everyday form is "reset to zero, then start tracking": the trip began with however far the device had been carried while it was not being tracked. Only the odometer anchor is cleared, never the tracking one — that decides whether the next fix clears `distanceFilter`, so setting a counter must not quietly change which locations are recorded. All three platforms had the defect independently ([#387](https://github.com/Ikolvi/Tracelet/issues/387)).
 
@@ -104,7 +104,7 @@
 
 **FIX**: (Android, iOS) `PersistenceConfig.persistMode` is applied to geofence ENTER/EXIT records. It only ever gated ordinary GPS fixes, so `persistMode: 'location'` and `persistMode: 'none'` still wrote every fence crossing to the local database and uploaded it in the next HTTP batch — an app that chose `none` precisely to get geofence callbacks without the SDK retaining a location history was accumulating a record of every fence it crossed, with nothing in the logs to say so. Crossings are now persisted only under `all` and `geofence`. Your `onGeofence` listener is unaffected in every mode: only the database write is gated, so `none` keeps its documented behaviour of firing events without storing anything. The mode is read at the moment of each crossing, so a mid-session `setConfig` applies to the next one ([#383](https://github.com/Ikolvi/Tracelet/issues/383)).
 
-## 3.8.4
+## 3.8.4 - 2026-08-13
 
 **FEAT**: (Android, iOS) the tracking notification and the Live Activity can show a self-ticking elapsed timer, rendered by the OS rather than by rewriting the text on a timer of your own. `ForegroundServiceConfig` gains `notificationStartedAt` (epoch ms) and `notificationShowTimer`; `LiveActivityConfig` gains `startedAt` and `showTimer`; and `ForegroundServiceConfig.notificationOnlyAlertOnce` maps to Android's `setOnlyAlertOnce`, so later reposts replace the notification silently instead of replaying its sound and vibration. `startedAt` is supplied by the app rather than taken from `start()`, because the period a user cares about often began before tracking did, or survives a tracking restart. Everything here is additive — the new keys are absent unless set, so both platforms' config managers never see them and existing callers are unaffected — and updating a timer goes through the ordinary partial `setConfig`, where a `foregroundService`-only write leaves `http.url` and `http.headers` untouched ([#376](https://github.com/Ikolvi/Tracelet/issues/376)).
 
@@ -112,7 +112,7 @@
 
 **FIX**: (Android) events reach the registered headless task after the UI engine detaches while another plugin's background engine keeps the process alive. With, say, firebase_messaging's background service in the app, task removal left the SDK broadcasting into a fan-out with no members at all — a silent no-op — so native tracking ran on while Dart received nothing ([#371](https://github.com/Ikolvi/Tracelet/issues/371)).
 
-## 3.8.3
+## 3.8.3 - 2026-08-12
 
 **FIX**: (Android, iOS) telematics events survive a failed sync instead of being deleted by it. With `HttpConfig.syncTelematics` enabled, an upload failure — an offline device, a refused connection — cleared the entire stored telematics table rather than leaving the events queued for the next attempt. Events are now settled only when the request carrying them actually succeeded, and only over the id range that was uploaded ([#366](https://github.com/Ikolvi/Tracelet/issues/366)).
 
@@ -130,7 +130,7 @@
 
 **NOTE**: pruning is amortized over 100 inserts rather than run on every insert, so a `COUNT`-and-`DELETE` is not attached to every GPS fix. The queue is bounded by `maxRecordsToPersist + 100` and is cut back to the cap itself at each prune; it is a bound on growth, not a per-insert invariant. The first insert of a process prunes, so a backlog inherited from a build that never enforced the caps is cleared on the next fix ([#361](https://github.com/Ikolvi/Tracelet/issues/361)).
 
-## 3.8.2
+## 3.8.2 - 2026-08-11
 
 **FIX**: (Android, iOS) geofence ENTER/EXIT no longer stop firing when the location filter tightens. Proximity registration — which decides *which* fences the OS is watching, and so is the whole feature in standard mode — rode the persistence-filtered location stream, so 3.8.0's transport-mode auto-tune (#299) could reject every fix, freeze registration, and leave no crossing ever reported again ([#352](https://github.com/Ikolvi/Tracelet/issues/352)).
 
@@ -148,7 +148,7 @@
 
 **FIX**: (Android) geofence crossings reach the registered headless task again. A headless engine spawned for anything else — a custom sync body, say — joined the event fan-out and swallowed every subsequent crossing for the rest of the process: evaluated, logged, persisted and synced natively, but never delivered to the app, and dropped in silence ([#358](https://github.com/Ikolvi/Tracelet/issues/358)).
 
-## 3.8.1
+## 3.8.1 - 2026-08-11
 
 **FIX**: (Android) a headless task after task removal could silently never fire — the engine spawn now retries and reports failures instead of stalling forever ([#331](https://github.com/Ikolvi/Tracelet/issues/331)).
 
@@ -164,7 +164,7 @@
 
 **FIX**: (Android, iOS) only a *resumed* session inherits the previous session's speed-motion pace ([#348](https://github.com/Ikolvi/Tracelet/issues/348)).
 
-## 3.8.0
+## 3.8.0 - 2026-08-08
 
 **FIX**: `Config.toMap()` omits a section entirely when it carries nothing, so `const Config().toMap()` is now empty rather than sixteen empty sub-maps. Each section was guarded with `if (geo != null)`, which is dead code — the fields are non-nullable with defaults — the same mistake already fixed one level down for `geo.filter` and `android.foregroundService`, and the analyzer had been reporting all sixteen. Nothing downstream read them (the wire format is the Pigeon `toTlConfig()`, not this; `Config.fromMap` falls back through an absent section, and `activeConfig` is a resolved config after `ready()`, so every section still carries fields), but a partial update that changes nothing should not look like it touched every section — least of all in a pasted bug report. `AttestationToken.toMap()` loses the same dead guards on `token`, `timestamp` and `provider`: a token is a result, not a partial config, and those three are never absent ([#326](https://github.com/Ikolvi/Tracelet/issues/326)).
 
@@ -208,7 +208,7 @@
 
 **FIX**: (Android) boot and task-removal tracking retries with backoff when the SDK cannot bootstrap, instead of returning and never trying again. `START_STICKY` only redelivers after the process is killed, and the service is alive at that point — it just returned early — so nothing called it again short of the user reopening the app, while the foreground notification advertised an active session that was tracking nothing. After the retries are exhausted the service stops rather than leaving that notification standing ([#317](https://github.com/Ikolvi/Tracelet/issues/317)).
 
-## 3.8.0-beta.2
+## 3.8.0-beta.2 - 2026-08-06
 
 **FEAT**: `Tracelet.getCurrentLocationTuning()` reports the location-filter thresholds **actually in force**, read back from the native processor rather than from the config you set. `activeConfig` is a Dart-side mirror of the last `Config` passed in, so it cannot tell you whether a value reached the filter that uses it — and it cannot show a transport-mode auto-tune, which changes these thresholds with no config call at all. Returns `null` before a tracking session has built a processor, and always `null` on Web ([#303](https://github.com/Ikolvi/Tracelet/issues/303)).
 
@@ -236,7 +236,7 @@
 
 **DEPRECATED**: `AuditConfig.includeExtrasInHash` and `AttestationConfig.verificationUrl` were never implemented — no platform reads either value. They are now annotated so the analyzer surfaces it, rather than being silently discarded at runtime. Implementing them is not a patch: the first changes what the audit chain hashes and so invalidates every existing chain, and the second needs a token-verification transport ([#304](https://github.com/Ikolvi/Tracelet/issues/304)).
 
-## 3.8.0-beta
+## 3.8.0-beta - 2026-08-06
 
 **FEAT**: (Android + iOS) `ModeChangeEvent.appliedTuning` reports the four thresholds a committed transport mode put in force — `distanceFilter`, `trackingAccuracyThreshold`, `odometerAccuracyThreshold` and `maxImpliedSpeed` — and is `null` when auto-tuning is off or the mode is `unknown`. Both SDKs already put these on the native mode-change payload in 3.8.0-alpha, but `TlModeChangeEvent` carried only `mode` and `confidence`, so the plugin dispatchers dropped them: an auto-tune was silent for exactly the Flutter apps documented as being able to observe it ([#301](https://github.com/Ikolvi/Tracelet/issues/301)).
 
@@ -248,7 +248,7 @@
 
 **FIX**: (iOS) `autoTuneFromTransportMode` is now watched in the behaviour-key comparison that decides whether `setConfig()` rebuilds the behaviour engines, matching Android ([#301](https://github.com/Ikolvi/Tracelet/issues/301)).
 
-## 3.8.0-alpha
+## 3.8.0-alpha - 2026-08-05
 
 **FIX**: (Android + iOS) `useKalmanFilter: true` now affects recorded **distance**, not just the rendered track. The odometer accumulated raw inter-fix deltas because Kalman smoothing ran *after* the location processor and fed only `coords`, so enabling the filter visibly smoothed the map while distance kept integrating GPS jitter — over-reporting badly on foot, where noise is large relative to real displacement. Smoothing now runs **before** the processor on both platforms, so the distance filter, accuracy filter, implied-speed filter and the odometer all operate on the de-noised track. Every fix feeds the filter (not only accepted ones), keeping its velocity estimate continuous across rejections ([#299](https://github.com/Ikolvi/Tracelet/issues/299)).
 
@@ -260,15 +260,15 @@
 
 **FEAT**: (Android + iOS) new `ClassifierConfig.autoTuneFromTransportMode` (default `false`). When enabled, a **committed** transport mode retunes `distanceFilter`, `trackingAccuracyThreshold`, `odometerAccuracyThreshold` and `maxImpliedSpeed` for that mode — tighter on foot, looser in a vehicle — from a table shared by both platforms via the Rust core. This removes the hand-tuning that distance-accurate tracking previously required, and which neither the app developer nor the end user can get right in advance: a single session routinely contains walking, jogging and running. Retuning happens only on a committed change (confidence-gated and debounced by `modeSwitchDwellMs`), never per accelerometer window, and swaps thresholds **in place** so the odometer stays continuous across the change. A mode of `unknown` restores your configured values, and the applied thresholds ride on the `modechange` payload so an auto-tune is never silent. Requires `enableFusedClassifier: true` ([#299](https://github.com/Ikolvi/Tracelet/issues/299)).
 
-## 3.7.6
+## 3.7.6 - 2026-08-05
 
 **FIX**: (Android + iOS) high-accuracy geofence ENTER/EXIT transitions no longer intermittently fail to fire for a stationary device. In `geofenceModeHighAccuracy` the crossing evaluator is now fed the **raw** fix stream and the provider is requested with time-based delivery (`minUpdateDistanceMeters = 0` / `kCLDistanceFilterNone`), decoupling geofence evaluation from the tracking distance filter. That filter is a *persistence*-volume control, but it was also gating the fixes reaching the evaluator: a device standing still on a stable provider — GMS FusedLocationProvider (Android, since 3.7.3) or CoreLocation with a distance filter (iOS) — never moves the filter's distance, so no fix was delivered and no transition was evaluated (field logs show an iPhone parked inside a 50 m zone emitting many ENTERs and never an EXIT). Persistence is unchanged — the Rust `LocationProcessor` keeps its distance filter, so stored/synced location volume does not increase — and the decision logic (accuracy gating [#274](https://github.com/Ikolvi/Tracelet/issues/274), 2-fix confirmation [#294](https://github.com/Ikolvi/Tracelet/issues/294), hysteresis) is untouched; it simply now sees every fix. Standard OS region-monitoring geofence mode is unaffected ([#297](https://github.com/Ikolvi/Tracelet/issues/297)).
 
-## 3.7.5
+## 3.7.5 - 2026-08-04
 
 **FIX**: (Android + iOS) a geofence EXIT is now confirmed across `GEOFENCE_EXIT_CONFIRMATIONS` (2) consecutive out-of-fence fixes rather than a single one. Consumer GNSS routinely emits an isolated "over-confident" fix — one that lands hundreds of metres outside while reporting a tight accuracy the accuracy-aware gate ([#274](https://github.com/Ikolvi/Tracelet/issues/274)) cannot see through; field logs from a vivo V2431 and a Samsung SM-G781B show a stationary office device jumping to 198–301 m out at 1.7–9 m reported accuracy and straight back. Such a fix is always transient, so requiring the device to be confidently outside for two consecutive fixes absorbs the glitch on every device, while a genuine departure — which stays outside — still fires exactly one EXIT, delayed only by one fix interval. This is the temporal complement to the spatial exit hysteresis ([#268](https://github.com/Ikolvi/Tracelet/issues/268)); the decision lives in the Rust core, so Android and iOS inherit it identically, and the pure-Dart evaluator mirrors it ([#294](https://github.com/Ikolvi/Tracelet/issues/294)).
 
-## 3.7.4
+## 3.7.4 - 2026-08-03
 
 **FIX**: (Android + iOS) in `geofenceModeHighAccuracy`, a stationary device inside a geofence no longer emits a false ENTER on every resume/boot. `startGeofences()` calls `clearHighAccuracyState()`, which wipes the evaluator's in-memory inside-set, and it runs on every `ready()`/takeover ("Resuming geofence tracking on ready/takeover") and after boot/task-removal — so on an aggressive OEM it fires many times per hour. After each wipe the next fix satisfies `entered && !was_inside` and the evaluator re-emits ENTER; on an attendance backend each becomes a punch-in/punch-out, and a field report showed ~9 auto IN/OUT pairs in a day while the employee never left the office. The exit hysteresis from [#268](https://github.com/Ikolvi/Tracelet/issues/268) and the accuracy-aware EXIT from [#274](https://github.com/Ikolvi/Tracelet/issues/274)/[#276](https://github.com/Ikolvi/Tracelet/issues/276) cannot help, because they govern the crossing math *within* one evaluator lifetime while the "already inside" memory is discarded on every resume — so each takeover looks like a legitimate first-ever ENTER. `startGeofences()` now takes an `isResume` flag: a resume/boot preserves inside-state and only a fresh explicit start resets it (which still re-emits the initial-entry ENTER once). In addition, `GeofenceManager` persists a "known inside" set (SharedPreferences on Android, UserDefaults on iOS) that dedups high-accuracy ENTER/EXIT emissions and survives process death, so even a cold-start re-entry after an OEM kill is suppressed while a genuine departure and return still fire ([#292](https://github.com/Ikolvi/Tracelet/issues/292)). Finally, `startGeofences()` is now idempotent — calling it again while already tracking in geofence mode (the common "refresh fences on every app launch" pattern) is treated as a resume and preserves the inside-set, so only a genuine (re)start (first enable, or after `stop()`) re-arms the initial-entry ENTER. The persisted set is also kept honest across the full geofence lifecycle: removing a geofence clears its inside-state (so a re-added id, or an id reused for a different location, can ENTER again), and on cold start the evaluator is re-seeded from the persisted set so a device that left a fence *while the app was killed* reports a real EXIT on the next fix instead of getting stuck inside and suppressing the next genuine ENTER.
 
@@ -284,7 +284,7 @@
 
 **PERF**: the native loggers no longer run a `DELETE` after every log write. Retention is 500-2000 rows, so pruning is now amortized every 50 writes on both platforms.
 
-## 3.7.2
+## 3.7.2 - 2026-08-01
 
 **FIX**: (smart motion) the accelerometer can now contribute to a stationary decision after a start that begins in MOVING. The Rust coordinator initialises `is_accel_moving = false` and ignores an unchanged flag, and `start()` never seeded it, so the stop-timeout fired, reported stationary, and the coordinator emitted nothing — leaving the GPS-speed machine as the only input that could ever change the pace. `start()` now seeds the flag from the state it starts in, and also re-syncs the coordinator's tracking mode (it was previously only synced in `initialize()`, from the *persisted* mode, so a session that ended stationary could leave the coordinator unable to ever switch again) ([#288](https://github.com/Ikolvi/Tracelet/issues/288)).
 
@@ -298,29 +298,29 @@
 
 **FIX**: (iOS) a superseded sync provider can no longer stay subscribed to the `LocationEngine`. `registerSink` was a bare append with no dedupe and there was no way to remove a sink at all, so duplicate and stale sinks each fanned out another `insertLocation` for the same fix. `registerSink` now dedupes by identity, `unregisterSink` was added (Android has had both since #204), and `TraceletSdk.syncProvider` cancels and unregisters the provider it replaces ([#286](https://github.com/Ikolvi/Tracelet/issues/286)).
 
-## 3.7.1
+## 3.7.1 - 2026-07-29
 
 **FIX**: `locationSource` and `reducedAccuracy` are no longer dropped from persisted and synced locations. Both fields are emitted on the live `onLocation` event, but the persist path only serialized `audit_*`, `battery` and `extras` into the `route_context` column, so the classification was lost at write time — every DB-sourced read (`getLocations`, `getPendingLocations`) and the DB-sourced sync payload (`setSyncBodyBuilder`) reported `locationSource: "unknown"` / `reducedAccuracy: false`. This broke the documented guidance to filter historical/synced fixes by `locationSource == "gps"`. Both fields are now persisted as first-class `route_context` keys (like `audit_*`) and promoted back to the top level by `LocationMapper` on read; because the Pigeon `TlLocation` boundary has no dedicated fields for them, they are carried across it via `extras` (like the live event) and unpacked by `Location.fromMap`, so the live event and DB-sourced reads agree. Applied on Android and iOS ([#280](https://github.com/Ikolvi/Tracelet/issues/280)).
 
 **FIX**: (iOS) high-accuracy periodic fixes are no longer a single `requestLocation()` one-shot, which frequently returned a stale cached or first-coarse fix before the GPS hardware converged (persisting a Wi-Fi/cell-level fix for a periodic tick). When `periodicDesiredAccuracy` is `DesiredAccuracy.high`, `performPeriodicFix()` now routes through the same best-of-N sampling window `getCurrentPosition` already uses (`collectSamples` → most-accurate sample), bounded by `locationTimeout`, so periodic fixes are GPS-quality. Non-high periodic accuracy keeps the cheaper single-shot path, and overlapping ticks are guarded against ([#282](https://github.com/Ikolvi/Tracelet/issues/282)).
 
-## 3.7.0
+## 3.7.0 - 2026-07-29
 
 **FEAT**(geofence): accuracy-aware geofence EXIT for high-accuracy mode. A circular geofence now only fires EXIT once the entire GPS error circle clears the fence (`distance - accuracy > radius + buffer`), so a single high-drift, low-confidence fix no longer produces a false EXIT while a device is stationary inside a small geofence. ENTER stays accuracy-agnostic so arrivals still trigger promptly ([#274](https://github.com/Ikolvi/Tracelet/issues/274)).
 
 **FEAT**(geofence): new `GeofenceConfig.geofenceExitAccuracyMax` (meters) to tune the accuracy-aware EXIT gating — `-1` full gating (default, most drift-resistant), `0` disables gating (fastest, most eager EXIT), and `N > 0` clamps the accuracy used in the exit test to `N` to bound the worst-case exit delay while still absorbing drift up to `N`. High-accuracy path only; no effect in standard OS region-monitoring mode ([#276](https://github.com/Ikolvi/Tracelet/issues/276)).
 
-## 3.6.15
+## 3.6.15 - 2026-07-28
 
 **FIX**: (Android) geofence transitions and confirmed crash/fall deliveries could be silently dropped right after a cold boot. Since [#260](https://github.com/Ikolvi/Tracelet/issues/260) moved the heavy `initialize()` setup (Rust DB open, `lateinit` `geofenceManager`/engines) onto a background thread, `initialize()` returns before those managers exist. [#264](https://github.com/Ikolvi/Tracelet/issues/264) guarded the `ready()` / `bootstrapForBackground()` paths, but the native broadcast entry points still raced init: `GeofenceBroadcastReceiver` read `geofenceManager` immediately after `initialize()` (so a cold-boot ENTER/EXIT — a trip start — was swallowed and lost), and `CrashConfirmReceiver` delivered a confirmed impact onto not-yet-wired state. Both now funnel through a new `awaitInit()` gate that blocks until init completes (or reports failure/timeout) before touching those managers, so the transition/impact is delivered instead of dropped. iOS is unaffected (its `initialize()` is synchronous) ([#271](https://github.com/Ikolvi/Tracelet/pull/271)).
 
-## 3.6.14
+## 3.6.14 - 2026-07-27
 
 **FIX**: geofence `ENTER`/`EXIT` flapping for a stationary device inside the radius (high-accuracy mode). The evaluator used a single `distance <= radius` threshold for both entry and exit, so a motionless device whose GPS fixes jittered across the boundary emitted repeated `ENTER`/`EXIT` events. Exit now applies hysteresis — the device `ENTER`s at the true radius but only `EXIT`s once it is farther than `radius + max(radius * 0.1, 20 m)` from the center — so boundary jitter no longer flips the state. Applied in both the pure-Dart evaluator (the active high-accuracy path) and the Rust core used by the native SDKs ([#268](https://github.com/Ikolvi/Tracelet/issues/268)).
 
 **FEAT**: (Android) add `Tracelet.requestTermination()` to stop the GPS foreground service from a headless Dart isolate. When an FCM silent push runs a background task while the app is terminated, `Tracelet.stop()` is unavailable because it relies on Pigeon, which headless isolates cannot reach — so the foreground service kept polling and draining battery until the app was reopened. A new `requestTermination` handler on the `com.tracelet/methods` MethodChannel (registered on the headless `FlutterEngine`) calls `TraceletSdk.stop()`, letting background handlers shut tracking down cleanly ([#267](https://github.com/Ikolvi/Tracelet/issues/267)).
 
-## 3.6.13
+## 3.6.13 - 2026-07-26
 
 **FIX**: (Android) prevent a runtime crash when `com.google.android.gms:play-services-location` resolves below 21.2.0. Tracelet's Android bytecode calls the interface-based `FusedLocationProviderClient` and `ActivityRecognitionClient` APIs, which only became interfaces in play-services-location 21.2.0. When a host app resolved an older version (e.g. 19.0.0) transitively, those types were still concrete classes, so calling into them threw `java.lang.IncompatibleClassChangeError` (crashing the periodic location worker and, after permission handling, the main thread). play-services-location stays `compileOnly`, so the SDK still degrades gracefully to the AOSP `LocationManager` when GMS is absent; a published Gradle dependency constraint now raises the resolved version to a compatible floor (>= 21.2.0) whenever the dependency is present, without adding it to the dependency graph ([#263](https://github.com/Ikolvi/Tracelet/issues/263)).
 
@@ -328,19 +328,19 @@
 
 **FIX**: (Android) `Tracelet.addGeofence()` no longer returns `false` for a geofence that was actually registered. When no device location is known yet, `addGeofence()` persists the record and calls `registerGeofence()`, whose Google Play Services registration is asynchronous. The Flutter host calls this on the main thread, where the SDK correctly does not block on the registration callback — but it then returned the still-`false` result before the callback ran, so apps saw a bogus failure even though `getGeofences()` listed the geofence. On the main thread the SDK now returns `true` once the registration request has been scheduled without a synchronous error (off the main thread it still awaits the real callback result); genuine Play Services failures continue to be logged. iOS and web were unaffected ([#265](https://github.com/Ikolvi/Tracelet/issues/265)).
 
-## 3.6.12
+## 3.6.12 - 2026-07-26
 
 **FIX**: `Tracelet.ready()` no longer surfaces remote-config event registration failure as an *uncaught* async error. Since 3.6.10, `ready()` subscribes to `remoteConfigEvents`, which lazily registers the Pigeon event channel and fired `requestStateFlush()` fire-and-forget. When the platform side was unreachable (e.g. a headless `flutter test` with no channels, or a temporarily detached engine), the rejected future became an uncaught async error routed to the zone error handler instead of one the caller's `await ready(...)` could catch — fatal for a ride-start path that wrapped `ready()` in try/catch and still got torn down. The best-effort flush is now awaited inside a guarded helper that contains any failure, so it can never escape as an uncaught async error; event registration itself already succeeded, so nothing observable is lost and callers can always recover ([#262](https://github.com/Ikolvi/Tracelet/issues/262)).
 
-## 3.6.11
+## 3.6.11 - 2026-07-25
 
 **FIX**: (iOS) `IosConfig.useSignificantChangesOnly` no longer keeps the persistent system location indicator on. On iOS 17+, enabling significant-change monitoring and calling `Tracelet.start()` still showed an ongoing location indicator (Dynamic Island / status-bar pill) because `start()` opened a `CLBackgroundActivitySession` whenever the device was moving, even though continuous GPS was correctly skipped. `CLBackgroundActivitySession` holds a background location activity alive and auto-shows the indicator, defeating the whole point of significant-change monitoring (low-power background location with no persistent indicator). The SDK now fully honors significant-changes-only mode — it neither opens a `CLBackgroundActivitySession` nor starts continuous GPS (`startUpdatingLocation`), which independently light up the system location indicator — across `start()`, the motion-detection pipeline's switch-to-continuous, `changePace` transitions, and killed-state auto-resume, matching the existing behaviour of periodic mode and low-accuracy geofence-only mode. High-accuracy geofencing and the explicit `IosConfig.useBackgroundActivitySession` opt-in are unaffected. The indicator may still blink briefly when a significant-change event is delivered, which is normal iOS behaviour. (#261)
 
-## 3.6.10
+## 3.6.10 - 2026-07-24
 
 **FIX**: Remote configuration overrides (Enterprise `remoteConfigUrl`) now propagate to the Dart layer. Remote config is fetched and applied entirely on the native side; previously the result never crossed back to Dart, so `Tracelet.activeConfig` — and anything reading it, such as `tracelet_doctor` and the Dart-side battery-budget engine — kept showing the last locally-set values (e.g. a remotely fetched `batteryBudgetPerHour` of `1.0` never appeared, while a local `setConfig` value did). The native layer now emits an `onRemoteConfig` event whenever it applies a remote override — both the freshly fetched config and the cached copy restored at `ready()` — and the Dart layer folds it into the active config, re-initialising the Dart-side battery-budget engine. A new `Tracelet.onRemoteConfig(...)` callback and `Tracelet.remoteConfigStream` let apps react to server-driven configuration changes.
 
-## 3.6.9
+## 3.6.9 - 2026-07-24
 
 **FIX**: Remote config (and any runtime `setConfig()`) now applies `batteryBudgetPerHour`. The battery-budget engine was only built during `ready()`, so a remote-config push such as `{"geo":{"batteryBudgetPerHour":1.0}}` delivered at runtime via `setConfig()` was stored but never acted on — it only appeared to work after a cold restart (which applies the cached copy before `ready()` builds the engine). The engine is now rebuilt when `batteryBudgetPerHour` changes at runtime on both Android and iOS, and battery-budget sampling is started or stopped to match the live tracking state.
 
@@ -348,45 +348,45 @@
 
 **FIX**: Android — `initialize()` now runs its heavy setup (opening the Rust database, which `fsync`s to disk) on a background thread instead of the caller's main thread, and `ready()` waits for it to finish. Previously, when the system re-created a background `FlutterEngine` (e.g. `audio_service`'s media service after the app was killed), `GeneratedPluginRegistrant` re-attached the plugin and the disk `fsync` ran on that service's main thread, causing an ANR on databases grown large over days of tracking. Thanks to [@dagovalsusa](https://github.com/dagovalsusa) ([#260](https://github.com/Ikolvi/Tracelet/pull/260)).
 
-## 3.6.8
+## 3.6.8 - 2026-07-23
 
 **FEAT**: Expose `Tracelet.updateNotification()`, a public API to refresh the active Android foreground-service notification after changing its configuration ([#257](https://github.com/Ikolvi/Tracelet/issues/257)). The foreground-service notification is configured through `ForegroundServiceConfig` (title, text, icon, color, actions, priority, ongoing state), but there was previously no public way to apply notification-only changes to an already-running service — a notification-only `setConfig()` did not repost the live notification, so new content only appeared after an unrelated service restart or foreground transition. `updateNotification()` now refreshes the active on-screen tracking indicator from the latest configuration without restarting the tracking pipeline. On Android the `ACTION_UPDATE_NOTIFICATION` service path rebuilds and reposts the foreground-service notification (previously a no-op) when the service is promoted, and is a safe no-op when the service is not running. iOS has no foreground-service notification, so `updateNotification()` instead refreshes the running Live Activity — when the app opted into one via `liveActivityConfig` — from the latest config (the dynamic body; the title is immutable on a running activity), and is a safe no-op otherwise. Web is a no-op.
 
-## 3.6.7
+## 3.6.7 - 2026-07-23
 
 **FIX**: In `MotionDetectionMode.smart` / `.speed`, `setConfig()` could restore a temporary stationary mode as the main tracking mode. Those modes run a single continuous motion-aware pipeline that temporarily flips the tracking mode to periodic/geofences while the device is stationary. A restart-sensitive `setConfig()` captured that temporary tracking mode and rebuilt the pipeline via the standalone `startPeriodic()`/`startGeofences()` paths, tearing down the motion-detection pipeline that switches back to continuous on movement — stranding tracking in a standalone stationary mode. `setConfig()` (and, on iOS, `ready()`'s resume path) now restarts the continuous motion-aware pipeline via `start(isResume: true)` whenever the motion-detection mode is smart/speed, regardless of the temporary tracking mode; the pipeline re-enters the stationary sub-state on its own when still stationary. Fixed on both Android and iOS ([#256](https://github.com/Ikolvi/Tracelet/issues/256)).
 
-## 3.6.6
+## 3.6.6 - 2026-07-22
 
 **FEAT**: Added `Tracelet.getForegroundServiceHealth()` — exposes the authoritative native foreground-service state (whether the service is running and promoted to the foreground, the last promotion result of `success`/`deferred`/`failed` with its failure class and message, the notification id, and the last transition timestamp) alongside the desired `enabled` state. On Android 12+ a foreground-service start can be deferred or rejected by the OS even while tracking is enabled, so `enabled` alone is not proof that background tracking is operational; this lets apps build accurate tracking-health indicators, diagnostics, and recovery. iOS reports the desired state with null/false promotion fields (it has no foreground service), and web returns a minimal disabled map ([#255](https://github.com/Ikolvi/Tracelet/issues/255)).
 
 **FIX**: On Android, changing a restart-sensitive setting via `setConfig()` while tracking with a foreground service could kill that service. The restart path called the full `stop()` — which sends `ACTION_STOP` to `LocationService` (`stopForeground` + `stopSelf`) — and immediately restarted the pipeline with `ACTION_START`. On a fresh promotion the `ACTION_STOP` handler's `stopSelf()` could win the race and destroy the service right after `ACTION_START` promoted it, leaving no foreground service at all — the same race fixed for `startPeriodic()` in #237. `stop()` now accepts a `preserveForegroundService` flag and the `setConfig()` restart path keeps the service alive whenever the target mode still needs it, letting the idempotent `ACTION_START` re-assert foreground with no gap; modes that do not use the service stop it cleanly with no follow-up start to race. iOS is unaffected ([#254](https://github.com/Ikolvi/Tracelet/issues/254)).
 
-## 3.6.5
+## 3.6.5 - 2026-07-21
 
 **FIX**: On Android a failed foreground promotion no longer leaves the service marked as a running foreground service. `LocationService.startForegroundWithNotification()` catches a `startForeground()` failure and tears the service down (`stopForeground` + `stopSelf` + `isRunning = false`), but because the exception was swallowed, execution returned normally and every caller then set `isForegroundService = true` unconditionally. The method now returns whether the promotion succeeded and all callers gate `isForegroundService` on that result, so a failed promotion leaves the flag `false`. iOS is unaffected — it has no foreground-service promotion that can fail after the fact ([#253](https://github.com/Ikolvi/Tracelet/issues/253)).
 
-## 3.6.4
+## 3.6.4 - 2026-07-20
 
 **FIX**: On iOS the heartbeat writer no longer persists a GPS fix that the normal dispatch already stored, so `getLocations()` no longer returns byte-identical duplicate location rows (roughly half the points of a moving trip were duplicated on-device). The normal dispatch persists with `event="location"` and the heartbeat timer re-tagged the same cached fix with `event="heartbeat"` and inserted it again; the dedup guard only skipped repeats for `event="location"`, so the heartbeat write slipped through. The guard now shares one last-inserted-timestamp key across both writers. The Android guard is kept in parity ([#252](https://github.com/Ikolvi/Tracelet/issues/252)).
 
-## 3.6.3
+## 3.6.3 - 2026-07-19
 
 **FIX**: `destroyLocation(uuid)` now deletes the record addressed by its public UUID on both Android and iOS. Previously both native SDKs parsed the UUID string as a numeric database id (`toLongOrNull()` / `Int64(uuid)`), so any real UUID failed to parse and the call returned `false` without deleting anything — pending locations could never be acknowledged and the queue never drained. The UUID is now resolved to its row id before deletion, with the legacy numeric-id path kept for backward compatibility ([#251](https://github.com/Ikolvi/Tracelet/issues/251)).
 
 **FIX**: `IosConfig.activityType` is now applied to `CLLocationManager` as configured on iOS. Two independent bugs previously made every value resolve to `.otherNavigation`: the Dart bridge mapped between two differently-ordered enums by raw index (so e.g. `otherNavigation` was sent as `fitness`), and the native side stored the value as an Int but read it back as a String and always fell through to the default. Both sides now agree, so `automotiveNavigation`/`fitness`/`airborne` take effect ([#250](https://github.com/Ikolvi/Tracelet/issues/250)).
 
-## 3.6.2
+## 3.6.2 - 2026-07-18
 
 **FEAT**: Remote config (`remoteConfigUrl`) is now fetched and applied natively on iOS and Android. On `ready()` the SDK fetches a JSON config map from your HTTPS endpoint, applies it over the local config (restarting the tracking pipeline when a tracking-relevant key changes), and refreshes it in the background on the `remoteConfigRefreshInterval` cadence. The last successful response is cached to disk, so a restart resumes on the freshest known settings instantly and offline. Only HTTPS URLs are honored. Previously both platforms recognized the field but never fetched it — the native side silently fell back to the local config.
 
 **FIX**: Stop double-inserting stationary periodic fixes with the same uuid. The stationary periodic timer in `LocationService` now passes `persist=false` to `getCurrentPosition()` so it stays the single writer of the enriched "periodic" record (and the single event dispatch). Fixes the "UNIQUE constraint failed: location_events.uuid" error that occurred every stationary tick ([#248](https://github.com/Ikolvi/Tracelet/issues/248)).
 
-## 3.6.1
+## 3.6.1 - 2026-07-17
 
 **FIX**: Explicit `GeofenceConfig(geofenceModeHighAccuracy: false)` is now honored on aggressive OEMs (Samsung/Xiaomi/Huawei/OnePlus/Oppo/Vivo) instead of being silently forced to `true` — which made `startGeofences()` start the location engine and the `LocationService` foreground service with its persistent notification, the exact thing low-accuracy geofences-only mode exists to avoid (and which Google Play prohibits solely for geofencing from 2026-10-28). Consistent with the #243 fix, the configured value is authoritative on every device and the SDK logs a reliability warning instead ([#247](https://github.com/Ikolvi/Tracelet/issues/247)).
 
-## 3.6.0
+## 3.6.0 - 2026-07-16
 
 **FEAT**: `Tracelet.updateLocationProviderOptions()` — temporarily override `desiredAccuracy`/`distanceFilter` on the running OS provider without a pipeline restart; ephemeral (cleared by `stop()`), persisted config untouched. Live on iOS (`CLLocationManager` property update) and Android (callback-preserving fused re-subscription) ([#241](https://github.com/Ikolvi/Tracelet/pull/241)).
 
@@ -400,34 +400,34 @@
 
 **FIX**: `activity.confidence` now survives the DB round-trip — new `activity_confidence` column in the location store (auto-migrated; `-1` for rows persisted before the column existed), stored on every insert including encrypted payloads, and returned by `getLocations()` and the sync-interceptor sink instead of a hardcoded `100` ([#245](https://github.com/Ikolvi/Tracelet/issues/245)).
 
-## 3.5.7
+## 3.5.7 - 2026-07-13
 
 **FIX**: Build fails without AGP built-in Kotlin (AGP <9 / builtInKotlin=false) ([#239](https://github.com/Ikolvi/Tracelet/issues/239)).
 
-## 3.5.6
+## 3.5.6 - 2026-07-09
 
 **FIX**: Custom sync body 400 Bad Request HTTP errors now gracefully return fallback results instead of propagating fatal exceptions in native Sync engines ([#238](https://github.com/Ikolvi/Tracelet/issues/238)).
 
-## 3.5.5
+## 3.5.5 - 2026-07-07
 
 **FIX**: Ensure foreground service is properly started in periodic mode when configured ([#237](https://github.com/Ikolvi/Tracelet/issues/237)).
 
-## 3.5.4
+## 3.5.4 - 2026-06-30
 
 **FIX**: Enrich geofence transition events with real coordinate metrics (accuracy/speed/heading/altitude) from the last GPS fix and attach the battery snapshot, instead of hardcoded zeros ([#231](https://github.com/Ikolvi/Tracelet/issues/231)).
 **FIX**: Propagate runtime `setConfig` changes to the active native tracking/sensor loops by performing a clean full-pipeline restart (location + motion/speed) when a tracking-relevant key changes ([#230](https://github.com/Ikolvi/Tracelet/issues/230)).
 **FIX**: Null-guard subsystems in `destroyAll()` so engine/Activity teardown never throws when the SDK was never initialized (fatal `Unable to destroy activity`) ([#227](https://github.com/Ikolvi/Tracelet/issues/227)).
 **FIX**: Android: standard geofence mode no longer starts a foreground service, complying with Google Play's policy (effective 2026-10-28) that prohibits using a foreground service solely for geofencing. Native geofences keep firing while the app is suspended/terminated; geofence-only apps can remove `FOREGROUND_SERVICE_LOCATION` from their manifest.
 
-## 3.5.3
+## 3.5.3 - 2026-06-30
 
 **FIX**: Added explicit ProGuard keep rules for `TraceletStartupProvider` in the `tracelet_android` package to prevent `ClassNotFoundException` on process start when aggressive shrinking (like R8 full mode) is used ([#228](https://github.com/Ikolvi/Tracelet/issues/228)).
 
-## 3.5.2
+## 3.5.2 - 2026-06-23
 
 **FIX**: Android continuous tracking no longer silently stops after a while on aggressive OEMs (Samsung One UI, etc.). The foreground-service wakelock used a fixed 10-minute auto-expiry and was never renewed, so once it lapsed the CPU could deep-sleep and FusedLocationProvider stopped delivering updates with no error or callback. The wakelock is now renewed for the lifetime of tracking ([#222](https://github.com/Ikolvi/Tracelet/issues/222)).
 
-## 3.5.1
+## 3.5.1 - 2026-06-19
 
 **FEAT**: Crash detection now uses the device barometer as an extra confirmation clue — a serious crash or airbag deployment causes a quick cabin air-pressure change, which raises crash confidence on phones that have a pressure sensor. Phones without one simply skip this check, with no downside ([#173](https://github.com/Ikolvi/Tracelet/issues/173)).
 **FEAT**: Crashes are now corroborated by a sudden post-impact speed collapse — when the vehicle goes from fast to nearly stopped in the seconds right after the jolt, crash confidence is raised. It only ever adds confidence, never cancels a real crash ([#181](https://github.com/Ikolvi/Tracelet/issues/181)).
@@ -435,23 +435,23 @@
 **FEAT**: Crash/fall confirmation is now process-death-safe — if the OS kills the app during the cancel countdown (phone thrown, vehicle at rest, Doze), the confirmed event is still delivered from a re-armed wake-up ([#182](https://github.com/Ikolvi/Tracelet/issues/182)).
 **DOCS**: Rewrote the Driving & Safety crash/fall confirmation section in plain, beginner-friendly language.
 
-## 3.5.0
+## 3.5.0 - 2026-06-19
 
 **FEAT**: Crash-detection ML model promoted from **beta to stable** — the shipped model is trained on the CC0 / public-domain Smartphone IMU Road Accident Detection dataset, so it is cleared for commercial use in production apps ([#183](https://github.com/Ikolvi/Tracelet/issues/183)).
 **FEAT**: The on-device encrypted model cache now auto-re-downloads when a new model version is published (SHA-256 of the cached blob no longer matches the expected digest), so model upgrades roll out in the same session instead of falling back to the rule engine for a cycle.
 **FEAT** (example): Driving & Safety page now shows a live crash-model download/load status indicator, a "Crash (ML model)" debug inference path, a "Benign bump" demo, and a bench "Throw-test" mode.
 **PERF**: Per-window crash-model probability is now logged for on-device observability.
 
-## 3.4.2
+## 3.4.2 - 2026-06-18
 
  - **REFACTOR**: reformat test files and sync body context for consistent code style. ([5552f795](https://github.com/Ikolvi/Tracelet/commit/5552f7952e35472d0b69b92af0fc19440fde4038))
 
-## 3.4.1
+## 3.4.1 - 2026-06-17
 
  - **FEAT**(geofence): cross-platform geofenceModeHighAccuracy via GeofenceConfig. ([491d5b83](https://github.com/Ikolvi/Tracelet/commit/491d5b836fbd98a2e456d7d07bafc500f95a2fac))
  - **DOCS**: add Discord community invitation link to READMEs and website documentation. ([c3baa1c3](https://github.com/Ikolvi/Tracelet/commit/c3baa1c389f90463fb7f6cabc4d57d68d1d2d512))
 
-## 3.4.0
+## 3.4.0 - 2026-06-17
 
  - **FEAT**(ios): Live Activity for active tracking — a Lock Screen & Dynamic Island indicator backed by ActivityKit, layered over the standard background pipeline (no redundant second location stream) ([#202](https://github.com/Ikolvi/Tracelet/issues/202)).
  - **FIX**(ios): resolve release-mode launch crash (`SIGTRAP`) caused by a duplicate key in the default config, plus a Widget Extension availability gate that hid the Live Activity and could crash the extension on iOS < 18.
@@ -461,15 +461,15 @@
  - **REFACTOR**: extract issues 185 and 198, fix iOS config mapping. ([1d088e0d](https://github.com/Ikolvi/Tracelet/commit/1d088e0d58e863b11217c5040410381f91930e59))
  - **FIX**: resolve accuracy priority mappings in Android and iOS. ([65f5127d](https://github.com/Ikolvi/Tracelet/commit/65f5127dd8a9d0ee1c3e2f832499076607ddad10))
 
-## 3.3.4
+## 3.3.4 - 2026-06-16
 
 **FIX**: resolve battery and extras DB persistence (#175)
 
-## 3.3.3
+## 3.3.3 - 2026-06-15
 
  - **FIX**(android): deliver headless geofence events after reboot in high-accuracy mode ([#185](https://github.com/Ikolvi/Tracelet/issues/185)). ([b197dc5f](https://github.com/Ikolvi/Tracelet/commit/b197dc5f0e4b5f081590e806b27a6eb52a4ed253))
 
-## 3.3.2
+## 3.3.2 - 2026-06-15
 
 * **FIX** (Location data, Android/iOS): Several location-map fields surfaced as static/default values in the Dart layer because the native-map → platform-channel converters dropped or mis-keyed them ([#175](https://github.com/Ikolvi/Tracelet/issues/175)):
   * `getCurrentPosition(extras:, desiredAccuracy:)` were silently ignored on Android (never forwarded to the SDK) — now applied.
@@ -479,14 +479,14 @@
   Converters now read the native keys (with camelCase fallback), and field-by-field regression tests over the converters were added on both platforms to prevent recurrence.
 * **TUNE** (Crash detection): Lowered the default `crashGThreshold` from `3.0 g` to `2.0 g`. Validation against the large [VZCrash](https://huggingface.co/datasets/vzc-research-chapter/VZCrash) field dataset showed the 3.0 g speed-gated rule missed ~48% of real crashes (median impact ~2.2 g) while the false-positive budget was small. Crash detection is opt-in with a cancel-countdown, so the default now favours recall — raise it if you see too many prompts. See [#173](https://github.com/Ikolvi/Tracelet/issues/173). *(Crash detection remains beta pending first-party field validation.)*
 
-## 3.3.1
+## 3.3.1 - 2026-06-14
 
 * **FIX** (Crash detection, Android/iOS): Confirmed `crash`/`fall` events are no longer lost when tracking stops right after the impact (the common crash → vehicle-at-rest → `stopTimeout` case). The confirmation countdown now runs independently of tracking state and self-terminates when no candidate is pending ([#169](https://github.com/Ikolvi/Tracelet/issues/169)).
 * **FIX** (Crash detection): The effective crash g-threshold matched the documented value — the confidence gate previously raised a 3.0 g threshold to ~3.6 g, increasing false negatives ([#170](https://github.com/Ikolvi/Tracelet/issues/170)).
 * **FIX** (Crash detection): A single crash (primary spike + bounce/secondary impacts) no longer raises multiple candidates; a refractory period debounces one event into one prompt ([#171](https://github.com/Ikolvi/Tracelet/issues/171)).
 * **IMPROVE** (Crash detection, Android/iOS): When crash/fall detection is enabled, the accelerometer is sampled at a higher rate (Android `SENSOR_DELAY_GAME` + no batch latency; iOS 100 Hz) so short impact peaks (~50–150 ms) are actually captured instead of missed between motion-detection samples ([#172](https://github.com/Ikolvi/Tracelet/issues/172)). Roadmap for research-grade robustness (Δv, sensor fusion, free-fall signature, process-death survival): [#173](https://github.com/Ikolvi/Tracelet/issues/173).
 
-## 3.3.0
+## 3.3.0 - 2026-06-14
 
 * **FIX** (Audit, Android/iOS): The tamper-proof audit chain only covered locations that flowed through the foreground location dispatcher. Background/headless persists (periodic worker, location service, killed-state relaunch, geofence events) wrote location rows with **no** matching audit-trail link, so `getAuditProof()` returned `null` for those records even with audit enabled. Audit links are now generated at the single persistence chokepoint, so **every** persisted location is chained regardless of source. Chain mutation is also now thread-safe.
 * **FIX** (Audit, iOS): `appendToChain` no longer creates an audit row for records without a `uuid` (it previously used an empty string). Such orphan rows had no retrievable location and made `verifyAuditTrail()` report the whole chain as *broken* ("missing location record"). uuid-less records are now skipped on both platforms. The audit hash version was bumped (auto-resets any orphaned/incomplete chains from the prior logic on first launch).
@@ -496,11 +496,11 @@
 * **FEAT** (Driving & Safety): Crash & fall detection with a cancel-countdown confirmation flow via `ImpactConfig` + `Tracelet.onImpact` and `Tracelet.confirmImpact` / `Tracelet.cancelImpact` (opt-in, default off) ([#165](https://github.com/Ikolvi/Tracelet/issues/165)).
 * All three features are **default-off** and side-channel — no change to existing tracking when disabled. See [Driving & Safety](https://github.com/Ikolvi/Tracelet/blob/main/help/DRIVING-AND-SAFETY.md).
 
-## 3.2.19
+## 3.2.19 - 2026-06-13
 
 **CHORE**: version bump for patch release
 
-## 3.2.18
+## 3.2.18 - 2026-06-12
 
 * **FIX** (Native): `ready()` / `getState()` now populate `State.config` with the active configuration instead of leaving it permanently `null` ([#147](https://github.com/Ikolvi/Tracelet/issues/147)).
 * **FEAT**: Add `HttpConfig.syncInterval` for interval-based sync — the documented repeating-timer cadence was missing from the Dart config and the Pigeon layer; the native interval timer now flushes the offline queue on this cadence ([#149](https://github.com/Ikolvi/Tracelet/issues/149)).
@@ -513,24 +513,24 @@
 * **FIX**: Guard the `AuditConfig` hash-algorithm mapping so configuring `sha384` / `sha512` no longer crashes with a fatal `RangeError` during `ready()` — unsupported variants fall back to `sha256` ([#150](https://github.com/Ikolvi/Tracelet/issues/150)).
 * **FIX** (Native): The HTTP sync payload now includes each point's motion state `is_moving` ([#151](https://github.com/Ikolvi/Tracelet/issues/151)) and its trigger `event` (location / motionchange / heartbeat / geofence) ([#156](https://github.com/Ikolvi/Tracelet/issues/156)) — both were previously omitted by the native sync record.
 
-## 3.2.17
+## 3.2.17 - 2026-06-12
 
 * **FIX** (Native): Resolve iOS auto-sync thread starvation by offloading synchronous HTTP requests to a background DispatchQueue to prevent blocking Swift Concurrency pools ([#146](https://github.com/Ikolvi/Tracelet/issues/146)).
 * **CHORE** (Docs): Fix Nextra changelog rendering bug and improve auto-translation glossary script for internationalization.
 
-## 3.2.16
+## 3.2.16 - 2026-06-12
 
 * **FIX** (Native): Resolve Android/iOS getting stuck in the moving state and never transitioning back to stationary, which kept continuous GPS active and drained the battery. The accelerometer stillness sampler now stays active during the stop-timeout countdown and requires sustained motion — rather than a single noisy or stale sample — to abort it ([#142](https://github.com/Ikolvi/Tracelet/issues/142)).
 * **FIX** (Native): Background and post-reboot location captures are persisted (and therefore synced) again. Headless tracking (killed-state relaunch / boot) never calls `ready()`, so an internal readiness guard silently dropped every captured location before it reached the database, leaving auto-sync with nothing to upload.
 * **FIX** (Android): The foreground-service notification now reliably appears when the app is backgrounded or terminated with `showNotificationOnPauseOnly` enabled. The app's own foreground service skewed foreground/background detection (and OS process-importance updates lag), so the pause-only notification was suppressed even though tracking and syncing continued.
 
-## 3.2.15
+## 3.2.15 - 2026-06-11
 
 * **FIX** (Native): Allow `getState()` and `stop()` to be called before `ready()` is invoked, correctly reporting persistent state and shutting down background services if the app was restarted from a killed state.
 * **CHORE**: Update dependencies and constraints.
 * **FIX**: Resolve `MissingPluginException` and test timing issues with `setHasCustomSyncBodyBuilder`.
 
-## 3.2.14
+## 3.2.14 - 2026-06-11
 
  - **FIX**(sync): keep method channel alive to avoid iOS timeout bugs when no builder is registered. ([9a083478](https://github.com/Ikolvi/Tracelet/commit/9a083478733315922245fc82c36bada011378818))
  - **FIX**(sync): resolve issue 134 where custom sync body timeouts prevented background syncs. ([7fa16fdf](https://github.com/Ikolvi/Tracelet/commit/7fa16fdf05274c326f6b6b29d318f55981232f1a))
@@ -538,31 +538,31 @@
  - **DOCS**: add official documentation URL to all package READMEs. ([9eb6951e](https://github.com/Ikolvi/Tracelet/commit/9eb6951e64c13007f3264e2d44f0feb9222500a3))
  - **DOCS**: integrate nextra website and update pubspec URLs. ([99b7fda8](https://github.com/Ikolvi/Tracelet/commit/99b7fda82e290ca6c8175313eae62a2475360050))
 
-## 3.2.13
+## 3.2.13 - 2026-06-10
 
 - **FIX**(android): `startOnBoot` now resumes tracking after a reboot on devices where the OS refuses to start a `location` foreground service from `BOOT_COMPLETED` (e.g. Android 14). Previously tracking silently never resumed after a reboot; it now falls back to background WorkManager/alarm tracking.
 - **FIX**(android): HTTP sync now works headlessly after a reboot — background sync can refresh an expiring auth token and build a custom sync body without the app being opened. Previously the headless Dart sync bridge was only wired when a UI engine attached, so post-reboot sync used a stale token (or the wrong payload) until the app was launched.
 
-## 3.2.12
+## 3.2.12 - 2026-06-10
 
 - **CHORE**: Re-release to align the full federated package set and native SDKs to a single consistent version. The 3.2.11 release published with mismatched versions across some packages (a few resolved to 3.2.10). No functional code changes.
 
-## 3.2.11
+## 3.2.11 - 2026-06-09
 
 - **FIX**: Custom sync-body builder now falls back to the headless engine on timeout (instead of aborting the sync) on both Android and iOS — fixes location sync stopping after a few minutes in the background when using `setSyncBodyBuilder` (Issue #134).
 
-## 3.2.10
+## 3.2.10 - 2026-06-09
 
  - **FIX**: streamline geofence event payload handling in fromMap method.
  - **FIX**: ensure geofence action (ENTER/EXIT/DWELL) is correctly parsed from nested payloads on all platforms and update CI to scan dynamic frameworks for symbols.
 
-## 3.2.9
+## 3.2.9 - 2026-06-09
 
 - **FIX**(ios): Remove `TraceletCore+Dummy.swift` / `TraceletSyncFFI+Dummy.swift` — `@_silgen_name` declarations from the old static library model caused "Undefined symbol" linker errors after the static→dynamic xcframework migration.
 - **FIX**(android): Catch `ForegroundServiceStartNotAllowedException` in `LocationService.start()` so calling `ready()` from the background on Android 12+ no longer crashes the host app; the foreground service start is deferred until the app returns to foreground.
 
 
-## 3.2.8
+## 3.2.8 - 2026-06-08
 
 - **FIX**: Persist geofence ENTER/EXIT events in offline queue and auto-sync to server — events were previously dispatched to the app but never stored in the local SQLite database (Issue #128).
 - **FIX**: Structured event envelope (`event_type`, `event_payload`) for geofence events round-trips correctly through `getLocations()` and `insertLocation()`.
@@ -573,12 +573,12 @@
 - **PERF**(ios): Reduce background motion sensor CPU/battery usage — accelerometer polling is now paused when stationary (Issue #130).
 - **FIX**: Persist historical `is_moving` state per location record so `getLocations()` returns accurate values instead of always returning the current live state (Issue #126).
 
-## 3.2.7
+## 3.2.7 - 2026-06-07
 
 - **FIX**(ios): prevent dead code stripping of flutter_rust_bridge symbols in release builds.
 - **FIX**(android): implement OEM hardening mitigations and introduce `showPowerManager` to handle aggressive battery restrictions on specific OEM devices.
 
-## 3.2.6
+## 3.2.6 - 2026-06-06
 
 - **PERF**: Optimize database timestamp queries for O(log N) fast filtering and resolve precision bugs (Issue #119).
 - **FEAT**: Implement `sslPinningFingerprints` natively across iOS and Android with Rust configs.
@@ -587,59 +587,59 @@
 - **FIX**: Resolve race conditions in tests for Issue 118.
 - **REFACTOR**: Update integration test to use Config.fromMap for comprehensive Tracelet configuration testing.
 
-## 3.2.5
+## 3.2.5 - 2026-06-06
 - **FIX**: Resolved iOS accelerometer sensitivity mismatch (stationary lock) by normalizing incoming m/s² thresholds to g-force expected by CMMotionManager.
 - **FIX**: Unify motion detection initial state and resume behavior across Android and iOS, preventing incorrect forced states on app launch and correctly resuming saved states.
 - **FIX**: Resolved `flutter_rust_bridge` dynamic library load failures on release builds for users without `use_frameworks!` by preserving global symbols during Xcode stripping.
 
-## 3.2.4
+## 3.2.4 - 2026-06-05
 
 * **FIX**(ios): safely resolve dynamic symbols when `use_frameworks! :linkage => :dynamic` is used.
 
-## 3.2.3
+## 3.2.3 - 2026-06-06
 
 - **FIX**: Force speed motion manager to evaluate initial speed on Android to prevent the state machine from being permanently stuck in `MOVING` when indoors ([#115](https://github.com/Ikolvi/Tracelet/issues/115)).
 - **FIX**: Resolve `flutter_rust_bridge has not been initialized` crash by ensuring the Rust core is instantiated and initialized before accessing methods ([#116](https://github.com/Ikolvi/Tracelet/issues/116)).
 - **CHORE**: Sync release versions across all packages.
 
-## 3.2.2
+## 3.2.2 - 2026-06-05
 
 - **CHORE**: Sync release versions across all federated packages and update Swift Package Manager configuration.
 
-## 3.2.1
+## 3.2.1 - 2026-06-05
 
 - **CHORE**: Align federated package versions and include additional patch updates.
 
-## 3.2.0
+## 3.2.0 - 2026-06-05
 
 - **FEAT**: Added `autoSyncDelay` to `HttpConfig` — configure the debounce delay in milliseconds before automatically dispatching an HTTP sync request after a location is recorded.
 - **FEAT**: Introduced new `tracelet_sync` package for offline SQLite persistence and automatic HTTP synchronization.
 - **FEAT**: Add reverse geocoding (`resolveAddress`) functionality for automatic address lookups.
 
-## 3.1.14
+## 3.1.14 - 2026-05-30
 
 - **FIX**(ios): prevent dead code stripping of flutter_rust_bridge symbols in SPM apps by referencing them explicitly in TraceletIosPlugin
 
-## 3.1.10
+## 3.1.10 - 2026-05-30
 
  - Bump \"tracelet\" to `3.1.10`.
 
-## 3.1.9
+## 3.1.9 - 2026-05-29
 
 - **FIX**(android): conditionally apply kotlin-android plugin to support older flutter SDKs while preventing warnings in modern Flutter environments.
 - **CHORE**(ci): add strict pre-publish flutter build verification step to `release.yml`.
 
-## 3.1.8
+## 3.1.8 - 2026-05-29
 
 - Fix iOS SPM publishing
 
-## 3.1.7
+## 3.1.7 - 2026-05-29
 
  - **FIX**(android): apply kotlin-android plugin to fix gradle build errors on newer AGP versions.
  - **FIX**(ios): fix SPM source folder paths in release bundling to ensure SDK compiles properly via CocoaPods.
  - **FIX**(ios): fix duplicate module import errors by adding conditional import checks for TraceletSDK.
 
-## 3.1.4
+## 3.1.4 - 2026-05-27
 
 **FEAT**: Major architectural upgrade: Unified Rust Core.
 - The heavy lifting for Geofences, Privacy Zones, Audit Trail, and SQLite persistence has been moved to a shared Rust core (`tracelet_core`).
@@ -651,11 +651,11 @@
 
 **CHORE**: Release strategy overhaul. The iOS Rust Core is now bundled directly into the `tracelet_ios` plugin for pub.dev publication, while the Android SDK continues to be distributed via Maven Central.
 
-## 3.0.1
+## 3.0.1 - 2026-05-26
 
 - **FIX**(ios): Add missing `FlutterFramework` dependency to SPM plugin configuration to resolve compilation failures and `PlatformException`s.
 
-## 3.0.0
+## 3.0.0 - 2026-05-26
 
 ### 🎉 Major Features & Improvements
 - **FEAT**: Massive Architecture Rewrite — Core algorithms (Location Filtering, Kalman Filter, Trip Management, Battery Budgeting, Schedule Parsing, Delta Encoding, Audit Trail) are now powered by a high-performance **Rust Core** using `flutter_rust_bridge` and `UniFFI`. This brings identically deterministic behavior and extreme battery efficiency across Android, iOS, and Dart.
@@ -663,7 +663,7 @@
 - **FEAT**: Event bridge overhaul — Migrated all platform event channels to use strongly-typed Pigeon bridges, eliminating JSON serialization overhead completely.
 - **FEAT**: New Ecosystem Adapters — Introduced the official `tracelet_supabase` (Supabase Postgres background syncing & Auth) and `tracelet_firebase` (Firebase RTDB live location broadcasting) plugins.
 
-## 2.1.0
+## 2.1.0 - 2026-05-23
 
 ### 🎉 Major Features & Improvements
 - **FEAT**: Smart Foreground Notification Visibility (Android) — Added dynamic foreground service notification management. The notification now intelligently hides itself when the app is in the foreground, and reappears seamlessly when the app enters the background. This significantly reduces notification clutter while maintaining OS-level compliance.
@@ -678,13 +678,13 @@
 - **FIX (Android)**: Prevent `LocationEngine.stop` from unintentionally overriding the global `stateManager.enabled` flag during speed-based motion transitions.
 - **FIX (Example)**: Updated the example app's initialization config to enforce `MotionDetectionMode.accelerometer` as the default to ensure immediate indoor responsiveness upon installation.
 
-## 2.0.8
+## 2.0.8 - 2026-05-22
 
 - **FIX**(ios): Resolved type casting bug for 64-bit Pigeon `Int64` integer values across all iOS config mappings. Integer configurations (such as `stopTimeout`, `locationUpdateInterval`, etc.) are now correctly applied on iOS instead of silently falling back to defaults.
 - **PERF**(ios): Added optimization to skip the GPS `distanceFilter` override to continuous tracking during `stopTimeout` when `preventSuspend` is enabled. This significantly reduces stationary battery drain when using the audio keep-alive feature.
 - **CHORE**: Update platform-specific dependency constraints to `^2.0.8`.
 
-## 2.0.7
+## 2.0.7 - 2026-05-22
 
 - **FIX**: Corrected `intToAuthStatus` permission index mappings on Android and iOS — `getLocationAuthorization()` and `requestLocationAuthorization()` now return the correct `AuthorizationStatus` values ([#80](https://github.com/Ikolvi/Tracelet/issues/80)).
 - **FIX**: Resolved Android SQLCipher migration crashes by loading the SQLCipher native library explicitly before migration and decoupling classpath availability checks to avoid class loading errors ([#78](https://github.com/Ikolvi/Tracelet/issues/78)).
@@ -692,7 +692,7 @@
 - **FIX**: Removed manual Kotlin Gradle Plugin (KGP) configuration to support Flutter's new Built-in Kotlin feature, resolving build warnings and failures on newer Flutter versions ([#81](https://github.com/Ikolvi/Tracelet/issues/81)).
 - **CHORE**: Update platform-specific dependency constraints to `^2.0.7`.
 
-## 2.0.6
+## 2.0.6 - 2026-05-20
 
 - **PERF**: Hardware-level sensor batching on Android reduces CPU wake-ups by over 90% during active accelerometer monitoring.
 - **FIX**: iOS `BatteryBudgetEngine` adjustments (distance filter, desired accuracy, periodic interval) are now correctly applied to the location engine.
@@ -702,26 +702,26 @@
 - **FEAT**: Added explicit permission checks and events upon start when location permissions are missing.
 - **CHORE**: Update platform-specific dependency constraints to `^2.0.6`.
 
-## 2.0.5
+## 2.0.5 - 2026-05-20
 
 - **FEAT**: Added `Tracelet.isHeadlessRegistered` static getter. Returns `true` after `registerHeadlessTask()` has been called. Useful for diagnostic tools like `tracelet_doctor` to detect missing headless handlers.
 - **CHORE**: New companion package `tracelet_doctor` (v1.0.0) — drop-in diagnostic overlay widget. See [tracelet_doctor](https://pub.dev/packages/tracelet_doctor).
 
-## 2.0.4
+## 2.0.4 - 2026-05-19
 
 - **FEAT**: Integrated Kalman Location Filter GPS smoothing into the Flutter plugin and the dynamic config settings in the Example App.
 - **CHORE**: Update platform-specific dependency constraints to `^2.0.4`.
 
-## 2.0.3
+## 2.0.3 - 2026-05-18
 
 - **FIX**: Removed unreliable timestamp drift heuristic from Android and iOS location spoofing detection. This prevents valid locations from being incorrectly rejected when a device's wall-clock time is slightly out of sync with GPS UTC time.
 
-## 2.0.1
+## 2.0.1 - 2026-05-16
 
 - **FIX**: Fixed persistent blue location indicator on iOS by properly conditionally disabling `CLBackgroundActivitySession` and continuous GPS in low-accuracy geofence-only mode.
 - **CHORE**: Bumped native SDK dependencies to `2.0.1`.
 
-## 2.0.0
+## 2.0.0 - 2026-05-11
 
 ### 🎉 Major Milestone: Tracelet 2.0.0
 
@@ -739,7 +739,7 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 - **Cross-Platform Parity**: Aligned authorization status mapping across Android and iOS to ensure consistent behavior when checking permissions.
 - **AOSP Support**: Improved fallback to standard `LocationManager` on Android when Google Play Services are unavailable.
 
-## 1.9.3
+## 1.9.3 - 2026-05-05
 2: 
 3: - **CHORE**: Bump native SDK dependencies to `1.1.4`.
 4: - **CHORE**: Aligned repository podspec files and updated release documentation.
@@ -752,53 +752,53 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 - **FIX**: Android `destroyAll()` now guards all background-critical subsystems when `stopOnTerminate: false` (#65). `httpSyncManager.stop()`, `scheduleManager.stop()`, and `stopHeartbeat()` were still called unconditionally on every swipe-to-dismiss, permanently killing HTTP sync and heartbeat monitoring until the app was manually reopened. Fixed in native `tracelet-sdk` 1.1.2.
 - **CHORE**: Aligned `PigeonTracelet` serialization logic to use enum indices for backward compatibility with the high-level `State` model while maintaining type-safe internal bridge contracts.
 
-## 1.9.1
+## 1.9.1 - 2026-05-02
 
 - **FIX**: Android `destroyAll()` now respects `stopOnTerminate: false` for continuous and geofence tracking modes (#63). `locationEngine.destroy()` was unconditionally called in `onDetachedFromEngine()`, racing with `LocationService.onTaskRemoved()` which bootstraps native tracking. Background location tracking now survives app swipe from recents when `stopOnTerminate: false` is configured.
 
-## 1.9.0
+## 1.9.0 - 2026-04-20
 
 - **FEAT**: Strongly typed permission APIs (#57). Added `getLocationAuthorization`, `requestLocationAuthorization`, `getNotificationAuthorization`, `requestNotificationAuthorization`, `getMotionAuthorization`, `requestMotionAuthorization`, and `requestTemporaryFullAccuracyAuthorization`, all returning `Future<AuthorizationStatus>` instead of magic ints. The matching int-returning methods (`getPermissionStatus`, `requestPermission`, `getNotificationPermissionStatus`, `requestNotificationPermission`, `getMotionPermissionStatus`, `requestMotionPermission`, `requestTemporaryFullAccuracy`) are now `@Deprecated` and will be removed in 2.0.0.
 - **FIX**: Android `LocationService` no longer crashes the host app with `RemoteServiceException: Context.startForegroundService() did not then call Service.startForeground()` (#59). Reproducible on real devices when using `periodicUseForegroundService: true`. Root cause: `onStartCommand` only promoted to foreground for `ACTION_START`, but the system can deliver intents for other actions (and null-intent sticky restarts after a system kill) under the same foreground-service contract. Fixed in native `tracelet-sdk` 1.1.0 by always promoting at the top of `onStartCommand`.
 - **FIX**: `Geofence(extras: {...})` now correctly persists and is returned by `getGeofences()` and delivered in `onGeofence` events (#58). Bug was in `tracelet_platform_interface`'s `_mapToGeofence`, which silently dropped `extras` and `vertices` when constructing the Pigeon payload; the 1.8.12 native fix had no effect because the data never crossed the platform channel. Affected both Android and iOS.
 - **TEST**: Added on-device integration test (`example/integration_test/geofence_extras_test.dart`) that round-trips `addGeofence` → `getGeofences()` to prevent regression.
 
-## 1.8.13
+## 1.8.13 - 2026-04-17
 
 - **PERF**: Reduce first-fix latency on stationary → moving transitions on both iOS and Android. The native engines now fire an additional one-shot location request when motion starts, delivering a fresh GPS fix in ~1–5s instead of waiting for `distanceFilter` (iOS) or `locationUpdateInterval` (Android) on the continuous stream (#54).
 - **FIX**: Android — after a manual `Tracelet.changePace(false)` (force stationary), the SDK can now detect real motion and resume tracking automatically. Previously the wake-up sensors stayed torn down, leaving the SDK in a dead-state. iOS was unaffected.
 - **FIX**: Bump iOS native SDK to 1.0.11 and Android native SDK to 1.0.12.
 
-## 1.8.12
+## 1.8.12 - 2026-04-17
 
 - **FIX**: Geofence `extras` now arrive in `GeofenceEvent.extras` on Android (previously always empty). Location `extras` are also correctly included when reading back persisted locations (#51 follow-up).
 - **FIX**: Bump Android native SDK to 1.0.11.
 
-## 1.8.11
+## 1.8.11 - 2026-04-16
 
 - **FIX**: Geofence callbacks no longer silently stop during continuous tracking when a secondary FlutterEngine (e.g. Firebase background messaging) registers the plugin (#51).
 
-## 1.8.10
+## 1.8.10 - 2026-04-07
 
 - **FIX**: Killed-state tracking now works reliably — `stopBootTracking()` deferred from `initialize()` to `ready()` so boot-mode native tracking survives until the Dart side explicitly takes over (#50).
 - **FIX**: Bump native SDKs to 1.0.10.
 
-## 1.8.9
+## 1.8.9 - 2026-04-06
 
 - **FEAT**: Add `syncInterval` to `HttpConfig` — flush locations on a fixed timer instead of per-insert, for fleet/logistics use cases (#50).
 - **FEAT**: Bump native SDKs to 1.0.9.
 
-## 1.8.8
+## 1.8.8 - 2026-04-03
 
 - **FIX**: HTTP sync payload now consistent between iOS and Android — Android `cursorToLocation()` and all location map producers now use canonical `is_moving` (snake_case) and ISO 8601 timestamps, matching iOS format (#48).
 - **FIX**: Bump native SDKs to 1.0.8.
 
-## 1.8.7
+## 1.8.7 - 2026-04-01
 
 - **FIX**: Enhance overall stability by including pending 1.8.6 patches.
 - **FIX**: Bump native SDKs to 1.0.7.
 
-## 1.8.6
+## 1.8.6 - 2026-04-01
 
 - **FIX**: `getCurrentPosition(samples: 1)` now forces a fresh GPS fix instead of returning stale cached locations — uses `requestLocationUpdates`/`startUpdatingLocation` instead of `getCurrentLocation`/`requestLocation` which may return cached data without waking GPS hardware (#46).
 - **FIX**: HTTP sync headers callback (`setHeadersCallback`) no longer invoked per-batch — eliminates unnecessary MethodChannel round-trip latency on every sync request. Token refresh now handled exclusively via `setTokenRefreshCallback` on 401.
@@ -807,21 +807,21 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 - **FIX**: Privacy zones, audit trail, and encryption APIs now work before `ready()` — only require `initialize()` (DB creation), not active tracking.
 - **FIX**: `getPrivacyZones()` no longer throws `_Map<Object?, Object?>` type cast error — fix Pigeon-generated lazy cast for nested map types.
 
-## 1.8.5
+## 1.8.5 - 2026-03-31
 
 - **FIX**: `getCurrentPosition()` falls back to last known location when GPS returns no fix (e.g. emulator, GPS-off) — fixes `LOCATION_UNAVAILABLE` errors (#46).
 - **FIX**: Bump native SDKs to 1.0.5.
 
-## 1.8.4
+## 1.8.4 - 2026-03-30
 
 - **FIX**: Add `isReady` guards to all Android SDK methods — prevents `UninitializedPropertyAccessException` when called before `ready()` (re-fixes #46).
 - **FIX**: Pin native SDK dependencies to exact versions — prevents auto-resolving to incompatible newer native SDK releases.
 
-## 1.8.3
+## 1.8.3 - 2026-03-30
 
 - **FIX**: Prevent crash when `getState()`, `setConfig()`, or any other method is called before `ready()` on iOS — comprehensive `isReady` guards across all native SDK methods (re-fixes #46).
 
-## 1.8.2
+## 1.8.2 - 2026-03-29
 
 - **FIX**: Prevent crash when `stop()` is called before `ready()` on iOS — returns `NOT_READY` error instead of accessing uninitialized properties.
 - **FIX**: Guard `soundManager` access on Android to prevent `UninitializedPropertyAccessException` during motion state changes or cleanup.
@@ -830,11 +830,11 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 - **REFACTOR**: Refined ProGuard/R8 consumer rules — narrower keep rules, added `-dontwarn` for optional enterprise dependencies.
 - **DOCS**: Updated `INSTALL-ANDROID.md` and `DATABASE-ENCRYPTION.md` with enterprise dependency setup instructions.
 
-## 1.8.1
+## 1.8.1 - 2026-03-27
 
 - **FIX**: iOS periodic mode no longer shows persistent location indicator in the status bar.
 
-## 1.8.0
+## 1.8.0 - 2026-03-26
 
 - **FIX**: Align location map format contract across Android, iOS, and Dart layers — fixes 9 format mismatches.
 - **FEAT**: Add `Tracelet.destroySyncedLocations()` — deletes only synced locations, returns count deleted.
@@ -848,7 +848,7 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 - **FEAT**: Add `Tracelet.destroySyncedLocations()` — deletes only synced locations, returns count deleted.
 - **FEAT**: Auto-purge synced locations from database after successful HTTP sync.
 
-## 1.7.0
+## 1.7.0 - 2026-03-26
 
 - **FEAT**: Migrate all event subscriptions from EventChannels to Pigeon FlutterApi platform streams.
 - **FEAT**: Add `Location.fromTl` and `LocationActivity.fromTl` factory constructors for Pigeon type conversion.
@@ -856,22 +856,22 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 - **REFACTOR**: Extract native SDKs to standalone modules — Android (Maven Central) and iOS (CocoaPods/SPM).
 - **DOCS**: Add local development workflow documentation to CONTRIBUTING.md.
 
-## 1.6.3-alpha.1
+## 1.6.3-alpha.1 - 2026-06-12
 
 - **FEAT**: Migrate all event subscriptions from EventChannels to Pigeon FlutterApi platform streams.
 - **FEAT**: Add `Location.fromTl` and `LocationActivity.fromTl` factory constructors for Pigeon type conversion.
 - **REFACTOR**: Remove `_eventChannels`, `_eventStreams` maps, and `_getEventStream()` helper.
 - **CHORE**: Update cross-package dependency constraints to `^1.6.3-alpha.1`.
 
-## 1.6.2
+## 1.6.2 - 2026-03-24
 
 - **FIX**: Update `tracelet_web` dependency to `^1.6.1` — fixes 5 missing HTTP Sync method stubs that caused `UnimplementedError` on web.
 
-## 1.6.1
+## 1.6.1 - 2026-03-22
 
 - **FEAT**: Add 401-aware retry — native HTTP sync now detects 401 responses, invokes the headless headers callback (`registerHeadlessHeadersCallback`) to refresh authorization tokens, and retries the request once with updated dynamic headers. Works in both foreground and killed-state (headless) modes.
 
-## 1.6.0
+## 1.6.0 - 2026-03-21
 
 - **FEAT**: Add SSL certificate pinning via `HttpConfig.sslPinningCertificates` and `HttpConfig.sslPinningFingerprints`.
 - **FEAT**: Add dynamic HTTP headers — `setDynamicHeaders()`, `setHeadersCallback()`, `refreshHeaders()`, and headless `registerHeadlessHeadersCallback()`.
@@ -882,47 +882,47 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 - **DOCS**: Update API.md, CONFIGURATION.md, HTTP-SYNC.md with new sync feature documentation.
 - **CHORE**: Update cross-package dependency constraints to `^1.6.0`.
 
-## 1.5.0
+## 1.5.0 - 2026-03-21
 
 - **FEAT**: Boot-mode HTTP auto-sync — locations sync to your server even when the app is killed or the device reboots (Android).
 - **FIX**: Test server now correctly reads `latitude`/`longitude` from nested `coords` object.
 - **CHORE**: Update cross-package dependency constraints to `^1.5.0`.
 
-## 1.4.6
+## 1.4.6 - 2026-03-20
 
 - **FIX**: Rename native `PermissionManager` to `TraceletPermissionManager` to avoid class name collision with `permission_handler_apple` (#32).
 - **CHORE**: Update cross-package dependency constraints to `^1.4.6`.
 
-## 1.4.5
+## 1.4.5 - 2026-03-19
 
 - **TEST**: Add integration tests for GPS-off fallback and reduced accuracy field serialization.
 - **CHORE**: Update cross-package dependency constraints to `^1.4.5`.
 
-## 1.4.4
+## 1.4.4 - 2026-03-19
 
 - **FEAT**: Add `reducedAccuracy` field to `Location` — `true` when iOS 14+ grants only approximate location authorization.
 - **FEAT**: Example app now shows `[REDUCED]` tag and `gpsFallback=ON` indicator for reduced/fallback location states.
 - **TEST**: Add 5 unit tests for `reducedAccuracy` field (default, parse, snake_case, round-trip, copyWithCoords).
 - **CHORE**: Update cross-package dependency constraints to `^1.4.4`.
 
-## 1.4.3
+## 1.4.3 - 2026-03-19
 
 - **FEAT**: Add `locationSource` field to `Location` — classifies each fix as `gps`, `wifi`, `cell`, `network`, or `unknown`.
 - **FEAT**: Add `gpsFallback` field to `ProviderChangeEvent` — signals when the engine auto-downgrades to Wi-Fi/cell positioning because GPS is disabled.
 - **CHORE**: Update cross-package dependency constraints to `^1.4.3`.
 
-## 1.4.2
+## 1.4.2 - 2026-03-18
 
 - **FIX**: Dead reckoning activation now reliably detects GPS hardware state instead of using accuracy-based heuristic.
 - **FIX**: Mock detection heuristic no longer produces false positives for Wi-Fi/cell locations when GPS is disabled.
 - **CHORE**: Update cross-package dependency constraints to `^1.4.2`.
 
-## 1.4.1
+## 1.4.1 - 2026-03-18
 
 - **FEAT**: Dead reckoning — full native IMU sensor fusion for GPS-denied environments (tunnels, parking structures, urban canyons). Activates automatically on GPS loss, deactivates on GPS recovery.
 - **CHORE**: Update cross-package dependency constraints to `^1.4.1`.
 
-## 1.4.0
+## 1.4.0 - 2026-03-18
 
 - **FEAT**: Encrypted SQLite — `Tracelet.isDatabaseEncrypted()` and `Tracelet.encryptDatabase()` for at-rest database encryption (SQLCipher on Android, Data Protection on iOS).
 - **FEAT**: Device attestation — `Tracelet.getAttestationToken()` returns a platform attestation token (Play Integrity on Android, App Attest on iOS).
@@ -932,12 +932,12 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 - **FEAT**: Add `SecurityConfig` and `AttestationConfig` to `Config` model for enterprise feature configuration.
 - **CHORE**: Update cross-package dependency constraints to `^1.4.0`.
 
-## 1.3.7
+## 1.3.7 - 2026-03-18
 
 - **FIX**: Android — fix `ClassNotFoundException` crash on app upgrade for `BootReceiver` and other manifest-declared components (fixes #31).
 - **CHORE**: Update `tracelet_android` dependency constraint to `^1.3.7`.
 
-## 1.3.6
+## 1.3.6 - 2026-03-16
 
 - **FIX**: `SQLQuery.start` and `SQLQuery.end` now correctly filter locations on all platforms (Android, iOS, Web).
 - **FIX**: Add `offset` field to `SQLQuery` to match native handler expectations.
@@ -946,38 +946,38 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 - **PERF**: `GeoUtils.haversine` optimized — fewer trig calls, precomputed constants.
 - **CHORE**: Update cross-package dependency constraints to `^1.3.6`.
 
-## 1.3.5
+## 1.3.5 - 2026-06-12
 
 - **FIX**: iOS — fix `Unable to find module dependency: 'TraceletCore'` build error.
 - **CHORE**: Update cross-package dependency constraints to `^1.3.5`.
 
-## 1.3.4
+## 1.3.4 - 2026-03-15
 
 - **CHORE**: Update cross-package dependency constraints to `^1.3.3`.
 
-## 1.3.3
+## 1.3.3 - 2026-03-15
 
 - **FIX**: Android — bundle native core Kotlin source (`com.tracelet.core.*`) directly inside the plugin package, fixing "Unresolved reference" build errors when installed from pub.dev.
 - **FIX**: iOS — bundle TraceletCore Swift source directly inside the plugin package instead of depending on an unpublished local CocoaPod.
 - **CHORE**: Remove React Native support to simplify the monorepo.
 
-## 1.3.2
+## 1.3.2 - 2026-03-15
 
 - **PERF**: Android — streaming `JsonWriter` replaces per-location `JSONObject` allocations in batch sync (A-L5).
 - **PERF**: iOS — C-level UUID generation replaces Foundation `UUID()` in `LocationEngine` and `TraceletDatabase` (I-M6).
 - **PERF**: Performance audit now 77/77 items resolved (100%).
 
-## 1.3.1
+## 1.3.1 - 2026-03-15
 
 - **FIX**: Resolve `extras` key collision between `HttpConfig` and `PersistenceConfig` — serialization keys renamed to `httpExtras` and `persistenceExtras` to prevent native ConfigManager flat-merge from overwriting one with the other. Backward-compatible via `fromMap` fallback.
 - **PERF**: Add 22 new benchmarks covering DeltaEncoder, BatteryBudgetEngine, CarbonEstimator, PersistDecider, Config/State serialization.
 - **PERF**: iOS `markSynced()` now uses chunked prepared statements (500 UUIDs/chunk) to avoid SQLite variable limit and improve sync performance.
 
-## 1.3.0
+## 1.3.0 - 2026-03-15
 
 - **FIX**: `getState()` always returned `enabled: false` on iOS — the iOS `StateManager.toMap()` flat-merged config keys into the state dictionary, overwriting `enabled` and `isMoving` with config defaults. Fixed by nesting config under a `"config"` key, matching Android behavior ([#26](https://github.com/Ikolvi/Tracelet/issues/26)).
 
-## 1.2.0
+## 1.2.0 - 2026-03-14
 
 ### Breaking Changes
 
@@ -989,7 +989,7 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 
 - Native platform channel serialization is backward-compatible — no native code changes required. `notificationPriority` still serializes as int, `hashAlgorithm` as `"SHA-256"` string, and `triggerActivities` as comma-separated string.
 
-## 1.1.0
+## 1.1.0 - 2026-03-14
 
 ### New Features
 
@@ -1019,18 +1019,18 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 - **CHORE**: Adopt Dart pub workspaces — root `pubspec.yaml` declares `workspace:` listing all 6 packages; each package declares `resolution: workspace`. Removed 5 `pubspec_overrides.yaml` files that are no longer needed.
 - **CHORE**: Upgrade melos dependency from `^6.0.0` to `^7.0.0`.
 
-## 1.0.2
+## 1.0.2 - 2026-03-12
 
 - **FIX**: (Android/iOS) Geofence registrations were unconditionally destroyed on app termination and reset, even when `stopOnTerminate: false` was configured with `trackingMode=1`. Geofences now survive process death and are properly re-registered ([#23](https://github.com/Ikolvi/Tracelet/issues/23)).
 
-## 1.0.1
+## 1.0.1 - 2026-03-12
 
 - **FIX**: HTTP auto-sync was not triggered during automatic location tracking on any platform — locations accumulated in the database without being synced to the server ([#21](https://github.com/Ikolvi/Tracelet/issues/21)).
 - **FIX**: (iOS) `HttpMethod.put` was silently ignored due to type mismatch in native config parsing.
 - **FIX**: (iOS) HTTP headers could be dropped when platform channel delivered mixed-type maps.
 - **FIX**: (iOS) `maxBatchSize` default corrected from 100 to 250.
 
-## 1.0.0
+## 1.0.0 - 2026-03-07
 
 ### 🎉 Stable Release
 
@@ -1040,7 +1040,7 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 - **REFACTOR**: Rename migration guide to `MIGRATION-FROM-FBG.md`.
 - All APIs are finalized and production-ready.
 
-## 0.12.0
+## 0.12.0 - 2026-06-12
 
 ### Performance Audit — 74 of 77 issues resolved
 
@@ -1059,26 +1059,26 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 
 - **FIX**: [Android/iOS] Polygon geofence `vertices` are now correctly persisted to the native SQLite databases. Previously, vertex data was silently dropped during `addGeofence()`, causing polygon geofences to revert to circular after app restart.
 
-## 0.11.4
+## 0.11.4 - 2026-06-12
 
 - **FIX**: [iOS] Revert over-aggressive permission guards — When In Use permission now works correctly for all tracking modes. Only the killed-state auto-resume (`autoResumeTracking`) requires Always authorization. iOS enforces permission at the OS level.
 
-## 0.11.3
+## 0.11.3 - 2026-06-12
 
 - **FIX**: [Android] Enforce `ACCESS_BACKGROUND_LOCATION` check on all killed-state restart paths (boot receiver, task removal, periodic alarms/workers). "While In Use" permission no longer triggers background tracking.
 - **FIX**: [iOS] Enforce `.authorizedAlways` check on killed-state auto-resume and guard `allowsBackgroundLocationUpdates`. "When In Use" permission no longer triggers tracking from killed state.- **FEAT**: Add `Tracelet.hasBackgroundPermission` static getter — convenience check that returns `true` when location permission is `AuthorizationStatus.always`.
-## 0.11.2
+## 0.11.2 - 2026-06-12
 
 - **DOCS**: Fix 22 unresolved dartdoc references (`[Enterprise]`, `[Config.*]`, `[isValid]`, `[brokenAtIndex]`, `[brokenAtUuid]`).
 - **CHORE**: Tighten all platform package constraints to `^0.11.2` (fixes `pub downgrade` score penalty).
 
-## 0.11.1
+## 0.11.1 - 2026-06-12
 
 - **FEAT**: Add `canScheduleExactAlarms()` and `openExactAlarmSettings()` static methods for Android exact alarm permission management.
 - **FIX**: Bypass `LocationProcessor` distance/accuracy/speed filters for periodic location events — every timed fix is now delivered regardless of movement.
 - **CHORE**: Bump platform interface to 0.11.1.
 
-## 0.11.0
+## 0.11.0 - 2026-03-04
 
 - **FEAT**: Tamper-proof audit trail — SHA-256 hash chain for location integrity verification.
 - **FEAT**: Privacy zones — exclude, degrade, or event-only actions for geographic privacy control.
@@ -1091,7 +1091,7 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 - **DOCS**: Added AUDIT-TRAIL.md and PRIVACY-ZONES.md guides.
 - **CHORE**: Bump all platform packages to ^0.11.0.
 
-## 0.10.0
+## 0.10.0 - 2026-03-02
 
 - **FEAT**: Periodic mode — `Tracelet.startPeriodic()` for GPS-friendly interval tracking. GPS icon visible only ~5–10 seconds per fix instead of permanently.
 - **FEAT**: `GeoConfig` periodic options: `periodicLocationInterval`, `periodicDesiredAccuracy`, `periodicUseForegroundService`, `periodicUseExactAlarms`.
@@ -1100,11 +1100,11 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 - **DOCS**: Updated API.md, CONFIGURATION.md, BACKGROUND-TRACKING.md, and INSTALL-ANDROID.md with periodic mode and exact alarms documentation.
 - **CHORE**: Bump all platform packages to ^0.10.0.
 
-## 0.9.1
+## 0.9.1 - 2026-03-01
 
 - **FIX**: iOS `HttpSyncManager` optional `UIBackgroundTaskIdentifier` unwrap safety.
 
-## 0.9.0
+## 0.9.0 - 2026-03-01
 
 * **FEAT**: Adaptive sampling engine — auto-adjusts `distanceFilter` based on detected activity type, battery level, and speed. Enable with `GeoConfig(enableAdaptiveMode: true)`. See [Adaptive Sampling Guide](https://github.com/Ikolvi/Tracelet/blob/main/help/ADAPTIVE-SAMPLING.md).
 * **FEAT**: Health check API — `Tracelet.getHealth()` returns a comprehensive diagnostic snapshot covering tracking state, permissions, battery, sensors, database, and geofence state with actionable `HealthWarning` enum. See [Health Check Guide](https://github.com/Ikolvi/Tracelet/blob/main/help/HEALTH-CHECK.md).
@@ -1113,17 +1113,17 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 * **FEAT**: `HealthWarningDescription` extension with `.description` getter for human-readable warning text.
 * **CHORE**: Bump all platform dependencies to ^0.9.0.
 
-## 0.8.3
+## 0.8.3 - 2026-02-28
 
 * **FEAT**: Unlimited geofences via proximity-based auto-load/unload — only geofences within `geofenceProximityRadius` are registered with the OS (up to 100 on Android, 20 on iOS), sorted by distance. Enables monitoring thousands of geofences despite platform limits.
 * **FEAT**: `geofencesChange` event fires when geofences are activated/deactivated from proximity monitoring.
 * **CHORE**: Bump all platform dependencies to ^0.8.3.
 
-## 0.8.2
+## 0.8.2 - 2026-02-28
 
 * **DOCS**: Improve README visuals with combined Android & iOS demo image.
 
-## 0.8.1
+## 0.8.1 - 2026-02-28
 
 * **PERF**: iOS background hardening — all native operations (location persist, HTTP sync, headless engine boot, lifecycle transitions) now wrapped in `beginBackgroundTask` for safe background execution.
 * **FEAT**: iOS 17+ `CLBackgroundActivitySession` support — extends background runtime for location tracking.
@@ -1132,7 +1132,7 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 * **FIX**: Web EventChannel bridge — all event streams (`onLocation`, `onMotionChange`, `onHeartbeat`, etc.) were broken on web due to events being consumed but never forwarded. Now works correctly.
 * **CHORE**: Bump `tracelet_ios` to ^0.8.1, `tracelet_web` to ^0.8.1.
 
-## 0.8.0
+## 0.8.0 - 2026-02-28
 
 * **FEAT**: OEM compatibility — automatic mitigations for aggressive OEM power management (Huawei, Xiaomi, OnePlus, Samsung, Oppo, Vivo).
 * **FEAT**: `Tracelet.getSettingsHealth()` — device health API returning manufacturer, aggression rating, battery optimization status, and available OEM settings screens.
@@ -1141,13 +1141,13 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 * **DOCS**: Update README with OEM compatibility feature and documentation link.
 * **CHORE**: Bump all platform dependencies to ^0.8.0.
 
-## 0.7.1
+## 0.7.1 - 2026-02-28
 
 * **DOCS**: Add mock location detection feature to README with documentation links and feature description.
 * **DOCS**: Add Mock Detection guide to documentation table.
 * **CHORE**: Bump all platform dependencies to ^0.7.1.
 
-## 0.7.0
+## 0.7.0 - 2026-02-28
 
 * **FEAT**: Mock location detection & prevention — detect and reject spoofed GPS locations across Android, iOS, and Web.
 * **FEAT**: `Location.isMock` field — boolean flag indicating if a location came from a mock provider.
@@ -1160,7 +1160,7 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 * **DOCS**: Updated [CONFIGURATION.md](help/CONFIGURATION.md) with mock detection options.
 * **CHORE**: Bump all platform dependencies to ^0.7.0.
 
-## 0.6.1
+## 0.6.1 - 2026-02-26
 
 * **CHORE**: Bump all platform dependencies to ^0.6.1.
 
@@ -1172,12 +1172,12 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 * **PERF**: Native code no longer duplicates filtering logic — significantly reduces native code surface.
 * **CHORE**: Bump all platform dependencies to ^0.6.0.
 
-## 0.5.5
+## 0.5.5 - 2026-06-12
 
 * **FIX**: iOS `onSchedule` event now sends full state map instead of partial data.
 * **CHORE**: Bump all platform dependencies to ^0.5.5.
 
-## 0.5.4
+## 0.5.4 - 2026-06-12
 
 * **FIX**: Heartbeat events no longer return zero coordinates on Android and iOS.
 
@@ -1185,14 +1185,14 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 
 * **CHORE**: Bump all platform dependencies to ^0.5.3.
 
-## 0.5.2
+## 0.5.2 - 2026-06-12
 
 * **FEAT**: `disableMotionActivityUpdates` now falls back to permission-free accelerometer-only motion detection instead of disabling all motion detection entirely.
 * **DOCS**: Expanded `MotionConfig.disableMotionActivityUpdates` documentation with fallback behavior, use cases, and battery notes.
 * **DOCS**: Updated `getMotionPermissionStatus()` / `requestMotionPermission()` docs to reflect accelerometer-only mode behavior.
 * **DOCS**: Added "Opting Out of Motion Permission" section to PERMISSIONS.md with comparison table.
 
-## 0.5.1
+## 0.5.1 - 2026-06-12
 
 * **DOCS**: Update README with web platform in architecture and documentation tables.
 
@@ -1204,7 +1204,7 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 * **DOCS**: Update README with web platform in architecture table and documentation links.
 * **CHORE**: Bump all platform dependencies to ^0.5.0.
 
-## 0.4.0
+## 0.4.0 - 2026-06-12
 
 * **FEAT**: `getMotionPermissionStatus()` and `requestMotionPermission()` APIs for activity recognition permission.
 * **FIX**: Speed always zero in motionchange events — track `lastEffectiveSpeed` across location updates.
@@ -1213,37 +1213,37 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 * **CHORE**: Bump all platform dependencies to ^0.4.0.
 * **CHORE**: Format all Dart files.
 
-## 0.3.0
+## 0.3.0 - 2026-06-12
 
 * **FEAT**: One-shot location — `getCurrentPosition()` now supports `persist`, `samples`, `maximumAge`, and `extras` parameters for enterprise single-time location requests.
 * **FEAT**: `getLastKnownLocation()` — returns the last cached location without triggering the GPS, or `null` if unavailable.
 * **FEAT**: `ForegroundServiceConfig.enabled` — disable foreground service/notification for lightweight one-shot requests.
 * **BREAKING**: Bump all platform dependencies to ^0.3.0.
 
-## 0.2.5
+## 0.2.5 - 2026-06-12
 
 * Fix LICENSE file format for proper SPDX detection on pub.dev.
 * Bump `tracelet_android` dependency to ^0.2.3.
 * Bump `tracelet_ios` dependency to ^0.2.4.
 
-## 0.2.4
+## 0.2.4 - 2026-06-12
 
 * Bump `tracelet_android` dependency to ^0.2.2 (fixes config not applied to foreground notification).
 * Bump `tracelet_ios` dependency to ^0.2.3 (fixes config values ignored on iOS).
 
-## 0.2.3
+## 0.2.3 - 2026-06-12
 
 * Bump `tracelet_ios` dependency to ^0.2.2 (fixes iOS `ConfigManager` crash).
 
-## 0.2.2
+## 0.2.2 - 2026-06-12
 
 * Fix dangling library doc comment lint in `_helpers.dart`.
 
-## 0.2.1
+## 0.2.1 - 2026-06-12
 
 * Add `tracelet_android` and `tracelet_ios` as explicit dependencies to fix default plugin resolution warnings.
 
-## 0.2.0
+## 0.2.0 - 2026-06-12
 
 * Add `isMoving` field to `State` model.
 * Fix `Config.toMap()` — use nested map structure to prevent extras key collision.
@@ -1254,13 +1254,13 @@ Tracelet 2.0.0 introduces a modernized configuration schema, robust type-safe pl
 * Extract shared deserialization helpers to reduce code duplication.
 * Fix example (`LogConfig` → `LoggerConfig`).
 
-## 0.1.1
+## 0.1.1 - 2026-06-12
 
 * Fix pubspec description length for pub.dev scoring.
 * Add SPDX `license: Apache-2.0` identifier.
 * Add `example/main.dart` for pub.dev documentation score.
 
-## 0.1.0
+## 0.1.0 - 2026-06-12
 
 * Initial release.
 * Full background geolocation API with 38 public methods.
