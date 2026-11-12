@@ -1,3 +1,6 @@
+// Not package:material_ui yet: it needs Flutter >= 3.47 and this package
+// still supports older versions.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 
 /// Visual theme constants for the TraceletDoctor overlay.

@@ -39,6 +39,7 @@ dependencies:
   supabase_flutter: '2.12.4'
   tracelet_supabase:
     path: ../packages/tracelet_supabase
+  material_ui: ^1.11.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

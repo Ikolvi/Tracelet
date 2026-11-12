@@ -1,3 +1,6 @@
+// Not package:material_ui yet: it needs Flutter >= 3.47 and this package
+// still supports older versions.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart' as tl;
 import 'package:tracelet_doctor/tracelet_doctor.dart';

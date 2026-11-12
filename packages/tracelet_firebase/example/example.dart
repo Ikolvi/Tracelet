@@ -1,6 +1,9 @@
 // ignore_for_file: uri_does_not_exist, undefined_identifier
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+// Not package:material_ui yet: it needs Flutter >= 3.47 and this package
+// still supports older versions.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:tracelet/tracelet.dart';
 import 'package:tracelet_firebase/tracelet_firebase.dart';

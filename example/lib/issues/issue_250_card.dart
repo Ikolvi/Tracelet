@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:tracelet/tracelet.dart' hide State;
 import 'package:tracelet_example/issues/issue_card_shell.dart';
 import 'package:tracelet_example/issues/issue_card_state.dart';

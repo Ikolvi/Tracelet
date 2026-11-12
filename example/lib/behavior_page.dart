@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:tracelet/tracelet.dart' as tl;
 // FRB engine handles — drive the real Rust detection logic with synthetic
