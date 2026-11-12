@@ -56,9 +56,9 @@ All map builders (SDK `buildLocationMap()`, `enrichLocation()`, DB `locationRowT
 | Key | Convention | Notes |
 |-----|-----------|-------|
 | `coords` | **Nested map** | Never flat. All coordinate fields live inside `coords`. |
-| `coords.altitudeAccuracy` | **camelCase** | Not `altitude_accuracy`. |
-| `coords.speedAccuracy` | **camelCase** | Not `speed_accuracy`. |
-| `coords.headingAccuracy` | **camelCase** | Not `heading_accuracy`. |
+| `coords.altitudeAccuracy` | **camelCase** | Not `altitude_accuracy`. `-1` when unknown, never `0`. |
+| `coords.speedAccuracy` | **camelCase** | Not `speed_accuracy`. `-1` when unknown, never `0`. |
+| `coords.headingAccuracy` | **camelCase** | Not `heading_accuracy`. `-1` when unknown, never `0`. |
 | `battery.is_charging` | **snake_case** | Not `isCharging`. |
 | `is_moving` | **snake_case** | EventDispatcher also accepts `isMoving` as fallback. |
 | `mock` | **No prefix** | Not `isMock` or `is_mock`. |
@@ -109,6 +109,7 @@ The database flattens the nested structure into columns. When reading back:
 - The DB output layer (`cursorToLocation` / `locationRowToMap`) reconstructs the nested map format.
 - DB consumers (`insertLocation`) read from nested maps first, with flat-key fallbacks.
 - The iOS DB `insertLocation` accepts both `speedAccuracy` and `speed_accuracy` in coords (camelCase preferred).
+- `altitudeAccuracy`, `speedAccuracy` and `headingAccuracy` are stored and come back on every stored read and in the default sync payload; a row stored before they were persisted reads `-1` ([#445](https://github.com/Ikolvi/Tracelet/issues/445)).
 
 ## Test Coverage
 

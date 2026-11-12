@@ -9,7 +9,18 @@ import CoreLocation
 public final class ConfigManager {
     private let defaults: UserDefaults
     private let key = "com.tracelet.config"
-    private var cache: [String: Any] = [:]
+    // #446: `MotionDetector` reads the getters on its sampler queue while
+    // setConfig() writes on main, and an unsynchronised Dictionary read during a
+    // write crashed (EXC_BAD_ACCESS). `values` is only touched under `lock`:
+    // getters read `cache`, a copy taken under the lock (copy-on-write, so no
+    // element is copied), and every write goes through `mutate`.
+    private let lock = NSLock()
+    private var values: [String: Any] = [:]
+    private var cache: [String: Any] {
+        lock.lock()
+        defer { lock.unlock() }
+        return values
+    }
 
     public init() {
         defaults = UserDefaults.standard
@@ -36,9 +47,7 @@ public final class ConfigManager {
         // setConfig({app: {heartbeatInterval: -1}}) must not wipe the
         // HTTP URL that was set during ready().
         let filtered = flat.filter { !($0.value is NSNull) }
-        cache.merge(filtered) { _, new in new }
-        saveToDisk()
-        return cache
+        return mutate { $0.merge(filtered) { _, new in new } }
     }
 
     /// Lifts the `filter` sub-map onto the flat top level the getters read (#303).
@@ -81,11 +90,11 @@ public final class ConfigManager {
     }
 
     public func reset(_ newConfig: [String: Any]?) {
-        cache = defaultConfig()
+        let fresh = defaultConfig()
+        mutate { $0 = fresh }
         if let c = newConfig {
             let _ = setConfig(c)
         }
-        saveToDisk()
     }
 
     private func loadFromDisk() {
@@ -97,16 +106,30 @@ public final class ConfigManager {
             // running on default thresholds until the host next called setConfig.
             var loaded = json
             liftFilterSection(&loaded)
-            cache = loaded
+            replaceWithoutSaving(loaded)
         } else {
-            cache = defaultConfig()
+            replaceWithoutSaving(defaultConfig())
         }
     }
 
-    private func saveToDisk() {
-        if let data = try? JSONSerialization.data(withJSONObject: cache) {
+    /// Applies `change` and writes the result to disk in one locked step, so no
+    /// reader sees — and no serialisation walks — a half-applied update (#446).
+    @discardableResult
+    private func mutate(_ change: (inout [String: Any]) -> Void) -> [String: Any] {
+        lock.lock()
+        defer { lock.unlock() }
+        change(&values)
+        if let data = try? JSONSerialization.data(withJSONObject: values) {
             defaults.set(data, forKey: key)
         }
+        return values
+    }
+
+    /// Loading must not write: `hasConfig()` is "was a config ever saved".
+    private func replaceWithoutSaving(_ newValues: [String: Any]) {
+        lock.lock()
+        defer { lock.unlock() }
+        values = newValues
     }
 
     // MARK: - Typed Getters

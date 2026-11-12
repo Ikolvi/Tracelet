@@ -1,27 +1,26 @@
 import os
 import re
+from datetime import date
 
-version_from = "3.8.8"
-version_to = "3.8.9"
+version_from = "3.8.9"
+version_to = "3.8.10"
 
-# A release about things that quietly stopped working, and kept looking fine:
+# Changelog headings carry the release date: `## 3.8.10 - 2026-11-12`. Run this
+# on release day; an existing heading keeps the date it already has.
+version_heading = f"## {version_to} - {date.today().isoformat()}"
+DATE_SUFFIX = r'(?: - \d{4}-\d{2}-\d{2})?'
+
+# A fixes-only release:
 #
-#   - on Android a continuous location request could outlive stop() and drain
-#     the battery until process death (#432); a session parked by the
-#     killed-state engine reopened as PERIODIC without its service or motion
-#     detector, and a restart after process death declined itself (#428, #436);
-#     crash/fall detection got no accelerometer samples without
-#     ACTIVITY_RECOGNITION (#433)
-#   - on iOS 16.4+ continuous tracking was suspended in the background with the
-#     indicator off and no session (#435); the Rust frameworks shipped without
-#     dSYMs (#424)
-#   - auto-sync uploaded one batch per new fix and dropped triggers that arrived
-#     mid-upload, so the queue never drained (#437)
-#   - prod crash-model licenses never unlocked (#439)
-#   - the native trip manager missed SMART/SPEED transitions and changePace()
-#     (#442)
-#
-# Completed-trip summaries are now stored and synced as a `trips` array (#401).
+#   - stored locations kept dropping altitude/speed/heading accuracy, and Dart
+#     read the gap as 0 (#445)
+#   - on iOS, setConfig() during a moving session could crash in a
+#     ConfigManager getter (#446)
+#   - a parked SMART/SPEED session resumed as the wrong strategy after a reboot,
+#     a relaunch or ready() (#447, #449, Android and iOS), and on Android
+#     ready() dropped the stationary periodic check (#448)
+#   - on Android, reopening the app did not recover location after a
+#     background restart of the foreground service (#436)
 #
 # Entries were written under `## Unreleased` as the work landed; the promotion
 # logic below renames that heading rather than prepending a second block.
@@ -150,7 +149,7 @@ generic_changelogs = [
     'packages/tracelet_firebase/CHANGELOG.md',
 ]
 
-generic_addition = f"""## {version_to}
+generic_addition = f"""{version_heading}
 
 Version alignment with tracelet {version_to}.
 
@@ -169,7 +168,7 @@ def merge_unreleased_into(content, version):
     nxt = re.search(r'^## ', content[m.end():], flags=re.M)
     body = content[m.end():m.end() + nxt.start()] if nxt else content[m.end():]
     rest = content[:m.start()] + (content[m.end() + nxt.start():] if nxt else '')
-    vm = re.search(rf'^## {re.escape(version)}[ \t]*\n\n', rest, flags=re.M)
+    vm = re.search(rf'^## {re.escape(version)}{DATE_SUFFIX}[ \t]*\n\n', rest, flags=re.M)
     if not vm:
         return None
     return rest[:vm.end()] + body.strip('\n') + '\n\n' + rest[vm.end():]
@@ -184,7 +183,7 @@ def has_version_heading(content, version):
     existing `## 3.8.0-beta.2` heading and silently skipped every changelog, so
     the release shipped with its entries still stranded under `## Unreleased`.
     """
-    return re.search(rf'^## {re.escape(version)}[ \t]*$', content, flags=re.M) is not None
+    return re.search(rf'^## {re.escape(version)}{DATE_SUFFIX}[ \t]*$', content, flags=re.M) is not None
 
 
 for cl in detailed_changelogs:
@@ -209,7 +208,7 @@ for cl in detailed_changelogs:
     # `[ \t]*` not `\s*`: \s matches newlines, so the greedy form swallowed the
     # blank line after the heading and glued it to the first entry.
     if re.search(r'^## Unreleased[ \t]*$', content, flags=re.M):
-        content = re.sub(r'^## Unreleased[ \t]*$', f'## {version_to}', content, count=1, flags=re.M)
+        content = re.sub(r'^## Unreleased[ \t]*$', version_heading, content, count=1, flags=re.M)
         with open(cl, 'w', encoding='utf-8') as f:
             f.write(content)
         print(f"Promoted Unreleased -> {version_to} in {cl}")

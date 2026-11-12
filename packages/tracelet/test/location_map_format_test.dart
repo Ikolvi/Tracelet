@@ -267,6 +267,17 @@ void main() {
       expect(coords.headingAccuracy, 44.0);
       expect(coords.altitudeAccuracy, 66.0);
     });
+
+    test('missing accuracies read as -1 (unknown), never 0 (#445)', () {
+      final coords = Coords.fromMap(const <String, Object?>{
+        'latitude': 1.0,
+        'longitude': 2.0,
+      });
+      expect(coords.speedAccuracy, -1.0);
+      expect(coords.headingAccuracy, -1.0);
+      expect(coords.altitudeAccuracy, -1.0);
+      expect(const Coords(latitude: 0, longitude: 0).altitudeAccuracy, -1.0);
+    });
   });
 
   // ========================================================================

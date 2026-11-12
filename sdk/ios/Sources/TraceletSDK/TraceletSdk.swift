@@ -448,29 +448,22 @@ public final class TraceletSdk {
         locationEngine.rebuildProcessor()
 
         if stateManager.enabled {
-            // #256: in SPEED/SMART modes the persisted trackingMode may be a
-            // TEMPORARY stationary sub-state (.geofences/.periodic) entered by the
-            // continuous motion-aware pipeline while stationary. Resuming it as a
-            // standalone startGeofences()/startPeriodic() tears down the
-            // motion-detection pipeline that switches back to continuous on
-            // movement. Resume the continuous pipeline instead; it re-enters the
-            // stationary sub-state on its own. Matches Android's completeReady().
-            let motionMode = configManager.getMotionDetectionMode()
-            if motionMode == .smart || motionMode == .speed {
-                TraceletLog.debug("[Tracelet] ready: Resuming motion-aware tracking")
+            // Resume the strategy the app started, in every motion mode. In
+            // SPEED/SMART the persisted trackingMode can be the stationary *pace*
+            // (#256), which is why these modes used to always call start() — and
+            // that turned a startPeriodic()/startGeofences() session continuous
+            // on the next ready() (#449). sessionTrackingMode is the strategy;
+            // start() still re-enters the stationary sub-state on its own.
+            switch stateManager.sessionTrackingMode {
+            case .continuous:
+                TraceletLog.debug("[Tracelet] ready: Resuming continuous tracking")
                 start(isResume: true)
-            } else {
-                switch stateManager.trackingMode {
-                case .continuous:
-                    TraceletLog.debug("[Tracelet] ready: Resuming continuous tracking")
-                    start(isResume: true)
-                case .periodic:
-                    TraceletLog.debug("[Tracelet] ready: Resuming periodic tracking")
-                    startPeriodic()
-                case .geofences:
-                    TraceletLog.debug("[Tracelet] ready: Resuming geofence tracking")
-                    _ = startGeofences(isResume: true)
-                }
+            case .periodic:
+                TraceletLog.debug("[Tracelet] ready: Resuming periodic tracking")
+                startPeriodic()
+            case .geofences:
+                TraceletLog.debug("[Tracelet] ready: Resuming geofence tracking")
+                _ = startGeofences(isResume: true)
             }
         }
 
@@ -509,6 +502,7 @@ public final class TraceletSdk {
         if !isResume && wasTracking {
             stateManager.enabled = true
             stateManager.trackingMode = .continuous
+            stateManager.sessionTrackingMode = .continuous
             // #318/#324: recorded even though nothing changed, because "I called
             // start() and nothing happened" is a real report and this is its
             // answer — the session was already live, so no fresh session
@@ -521,6 +515,7 @@ public final class TraceletSdk {
 
         stateManager.enabled = true
         stateManager.trackingMode = .continuous
+        stateManager.sessionTrackingMode = .continuous
         if !isResume {
             stateManager.isMoving = configManager.getIsMoving()
         }
@@ -917,6 +912,7 @@ public final class TraceletSdk {
 
         stateManager.enabled = true
         stateManager.trackingMode = .geofences
+        stateManager.sessionTrackingMode = .geofences
 
         locationEngine.speedSink = nil
         locationEngine.stop()
@@ -982,6 +978,7 @@ public final class TraceletSdk {
 
         stateManager.enabled = true
         stateManager.trackingMode = .periodic
+        stateManager.sessionTrackingMode = .periodic
         stateManager.isMoving = false
 
         locationEngine.startPeriodic()
@@ -1138,6 +1135,7 @@ public final class TraceletSdk {
                 // clean stop/start so the device doesn't silently revert to a
                 // stationary continuous default.
                 let currentMode = stateManager.trackingMode
+                let sessionMode = stateManager.sessionTrackingMode
                 let wasMoving = stateManager.isMoving
 
                 // #257: keep any Live Activity alive across the restart. iOS
@@ -1159,38 +1157,25 @@ public final class TraceletSdk {
 
                 stateManager.enabled = true
                 stateManager.trackingMode = currentMode
+                stateManager.sessionTrackingMode = sessionMode
                 stateManager.isMoving = wasMoving
 
                 // Rebuild the Rust processor so distanceFilter/elasticity/etc.
                 // changes take effect on the very first fix after restart.
                 locationEngine.rebuildProcessor()
 
-                // #256: in SPEED/SMART motion-detection modes the SDK runs a single
-                // continuous motion-aware pipeline that TEMPORARILY flips
-                // trackingMode to .geofences/.periodic while the device is
-                // stationary (switchToStationaryGeofencesForce /
-                // switchToStationaryPeriodicForce). That temporary value is NOT an
-                // explicitly-started standalone mode — rebuilding it via
-                // startPeriodic()/startGeofences() tears down the very
-                // motion-detection pipeline that is supposed to switch it back to
-                // continuous once the device moves again, stranding tracking in a
-                // standalone stationary mode. Restart the continuous pipeline
-                // instead; it re-enters the stationary sub-state on its own when
-                // still stationary.
-                let motionMode = configManager.getMotionDetectionMode()
-                let motionAware = motionMode == .smart || motionMode == .speed
-
-                if motionAware {
+                // #256: in SPEED/SMART the pipeline temporarily writes the
+                // stationary *pace* into trackingMode, so the restart reads the
+                // strategy instead — in every motion mode (#449). A continuous
+                // session restarts the continuous pipeline, which re-enters the
+                // stationary sub-state on its own.
+                switch sessionMode {
+                case .periodic:
+                    _ = startPeriodic()
+                case .geofences:
+                    _ = startGeofences(isResume: true)
+                default:
                     _ = start(isResume: true)
-                } else {
-                    switch currentMode {
-                    case .periodic:
-                        _ = startPeriodic()
-                    case .geofences:
-                        _ = startGeofences(isResume: true)
-                    default:
-                        _ = start(isResume: true)
-                    }
                 }
 
                 // Restart done — restore normal lifecycle and refresh the
@@ -1657,7 +1642,10 @@ public final class TraceletSdk {
             odometer: locationEngine.getOdometer(),
             eventType: record.eventType,
             eventPayload: record.eventPayload,
-            address: record.address
+            address: record.address,
+            altitudeAccuracy: record.altitudeAccuracy,
+            speedAccuracy: record.speedAccuracy,
+            headingAccuracy: record.headingAccuracy
         )
     }
 
@@ -1803,6 +1791,10 @@ public final class TraceletSdk {
         let speed = coords["speed"] as? Double ?? 0.0
         let heading = coords["heading"] as? Double ?? 0.0
         let altitude = coords["altitude"] as? Double ?? 0.0
+        // #445: stored as given; -1 already means "unknown" in the live map.
+        let altitudeAccuracy = coords["altitudeAccuracy"] as? Double
+        let speedAccuracy = coords["speedAccuracy"] as? Double
+        let headingAccuracy = coords["headingAccuracy"] as? Double
         let isMock = (params["mock"] as? Bool) ?? (params["is_mock"] as? Bool) ?? false
         let isMoving = params["is_moving"] as? Bool ?? false
         let activityMap = params["activity"] as? [String: Any]
@@ -1922,7 +1914,10 @@ public final class TraceletSdk {
                 timestampOverride: timestamp,
                 eventType: eventType,
                 eventPayload: eventPayload,
-                address: address
+                address: address,
+                altitudeAccuracy: altitudeAccuracy,
+                speedAccuracy: speedAccuracy,
+                headingAccuracy: headingAccuracy
             )
             enforceRetentionCaps(db)
             // Notify the sync plugin so it can trigger auto-sync
@@ -4131,8 +4126,11 @@ public final class TraceletSdk {
         }
 
         stateManager.didLaunchInBackground = true
-        let trackingMode = stateManager.trackingMode
-        TraceletLog.debug("[Tracelet] autoResumeTracking: trackingMode=\(trackingMode), resuming")
+        // The strategy, not the pace: a parked SPEED/SMART start() session has
+        // trackingMode = .geofences, and resuming that relaunched it as a
+        // standalone geofence session with no motion pipeline to wake it (#447).
+        let trackingMode = stateManager.sessionTrackingMode
+        TraceletLog.debug("[Tracelet] autoResumeTracking: trackingMode=\(trackingMode) (pace=\(stateManager.trackingMode)), resuming")
         // #318: the anchor entry for every killed-state investigation on iOS — it
         // records that the relaunch actually resumed, in which mode, and what
         // motion state it inherited. Its *absence* in a bug report is the finding:

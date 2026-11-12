@@ -54,6 +54,14 @@ pub struct SyncLocationRecord {
     /// active. Carried straight from the row rather than resolved at flush
     /// time, so a queued record uploads with the trip it belongs to.
     pub trip_id: Option<String>,
+    /// Vertical, speed and heading accuracy (#445); `None` for rows written
+    /// before they were stored, emitted as -1 ("unknown") in the payload.
+    #[uniffi(default = None)]
+    pub altitude_accuracy: Option<f64>,
+    #[uniffi(default = None)]
+    pub speed_accuracy: Option<f64>,
+    #[uniffi(default = None)]
+    pub heading_accuracy: Option<f64>,
 }
 
 #[derive(uniffi::Object)]
@@ -169,6 +177,10 @@ impl SyncManager {
                         "speed": r.speed,
                         "heading": r.heading,
                         "altitude": r.altitude,
+                        // #445: additive; -1 is the SDK-wide "unknown".
+                        "altitudeAccuracy": r.altitude_accuracy.unwrap_or(-1.0),
+                        "speedAccuracy": r.speed_accuracy.unwrap_or(-1.0),
+                        "headingAccuracy": r.heading_accuracy.unwrap_or(-1.0),
                     },
                     "is_mock": r.is_mock,
                     "is_moving": r.is_moving,
@@ -232,6 +244,10 @@ impl SyncManager {
                         "speed": r.speed,
                         "heading": r.heading,
                         "altitude": r.altitude,
+                        // #445: additive; -1 is the SDK-wide "unknown".
+                        "altitudeAccuracy": r.altitude_accuracy.unwrap_or(-1.0),
+                        "speedAccuracy": r.speed_accuracy.unwrap_or(-1.0),
+                        "headingAccuracy": r.heading_accuracy.unwrap_or(-1.0),
                     },
                     "is_mock": r.is_mock,
                         "is_moving": r.is_moving,
@@ -503,6 +519,9 @@ mod tests {
             trip_id: None,
             route_context: None,
             address: None,
+            altitude_accuracy: Some(3.8),
+            speed_accuracy: None,
+            heading_accuracy: Some(12.0),
         }
     }
 
@@ -561,6 +580,19 @@ mod tests {
         // Assert uuid is mapped correctly
         assert_eq!(location.get("uuid").and_then(Value::as_str), Some("test-uuid-1234"));
         assert_eq!(location.get("id").and_then(Value::as_i64), Some(1));
+    }
+
+    #[test]
+    fn test_build_sync_payload_includes_fix_accuracies() {
+        // #445: both shapes carry them; a missing value is -1, never absent or 0.
+        for batch in [true, false] {
+            let payload = SyncManager::build_sync_payload(&get_test_config(batch), &[get_test_record()]);
+            let loc = &payload["location"];
+            let coords = if batch { &loc[0]["coords"] } else { &loc["coords"] };
+            assert_eq!(coords["altitudeAccuracy"].as_f64(), Some(3.8), "batch={batch}");
+            assert_eq!(coords["speedAccuracy"].as_f64(), Some(-1.0), "batch={batch}");
+            assert_eq!(coords["headingAccuracy"].as_f64(), Some(12.0), "batch={batch}");
+        }
     }
 
     #[test]

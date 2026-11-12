@@ -148,7 +148,10 @@ class TraceletSyncSink(private val sdk: TraceletSdk) : LocationDataSink, Tracele
                 routeContext = it.routeContext,
                 // #402: carried from the row, not resolved at flush time.
                 tripId = it.tripId,
-                address = it.address  // #212: carry reverse-geocoded address into the default payload
+                address = it.address,  // #212: carry reverse-geocoded address into the default payload
+                altitudeAccuracy = it.altitudeAccuracy,  // #445
+                speedAccuracy = it.speedAccuracy,
+                headingAccuracy = it.headingAccuracy
             )
         }
         val interceptor = sdk.dartSyncInterceptor
