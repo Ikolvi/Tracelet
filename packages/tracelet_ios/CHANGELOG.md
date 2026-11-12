@@ -1,4 +1,4 @@
-## Unreleased
+## 3.8.10
 
 **FIX**: the pinned native SDK resumes the started strategy on `ready()`, `setConfig()` and killed-state relaunch in every motion mode; no Dart or plugin change ([#447](https://github.com/Ikolvi/Tracelet/issues/447), [#449](https://github.com/Ikolvi/Tracelet/issues/449)).
 

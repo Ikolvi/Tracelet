@@ -1,4 +1,4 @@
-## Unreleased
+## 3.8.10
 
 **FIX**: the pinned native SDK replaces a background-started foreground service when tracking starts from the foreground, so opening the app recovers location; no Dart or plugin change ([#436](https://github.com/Ikolvi/Tracelet/issues/436)).
 

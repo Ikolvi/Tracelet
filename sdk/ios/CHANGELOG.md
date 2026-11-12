@@ -1,4 +1,4 @@
-## Unreleased
+## 3.8.10
 
 **FIX**: `StateManager.sessionTrackingMode` records the strategy `start()`, `startPeriodic()` and `startGeofences()` started, separately from `trackingMode`, which `switchToStationaryGeofencesForce` rewrites as a pace. `ready()`, the `setConfig` restart and `autoResumeTracking` switch on it in every motion mode, replacing the SMART/SPEED special case (iOS side of [#447](https://github.com/Ikolvi/Tracelet/issues/447), [#449](https://github.com/Ikolvi/Tracelet/issues/449)).
 

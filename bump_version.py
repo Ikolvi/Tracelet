@@ -1,27 +1,20 @@
 import os
 import re
 
-version_from = "3.8.8"
-version_to = "3.8.9"
+version_from = "3.8.9"
+version_to = "3.8.10"
 
-# A release about things that quietly stopped working, and kept looking fine:
+# A fixes-only release:
 #
-#   - on Android a continuous location request could outlive stop() and drain
-#     the battery until process death (#432); a session parked by the
-#     killed-state engine reopened as PERIODIC without its service or motion
-#     detector, and a restart after process death declined itself (#428, #436);
-#     crash/fall detection got no accelerometer samples without
-#     ACTIVITY_RECOGNITION (#433)
-#   - on iOS 16.4+ continuous tracking was suspended in the background with the
-#     indicator off and no session (#435); the Rust frameworks shipped without
-#     dSYMs (#424)
-#   - auto-sync uploaded one batch per new fix and dropped triggers that arrived
-#     mid-upload, so the queue never drained (#437)
-#   - prod crash-model licenses never unlocked (#439)
-#   - the native trip manager missed SMART/SPEED transitions and changePace()
-#     (#442)
-#
-# Completed-trip summaries are now stored and synced as a `trips` array (#401).
+#   - stored locations kept dropping altitude/speed/heading accuracy, and Dart
+#     read the gap as 0 (#445)
+#   - on iOS, setConfig() during a moving session could crash in a
+#     ConfigManager getter (#446)
+#   - a parked SMART/SPEED session resumed as the wrong strategy after a reboot,
+#     a relaunch or ready() (#447, #449, Android and iOS), and on Android
+#     ready() dropped the stationary periodic check (#448)
+#   - on Android, reopening the app did not recover location after a
+#     background restart of the foreground service (#436)
 #
 # Entries were written under `## Unreleased` as the work landed; the promotion
 # logic below renames that heading rather than prepending a second block.

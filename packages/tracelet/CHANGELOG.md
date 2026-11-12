@@ -1,4 +1,4 @@
-## Unreleased
+## 3.8.10
 
 **FIX**: (Android) tracking recovers when the app is opened after a background restart. A foreground service that Android restarts in the background (for example after a low-memory kill) is denied location for its whole life, and opening the app reused that same service, so the notification stayed up and no fix arrived. Starting tracking with the app in the foreground now replaces it with a new service that Android allows to use location ([#436](https://github.com/Ikolvi/Tracelet/issues/436)).
 

@@ -1,4 +1,4 @@
-## Unreleased
+## 3.8.10
 
 **FIX**: (Android, iOS) the default sync payload's `coords` carries `altitudeAccuracy`, `speedAccuracy` and `headingAccuracy` (`-1` when unknown). Additive: no existing key changes ([#445](https://github.com/Ikolvi/Tracelet/issues/445)).
 

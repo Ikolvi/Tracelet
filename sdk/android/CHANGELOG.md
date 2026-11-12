@@ -1,4 +1,4 @@
-## Unreleased
+## 3.8.10
 
 **FIX**: `LocationService.start()` stops a running service whose record was created in the background (`serviceCreatedInForeground == false`) before starting it again when the app is in the foreground (`ProcessLifecycleOwner` ≥ STARTED), so Android creates a new, foreground-created record that is granted location ([#436](https://github.com/Ikolvi/Tracelet/issues/436)).
 
