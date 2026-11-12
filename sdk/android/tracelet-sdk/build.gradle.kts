@@ -1,6 +1,5 @@
 plugins {
     id("com.android.library")
-    id("org.jetbrains.kotlin.android")
     id("maven-publish")
     id("signing")
     id("com.vanniktech.maven.publish.base") version "0.37.0"
