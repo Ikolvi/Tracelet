@@ -359,8 +359,12 @@ class TraceletAndroidPlugin :
             }
         }
 
-        // Pigeon API: register on EVERY engine.
-        val apiHeadless = headlessService ?: HeadlessTaskService(context)
+        // Pigeon API: register on EVERY engine. A headless engine's host is
+        // bound to the service that spawned it, so the headers its isolate
+        // sends back complete that service's pending refresh.
+        val apiHeadless = headlessService
+            ?: HeadlessTaskService.spawningService
+            ?: HeadlessTaskService(context)
         TraceletHostApi.setUp(
             binding.binaryMessenger,
             // The HostApi is set up per messenger, so a call arriving on this
@@ -497,7 +501,10 @@ class TraceletAndroidPlugin :
             sdk.logger.debug("requestTokenRefresh: Engine detached, routing to HeadlessTaskService")
             // Note: If HeadlessTaskService doesn't have a specific token refresh method,
             // we can route it to headers refresh, as they are essentially the same headless callback layer.
-            return headlessService?.requestHeadersRefresh(10000L) ?: false
+            return headlessService?.requestHeadersRefresh(
+                10000L,
+                HeadlessTaskService.HEADERS_REASON_TOKEN_REFRESH,
+            ) ?: false
         }
         val handler = Handler(Looper.getMainLooper())
         val latch = java.util.concurrent.CountDownLatch(1)
@@ -522,7 +529,10 @@ class TraceletAndroidPlugin :
         if (!isEngineAttached) {
             if (headlessService?.isRegistered() != true) return false
             sdk.logger.debug("requestFreshHeaders: Engine detached, routing to HeadlessTaskService")
-            return headlessService?.requestHeadersRefresh(10000L) ?: false
+            return headlessService?.requestHeadersRefresh(
+                10000L,
+                HeadlessTaskService.HEADERS_REASON_FRESH_HEADERS,
+            ) ?: false
         }
         val handler = Handler(Looper.getMainLooper())
         val latch = java.util.concurrent.CountDownLatch(1)
