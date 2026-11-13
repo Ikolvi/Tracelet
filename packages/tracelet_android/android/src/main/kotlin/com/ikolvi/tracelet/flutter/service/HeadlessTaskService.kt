@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import com.ikolvi.tracelet.flutter.applyDynamicHeaders
 import com.ikolvi.tracelet.sdk.TraceletSdk
 import com.ikolvi.tracelet.sdk.ConfigManager
 import com.ikolvi.tracelet.sdk.HeadersRefreshable
@@ -55,6 +56,31 @@ class HeadlessTaskService(
         // instance singletons (like dartSyncInterceptor) when a headless engine boots (Issue 136).
         @JvmStatic
         var isSpawningHeadlessEngine = false
+
+        /**
+         * The service whose spawn is inside the `FlutterEngine` constructor,
+         * set alongside [isSpawningHeadlessEngine]. Plugin auto-registration
+         * attaches `TraceletAndroidPlugin` to the new engine from inside that
+         * constructor, and the attach binds the engine's Pigeon host API to
+         * this service. A `setDynamicHeaders()` from the isolate then
+         * completes *this* service's pending [requestHeadersRefresh] — the
+         * plugin, the boot-time sync interceptor and the event bridge each own
+         * a different instance.
+         */
+        @Volatile
+        internal var spawningService: HeadlessTaskService? = null
+
+        /**
+         * `event['reason']` of a `headersRefresh` requested before a sync
+         * batch: the callback may return headers it already holds.
+         */
+        const val HEADERS_REASON_FRESH_HEADERS = "freshHeaders"
+
+        /**
+         * `event['reason']` of a `headersRefresh` requested after the server
+         * rejected the current headers (401): the callback must refresh.
+         */
+        const val HEADERS_REASON_TOKEN_REFRESH = "tokenRefresh"
 
         /**
          * How long a spawn may take before it is declared stalled and retried
@@ -125,7 +151,7 @@ class HeadlessTaskService(
     /** Events discarded because the queue hit [MAX_PENDING_EVENTS]. */
     private val droppedEvents = AtomicLong(0)
 
-    /** Latch signaled when headless Dart callback calls setDynamicHeaders. */
+    /** Latch signaled once the headless Dart callback's headers are applied. */
     @Volatile
     private var headersRefreshLatch: CountDownLatch? = null
 
@@ -229,12 +255,18 @@ class HeadlessTaskService(
      * Dispatches a `headersRefresh` event to the Dart headless callback
      * registered via `registerHeadlessHeadersCallback`. The Dart callback
      * is expected to refresh the token and call `Tracelet.setDynamicHeaders()`,
-     * which routes back to the native side and signals this method to return.
+     * which routes back to the native side and, once the headers are applied,
+     * signals this method to return ([onDynamicHeadersApplied]).
      *
      * @param timeoutMs Maximum time to wait for the Dart callback to respond.
+     * @param reason Sent as `event['reason']` when non-null:
+     *   [HEADERS_REASON_FRESH_HEADERS] or [HEADERS_REASON_TOKEN_REFRESH].
      * @return `true` if headers were refreshed within the timeout.
      */
-    override fun requestHeadersRefresh(timeoutMs: Long): Boolean {
+    override fun requestHeadersRefresh(timeoutMs: Long): Boolean =
+        requestHeadersRefresh(timeoutMs, reason = null)
+
+    fun requestHeadersRefresh(timeoutMs: Long, reason: String?): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val dispatchId = prefs.getLong("headlessHeaders_dispatchId", -1L)
         val registrationId = prefs.getLong("headlessHeaders_registrationId", -1L)
@@ -256,7 +288,7 @@ class HeadlessTaskService(
         // Dispatch the headersRefresh event using the headers-specific dispatch ID
         val event = mapOf(
             "name" to "headersRefresh",
-            "event" to emptyMap<String, Any?>(),
+            "event" to if (reason == null) emptyMap() else mapOf("reason" to reason),
             "dispatchId" to dispatchId,
         )
 
@@ -278,6 +310,17 @@ class HeadlessTaskService(
         } finally {
             headersRefreshLatch = null
         }
+    }
+
+    /**
+     * Completes a pending [requestHeadersRefresh]. Called after the headless
+     * isolate's `Tracelet.setDynamicHeaders()` has been applied, from either
+     * route it can take: the Pigeon host API registered on this service's
+     * engine (the one the Dart platform uses), or the legacy
+     * `com.tracelet/methods` handler.
+     */
+    fun onDynamicHeadersApplied() {
+        headersRefreshLatch?.countDown()
     }
 
     /**
@@ -421,10 +464,12 @@ class HeadlessTaskService(
                 spawnStage = SpawnStage.LOADER_READY
 
                 isSpawningHeadlessEngine = true
+                spawningService = this
                 val engine = try {
                     FlutterEngine(context)
                 } finally {
                     isSpawningHeadlessEngine = false
+                    spawningService = null
                 }
 
                 headlessMethodChannel = MethodChannel(engine.dartExecutor.binaryMessenger, CHANNEL_NAME)
@@ -447,10 +492,10 @@ class HeadlessTaskService(
                     }
                 }
 
-                // Handle setDynamicHeaders from headless Dart callback.
-                // When the Dart headless callback calls Tracelet.setDynamicHeaders(),
-                // it goes through com.tracelet/methods. We handle it here so the
-                // headless engine can update headers and signal the refresh latch.
+                // Legacy route for setDynamicHeaders from the headless Dart
+                // callback. The Pigeon platform sends it to the host API
+                // instead (see TraceletHostApiImpl.setDynamicHeaders); both
+                // apply the headers the same way and only then signal the latch.
                 val methodsChannel = MethodChannel(engine.dartExecutor.binaryMessenger, METHODS_CHANNEL_NAME)
                 methodsChannel.setMethodCallHandler { call, result ->
                     when (call.method) {
@@ -459,9 +504,9 @@ class HeadlessTaskService(
                             val headers = (call.arguments as? Map<String, Any?>)
                                 ?.mapValues { it.value?.toString() ?: "" }
                                 ?: emptyMap()
-                            configManager?.setDynamicHeaders(headers)
-                            headersRefreshLatch?.countDown()
-                            result.success(true)
+                            val applied = applyDynamicHeaders(TraceletSdk.getInstance(context), headers)
+                            if (applied) onDynamicHeadersApplied()
+                            result.success(applied)
                         }
                         "setSyncBodyResponse" -> {
                             synchronized(syncBodyLock) {

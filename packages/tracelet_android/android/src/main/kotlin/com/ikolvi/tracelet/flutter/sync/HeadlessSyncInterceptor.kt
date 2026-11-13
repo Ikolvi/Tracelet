@@ -32,8 +32,7 @@ class HeadlessSyncInterceptor(context: Context) : DartSyncInterceptor {
 
     // One shared service for the whole process so a header refresh and the
     // subsequent body build within a single sync reuse the same background
-    // engine and its response latches line up. ConfigManager is required so the
-    // headless `setDynamicHeaders` call persists the refreshed token.
+    // engine and its response latches line up.
     private val headless: HeadlessTaskService by lazy {
         HeadlessTaskService(appContext, ConfigManager.getInstance(appContext))
     }
@@ -54,11 +53,14 @@ class HeadlessSyncInterceptor(context: Context) : DartSyncInterceptor {
         )
 
     override fun requestFreshHeaders(): Boolean =
-        headless.requestHeadersRefresh(TIMEOUT_MS)
+        headless.requestHeadersRefresh(TIMEOUT_MS, HeadlessTaskService.HEADERS_REASON_FRESH_HEADERS)
 
-    /** Same headless callback layer as a header refresh (post-401). */
+    /**
+     * Same headless callback layer as a header refresh (post-401), with a
+     * reason that tells the callback the current headers were rejected.
+     */
     override fun requestTokenRefresh(): Boolean =
-        headless.requestHeadersRefresh(TIMEOUT_MS)
+        headless.requestHeadersRefresh(TIMEOUT_MS, HeadlessTaskService.HEADERS_REASON_TOKEN_REFRESH)
 
     private companion object {
         const val TIMEOUT_MS = 10_000L

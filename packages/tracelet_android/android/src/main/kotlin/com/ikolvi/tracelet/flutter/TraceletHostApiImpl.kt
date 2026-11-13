@@ -702,8 +702,13 @@ class TraceletHostApiImpl(
 
     override fun setDynamicHeaders(headers: Map<String?, String?>, callback: (Result<Boolean>) -> Unit) {
         try {
-            sdk.setDynamicHeaders(headers as Map<String, String>)
-            callback(Result.success(true))
+            val applied = applyDynamicHeaders(sdk, headers as Map<String, String>)
+            // The Dart platform sends a headless callback's headers here, not
+            // through `com.tracelet/methods`, so this is what must complete the
+            // header refresh the owning service is blocked on — and only once
+            // the headers are in place for the retry to read.
+            if (applied) headlessService.onDynamicHeadersApplied()
+            callback(Result.success(applied))
         } catch (e: Exception) { callback(Result.failure(e)) }
     }
 
