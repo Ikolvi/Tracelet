@@ -63,7 +63,10 @@ class _Issue460CardState extends State<Issue460Card>
             isMoving: true,
             motionDetectionMode: MotionDetectionMode.speed,
             stationaryTrackingMode: StationaryTrackingMode.continuous,
-            stationaryPeriodicAccuracy: DesiredAccuracy.low,
+            // Keep GPS available in both paces so the delivery check also
+            // works on devices without network location. The native tests
+            // separately verify that accuracy drops when configured (#460).
+            stationaryPeriodicAccuracy: DesiredAccuracy.high,
           ),
           persistence: PersistenceConfig(persistMode: PersistMode.none),
           http: HttpConfig(autoSync: false),
@@ -123,8 +126,8 @@ class _Issue460CardState extends State<Issue460Card>
     description:
         'Checks fresh location events before parking, while stationary, and '
         'after returning to the moving pace. Leave the phone where it can '
-        'receive a location. The card sets the pace directly and does not '
-        'measure automatic wake latency or power use.',
+        'receive GPS. The card sets the pace directly and counts '
+        'location events in each pace.',
     status: status,
     running: running,
     onRun: _run,
