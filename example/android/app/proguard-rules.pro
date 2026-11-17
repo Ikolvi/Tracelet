@@ -16,3 +16,8 @@
 
 -dontwarn java.awt.**
 -dontwarn com.sun.jna.**
+
+# The Example's #459 probe sends controlled fixes through the native engine.
+-keepclassmembers class com.ikolvi.tracelet.sdk.location.LocationEngine {
+    private void onLocationReceived(android.location.Location, java.lang.String, boolean);
+}

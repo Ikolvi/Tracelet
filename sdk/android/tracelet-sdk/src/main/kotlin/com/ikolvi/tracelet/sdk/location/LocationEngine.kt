@@ -1642,13 +1642,8 @@ class LocationEngine(
         // inside `maxImpliedSpeed` (80 m/s), so nothing discards it. A Doppler
         // reading is a real measurement and is kept; the derivation is dropped,
         // for this one fix only, which is what "no speed" already means here.
-        val effectiveSpeed = if (location.hasSpeed() && location.speed > 0) {
-            location.speed.toDouble()
-        } else if (isStartupFix) {
-            0.0
-        } else {
-            computedSpeed
-        }
+        val reportedSpeed = speed.takeIf { location.hasSpeed() && it.isFinite() && it >= 0.0 }
+        val effectiveSpeed = reportedSpeed ?: if (isStartupFix) 0.0 else computedSpeed
 
         // Feed the transport classifier from the raw stream — see [rawSpeedSink].
         rawSpeedSink?.invoke(effectiveSpeed)
@@ -1722,7 +1717,8 @@ class LocationEngine(
         // the anchor — 8 m/s is well above `speedMovingThreshold` (1.5 m/s) —
         // which is the silent override of a committed pace that #344 and
         // StartCommittedPaceTest exist to prevent (#385).
-        val motionSpeed = if (isStartupFix) effectiveSpeed else result.effectiveSpeed
+        // The processor can still derive speed from its anchor. Preserve a measured stop (#459).
+        val motionSpeed = if (isStartupFix || reportedSpeed == 0.0) effectiveSpeed else result.effectiveSpeed
 
         // Only a *current* fix may tell the pace machine how fast we are going.
         //
@@ -1790,7 +1786,7 @@ class LocationEngine(
                 val tuning = locationProcessor?.currentTuning()
                 TraceletLog.debug(
                     "Location filtered by Rust processor: ${result.reason} " +
-                        "(speed=${"%.2f".format(result.effectiveSpeed)} m/s fed to speed motion, " +
+                        "(speed=${"%.2f".format(motionSpeed)} m/s fed to speed motion, " +
                         "acc=${"%.1f".format(result.accuracy)}m, " +
                         "moved=${"%.1f".format(result.distance)}m vs " +
                         "gate=${"%.1f".format(result.effectiveDistanceFilter)}m, " +
@@ -1847,8 +1843,7 @@ class LocationEngine(
         state.lastLocationTime = location.time
 
         val actualEvent = if (isForcedAccept) "motionchange" else event
-        // Identical to result.effectiveSpeed for every fix but the anchor,
-        // which reports what was measured rather than what was derived (#385).
+        // Anchors and measured stops keep the platform speed (#385, #459).
         val enriched = enrichLocation(location, actualEvent, motionSpeed, smoothedLat, smoothedLng)
 
         fun dispatch(finalEnriched: Map<String, Any?>) {

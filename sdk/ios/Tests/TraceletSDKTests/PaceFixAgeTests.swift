@@ -54,12 +54,14 @@ final class PaceFixAgeTests: XCTestCase {
         return (engine, recorder)
     }
 
-    private func fix(at timestamp: Date) -> CLLocation {
+    private func fix(at timestamp: Date, latitude: Double = 10.787929, speed: Double = -1) -> CLLocation {
         CLLocation(
-            coordinate: CLLocationCoordinate2D(latitude: 10.787929, longitude: 76.684183),
+            coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: 76.684183),
             altitude: 0,
             horizontalAccuracy: 5,
             verticalAccuracy: 5,
+            course: -1,
+            speed: speed,
             timestamp: timestamp
         )
     }
@@ -99,6 +101,32 @@ final class PaceFixAgeTests: XCTestCase {
         // Not an arbitrary bound: it pins that the age is the *fix's* age and
         // not the time since the engine happened to be handed it.
         XCTAssertEqual(age ?? 0, 300, accuracy: 5)
+    }
+
+    func testMeasuredZeroSurvivesCoordinateDrift() {
+        assertSpeeds(reported: 0, expected: 0)
+    }
+
+    func testMissingSpeedStillUsesDisplacement() {
+        assertSpeeds(reported: -1, expected: 3)
+    }
+
+    private func assertSpeeds(reported: Double, expected: Double) {
+        let (engine, recorder) = makeEngine()
+        var rawSpeeds: [Double] = []
+        var paceSpeeds: [Double] = []
+        engine.rawSpeedSink = { rawSpeeds.append($0) }
+        engine.speedSink = { paceSpeeds.append($0) }
+
+        let now = Date()
+        engine.locationManager(recorder, didUpdateLocations: [fix(at: now.addingTimeInterval(-1))])
+        engine.locationManager(
+            recorder, didUpdateLocations: [fix(at: now, latitude: 10.787956, speed: reported)])
+
+        XCTAssertEqual(rawSpeeds.count, 2)
+        XCTAssertEqual(paceSpeeds.count, 2)
+        XCTAssertEqual(rawSpeeds.last ?? -1, expected, accuracy: 0.1)
+        XCTAssertEqual(paceSpeeds.last ?? -1, expected, accuracy: 0.1)
     }
 
     /// The gate's constant is shared rather than duplicated, so the tremor

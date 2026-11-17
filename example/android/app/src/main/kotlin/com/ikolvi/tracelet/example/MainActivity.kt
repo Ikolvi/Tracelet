@@ -2,6 +2,7 @@ package com.ikolvi.tracelet.example
 
 import android.content.Intent
 import android.util.Base64
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -186,6 +187,13 @@ class MainActivity : FlutterActivity() {
                         )
                     } catch (e: Exception) {
                         result.error("FG_GUARD_ERROR", e.message, null)
+                    }
+                } else if (call.method == "debugIssue459ReportedSpeed") {
+                    try {
+                        result.success(probeIssue459(applicationContext))
+                    } catch (e: Exception) {
+                        Log.e("TraceletExample", "Issue #459 speed probe failed", e)
+                        result.error("ISSUE_459_ERROR", e.message, e.stackTraceToString())
                     }
                 } else if (call.method == "debugIssue288EffectiveThresholds") {
                     // #288: report what the native SDK is *actually* using for the
