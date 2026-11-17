@@ -1733,9 +1733,8 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         // inside `maxImpliedSpeed` (80 m/s), so nothing discards it. A Doppler
         // reading is a real measurement and is kept; the derivation is dropped,
         // for this one fix only, which is what "no speed" already means here.
-        let effectiveSpeed = (location.speed > 0)
-            ? location.speed
-            : (isStartupFix ? 0.0 : computedSpeed)
+        let reportedSpeed = location.speed.isFinite && location.speed >= 0 ? location.speed : nil
+        let effectiveSpeed = reportedSpeed ?? (isStartupFix ? 0.0 : computedSpeed)
 
         // Feed the transport classifier from the raw stream — see `rawSpeedSink`.
         rawSpeedSink?(effectiveSpeed)
@@ -1807,7 +1806,8 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         // the anchor — 8 m/s is well above `speedMovingThreshold` (1.5 m/s) —
         // which is the silent override of a committed pace #344 exists to
         // prevent (#385).
-        let motionSpeed = isStartupFix ? effectiveSpeed : result.effectiveSpeed
+        // The processor can still derive speed from its anchor. Preserve a measured stop (#459).
+        let motionSpeed = isStartupFix || reportedSpeed == 0.0 ? effectiveSpeed : result.effectiveSpeed
         // Only a *current* fix may tell the pace machine how fast we are going.
         //
         // Core Location delivers a cached fix as soon as updates restart, and
@@ -1887,7 +1887,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
                 format: "[Tracelet] Location filtered by Rust processor: %@ "
                     + "(speed=%.2f m/s fed to speed motion, acc=%.1fm, "
                     + "moved=%.1fm vs gate=%.1fm, anchor=%.0fs, thresholds df=%.1f/acc=%d/spd=%d)",
-                result.reason ?? "unknown", result.effectiveSpeed, result.accuracy,
+                result.reason ?? "unknown", motionSpeed, result.accuracy,
                 result.distance, result.effectiveDistanceFilter, result.anchorAgeSeconds,
                 currentTuning()?.distanceFilter ?? -1,
                 currentTuning()?.trackingAccuracyThreshold ?? -1,
