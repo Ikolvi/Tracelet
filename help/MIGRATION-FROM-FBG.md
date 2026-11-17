@@ -207,7 +207,7 @@ triggerActivities                      → motion.activityTypes (Set<ActivityTyp
 - `motion.stillThreshold` — Accelerometer-only tuning (default 0.4)
 - `motion.stillSampleCount` — Accelerometer-only tuning (default 25)
 - `motion.speedMovingThreshold` / `motion.speedStationaryDelay` / `motion.speedWakeConfirmCount` — speed-mode tuning (used by `.speed` / `.smart`)
-- `motion.stationaryTrackingMode` / `motion.stationaryPeriodicInterval` / `motion.stationaryPeriodicAccuracy` — what to do once stationary (periodic fixes vs geofences)
+- `motion.stationaryTrackingMode` / `motion.stationaryPeriodicInterval` / `motion.stationaryPeriodicAccuracy` — what to do once stationary (periodic fixes, geofences, or continuous updates at the stationary accuracy)
 
 ### Application → `AppConfig`
 

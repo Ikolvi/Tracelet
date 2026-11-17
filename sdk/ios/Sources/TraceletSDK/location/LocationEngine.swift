@@ -51,6 +51,9 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// key off, so they cannot narrate a transition that did not happen.
     public private(set) var isContinuousStreaming = false
 
+    /// The stationary pace can keep the same Core Location stream open.
+    private(set) var isStationaryContinuousTracking = false
+
     /// When `true`, `start()`/`stop()` leave the Live Activity untouched.
     ///
     /// A `setConfig()` that changes a restart-sensitive key rebuilds the
@@ -562,6 +565,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         // with it: it belongs to the session that took the anchor.
         startupFixPending = false
         forceAcceptNextFilteredLocation = false
+        isStationaryContinuousTracking = false
         guard isTracking else { return }
         isTracking = false
         isPeriodicTracking = false
@@ -624,6 +628,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// or rely on `BGAppRefreshTask` as a supplementary wakeup mechanism.
     public func startPeriodic() {
         guard !isPeriodicTracking else { return }
+        isStationaryContinuousTracking = false
         isPeriodicTracking = true
         isTracking = true // so delegate callbacks are processed
         isContinuousStreaming = false
@@ -672,6 +677,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// remain active.
     public func switchToStationaryPeriodic() {
         TraceletLog.debug("[Tracelet] switchToStationaryPeriodic: stopping continuous, starting periodic timer")
+        isStationaryContinuousTracking = false
         announceContinuousStop(becoming: "stationary periodic")
         locationManager.stopUpdatingLocation()
         cancelGpsLossTimer()
@@ -689,6 +695,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// active. Background sessions remain active.
     public func switchToStationaryGeofences() {
         TraceletLog.debug("[Tracelet] switchToStationaryGeofences: stopping continuous, geofences remain active")
+        isStationaryContinuousTracking = false
         announceContinuousStop(becoming: "stationary geofences")
         locationManager.stopUpdatingLocation()
         cancelGpsLossTimer()
@@ -697,11 +704,35 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         // remains active. isTracking stays true for delegate callbacks.
     }
 
-    /// Switch from stationary (periodic or geofences) back to continuous tracking.
+    /// Switch from a stationary pace back to the moving continuous request.
     ///
-    /// Stops the periodic timer and resumes `startUpdatingLocation()`.
-    /// Background sessions remain active.
+    /// A stationary continuous stream only needs an in-place accuracy update.
     public func switchToContinuous() {
+        if isStationaryContinuousTracking {
+            setStationaryContinuousTracking(false)
+            return
+        }
+        resumeContinuousUpdates()
+    }
+
+    // Update the Core Location request in place so parking never tears down the stream (#460).
+    func setStationaryContinuousTracking(_ stationary: Bool) {
+        let changed = isStationaryContinuousTracking != stationary
+        isStationaryContinuousTracking = stationary
+        if isContinuousStreaming {
+            applyLocationProviderOptions()
+        } else if isTracking {
+            resumeContinuousUpdates()
+        } else {
+            start()
+        }
+        if changed && isContinuousStreaming {
+            let pace = stationary ? "stationary" : "moving"
+            TraceletLog.lifecycle("location stream: continuous \(pace) — requested accuracy=\(requestedProviderAccuracy)")
+        }
+    }
+
+    private func resumeContinuousUpdates() {
         TraceletLog.debug("[Tracelet] switchToContinuous: stopping periodic, resuming continuous")
         stopPeriodicTimer()
         isPeriodicTracking = false
@@ -754,7 +785,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
         armSilenceWatchdog()
         TraceletLog.lifecycle(String(
             format: "location stream: continuous updates starting — accuracy=%d distanceFilter=%.1fm%@",
-            runtimeDesiredAccuracy ?? budgetDesiredAccuracy ?? configManager.getDesiredAccuracy(),
+            requestedProviderAccuracy,
             runtimeDistanceFilter ?? budgetDistanceFilter ?? configManager.getDistanceFilter(),
             resuming ? " (resuming from a stationary park)" : ""))
     }
@@ -1155,7 +1186,7 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
                 + "delivering nothing — this is not the filter rejecting fixes (#407).",
             silentFor,
             lastCallbackAt == nil ? " since the stream started" : "",
-            runtimeDesiredAccuracy ?? budgetDesiredAccuracy ?? configManager.getDesiredAccuracy(),
+            requestedProviderAccuracy,
             Double(configManager.getLocationUpdateInterval()) / 1000.0,
             runtimeDistanceFilter ?? budgetDistanceFilter ?? configManager.getDistanceFilter()))
     }
@@ -1201,8 +1232,20 @@ public final class LocationEngine: NSObject, CLLocationManagerDelegate {
     /// this separate from ConfigManager and LocationProcessor lets callers
     /// throttle GPS acquisition temporarily without resetting track/odometer
     /// continuity or changing which delivered points are accepted.
+    private var requestedProviderAccuracy: Int {
+        if let runtimeDesiredAccuracy { return runtimeDesiredAccuracy }
+        let configuredAccuracy = budgetDesiredAccuracy ?? configManager.getDesiredAccuracy()
+        guard isStationaryContinuousTracking,
+              let stationaryAccuracy = TraceletDesiredAccuracy(rawValue: configManager.getStationaryPeriodicAccuracy()) else {
+            return configuredAccuracy
+        }
+        let normalAccuracy = TraceletDesiredAccuracy(rawValue: configuredAccuracy) ?? .high
+        // Entering the stationary pace must not undo an already coarser request.
+        return max(normalAccuracy.rawValue, stationaryAccuracy.rawValue)
+    }
+
     private func applyLocationProviderOptions() {
-        let accuracy = runtimeDesiredAccuracy ?? budgetDesiredAccuracy ?? configManager.getDesiredAccuracy()
+        let accuracy = requestedProviderAccuracy
         let avoidsSuspension = needsSuspensionSafeProviderOptions
         switch accuracy {
         case 0: locationManager.desiredAccuracy = kCLLocationAccuracyBest

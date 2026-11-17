@@ -552,8 +552,18 @@ public final class TraceletSdk {
         }
 
         if stateManager.isMoving {
-            locationEngine.start()
+            if locationEngine.isStationaryContinuousTracking {
+                locationEngine.switchToContinuous()
+            } else {
+                locationEngine.start()
+            }
             startBackgroundActivitySessionIfNeeded()
+        } else if usesStationaryContinuousTracking {
+            _ = changePace(false)
+            if stateManager.enabled {
+                locationEngine.setStationaryContinuousTracking(true)
+                startBackgroundActivitySessionIfNeeded()
+            }
         } else {
             _ = changePace(false)
             // A session that starts stationary runs no stream — that is the
@@ -3026,6 +3036,12 @@ public final class TraceletSdk {
 
     // MARK: - Private: Motion State
 
+    private var usesStationaryContinuousTracking: Bool {
+        let motionMode = configManager.getMotionDetectionMode()
+        return (motionMode == .speed || motionMode == .smart)
+            && configManager.getStationaryTrackingMode() == .continuous
+    }
+
     private func handleMotionStateChange(_ isMoving: Bool) {
         // A CMMotionActivity callback can land after stop() — never let it
         // restart tracking (changePace/coordinator can start GPS again).
@@ -3126,18 +3142,17 @@ public final class TraceletSdk {
         guard stateManager.trackingMode == .continuous else { return }
 
         let wantsStationary = !stateManager.isMoving
-        let isStationary = locationEngine.isPeriodicTracking
+        let isStationary = locationEngine.isPeriodicTracking || locationEngine.isStationaryContinuousTracking
         guard wantsStationary != isStationary else { return }
 
         if wantsStationary {
             TraceletLog.lifecycle(
                 "motion: engine was still tracking continuously while the "
-                    + "committed state is stationary — switching to stationary "
-                    + "periodic (#319)")
+                    + "committed state is stationary — applying the stationary pace (#319)")
             switchToStationaryPeriodicForce()
         } else {
             TraceletLog.lifecycle(
-                "motion: engine was in stationary periodic while the committed "
+                "motion: engine was in the stationary pace while the committed "
                     + "state is moving — resuming continuous (#319)")
             switchToContinuousForce()
         }
@@ -4476,7 +4491,7 @@ public final class TraceletSdk {
         }
 
         TraceletLog.debug(String(format: "[Tracelet] Speed motion mode started (threshold=%.1f, delay=%ds, stationary=%@)",
-              smm.speedMovingThreshold, smm.speedStationaryDelay, smm.stationaryTrackingMode == .geofences ? "geofences" : "periodic"))
+              smm.speedMovingThreshold, smm.speedStationaryDelay, String(describing: smm.stationaryTrackingMode)))
 
         // Sync stateManager.isMoving with restored speed motion state if not forcing
         if !forceMoving {
@@ -4512,8 +4527,8 @@ public final class TraceletSdk {
             smartMotionCoordinator.onSpeedStateChange(isMoving: smm.state != .stationary)
         }
 
-        // If we're resuming in stationary state, switch immediately
-        if smm.state == .stationary {
+        // start() applies the stationary continuous request after wiring motion detection.
+        if smm.state == .stationary && smm.stationaryTrackingMode != .continuous {
             if smm.stationaryTrackingMode == .geofences {
                 locationEngine.switchToStationaryGeofences()
             } else {
@@ -4582,15 +4597,20 @@ extension TraceletSdk: SpeedMotionDelegate {
 
     public func switchToStationaryPeriodicForce() {
         BackgroundTaskHelper.shared.run("speedSwitchStationary") { [self] in
-            // A queued speed/smart callback can execute after stop() — never
-            // restart the stationary periodic timer once tracking is stopped.
+            // A queued speed/smart callback can execute after stop().
             guard stateManager.enabled else {
                 logger.debug("switchToStationaryPeriodicForce ignored — tracking is stopped")
                 return
             }
             stateManager.isMoving = false
-            locationEngine.switchToStationaryPeriodic()
-            backgroundActivitySessionManager.stop()
+            // The coordinator uses its non-geofence stationary intent for both modes.
+            if usesStationaryContinuousTracking && stateManager.trackingMode == .continuous {
+                locationEngine.setStationaryContinuousTracking(true)
+                startBackgroundActivitySessionIfNeeded()
+            } else {
+                locationEngine.switchToStationaryPeriodic()
+                backgroundActivitySessionManager.stop()
+            }
 
             // Emit motionchange event for backward compatibility
             let lastLoc = locationEngine.getLastLocation()

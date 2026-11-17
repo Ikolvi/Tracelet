@@ -5,6 +5,9 @@ import androidx.test.core.app.ApplicationProvider
 import com.ikolvi.tracelet.sdk.ConfigManager
 import com.ikolvi.tracelet.sdk.StateManager
 import com.ikolvi.tracelet.sdk.TraceletSdk
+import com.ikolvi.tracelet.sdk.model.SpeedMotionState
+import com.ikolvi.tracelet.sdk.model.StationaryTrackingMode
+import com.ikolvi.tracelet.sdk.model.TrackingMode
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -16,6 +19,7 @@ import org.mockito.kotlin.verify
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -94,6 +98,26 @@ class LocationServiceSmartBootTest {
             LocationService.bootMotionDetector == null,
             "bootMotionDetector must not be created when tracking was explicitly stopped",
         )
+    }
+
+    @Test
+    fun `smart boot restores the stationary continuous stream`() {
+        config.setConfig(mapOf("stationaryTrackingMode" to StationaryTrackingMode.CONTINUOUS.value))
+        state.sessionTrackingMode = TrackingMode.CONTINUOUS
+        state.speedMotionState = SpeedMotionState.STATIONARY
+
+        val intent = android.content.Intent(context, LocationService::class.java).apply {
+            action = LocationService.ACTION_START
+            putExtra("boot_start", true)
+        }
+        serviceController.create().withIntent(intent).startCommand(0, 1)
+
+        val engine = assertNotNull(LocationService.bootLocationEngine)
+        assertTrue(engine.isTracking)
+        assertTrue(engine.isStationaryContinuous)
+        assertFalse(state.isMoving)
+        assertEquals(TrackingMode.CONTINUOUS, state.trackingMode)
+        assertFalse(LocationService.isStationaryTimerActive())
     }
 
     @Test

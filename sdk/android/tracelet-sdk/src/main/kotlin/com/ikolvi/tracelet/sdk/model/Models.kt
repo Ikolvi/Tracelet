@@ -313,11 +313,13 @@ enum class SpeedMotionState(val value: Int) {
  */
 enum class StationaryTrackingMode(val value: Int) {
     PERIODIC(0),
-    GEOFENCES(1);
+    GEOFENCES(1),
+    CONTINUOUS(2);
 
     companion object {
         fun fromInt(value: Int): StationaryTrackingMode = when (value) {
             GEOFENCES.value -> GEOFENCES
+            CONTINUOUS.value -> CONTINUOUS
             else -> PERIODIC
         }
     }

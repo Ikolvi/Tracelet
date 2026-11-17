@@ -14,6 +14,7 @@ class AndroidConfig {
   /// `setConfig()` does not overwrite the persisted value (#321).
   const AndroidConfig({
     int? locationUpdateInterval,
+    int? stationaryLocationUpdateInterval,
     int? fastestLocationUpdateInterval,
     int? deferTime,
     bool? allowIdenticalLocations,
@@ -27,7 +28,13 @@ class AndroidConfig {
     bool? scheduleUseAlarmManager,
     bool? releaseWakelockWhenStationary,
     this.foregroundService = const ForegroundServiceConfig(),
-  }) : _locationUpdateInterval = locationUpdateInterval,
+  }) : assert(
+         stationaryLocationUpdateInterval == null ||
+             stationaryLocationUpdateInterval >= 0,
+         'stationaryLocationUpdateInterval must be non-negative',
+       ),
+       _locationUpdateInterval = locationUpdateInterval,
+       _stationaryLocationUpdateInterval = stationaryLocationUpdateInterval,
        _fastestLocationUpdateInterval = fastestLocationUpdateInterval,
        _deferTime = deferTime,
        _allowIdenticalLocations = allowIdenticalLocations,
@@ -43,6 +50,10 @@ class AndroidConfig {
     return AndroidConfig(
       locationUpdateInterval: map.containsKey('locationUpdateInterval')
           ? ensureInt(map['locationUpdateInterval'], fallback: 1000)
+          : null,
+      stationaryLocationUpdateInterval:
+          map.containsKey('stationaryLocationUpdateInterval')
+          ? ensureInt(map['stationaryLocationUpdateInterval'], fallback: 0)
           : null,
       fastestLocationUpdateInterval:
           map.containsKey('fastestLocationUpdateInterval')
@@ -80,6 +91,7 @@ class AndroidConfig {
   /// Creates a copy of this [AndroidConfig] with the given fields replaced with the new values.
   AndroidConfig copyWith({
     int? locationUpdateInterval,
+    int? stationaryLocationUpdateInterval,
     int? fastestLocationUpdateInterval,
     int? deferTime,
     bool? allowIdenticalLocations,
@@ -98,6 +110,8 @@ class AndroidConfig {
     // keeping it unset — rather than resolving it to a default (#321).
     return AndroidConfig(
       locationUpdateInterval: locationUpdateInterval ?? _locationUpdateInterval,
+      stationaryLocationUpdateInterval:
+          stationaryLocationUpdateInterval ?? _stationaryLocationUpdateInterval,
       fastestLocationUpdateInterval:
           fastestLocationUpdateInterval ?? _fastestLocationUpdateInterval,
       deferTime: deferTime ?? _deferTime,
@@ -121,6 +135,9 @@ class AndroidConfig {
   AndroidConfig mergedWith(AndroidConfig other) => AndroidConfig(
     locationUpdateInterval:
         other._locationUpdateInterval ?? _locationUpdateInterval,
+    stationaryLocationUpdateInterval:
+        other._stationaryLocationUpdateInterval ??
+        _stationaryLocationUpdateInterval,
     fastestLocationUpdateInterval:
         other._fastestLocationUpdateInterval ?? _fastestLocationUpdateInterval,
     deferTime: other._deferTime ?? _deferTime,
@@ -143,6 +160,7 @@ class AndroidConfig {
   /// the complete baseline `ready()` sends (#321).
   AndroidConfig resolved() => AndroidConfig(
     locationUpdateInterval: locationUpdateInterval,
+    stationaryLocationUpdateInterval: stationaryLocationUpdateInterval,
     fastestLocationUpdateInterval: fastestLocationUpdateInterval,
     deferTime: deferTime,
     allowIdenticalLocations: allowIdenticalLocations,
@@ -159,6 +177,7 @@ class AndroidConfig {
   // what keeps the field out of the wire payload (#321). The public getters
   // below resolve each one to its documented default.
   final int? _locationUpdateInterval;
+  final int? _stationaryLocationUpdateInterval;
   final int? _fastestLocationUpdateInterval;
   final int? _deferTime;
   final bool? _allowIdenticalLocations;
@@ -171,6 +190,13 @@ class AndroidConfig {
   /// The desired interval (in milliseconds) between location updates.
   /// Defaults to `1000`.
   int get locationUpdateInterval => _locationUpdateInterval ?? 1000;
+
+  /// Desired interval in milliseconds while stationary in continuous mode.
+  ///
+  /// A value of `0` (the default) keeps [locationUpdateInterval].
+  /// Android may deliver fixes at a different cadence.
+  int get stationaryLocationUpdateInterval =>
+      _stationaryLocationUpdateInterval ?? 0;
 
   /// The fastest interval (in milliseconds) the app is able to receive
   /// location updates. Defaults to `500`.
@@ -213,6 +239,8 @@ class AndroidConfig {
 
   /// Drops the OEM Wakelock when the device enters a fully stationary state.
   /// Only applies when using `MotionDetectionMode.smart`.
+  /// Requires a hardware significant-motion wake-up sensor. Applies to all
+  /// stationary strategies, including `StationaryTrackingMode.continuous`.
   /// Resolves Issue #162.
   /// Defaults to `false`.
   bool get releaseWakelockWhenStationary =>
@@ -227,6 +255,7 @@ class AndroidConfig {
   /// alone (#321).
   TlAndroidConfig toTlConfig() => TlAndroidConfig(
     locationUpdateInterval: _locationUpdateInterval,
+    stationaryLocationUpdateInterval: _stationaryLocationUpdateInterval,
     fastestLocationUpdateInterval: _fastestLocationUpdateInterval,
     deferTime: _deferTime,
     allowIdenticalLocations: _allowIdenticalLocations,
@@ -250,6 +279,8 @@ class AndroidConfig {
     return <String, Object?>{
       if (_locationUpdateInterval != null)
         'locationUpdateInterval': _locationUpdateInterval,
+      if (_stationaryLocationUpdateInterval != null)
+        'stationaryLocationUpdateInterval': _stationaryLocationUpdateInterval,
       if (_fastestLocationUpdateInterval != null)
         'fastestLocationUpdateInterval': _fastestLocationUpdateInterval,
       if (_deferTime != null) 'deferTime': _deferTime,
@@ -282,6 +313,8 @@ class AndroidConfig {
       other is AndroidConfig &&
           runtimeType == other.runtimeType &&
           _locationUpdateInterval == other._locationUpdateInterval &&
+          _stationaryLocationUpdateInterval ==
+              other._stationaryLocationUpdateInterval &&
           _fastestLocationUpdateInterval ==
               other._fastestLocationUpdateInterval &&
           _deferTime == other._deferTime &&
@@ -298,6 +331,7 @@ class AndroidConfig {
   @override
   int get hashCode => Object.hash(
     _locationUpdateInterval,
+    _stationaryLocationUpdateInterval,
     _fastestLocationUpdateInterval,
     _deferTime,
     _allowIdenticalLocations,

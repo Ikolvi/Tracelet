@@ -29,7 +29,7 @@ public protocol SpeedMotionDelegate: AnyObject {
 ///    ^                                          |
 ///    |                                   delay elapsed
 ///    |                                          v
-///    +--wakeConfirmCount fixes>=threshold-- STATIONARY (periodic or geofences)
+///    +--wakeConfirmCount fixes>=threshold-- STATIONARY
 /// ```
 public final class SpeedMotionManager {
 
@@ -447,14 +447,17 @@ public final class SpeedMotionManager {
     // MARK: - Event Emission
 
     private func emitEvent(previous: SpeedMotionState, current: SpeedMotionState) {
-        let trackingMode: Int = (current == .stationary)
-            ? (stationaryTrackingMode == .geofences ? 1 : 2) // geofences=1, periodic=2
-            : 0 // continuous=0
+        let trackingMode: TraceletTrackingMode
+        switch (current, stationaryTrackingMode) {
+        case (.stationary, .geofences): trackingMode = .geofences
+        case (.stationary, .periodic): trackingMode = .periodic
+        default: trackingMode = .continuous
+        }
         
         delegate?.emitSpeedMotionEvent(
             state: current.rawValue,
             previousState: previous.rawValue,
-            trackingMode: trackingMode
+            trackingMode: trackingMode.rawValue
         )
     }
 

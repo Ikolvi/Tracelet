@@ -17,6 +17,22 @@ import java.util.concurrent.ConcurrentHashMap
 
 interface TraceletLocationClient {
     fun requestLocationUpdates(request: TraceletLocationRequest, callback: TraceletLocationCallback, looper: Looper)
+    /** Confirms that a new subscription is installed, or returns its registration error. */
+    fun requestLocationUpdatesWithResult(
+        request: TraceletLocationRequest,
+        callback: TraceletLocationCallback,
+        looper: Looper,
+        onResult: (Result<Unit>) -> Unit,
+    ) {
+        val result = try {
+            requestLocationUpdates(request, callback, looper)
+            Result.success(Unit)
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+        onResult(result)
+    }
+
     fun removeLocationUpdates(callback: TraceletLocationCallback)
     fun getCurrentLocation(priority: Int, cancellationToken: TraceletCancellationToken?, onSuccess: (Location?) -> Unit)
     fun getLastLocation(onSuccess: (Location?) -> Unit, onFailure: (Exception) -> Unit)
@@ -253,27 +269,61 @@ class AospLocationClient(context: Context) : TraceletLocationClient {
 
     @SuppressLint("MissingPermission")
     override fun requestLocationUpdates(request: TraceletLocationRequest, callback: TraceletLocationCallback, looper: Looper) {
-        if (locationManager == null) return
+        callback.onLocationAvailability(registerUpdates(request, callback, looper))
+    }
+
+    override fun requestLocationUpdatesWithResult(
+        request: TraceletLocationRequest,
+        callback: TraceletLocationCallback,
+        looper: Looper,
+        onResult: (Result<Unit>) -> Unit,
+    ) {
+        val result = try {
+            check(registerUpdates(request, callback, looper)) {
+                "No enabled Android location provider for priority ${request.priority}"
+            }
+            Result.success(Unit)
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+        onResult(result)
+    }
+
+    @Synchronized
+    @SuppressLint("MissingPermission")
+    private fun registerUpdates(request: TraceletLocationRequest, callback: TraceletLocationCallback, looper: Looper): Boolean {
+        val manager = locationManager ?: return false
+        val providers = if (request.priority == TraceletLocationPriority.PRIORITY_HIGH_ACCURACY) {
+            listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+        } else {
+            listOf(LocationManager.NETWORK_PROVIDER)
+        }
+        val enabledProviders = providers.filter(manager::isProviderEnabled)
+        if (enabledProviders.isEmpty()) return false
+
         val listener = object : LocationListener {
             override fun onLocationChanged(location: Location) { callback.onLocationResult(listOf(location)) }
             override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
             override fun onProviderEnabled(provider: String) { callback.onLocationAvailability(true) }
             override fun onProviderDisabled(provider: String) { callback.onLocationAvailability(false) }
         }
-        // Re-registering an existing callback replaces its subscription (the
-        // fused client's documented behavior, which the engine's live
-        // re-subscription paths rely on) — unregister the superseded listener.
-        val previous = listeners.put(callback, listener)
-        val providers = if (request.priority == TraceletLocationPriority.PRIORITY_HIGH_ACCURACY) listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER) else listOf(LocationManager.NETWORK_PROVIDER)
-        providers.forEach { provider ->
-            if (locationManager.isProviderEnabled(provider)) {
-                locationManager.requestLocationUpdates(provider, request.intervalMillis, request.minUpdateDistanceMeters, listener, looper)
+        try {
+            enabledProviders.forEach { provider ->
+                manager.requestLocationUpdates(provider, request.intervalMillis, request.minUpdateDistanceMeters, listener, looper)
             }
+        } catch (error: Exception) {
+            try {
+                manager.removeUpdates(listener)
+            } catch (cleanupError: Exception) {
+                error.addSuppressed(cleanupError)
+            }
+            throw error
         }
-        if (previous != null) locationManager.removeUpdates(previous)
-        callback.onLocationAvailability(true)
+        listeners.put(callback, listener)?.let(manager::removeUpdates)
+        return true
     }
 
+    @Synchronized
     override fun removeLocationUpdates(callback: TraceletLocationCallback) {
         val listener = listeners.remove(callback)
         if (listener != null) locationManager?.removeUpdates(listener)

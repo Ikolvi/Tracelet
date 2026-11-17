@@ -4,6 +4,7 @@ import android.os.Looper
 import com.ikolvi.tracelet.sdk.ConfigManager
 import com.ikolvi.tracelet.sdk.StateManager
 import com.ikolvi.tracelet.sdk.TraceletEventSender
+import com.ikolvi.tracelet.sdk.model.StationaryTrackingMode
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -48,7 +49,7 @@ class SpeedMotionManagerTest {
     private fun configure(
         movingThreshold: Double = 1.5,
         stationaryDelaySeconds: Int = 4,
-        stationaryMode: String = "periodic",
+        stationaryMode: StationaryTrackingMode = StationaryTrackingMode.PERIODIC,
         wakeConfirmCount: Int = 1,
     ) {
         config.setConfig(
@@ -57,7 +58,7 @@ class SpeedMotionManagerTest {
                     "motionDetectionMode" to "speed",
                     "speedMovingThreshold" to movingThreshold,
                     "speedStationaryDelay" to stationaryDelaySeconds,
-                    "stationaryTrackingMode" to if (stationaryMode == "geofences") 1 else 0,
+                    "stationaryTrackingMode" to stationaryMode.value,
                     "speedWakeConfirmCount" to wakeConfirmCount,
                 )
             )
@@ -202,7 +203,7 @@ class SpeedMotionManagerTest {
 
     @Test
     fun `STATIONARY invokes switchToStationaryGeofences when configured`() {
-        configure(stationaryDelaySeconds = 2, stationaryMode = "geofences")
+        configure(stationaryDelaySeconds = 2, stationaryMode = StationaryTrackingMode.GEOFENCES)
 
         manager.onLocation(5.0)
         manager.onLocation(0.1)
@@ -215,6 +216,18 @@ class SpeedMotionManagerTest {
 
         val lastEvent = events.speedMotionEvents.last()
         assertEquals(1, lastEvent["trackingMode"]) // GEOFENCES
+    }
+
+    @Test
+    fun `stationary continuous reports the continuous tracking mode`() {
+        configure(stationaryMode = StationaryTrackingMode.CONTINUOUS)
+
+        manager.onManualPaceChange(false)
+
+        assertTrue(callback.switchedToStationaryContinuous)
+        assertFalse(callback.switchedToStationaryPeriodic)
+        assertFalse(callback.switchedToStationaryGeofences)
+        assertEquals(0, events.speedMotionEvents.last()["trackingMode"])
     }
 
     // =========================================================================
@@ -507,9 +520,11 @@ class SpeedMotionManagerTest {
         var switchedToContinuous = false
         var switchedToStationaryPeriodic = false
         var switchedToStationaryGeofences = false
+        var switchedToStationaryContinuous = false
 
         override fun switchToContinuous() { switchedToContinuous = true }
         override fun switchToStationaryPeriodic() { switchedToStationaryPeriodic = true }
         override fun switchToStationaryGeofences() { switchedToStationaryGeofences = true }
+        override fun switchToStationaryContinuous() { switchedToStationaryContinuous = true }
     }
 }

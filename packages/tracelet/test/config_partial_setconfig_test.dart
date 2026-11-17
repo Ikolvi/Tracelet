@@ -27,6 +27,20 @@ Map<String, Map<String, Object?>> _sections(Config c) {
 }
 
 void main() {
+  test('#460 preserves an omitted stationary interval and accepts a reset', () {
+    const configured = AndroidConfig(stationaryLocationUpdateInterval: 10000);
+    final updated = configured.mergedWith(
+      const AndroidConfig(locationUpdateInterval: 2000),
+    );
+    expect(updated.stationaryLocationUpdateInterval, 10000);
+    expect(AndroidConfig.fromMap(updated.toMap()), updated);
+
+    final reset = updated.mergedWith(
+      const AndroidConfig(stationaryLocationUpdateInterval: 0),
+    );
+    expect(reset.toMap()['stationaryLocationUpdateInterval'], 0);
+  });
+
   group('#321 an unset Config serializes to nothing', () {
     test('const Config() emits no payload at all', () {
       // Asserted strictly, with no tolerance for empty maps at any depth. Each

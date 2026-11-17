@@ -34,7 +34,7 @@ In certain scenarios, a device might be moving at high speeds but registering ze
 
 ### How it works:
 - **Stationary Transition:** When the GPS speed drops below `speedMovingThreshold` (default: 1.5 m/s), Tracelet considers the device to be slowing down and starts a countdown timer defined by `speedStationaryDelay`.
-- **`speedStationaryDelay`:** The number of **seconds** the GPS speed must stay consistently below the threshold before Tracelet switches off continuous tracking and enters the `STATIONARY` state.
+- **`speedStationaryDelay`:** The number of **seconds** the GPS speed must stay consistently below the threshold before Tracelet enters the `STATIONARY` state and applies the configured `stationaryTrackingMode`.
   - *Default: 180 seconds (3 minutes)*
 
 <Callout type="warning">
@@ -76,6 +76,27 @@ When you stop moving:
   )
   ```
 </Callout>
+
+---
+
+## Continuous Location While Stationary
+
+On Android and iOS, use `StationaryTrackingMode.continuous` with Speed or Smart motion detection to keep location updates running while stationary. Tracelet applies `stationaryPeriodicAccuracy` if it is coarser than the normal request and restores normal accuracy when movement resumes. Live provider accuracy overrides retain priority where supported.
+
+```dart
+await Tracelet.ready(const Config(
+  geo: GeoConfig(desiredAccuracy: DesiredAccuracy.high),
+  android: AndroidConfig(stationaryLocationUpdateInterval: 10000),
+  motion: MotionConfig(
+    motionDetectionMode: MotionDetectionMode.smart,
+    stationaryTrackingMode: StationaryTrackingMode.continuous,
+    stationaryPeriodicAccuracy: DesiredAccuracy.low,
+  ),
+));
+await Tracelet.start();
+```
+
+`stationaryPeriodicInterval` applies only to periodic fixes. On Android, `AndroidConfig.stationaryLocationUpdateInterval` can request a longer interval in milliseconds. Its default, `0`, keeps the normal interval. The operating system decides when fixes are delivered. On iOS, Tracelet's background protection can request 100 m accuracy or better when a coarser setting could suspend the continuous stream.
 
 ---
 

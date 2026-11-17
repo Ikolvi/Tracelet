@@ -11,6 +11,8 @@ import com.ikolvi.tracelet.sdk.ConfigManager
 import com.ikolvi.tracelet.sdk.StateManager
 import com.ikolvi.tracelet.sdk.TraceletEventSender
 import com.ikolvi.tracelet.sdk.location.LocationEngine
+import com.ikolvi.tracelet.sdk.model.MotionDetectionMode
+import com.ikolvi.tracelet.sdk.model.StationaryTrackingMode
 import com.ikolvi.tracelet.sdk.model.TrackingMode
 import com.ikolvi.tracelet.sdk.service.LocationService
 import com.ikolvi.tracelet.sdk.util.TraceletLogger
@@ -24,7 +26,9 @@ import com.ikolvi.tracelet.sdk.wrapper.TraceletLocationRequest
 import com.ikolvi.tracelet.sdk.wrapper.TraceletServices
 import com.ikolvi.tracelet.sdk.wrapper.TraceletServicesProvider
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -372,6 +376,33 @@ class SmartMotionPostureSyncTest {
         )
     }
 
+    @Test
+    fun `reconcile recognizes a parked continuous stream and lets motion wake it`() {
+        config.setConfig(mapOf("motion" to mapOf(
+            "motionDetectionMode" to MotionDetectionMode.SMART.value,
+            "stationaryTrackingMode" to StationaryTrackingMode.CONTINUOUS.value,
+            "stationaryPeriodicAccuracy" to 1,
+        )))
+        state.isMoving = true
+        engine.start()
+        val callback = client.callback
+        coordinator.syncCurrentMode()
+
+        coordinator.onSpeedStateChange(false)
+        coordinator.reconcilePosture()
+        assertTrue(engine.isStationaryContinuous)
+        assertEquals(TrackingMode.CONTINUOUS, state.trackingMode)
+        assertFalse(LocationService.isStationaryTimerActive())
+
+        val action = coordinator.onAccelStateChange(true)
+
+        assertEquals(uniffi.tracelet_core.CoordinatorAction.SWITCH_TO_CONTINUOUS, action)
+        assertFalse(engine.isStationaryContinuous)
+        assertTrue(engine.isTracking)
+        assertTrue(client.callback != null)
+        assertNotSame(callback, client.callback)
+    }
+
     /**
      * Feeds one accepted fix so `resolvedSpeed` is a resolved ~0 rather than
      * `null`, which the coordinator reads as *unknown* and refuses to override
@@ -451,7 +482,9 @@ private class PostureLocationClient : TraceletLocationClient {
         looper: Looper,
     ) { this.callback = callback }
 
-    override fun removeLocationUpdates(callback: TraceletLocationCallback) { this.callback = null }
+    override fun removeLocationUpdates(callback: TraceletLocationCallback) {
+        if (this.callback === callback) this.callback = null
+    }
 
     override fun getCurrentLocation(
         priority: Int,

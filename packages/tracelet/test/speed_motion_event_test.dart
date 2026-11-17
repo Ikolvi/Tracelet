@@ -139,6 +139,27 @@ void main() {
       expect(base, isNot(equals(diffStationary)));
     });
 
+    test('MotionConfig continuous stationary mode uses wire index 2', () {
+      const config = MotionConfig(
+        stationaryTrackingMode: StationaryTrackingMode.continuous,
+        stationaryPeriodicAccuracy: DesiredAccuracy.low,
+      );
+      expect(StationaryTrackingMode.periodic.index, 0);
+      expect(StationaryTrackingMode.geofences.index, 1);
+      expect(config.toMap()['stationaryTrackingMode'], 2);
+      expect(MotionConfig.fromMap(config.toMap()), config);
+      expect(
+        MotionConfig.fromMap(const {
+          'stationaryTrackingMode': 'continuous',
+        }).stationaryTrackingMode,
+        StationaryTrackingMode.continuous,
+      );
+
+      final wire = config.toTlConfig();
+      expect(wire.stationaryTrackingMode?.index, 2);
+      expect(wire.stationaryPeriodicAccuracy?.index, DesiredAccuracy.low.index);
+    });
+
     test('MotionConfig.fromMap accepts integer enum indices as fallback', () {
       final map = <String, Object?>{
         'motionDetectionMode': MotionDetectionMode.speed.index,
@@ -155,6 +176,11 @@ void main() {
         'stationaryTrackingMode': 'unknown',
       });
       expect(config.motionDetectionMode, MotionDetectionMode.accelerometer);
+      expect(config.stationaryTrackingMode, StationaryTrackingMode.periodic);
+    });
+
+    test('MotionConfig.fromMap defaults unknown stationary wire indices', () {
+      final config = MotionConfig.fromMap(const {'stationaryTrackingMode': 3});
       expect(config.stationaryTrackingMode, StationaryTrackingMode.periodic);
     });
   });

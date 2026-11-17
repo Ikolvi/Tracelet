@@ -8,6 +8,8 @@ import android.location.Location
 import android.os.Looper
 import com.google.android.gms.location.*
 import com.google.android.gms.tasks.CancellationTokenSource
+import com.ikolvi.tracelet.sdk.util.TraceletLog
+import java.util.concurrent.CancellationException
 import java.util.concurrent.ConcurrentHashMap
 
 class PlayServicesProvider : TraceletServicesProvider {
@@ -26,12 +28,6 @@ class PlayLocationClient internal constructor(
 
     @SuppressLint("MissingPermission")
     override fun requestLocationUpdates(request: TraceletLocationRequest, callback: TraceletLocationCallback, looper: Looper) {
-        val builder = LocationRequest.Builder(request.priority, request.intervalMillis)
-            .setMinUpdateDistanceMeters(request.minUpdateDistanceMeters)
-            .setMinUpdateIntervalMillis(request.minUpdateIntervalMillis)
-        if (request.maxUpdateDelayMillis > 0) builder.setMaxUpdateDelayMillis(request.maxUpdateDelayMillis)
-
-        val playRequest = builder.build()
         // Re-registering an existing callback must replace its subscription, not
         // add a second one (#432). The engine's live re-subscription paths
         // (`updateLocationProviderOptions`, the GPS fallback and its restore, the
@@ -42,7 +38,40 @@ class PlayLocationClient internal constructor(
         // then reach only the newest wrapper, and the orphan kept delivering
         // fixes after `stop()` until the process died.
         val playCallback = callbackMap.getOrPut(callback) { PlayCallback(callback) }
-        fusedClient.requestLocationUpdates(playRequest, playCallback, looper)
+        fusedClient.requestLocationUpdates(playRequest(request), playCallback, looper)
+    }
+
+    @SuppressLint("MissingPermission")
+    override fun requestLocationUpdatesWithResult(
+        request: TraceletLocationRequest,
+        callback: TraceletLocationCallback,
+        looper: Looper,
+        onResult: (Result<Unit>) -> Unit,
+    ) {
+        val playCallback = callbackMap.getOrPut(callback) { PlayCallback(callback) }
+        val task = try {
+            fusedClient.requestLocationUpdates(playRequest(request), playCallback, looper)
+        } catch (error: Exception) {
+            onResult(Result.failure(error))
+            return
+        }
+        task.addOnCompleteListener { completed ->
+            val result = if (completed.isSuccessful && callbackMap[callback] === playCallback) {
+                Result.success(Unit)
+            } else {
+                if (completed.isSuccessful) removePlayCallback(playCallback)
+                Result.failure(completed.exception ?: CancellationException("Location subscription canceled"))
+            }
+            onResult(result)
+        }
+    }
+
+    private fun playRequest(request: TraceletLocationRequest): LocationRequest {
+        val builder = LocationRequest.Builder(request.priority, request.intervalMillis)
+            .setMinUpdateDistanceMeters(request.minUpdateDistanceMeters)
+            .setMinUpdateIntervalMillis(request.minUpdateIntervalMillis)
+        if (request.maxUpdateDelayMillis > 0) builder.setMaxUpdateDelayMillis(request.maxUpdateDelayMillis)
+        return builder.build()
     }
 
     /**
@@ -54,7 +83,7 @@ class PlayLocationClient internal constructor(
     private inner class PlayCallback(private val callback: TraceletLocationCallback) : LocationCallback() {
         private fun isCurrent(): Boolean {
             if (callbackMap[callback] === this) return true
-            fusedClient.removeLocationUpdates(this)
+            removePlayCallback(this)
             return false
         }
 
@@ -68,8 +97,17 @@ class PlayLocationClient internal constructor(
     }
 
     override fun removeLocationUpdates(callback: TraceletLocationCallback) {
-        val playCallback = callbackMap.remove(callback)
-        if (playCallback != null) fusedClient.removeLocationUpdates(playCallback)
+        callbackMap.remove(callback)?.let(::removePlayCallback)
+    }
+
+    private fun removePlayCallback(callback: LocationCallback) {
+        try {
+            fusedClient.removeLocationUpdates(callback)?.addOnFailureListener { error ->
+                TraceletLog.warning("Could not remove Play services location subscription", error)
+            }
+        } catch (error: Exception) {
+            TraceletLog.warning("Could not remove Play services location subscription", error)
+        }
     }
 
     @SuppressLint("MissingPermission")

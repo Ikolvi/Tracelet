@@ -26,7 +26,7 @@ enum TlTrackingMode { location, geofences, periodic }
 
 enum TlMotionDetectionMode { accelerometer, speed, smart }
 
-enum TlStationaryTrackingMode { periodic, geofences }
+enum TlStationaryTrackingMode { periodic, geofences, continuous }
 
 enum TlGeofenceAction { enter, exit, dwell }
 
@@ -220,6 +220,7 @@ class TlAndroidConfig {
     this.scheduleUseAlarmManager,
     this.foregroundService,
     this.releaseWakelockWhenStationary,
+    this.stationaryLocationUpdateInterval,
   });
 
   final int? locationUpdateInterval;
@@ -235,6 +236,9 @@ class TlAndroidConfig {
   /// Drops the OEM Wakelock when the device enters a fully stationary state.
   /// Resolves Issue #162.
   final bool? releaseWakelockWhenStationary;
+
+  /// Requested update interval in milliseconds for stationary continuous tracking.
+  final int? stationaryLocationUpdateInterval;
 }
 
 class TlLiveActivityConfig {
@@ -368,11 +372,7 @@ class TlConfig {
 }
 
 class TlLoggerConfig {
-  TlLoggerConfig({
-    this.logLevel,
-    this.logMaxDays,
-    this.debug,
-  });
+  TlLoggerConfig({this.logLevel, this.logMaxDays, this.debug});
   final TlLogLevel? logLevel;
   final int? logMaxDays;
   final bool? debug;

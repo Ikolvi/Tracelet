@@ -5,7 +5,12 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.ikolvi.tracelet.sdk.ConfigManager
 import com.ikolvi.tracelet.sdk.TraceletSdk
+import com.ikolvi.tracelet.sdk.model.MotionDetectionMode
+import com.ikolvi.tracelet.sdk.model.SpeedMotionState
+import com.ikolvi.tracelet.sdk.model.StationaryTrackingMode
+import com.ikolvi.tracelet.sdk.model.TrackingMode
 import com.ikolvi.tracelet.sdk.service.LocationService
 
 /**
@@ -41,28 +46,37 @@ class ActivityTransitionReceiver : BroadcastReceiver() {
                         val extractor = com.ikolvi.tracelet.sdk.wrapper.TraceletServices.getInstance(context).getEventExtractor()
                         val result = extractor.extractActivityTransitionResult(intent)
                         if (result != null) {
+                            val configManager = ConfigManager.getInstance(context)
+                            val keepStationaryStream = configManager.getStationaryTrackingMode() ==
+                                StationaryTrackingMode.CONTINUOUS &&
+                                state.sessionTrackingMode == TrackingMode.CONTINUOUS &&
+                                configManager.getMotionDetectionMode() != MotionDetectionMode.ACCELEROMETER
                             for (event in result.transitionEvents) {
                                 // 0 = ENTER, 3 = STILL
                                 if (event.transitionType == 0) {
                                     if (event.activityType != 3) {
-                                        if (state.trackingMode == com.ikolvi.tracelet.sdk.model.TrackingMode.PERIODIC) {
-                                            TraceletLog.debug("Detected moving transition while in killed periodic mode — waking up SDK!")
+                                        if (state.trackingMode == TrackingMode.PERIODIC ||
+                                            (keepStationaryStream && !state.isMoving)
+                                        ) {
+                                            TraceletLog.debug("Detected moving transition while killed and stationary — waking up SDK!")
                                             state.isMoving = true
-                                            state.trackingMode = com.ikolvi.tracelet.sdk.model.TrackingMode.CONTINUOUS
-                                            LocationService.startFromBoot(context)
+                                            if (keepStationaryStream) state.speedMotionState = SpeedMotionState.MOVING
+                                            state.trackingMode = TrackingMode.CONTINUOUS
+                                            if (!keepStationaryStream || configManager.isForegroundServiceEnabled()) {
+                                                LocationService.startFromBoot(context)
+                                            }
                                             break
                                         }
                                     } else {
-                                        if (state.trackingMode == com.ikolvi.tracelet.sdk.model.TrackingMode.CONTINUOUS) {
+                                        if (state.trackingMode == TrackingMode.CONTINUOUS) {
                                             TraceletLog.debug("Detected STILL transition while in killed continuous mode — switching to stationary!")
                                             state.isMoving = false
-                                            val configManager = com.ikolvi.tracelet.sdk.ConfigManager.getInstance(context)
                                             val useForeground = configManager.isForegroundServiceEnabled()
                                             
-                                            if (configManager.getStationaryTrackingMode() == com.ikolvi.tracelet.sdk.model.StationaryTrackingMode.GEOFENCES) {
-                                                state.trackingMode = com.ikolvi.tracelet.sdk.model.TrackingMode.GEOFENCES
-                                            } else {
-                                                state.trackingMode = com.ikolvi.tracelet.sdk.model.TrackingMode.PERIODIC
+                                            if (configManager.getStationaryTrackingMode() == StationaryTrackingMode.GEOFENCES) {
+                                                state.trackingMode = TrackingMode.GEOFENCES
+                                            } else if (!keepStationaryStream) {
+                                                state.trackingMode = TrackingMode.PERIODIC
                                                 val interval = configManager.getStationaryPeriodicInterval()
                                                 val useExactAlarms = configManager.getPeriodicUseExactAlarms() || interval < 900
                                                 if (useExactAlarms) {

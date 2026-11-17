@@ -17,6 +17,10 @@ import com.ikolvi.tracelet.sdk.ConfigManager
 import com.ikolvi.tracelet.sdk.TraceletEventSender
 import com.ikolvi.tracelet.sdk.StateManager
 import com.ikolvi.tracelet.sdk.audit.AuditTrailManager
+import com.ikolvi.tracelet.sdk.model.DesiredAccuracy
+import com.ikolvi.tracelet.sdk.model.MotionDetectionMode
+import com.ikolvi.tracelet.sdk.model.StationaryTrackingMode
+import com.ikolvi.tracelet.sdk.model.TrackingMode
 import com.ikolvi.tracelet.sdk.privacy.PrivacyZoneManager
 
 import com.ikolvi.tracelet.sdk.util.BatteryUtils
@@ -553,6 +557,27 @@ class LocationEngine(
     private var runtimeDesiredAccuracy: Int? = null
     private var runtimeDistanceFilter: Double? = null
 
+    // Only the Speed and Smart paces of a continuous session keep their stream when parked (#460).
+    internal val keepsStationaryStream: Boolean
+        get() = config.getStationaryTrackingMode() == StationaryTrackingMode.CONTINUOUS &&
+            state.sessionTrackingMode == TrackingMode.CONTINUOUS &&
+            config.getMotionDetectionMode() != MotionDetectionMode.ACCELEROMETER
+
+    @Volatile
+    internal var isStationaryContinuous = false
+        private set
+
+    private var stationaryPaceTarget: Boolean? = null
+    @Volatile
+    private var pendingPaceCallback: TraceletLocationCallback? = null
+    private var paceRetryScheduled = false
+    private val paceRetry = Runnable {
+        synchronized(this) {
+            paceRetryScheduled = false
+            stationaryPaceTarget?.let(::applyContinuousPace)
+        }
+    }
+
     /**
      * The battery-budget ladder's overlay, if one is in force (#393, #396).
      *
@@ -568,7 +593,7 @@ class LocationEngine(
     private var budgetTrackingAccuracyFloor: Int = 0
 
     /** Whether continuous tracking is active. */
-    val isTracking: Boolean get() = trackingCallback != null
+    val isTracking: Boolean get() = trackingCallback != null || pendingPaceCallback != null
 
     // =========================================================================
     // Stall watchdog (#397)
@@ -800,18 +825,37 @@ class LocationEngine(
      */
     @Synchronized
     fun start() {
+        if (keepsStationaryStream) {
+            applyContinuousPace(stationary = !state.isMoving)
+            return
+        }
         if (!hasPermission()) {
             TraceletLog.warning("start() — no location permission granted, dispatching providerChange(status=0)")
             events.sendProviderChange(buildProviderState())
             return
         }
         stop() // Ensure clean state
+        prepareContinuousStream()
+        val request = buildLocationRequestWithGpsFallback()
+        val callback = newTrackingCallback()
+        trackingCallback = callback
+        try {
+            fusedClient.requestLocationUpdates(request, callback, Looper.getMainLooper())
+            LiveStreams.count.incrementAndGet()
+            startGpsLossTimer()
+        } catch (e: SecurityException) {
+            trackingCallback = null
+            TraceletLog.warning("Could not start continuous location updates", e)
+        }
+    }
 
+    private fun prepareContinuousStream() {
         // The stall clock starts now, not at the first accepted fix: a session
         // that never accepts one at all is exactly the case worth announcing
         // (#397).
         resetStallWatchdog(seed = true)
         reportedFixWhileDisabled = false
+        reportedSupersededCallback = false
 
         // Always-on: this is the transition the OS location indicator follows,
         // so "the icon disappeared" is answerable from a released app's report.
@@ -823,11 +867,10 @@ class LocationEngine(
                 "engine=${System.identityHashCode(this)} " +
                 "liveStreams=${LiveStreams.count.get() + 1}",
         )
+    }
 
-        val request = buildLocationRequestWithGpsFallback()
-
-        reportedSupersededCallback = false
-        trackingCallback = object : TraceletLocationCallback {
+    private fun newTrackingCallback(): TraceletLocationCallback =
+        object : TraceletLocationCallback {
             /**
              * A continuous callback the engine no longer holds must not feed
              * the pipeline (#432). Once `trackingCallback` has moved on — or
@@ -839,6 +882,7 @@ class LocationEngine(
              */
             private fun isSuperseded(): Boolean {
                 if (this === trackingCallback) return false
+                if (this === pendingPaceCallback) return true
                 fusedClient.removeLocationUpdates(this)
                 if (!reportedSupersededCallback) {
                     reportedSupersededCallback = true
@@ -884,12 +928,90 @@ class LocationEngine(
             }
         }
 
+    /** Stages a replacement before retiring the active subscription. */
+    @Synchronized
+    internal fun applyContinuousPace(stationary: Boolean) {
+        if (!state.enabled || !keepsStationaryStream || isPeriodicTracking) return
+        if (stationaryPaceTarget != stationary) {
+            stationaryPaceTarget = stationary
+            cancelPaceRetry()
+        }
+        if (pendingPaceCallback != null || paceRetryScheduled) return
+        if (trackingCallback != null && isStationaryContinuous == stationary) return
+        requestContinuousPace(stationary)
+    }
+
+    private fun requestContinuousPace(stationary: Boolean) {
+        if (!hasPermission()) {
+            TraceletLog.warning("Cannot apply continuous location pace — no location permission")
+            events.sendProviderChange(buildProviderState())
+            schedulePaceRetry()
+            return
+        }
+        val requestedTarget = stationaryPaceTarget
+        val configuredRequest = buildLocationRequest(stationary)
+        val request = requestWithGpsFallback(configuredRequest)
+        val candidate = newTrackingCallback()
+        pendingPaceCallback = candidate
+        fusedClient.requestLocationUpdatesWithResult(request, candidate, Looper.getMainLooper()) { result ->
+            val error = result.exceptionOrNull()
+            if (error != null) {
+                TraceletLog.warning("Could not apply continuous location pace (stationary=$stationary)", error)
+            }
+            synchronized(this) {
+                if (pendingPaceCallback !== candidate) return@synchronized
+                val target = stationaryPaceTarget
+                if (!state.enabled || !keepsStationaryStream || target == null) {
+                    pendingPaceCallback = null
+                    removePaceCallback(candidate)
+                    return@synchronized
+                }
+
+                val obsolete = (target != requestedTarget && target != stationary) ||
+                    requestWithGpsFallback(buildLocationRequest(stationary)) != request
+                if (error != null || obsolete) {
+                    pendingPaceCallback = null
+                    removePaceCallback(candidate)
+                    when {
+                        obsolete -> applyContinuousPace(target)
+                        trackingCallback == null && stationary -> requestContinuousPace(stationary = false)
+                        else -> schedulePaceRetry()
+                    }
+                    return@synchronized
+                }
+
+                val previous = trackingCallback
+                isStationaryContinuous = stationary
+                gpsFallbackActive = configuredRequest.priority != request.priority
+                trackingCallback = candidate
+                pendingPaceCallback = null
+                if (previous == null) {
+                    prepareContinuousStream()
+                    LiveStreams.count.incrementAndGet()
+                    startGpsLossTimer()
+                } else {
+                    removePaceCallback(previous)
+                }
+                if (stationary != target) schedulePaceRetry()
+            }
+        }
+    }
+
+    private fun schedulePaceRetry() {
+        paceRetryScheduled = true
+        drHandler.postDelayed(paceRetry, 30_000L)
+    }
+
+    private fun cancelPaceRetry() {
+        drHandler.removeCallbacks(paceRetry)
+        paceRetryScheduled = false
+    }
+
+    private fun removePaceCallback(callback: TraceletLocationCallback) {
         try {
-            fusedClient.requestLocationUpdates(request, trackingCallback!!, Looper.getMainLooper())
-            LiveStreams.count.incrementAndGet()
-            startGpsLossTimer()
-        } catch (e: SecurityException) {
-            trackingCallback = null
+            fusedClient.removeLocationUpdates(callback)
+        } catch (error: Exception) {
+            TraceletLog.warning("Could not remove continuous pace subscription", error)
         }
     }
 
@@ -913,11 +1035,9 @@ class LocationEngine(
      * How many [LocationEngine] instances in this process currently hold a
      * registered continuous callback.
      *
-     * Every registration inside one engine re-uses the single
-     * `trackingCallback` — `updateLocationProviderOptions`,
-     * `reapplyProviderOptionsIfTracking`, `activateGpsFallback` and
-     * `restoreOriginalPriority` all replace the request in place, and `stop()`
-     * removes it — so one engine cannot leak a second stream. A parked session
+     * One callback per engine feeds fixes into the pipeline. A pending pace
+     * replacement starts forwarding only after registration succeeds, when the
+     * previous callback is retired. A parked session
      * that keeps recording fixes therefore means a *second engine*, and an
      * engine cannot see its sibling. Counting them here makes
      * `liveStreams>1` visible on the always-on channel, which is the one
@@ -930,9 +1050,15 @@ class LocationEngine(
 
     @Synchronized
     fun stop() {
+        cancelPaceRetry()
+        stationaryPaceTarget = null
+        val pending = pendingPaceCallback
+        pendingPaceCallback = null
+        if (pending != null) removePaceCallback(pending)
         gpsFallbackActive = false
         runtimeDesiredAccuracy = null
         runtimeDistanceFilter = null
+        isStationaryContinuous = false
         // The budget overlay deliberately survives: a session that stops and
         // starts again has not changed how fast the device is draining (#396).
         resetStallWatchdog(seed = false)
@@ -2190,8 +2316,13 @@ class LocationEngine(
      * active (see [updateLocationProviderOptions]), otherwise the persisted
      * config values.
      */
-    private fun effectiveDesiredAccuracy(): Int =
-        runtimeDesiredAccuracy ?: budgetDesiredAccuracy ?: config.getDesiredAccuracy()
+    private fun effectiveDesiredAccuracy(stationary: Boolean = isStationaryContinuous): Int {
+        runtimeDesiredAccuracy?.let { return it }
+        val accuracy = budgetDesiredAccuracy ?: config.getDesiredAccuracy()
+        if (!stationary) return accuracy
+        val stationaryAccuracy = DesiredAccuracy.fromValue(config.getStationaryPeriodicAccuracy())
+        return maxOf(stationaryAccuracy.value, DesiredAccuracy.fromValue(accuracy).value)
+    }
 
     private fun effectiveDistanceFilter(): Double =
         runtimeDistanceFilter ?: budgetDistanceFilter ?: config.getDistanceFilter()
@@ -2203,11 +2334,13 @@ class LocationEngine(
      * Cadence is the knob that actually costs power on Android, which is why the
      * ladder reaches for it before it touches accuracy.
      */
-    private fun effectiveUpdateInterval(): Long =
-        (config.getLocationUpdateInterval() * budgetCadenceMultiplier).toLong()
+    private fun effectiveUpdateInterval(stationaryInterval: Long = 0L): Long {
+        val interval = if (stationaryInterval > 0) stationaryInterval else config.getLocationUpdateInterval()
+        return (interval * budgetCadenceMultiplier).toLong()
+    }
 
-    private fun buildLocationRequest(): TraceletLocationRequest {
-        val priority = accuracyToPriority(effectiveDesiredAccuracy())
+    private fun buildLocationRequest(stationary: Boolean = isStationaryContinuous): TraceletLocationRequest {
+        val priority = accuracyToPriority(effectiveDesiredAccuracy(stationary))
         val deferTime = config.getDeferTime().toLong()
 
         val isSpeedMode = config.getMotionDetectionMode() == com.ikolvi.tracelet.sdk.model.MotionDetectionMode.SPEED
@@ -2217,11 +2350,14 @@ class LocationEngine(
         // own distance filter.
         val distanceFilter = if (isSpeedMode || geofenceHighAccuracyMode) 0f else effectiveDistanceFilter().toFloat()
 
+        val stationaryInterval = if (stationary) config.getStationaryLocationUpdateInterval() else 0L
+        val interval = effectiveUpdateInterval(stationaryInterval)
         return TraceletLocationRequest(
             priority = priority,
-            intervalMillis = effectiveUpdateInterval(),
+            intervalMillis = interval,
             minUpdateDistanceMeters = distanceFilter,
-            minUpdateIntervalMillis = config.getFastestLocationUpdateInterval(),
+            // Make the configured stationary cadence the minimum too (#460).
+            minUpdateIntervalMillis = if (stationaryInterval > 0) interval else config.getFastestLocationUpdateInterval(),
             maxUpdateDelayMillis = if (deferTime > 0) deferTime else 0L
         )
     }
@@ -2273,14 +2409,14 @@ class LocationEngine(
     private fun reapplyProviderOptionsIfTracking() {
         if (!isTracking || isPeriodicTracking) return
         val callback = trackingCallback ?: return
+        val previousFallback = gpsFallbackActive
         try {
             fusedClient.requestLocationUpdates(
                 buildLocationRequestWithGpsFallback(), callback, Looper.getMainLooper()
             )
         } catch (e: SecurityException) {
-            TraceletLog.warning(
-                "Could not re-apply provider options for the geofence evaluator: ${e.message}"
-            )
+            gpsFallbackActive = previousFallback
+            TraceletLog.warning("Could not re-apply continuous location provider options", e)
         }
     }
 
@@ -2293,32 +2429,25 @@ class LocationEngine(
      * Wi-Fi / cell-tower fixes instead of timing out.
      */
     private fun buildLocationRequestWithGpsFallback(): TraceletLocationRequest {
-        val configuredPriority = accuracyToPriority(effectiveDesiredAccuracy())
-        val effectivePriority = if (configuredPriority == TraceletLocationPriority.PRIORITY_HIGH_ACCURACY &&
-            !isGpsProviderEnabled(context)
-        ) {
-            gpsFallbackActive = true
+        val request = buildLocationRequest()
+        val effectiveRequest = requestWithGpsFallback(request)
+        gpsFallbackActive = effectiveRequest.priority != request.priority
+        if (gpsFallbackActive) {
             TraceletLog.debug("GPS provider disabled — using BALANCED_POWER_ACCURACY (Wi-Fi/cell)")
-            TraceletLocationPriority.PRIORITY_BALANCED_POWER_ACCURACY
-        } else {
-            gpsFallbackActive = false
-            configuredPriority
         }
-
-        val deferTime = config.getDeferTime().toLong()
-        val isSpeedMode = config.getMotionDetectionMode() == com.ikolvi.tracelet.sdk.model.MotionDetectionMode.SPEED
-        // See buildLocationRequest(): geofence high-accuracy mode delivers
-        // time-based fixes so a stationary device isn't starved of crossings.
-        val distanceFilter = if (isSpeedMode || geofenceHighAccuracyMode) 0f else effectiveDistanceFilter().toFloat()
-
-        return TraceletLocationRequest(
-            priority = effectivePriority,
-            intervalMillis = config.getLocationUpdateInterval(),
-            minUpdateDistanceMeters = distanceFilter,
-            minUpdateIntervalMillis = config.getFastestLocationUpdateInterval(),
-            maxUpdateDelayMillis = if (deferTime > 0) deferTime else 0L
+        return effectiveRequest.copy(
+            intervalMillis = if (keepsStationaryStream) request.intervalMillis else config.getLocationUpdateInterval(),
         )
     }
+
+    private fun requestWithGpsFallback(request: TraceletLocationRequest): TraceletLocationRequest =
+        if (request.priority == TraceletLocationPriority.PRIORITY_HIGH_ACCURACY &&
+            !isGpsProviderEnabled(context)
+        ) {
+            request.copy(priority = TraceletLocationPriority.PRIORITY_BALANCED_POWER_ACCURACY)
+        } else {
+            request
+        }
 
     /** Returns true if the effective desired accuracy requires GPS hardware. */
     private fun isHighAccuracyConfigured(): Boolean {
@@ -2334,7 +2463,9 @@ class LocationEngine(
         gpsFallbackActive = true
 
         val callback = trackingCallback ?: return
-        val fallbackRequest = TraceletLocationRequest(
+        val fallbackRequest = if (keepsStationaryStream) {
+            buildLocationRequest().copy(priority = TraceletLocationPriority.PRIORITY_BALANCED_POWER_ACCURACY)
+        } else TraceletLocationRequest(
             priority = TraceletLocationPriority.PRIORITY_BALANCED_POWER_ACCURACY,
             intervalMillis = config.getLocationUpdateInterval(),
             minUpdateDistanceMeters = effectiveDistanceFilter().toFloat(),
@@ -2348,7 +2479,10 @@ class LocationEngine(
             val providerState = buildProviderState().toMutableMap()
             providerState["gpsFallback"] = true
             events.sendProviderChange(providerState)
-        } catch (_: SecurityException) { /* permission lost */ }
+        } catch (e: SecurityException) {
+            gpsFallbackActive = false
+            TraceletLog.warning("Could not switch continuous location to GPS fallback", e)
+        }
     }
 
     /**

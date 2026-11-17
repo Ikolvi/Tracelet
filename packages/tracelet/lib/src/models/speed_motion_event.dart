@@ -7,8 +7,7 @@ import 'package:tracelet_platform_interface/tracelet_platform_interface.dart';
 /// - [accelerometer]: default. Uses raw accelerometer (and optional
 ///   platform Activity Recognition) to detect stationary↔moving transitions.
 /// - [speed]: uses GPS speed from each location fix. Immune to the
-///   "phone still on moving vehicle" false-stationarity problem. Drives
-///   automatic switching between continuous and periodic tracking.
+///   "phone still on moving vehicle" false-stationarity problem.
 enum MotionDetectionMode {
   /// Legacy accelerometer-driven stop detection.
   ///
@@ -20,8 +19,8 @@ enum MotionDetectionMode {
   ///
   /// Use for vehicle-tracking scenarios where a phone on a dashboard
   /// reads near-zero accelerometer values at highway speed. The state
-  /// machine switches between continuous tracking and low-power periodic
-  /// fixes automatically based on [MotionConfig.speedMovingThreshold].
+  /// machine applies [MotionConfig.stationaryTrackingMode] when it detects
+  /// that the device is stationary.
   speed,
 
   /// Hybrid motion detection mode.
@@ -42,6 +41,11 @@ enum StationaryTrackingMode {
   /// Stop continuous tracking and rely on existing geofence monitoring.
   /// Wake speed is evaluated on any geofence-triggered fix.
   geofences,
+
+  /// Keep continuous location updates while stationary.
+  /// Apply [MotionConfig.stationaryPeriodicAccuracy] if it is coarser than
+  /// the normal request, then restore the normal accuracy on movement.
+  continuous,
 }
 
 /// States of the speed-based motion state machine.
@@ -62,14 +66,14 @@ enum SpeedMotionState {
   slowing,
 
   /// Stationary; tracking has switched to the configured
-  /// [StationaryTrackingMode] (periodic one-shot fixes or geofences).
+  /// [StationaryTrackingMode].
   stationary,
 }
 
 /// Underlying tracking mode reported alongside a [SpeedMotionEvent].
 enum SpeedMotionTrackingMode {
-  /// Full continuous GPS tracking (used in [SpeedMotionState.moving]
-  /// and [SpeedMotionState.slowing]).
+  /// Continuous location updates, including when [SpeedMotionState.stationary]
+  /// with [StationaryTrackingMode.continuous].
   continuous,
 
   /// Periodic one-shot fixes (used in [SpeedMotionState.stationary]
@@ -84,8 +88,9 @@ enum SpeedMotionTrackingMode {
 /// Event fired when the speed-based motion state machine transitions
 /// between states, or when the underlying tracking mode switches.
 ///
-/// Only fires when [MotionDetectionMode.speed] is active. Subscribe via
-/// [Tracelet.onMotionModeChange] or [Tracelet.motionModeChangeStream].
+/// Fires in [MotionDetectionMode.speed] and [MotionDetectionMode.smart].
+/// Subscribe via [Tracelet.onMotionModeChange] or
+/// [Tracelet.motionModeChangeStream].
 @immutable
 class SpeedMotionEvent {
   /// Creates a new [SpeedMotionEvent].

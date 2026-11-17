@@ -117,6 +117,74 @@ final class LocationEngineRuntimeProviderOptionsTests: XCTestCase {
 
         engine.stop()
     }
+
+    func testSmartStationaryContinuousKeepsOneStreamFromStartThroughMotionChanges() {
+        let sdk = TraceletSdk.shared
+        let config: [String: Any] = [
+            "geo": ["desiredAccuracy": 0, "distanceFilter": 10.0],
+            "showsBackgroundLocationIndicator": true,
+            "motion": [
+                "motionDetectionMode": MotionDetectionMode.smart.rawValue,
+                "stationaryTrackingMode": StationaryTrackingMode.continuous.rawValue,
+                "stationaryPeriodicAccuracy": TraceletDesiredAccuracy.low.rawValue,
+                "isMoving": false,
+            ],
+            "app": ["heartbeatInterval": 0],
+        ]
+        _ = sdk.ready(config: config)
+        _ = sdk.reset(config)
+        _ = sdk.ready(config: config)
+        let engine = sdk.locationEngine!
+        let originalManager = engine.locationManager
+        let recorder = RuntimeOptionsLocationManager()
+        engine.locationManager = recorder
+        recorder.delegate = engine
+        defer {
+            _ = sdk.reset()
+            engine.locationManager = originalManager
+        }
+
+        _ = sdk.start()
+        XCTAssertFalse(sdk.stateManager.isMoving)
+        XCTAssertEqual(recorder.desiredAccuracy, kCLLocationAccuracyKilometer)
+        XCTAssertTrue(engine.isContinuousStreaming)
+        XCTAssertFalse(engine.isPeriodicTracking)
+
+        XCTAssertTrue(sdk.changePace(true))
+        XCTAssertTrue(sdk.stateManager.isMoving)
+        XCTAssertEqual(recorder.desiredAccuracy, kCLLocationAccuracyBest)
+
+        XCTAssertTrue(sdk.changePace(false))
+        XCTAssertFalse(sdk.stateManager.isMoving)
+        XCTAssertEqual(recorder.desiredAccuracy, kCLLocationAccuracyKilometer)
+        XCTAssertEqual(recorder.distanceFilter, 10)
+        XCTAssertTrue(recorder.allowsBackgroundLocationUpdates)
+        XCTAssertTrue(engine.isContinuousStreaming)
+        XCTAssertFalse(engine.isPeriodicTracking)
+        XCTAssertEqual(recorder.startUpdatingCount, 1)
+        XCTAssertEqual(recorder.stopUpdatingCount, 0)
+        XCTAssertEqual(sdk.configManager.getDesiredAccuracy(), 0)
+    }
+
+    func testStationaryContinuousHonorsSuspensionGuardAndRuntimeAccuracyOverride() {
+        let (engine, config, recorder) = makeEngine()
+        _ = config.setConfig([
+            "stationaryPeriodicAccuracy": TraceletDesiredAccuracy.low.rawValue,
+            "showsBackgroundLocationIndicator": false,
+        ])
+        defer { engine.stop() }
+
+        engine.setStationaryContinuousTracking(true)
+        XCTAssertEqual(recorder.desiredAccuracy, kCLLocationAccuracyHundredMeters)
+        XCTAssertEqual(recorder.distanceFilter, kCLDistanceFilterNone)
+
+        XCTAssertTrue(engine.updateLocationProviderOptions(desiredAccuracy: 0, distanceFilter: nil))
+        XCTAssertEqual(recorder.desiredAccuracy, kCLLocationAccuracyBest)
+        XCTAssertTrue(engine.updateLocationProviderOptions(desiredAccuracy: nil, distanceFilter: nil))
+        XCTAssertEqual(recorder.desiredAccuracy, kCLLocationAccuracyHundredMeters)
+        XCTAssertEqual(recorder.startUpdatingCount, 1)
+        XCTAssertEqual(recorder.stopUpdatingCount, 0)
+    }
 }
 
 private final class RuntimeOptionsLocationManager: CLLocationManager {
