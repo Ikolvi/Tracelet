@@ -235,7 +235,8 @@ enum class TlMotionDetectionMode(val raw: Int) {
 
 enum class TlStationaryTrackingMode(val raw: Int) {
   PERIODIC(0),
-  GEOFENCES(1);
+  GEOFENCES(1),
+  CONTINUOUS(2);
 
   companion object {
     fun ofRaw(raw: Int): TlStationaryTrackingMode? {
@@ -792,7 +793,9 @@ data class TlAndroidConfig (
    * Drops the OEM Wakelock when the device enters a fully stationary state.
    * Resolves Issue #162.
    */
-  val releaseWakelockWhenStationary: Boolean? = null
+  val releaseWakelockWhenStationary: Boolean? = null,
+  /** Requested update interval in milliseconds for stationary continuous tracking. */
+  val stationaryLocationUpdateInterval: Long? = null
 )
  {
   companion object {
@@ -807,7 +810,8 @@ data class TlAndroidConfig (
       val scheduleUseAlarmManager = pigeonVar_list[7] as Boolean?
       val foregroundService = pigeonVar_list[8] as TlForegroundServiceConfig?
       val releaseWakelockWhenStationary = pigeonVar_list[9] as Boolean?
-      return TlAndroidConfig(locationUpdateInterval, fastestLocationUpdateInterval, deferTime, allowIdenticalLocations, geofenceModeHighAccuracy, periodicUseForegroundService, periodicUseExactAlarms, scheduleUseAlarmManager, foregroundService, releaseWakelockWhenStationary)
+      val stationaryLocationUpdateInterval = pigeonVar_list[10] as Long?
+      return TlAndroidConfig(locationUpdateInterval, fastestLocationUpdateInterval, deferTime, allowIdenticalLocations, geofenceModeHighAccuracy, periodicUseForegroundService, periodicUseExactAlarms, scheduleUseAlarmManager, foregroundService, releaseWakelockWhenStationary, stationaryLocationUpdateInterval)
     }
   }
   fun toList(): List<Any?> {
@@ -822,6 +826,7 @@ data class TlAndroidConfig (
       scheduleUseAlarmManager,
       foregroundService,
       releaseWakelockWhenStationary,
+      stationaryLocationUpdateInterval,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -832,7 +837,7 @@ data class TlAndroidConfig (
       return true
     }
     val other = other as TlAndroidConfig
-    return TraceletApiPigeonUtils.deepEquals(this.locationUpdateInterval, other.locationUpdateInterval) && TraceletApiPigeonUtils.deepEquals(this.fastestLocationUpdateInterval, other.fastestLocationUpdateInterval) && TraceletApiPigeonUtils.deepEquals(this.deferTime, other.deferTime) && TraceletApiPigeonUtils.deepEquals(this.allowIdenticalLocations, other.allowIdenticalLocations) && TraceletApiPigeonUtils.deepEquals(this.geofenceModeHighAccuracy, other.geofenceModeHighAccuracy) && TraceletApiPigeonUtils.deepEquals(this.periodicUseForegroundService, other.periodicUseForegroundService) && TraceletApiPigeonUtils.deepEquals(this.periodicUseExactAlarms, other.periodicUseExactAlarms) && TraceletApiPigeonUtils.deepEquals(this.scheduleUseAlarmManager, other.scheduleUseAlarmManager) && TraceletApiPigeonUtils.deepEquals(this.foregroundService, other.foregroundService) && TraceletApiPigeonUtils.deepEquals(this.releaseWakelockWhenStationary, other.releaseWakelockWhenStationary)
+    return TraceletApiPigeonUtils.deepEquals(this.locationUpdateInterval, other.locationUpdateInterval) && TraceletApiPigeonUtils.deepEquals(this.fastestLocationUpdateInterval, other.fastestLocationUpdateInterval) && TraceletApiPigeonUtils.deepEquals(this.deferTime, other.deferTime) && TraceletApiPigeonUtils.deepEquals(this.allowIdenticalLocations, other.allowIdenticalLocations) && TraceletApiPigeonUtils.deepEquals(this.geofenceModeHighAccuracy, other.geofenceModeHighAccuracy) && TraceletApiPigeonUtils.deepEquals(this.periodicUseForegroundService, other.periodicUseForegroundService) && TraceletApiPigeonUtils.deepEquals(this.periodicUseExactAlarms, other.periodicUseExactAlarms) && TraceletApiPigeonUtils.deepEquals(this.scheduleUseAlarmManager, other.scheduleUseAlarmManager) && TraceletApiPigeonUtils.deepEquals(this.foregroundService, other.foregroundService) && TraceletApiPigeonUtils.deepEquals(this.releaseWakelockWhenStationary, other.releaseWakelockWhenStationary) && TraceletApiPigeonUtils.deepEquals(this.stationaryLocationUpdateInterval, other.stationaryLocationUpdateInterval)
   }
 
   override fun hashCode(): Int {
@@ -847,6 +852,7 @@ data class TlAndroidConfig (
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.scheduleUseAlarmManager)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.foregroundService)
     result = 31 * result + TraceletApiPigeonUtils.deepHash(this.releaseWakelockWhenStationary)
+    result = 31 * result + TraceletApiPigeonUtils.deepHash(this.stationaryLocationUpdateInterval)
     return result
   }
 }

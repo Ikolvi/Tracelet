@@ -2221,7 +2221,8 @@ class MotionConfig {
   /// a mode switch. Defaults to `180` (3 minutes).
   int get speedStationaryDelay => _speedStationaryDelay ?? 180;
 
-  /// [Speed mode] Tracking mode to enter when stationary.
+  /// Tracking mode to enter when stationary in [MotionDetectionMode.speed]
+  /// or [MotionDetectionMode.smart].
   ///
   /// - [StationaryTrackingMode.periodic] (default): schedule one-shot
   ///   fixes at [stationaryPeriodicInterval] seconds. GPS radio is off
@@ -2229,6 +2230,9 @@ class MotionConfig {
   /// - [StationaryTrackingMode.geofences]: stop continuous tracking and
   ///   rely on existing geofence monitoring. Wake speed is evaluated on
   ///   any geofence-triggered fix.
+  /// - [StationaryTrackingMode.continuous]: keep continuous updates and
+  ///   allow [stationaryPeriodicAccuracy] to lower the requested accuracy
+  ///   until motion resumes.
   StationaryTrackingMode get stationaryTrackingMode =>
       _stationaryTrackingMode ?? StationaryTrackingMode.periodic;
 
@@ -2240,7 +2244,11 @@ class MotionConfig {
   /// — no `SCHEDULE_EXACT_ALARM` permission is required.
   int get stationaryPeriodicInterval => _stationaryPeriodicInterval ?? 120;
 
-  /// [Speed mode] Desired accuracy for periodic stationary fixes.
+  /// [Speed mode] Desired accuracy for stationary fixes in
+  /// [StationaryTrackingMode.periodic] or [StationaryTrackingMode.continuous].
+  ///
+  /// Continuous mode uses this value when it is coarser than the normal
+  /// request.
   ///
   /// Should be [DesiredAccuracy.high] so that the GPS speed value is
   /// reliable for wake detection. If set to a lower accuracy, consider
@@ -2249,9 +2257,8 @@ class MotionConfig {
   DesiredAccuracy get stationaryPeriodicAccuracy =>
       _stationaryPeriodicAccuracy ?? DesiredAccuracy.high;
 
-  /// [Speed mode] Number of consecutive periodic fixes with
-  /// `speed >= speedMovingThreshold` required before transitioning back
-  /// to continuous tracking.
+  /// [Speed mode] Number of consecutive stationary fixes with
+  /// `speed >= speedMovingThreshold` required before transitioning to moving.
   ///
   /// `1` (default) gives instant wake and is safe when
   /// [stationaryPeriodicAccuracy] is [DesiredAccuracy.high] because true
@@ -2284,11 +2291,8 @@ class MotionConfig {
         orElse: () => StationaryTrackingMode.periodic,
       );
     }
-    if (raw is int) {
-      return StationaryTrackingMode.values[raw.clamp(
-        0,
-        StationaryTrackingMode.values.length - 1,
-      )];
+    if (raw is int && raw >= 0 && raw < StationaryTrackingMode.values.length) {
+      return StationaryTrackingMode.values[raw];
     }
     return StationaryTrackingMode.periodic;
   }

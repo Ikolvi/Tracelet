@@ -6,8 +6,8 @@ import CoreLocation
 ///
 /// Implements a Logical OR:
 /// If EITHER sensor detects motion, the app stays in continuous tracking mode.
-/// If BOTH sensors detect stationary, the app stops continuous tracking and relies
-/// on Geofences/periodic wakeups to save battery.
+/// If BOTH sensors detect stationary, the SDK applies the configured stationary
+/// tracking mode.
 public class TraceletSmartMotionCoordinator {
     
     private var coreCoordinator: SmartMotionCoordinator?
@@ -102,11 +102,14 @@ public class TraceletSmartMotionCoordinator {
         guard let stateManager = sdk?.stateManager else { return }
 
         let useGeofences = sdk?.configManager?.getStationaryTrackingMode() == .geofences
+        let engine = sdk?.locationEngine
         coreCoordinator?.setCurrentMode(
             mode: TraceletSmartMotionCoordinator.coordinatorMode(
                 sessionMode: stateManager.trackingMode,
                 isMoving: stateManager.isMoving,
-                isStreamLive: sdk?.locationEngine?.isContinuousStreaming ?? false,
+                // A low-accuracy continuous stream is already in the stationary posture.
+                isStreamLive: engine?.isContinuousStreaming == true
+                    && engine?.isStationaryContinuousTracking == false,
                 useGeofencesWhenStationary: useGeofences))
         coreCoordinator?.setUseGeofencesWhenStationary(useGeofences: useGeofences)
     }
@@ -286,7 +289,8 @@ public class TraceletSmartMotionCoordinator {
             sdk.motionDetector.onManualPaceChange(false)
 
         case .switchToStationaryPeriodic:
-            recordModeSwitch("STATIONARY_PERIODIC")
+            let keepsStreaming = sdk.configManager?.getStationaryTrackingMode() == .continuous
+            recordModeSwitch(keepsStreaming ? "STATIONARY_CONTINUOUS" : "STATIONARY_PERIODIC")
             sdk.switchToStationaryPeriodicForce()
             sdk.motionDetector.onManualPaceChange(false)
 

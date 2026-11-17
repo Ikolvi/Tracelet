@@ -201,6 +201,12 @@ class ConfigManager(context: Context) {
             }
         }
 
+        flat["stationaryLocationUpdateInterval"]?.let { interval ->
+            require(interval is Number && interval.toDouble().isFinite() && interval.toDouble() >= 0) {
+                "stationaryLocationUpdateInterval must be a non-negative number of milliseconds"
+            }
+        }
+
         // Flatten foregroundService sub-map (nested inside android section) with fg_ prefix
         val fgService = flat["foregroundService"]
         if (fgService is Map<*, *>) {
@@ -284,6 +290,9 @@ class ConfigManager(context: Context) {
 
     fun getLocationUpdateInterval(): Long =
         getLong("locationUpdateInterval", DEFAULT_LOCATION_UPDATE_INTERVAL)
+
+    fun getStationaryLocationUpdateInterval(): Long =
+        getLong("stationaryLocationUpdateInterval", 0L)
 
     fun getFastestLocationUpdateInterval(): Long =
         getLong("fastestLocationUpdateInterval", DEFAULT_FASTEST_LOCATION_UPDATE_INTERVAL)

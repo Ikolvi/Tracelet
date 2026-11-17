@@ -70,6 +70,7 @@ class SpeedMotionManager(
         fun switchToContinuous()
         fun switchToStationaryPeriodic()
         fun switchToStationaryGeofences()
+        fun switchToStationaryContinuous() = switchToStationaryPeriodic()
     }
 
     // Current state
@@ -337,9 +338,13 @@ class SpeedMotionManager(
                 TraceletLog.debug("Switching to stationary geofences mode")
                 callback.switchToStationaryGeofences()
             }
-            else -> {
+            StationaryTrackingMode.PERIODIC -> {
                 TraceletLog.debug("Switching to stationary periodic mode")
                 callback.switchToStationaryPeriodic()
+            }
+            StationaryTrackingMode.CONTINUOUS -> {
+                TraceletLog.debug("Switching to stationary continuous mode")
+                callback.switchToStationaryContinuous()
             }
         }
     }
@@ -470,10 +475,13 @@ class SpeedMotionManager(
         val eventData = mapOf<String, Any>(
             "state" to newState.ordinal,
             "previousState" to previousState.ordinal,
-            "trackingMode" to when (newState) {
-                SpeedMotionState.STATIONARY -> if (stationaryTrackingMode == StationaryTrackingMode.GEOFENCES) 1 else 2
-                else -> 0
-            }
+            "trackingMode" to if (newState == SpeedMotionState.STATIONARY) {
+                when (stationaryTrackingMode) {
+                    StationaryTrackingMode.GEOFENCES -> 1
+                    StationaryTrackingMode.PERIODIC -> 2
+                    StationaryTrackingMode.CONTINUOUS -> 0
+                }
+            } else 0
         )
         events.sendSpeedMotionChange(eventData)
 

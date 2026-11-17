@@ -16,8 +16,8 @@ import com.ikolvi.tracelet.sdk.util.TraceletLogger
  *
  * Implements a Logical OR:
  * If EITHER sensor detects motion, the app stays in continuous tracking mode.
- * If BOTH sensors detect stationary, the app stops continuous tracking and relies
- * on Geofences/periodic wakeups to save battery.
+ * If BOTH sensors detect stationary, the app applies the configured stationary
+ * tracking strategy.
  */
 class SmartMotionCoordinator(
     private val context: Context,
@@ -292,7 +292,11 @@ class SmartMotionCoordinator(
                 // `isTracking` alone breaks the other direction: this runs before
                 // start() starts the engine, so a moving start would sync
                 // stationary and then stream — the same wedge, mirrored.
-                if (stateManager.isMoving || locationEngine.isTracking) {
+                if (locationEngine.isStationaryContinuous) {
+                    // The Rust coordinator models the parked pace, not the
+                    // provider subscription. A low-accuracy stream is parked.
+                    stationaryMode
+                } else if (stateManager.isMoving || locationEngine.isTracking) {
                     uniffi.tracelet_core.TrackingMode.CONTINUOUS
                 } else {
                     stationaryMode
@@ -360,7 +364,7 @@ class SmartMotionCoordinator(
                 recordModeSwitch("CONTINUOUS")
                 val useForeground = configManager.isForegroundServiceEnabled()
                 logger.debug("SmartMotionCoordinator: SWITCH_TO_CONTINUOUS — useForeground=$useForeground")
-                if (useForeground) {
+                if (useForeground || locationEngine.keepsStationaryStream) {
                     LocationService.switchToContinuous(locationEngine, stateManager)
                 } else {
                     PeriodicLocationWorker.cancel(context)
@@ -397,10 +401,12 @@ class SmartMotionCoordinator(
                 events.sendMotionChange(locationMap)
             }
             uniffi.tracelet_core.CoordinatorAction.SWITCH_TO_STATIONARY_PERIODIC -> {
-                recordModeSwitch("STATIONARY_PERIODIC")
+                val keepStreaming = locationEngine.keepsStationaryStream
+                recordModeSwitch(if (keepStreaming) "STATIONARY_CONTINUOUS" else "STATIONARY_PERIODIC")
                 val useForeground = configManager.isForegroundServiceEnabled()
-                logger.debug("SmartMotionCoordinator: SWITCH_TO_STATIONARY_PERIODIC — useForeground=$useForeground")
-                if (useForeground) {
+                if (keepStreaming) {
+                    LocationService.switchToStationaryContinuous(locationEngine, stateManager)
+                } else if (useForeground) {
                     LocationService.switchToStationaryPeriodic(locationEngine, configManager, stateManager)
                 } else {
                     locationEngine.stop()
@@ -421,7 +427,7 @@ class SmartMotionCoordinator(
                     }
                 }
                 stateManager.isMoving = false
-                logger.debug("SmartMotionCoordinator: SWITCH_TO_STATIONARY_PERIODIC — calling motionDetector.onManualPaceChange(false)")
+                logger.debug("SmartMotionCoordinator: parked — calling motionDetector.onManualPaceChange(false)")
                 motionDetector.onManualPaceChange(false)
                 
                 val locationMap = locationEngine.getLastLocation()?.let {

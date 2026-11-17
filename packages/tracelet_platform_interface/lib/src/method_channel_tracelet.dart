@@ -716,6 +716,8 @@ class MethodChannelTracelet extends TraceletPlatform {
   ) => {
     if (c.locationUpdateInterval != null)
       'locationUpdateInterval': c.locationUpdateInterval,
+    if (c.stationaryLocationUpdateInterval != null)
+      'stationaryLocationUpdateInterval': c.stationaryLocationUpdateInterval,
     if (c.fastestLocationUpdateInterval != null)
       'fastestLocationUpdateInterval': c.fastestLocationUpdateInterval,
     if (c.deferTime != null) 'deferTime': c.deferTime,

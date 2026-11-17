@@ -221,6 +221,7 @@ class TraceletHostApiImpl(
         })
         put("android", buildMap {
             put("locationUpdateInterval", c.android.locationUpdateInterval)
+            put("stationaryLocationUpdateInterval", c.android.stationaryLocationUpdateInterval)
             put("fastestLocationUpdateInterval", c.android.fastestLocationUpdateInterval)
             put("deferTime", c.android.deferTime)
             put("allowIdenticalLocations", c.android.allowIdenticalLocations)

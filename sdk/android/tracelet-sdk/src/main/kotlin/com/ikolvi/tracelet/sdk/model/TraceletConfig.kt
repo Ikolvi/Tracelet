@@ -204,10 +204,13 @@ data class AndroidConfig(
      * Resolves Issue #162.
      */
     val releaseWakelockWhenStationary: Boolean = false,
+    /** Requested stationary continuous interval in milliseconds, or zero to keep the normal interval. */
+    val stationaryLocationUpdateInterval: Int = 0,
 ) {
     companion object {
         fun fromMap(m: Map<String, Any?>) = AndroidConfig(
             locationUpdateInterval = (m["locationUpdateInterval"] as? Number)?.toInt() ?: 1000,
+            stationaryLocationUpdateInterval = (m["stationaryLocationUpdateInterval"] as? Number)?.toInt() ?: 0,
             fastestLocationUpdateInterval = (m["fastestLocationUpdateInterval"] as? Number)?.toInt() ?: 500,
             deferTime = (m["deferTime"] as? Number)?.toInt() ?: 0,
             allowIdenticalLocations = m["allowIdenticalLocations"] as? Boolean ?: false,
@@ -221,6 +224,7 @@ data class AndroidConfig(
     }
     fun toMap(): Map<String, Any?> = mapOf(
         "locationUpdateInterval" to locationUpdateInterval, "fastestLocationUpdateInterval" to fastestLocationUpdateInterval,
+        "stationaryLocationUpdateInterval" to stationaryLocationUpdateInterval,
         "deferTime" to deferTime, "allowIdenticalLocations" to allowIdenticalLocations, "geofenceModeHighAccuracy" to geofenceModeHighAccuracy,
         "periodicUseForegroundService" to periodicUseForegroundService, "periodicUseExactAlarms" to periodicUseExactAlarms,
         "scheduleUseAlarmManager" to scheduleUseAlarmManager, "foregroundService" to foregroundService.toMap(),

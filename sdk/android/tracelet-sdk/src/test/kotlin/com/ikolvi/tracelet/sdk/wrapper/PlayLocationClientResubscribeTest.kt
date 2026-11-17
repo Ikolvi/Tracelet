@@ -7,8 +7,10 @@ import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
+import com.google.android.gms.tasks.TaskCompletionSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.kotlin.any
@@ -16,7 +18,9 @@ import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
@@ -99,5 +103,39 @@ class PlayLocationClientResubscribeTest {
         playCallback.onLocationResult(LocationResult.create(listOf(Location("fused"))))
 
         assertEquals(1, callback.fixes)
+    }
+
+    @Test
+    fun registrationFailureIsReportedWhenPlayServicesCompletesTheTask() {
+        val registration = TaskCompletionSource<Void>()
+        whenever(fused.requestLocationUpdates(any<LocationRequest>(), any<LocationCallback>(), any<Looper>()))
+            .thenReturn(registration.task)
+        val error = SecurityException("Location request was rejected")
+        var received: Throwable? = null
+        client.requestLocationUpdatesWithResult(request(1000), CountingCallback(), Looper.getMainLooper()) {
+            received = it.exceptionOrNull()
+        }
+        registration.setException(error)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertSame(error, received)
+    }
+
+    @Test
+    fun registrationCompletingAfterRemovalRetiresTheNativeCallbackAgain() {
+        val registration = TaskCompletionSource<Void>()
+        whenever(fused.requestLocationUpdates(any<LocationRequest>(), any<LocationCallback>(), any<Looper>()))
+            .thenReturn(registration.task)
+        val callback = CountingCallback()
+        var canceled = false
+        client.requestLocationUpdatesWithResult(request(1000), callback, Looper.getMainLooper()) {
+            canceled = it.isFailure
+        }
+        client.removeLocationUpdates(callback)
+        registration.setResult(null)
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertTrue(canceled)
+        val playCallback = registeredPlayCallbacks(1).single()
+        verify(fused, times(2)).removeLocationUpdates(playCallback)
     }
 }

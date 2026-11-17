@@ -331,6 +331,8 @@ public struct TraceletGeofence {
 @objc public enum StationaryTrackingMode: Int {
     case periodic = 0
     case geofences = 1
+    /// Keep continuous updates, using the configured stationary accuracy.
+    case continuous = 2
 }
 
 /// Motion detection algorithm selection.
